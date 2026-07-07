@@ -8,8 +8,8 @@ import type {
   ActionQueuesResponse, AdministrationAction, BedsResponse, ClinicalNote, Consult, FormularyDrug,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
-  OrderSetsResponse, PatientDetailResponse, PatientSummary, ResultInboxItem,
-  RoundingListResponse, TimelineEvent, UnitSummaryResponse,
+  OrderSetsResponse, PatientDetailResponse, PatientRiskProfile, PatientSummary, ResultInboxItem,
+  RiskRankingRow, RoundingListResponse, TimelineEvent, UnitSummaryResponse,
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY } from './data/beds'
 import { PATIENTS } from './data/patients'
@@ -17,6 +17,7 @@ import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, VENTILATOR } from './da
 import { ACTION_QUEUES, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
 import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
 import { allConsults } from './data/consults'
+import { allRiskProfiles, deriveMissionControlRisks, deriveRiskAlerts, deriveRiskRanking, riskProfileFor } from './data/ai'
 import { notesFor } from './data/notes'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, ORDER_SET_DEFS } from './data/formulary'
@@ -61,12 +62,15 @@ export function getPatientDetail(patientId: string): Promise<PatientDetailRespon
   return respond(
     {
       patient,
+      /* one-line AI risk view derived from the canonical AI domain (Screen 8) */
+      aiRisks: deriveMissionControlRisks(patientId),
       ventilator: VENTILATOR,
       hemodynamics: HEMODYNAMICS,
       infusions: INFUSIONS,
       /* lab trends are a derived view over the canonical results store (Screen 6) */
       labs: deriveMissionControlLabs(patientId),
-      alerts: PATIENT_ALERTS,
+      /* AI risks crossing threshold surface in the EXISTING alert center */
+      alerts: [...deriveRiskAlerts(patientId), ...PATIENT_ALERTS],
       goals: GOALS,
       /* the timeline card is a derived view over the aggregated feed
          (Screen 7) — last ~24 h, capped for the horizontal strip */
@@ -276,3 +280,27 @@ export function getTimeline(patientId: string): Promise<TimelineEvent[]> {
 export function getClinicalNotes(patientId: string): Promise<ClinicalNote[]> {
   return respond(notesFor(patientId), 120)
 }
+
+/* ---------------- AI Clinical Assistant domain (Screen 8) ----------------
+   The canonical AI risk service. All predictions are SIMULATED mock data
+   until Stage 11 (real model + device integration). Advisory only — no
+   endpoint here mutates anything or places orders. */
+
+/** GET /api/icu/ai/risks — every patient's simulated risk profile. */
+export function getRiskProfiles(): Promise<PatientRiskProfile[]> {
+  return respond(allRiskProfiles(), 150)
+}
+
+/** GET /api/icu/ai/risks/:patientId — one patient's profile; null if unknown. */
+export function getRiskProfile(patientId: string): Promise<PatientRiskProfile | null> {
+  return respond(riskProfileFor(patientId), 120)
+}
+
+/** GET /api/icu/ai/ranking — unit-wide ranking by highest current risk. */
+export function getRiskRanking(): Promise<RiskRankingRow[]> {
+  return respond(deriveRiskRanking(), 150)
+}
+
+/* pure client-side helpers for the AI domain (trend from history, elevation
+   rule) — computed at render, never stored (locked pattern) */
+export { AI_ALERT_THRESHOLD, isElevated, riskTrendOf } from './data/ai'

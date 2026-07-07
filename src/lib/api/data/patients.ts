@@ -23,7 +23,6 @@ const toPatient = (r: UnitPatientRecord): Patient => ({
   rhythm: r.rhythm,
   vitals: r.monitorVitals,
   organs: r.organs,
-  aiRisks: r.aiRisks,
 })
 
 export const PATIENTS: Patient[] = ROSTER.map(toPatient)

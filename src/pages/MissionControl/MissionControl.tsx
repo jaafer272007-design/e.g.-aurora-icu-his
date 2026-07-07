@@ -192,7 +192,7 @@ export function MissionControl() {
           {detail && (
             <div className="colR">
               <DigitalTwin organs={detail.patient.organs} />
-              <AiPanel risks={detail.patient.aiRisks} />
+              <AiPanel risks={detail.aiRisks} />
             </div>
           )}
 

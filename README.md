@@ -26,6 +26,7 @@ npm run preview  # serve the production build
 | `/orders/:patientId` | Orders & Medication — canonical orders record with formulary, safety checks, order sets, audit history (doctor RBAC) |
 | `/labs/:patientId` | Laboratory & Imaging — canonical results record: lab trends, imaging reports, abnormal/critical flags, doctor-only acknowledge (`?as=nurse` previews the view-only nurse session until Stage 9 auth) |
 | `/timeline/:patientId` | Clinical Timeline — read-only aggregated feed over the canonical stores (order audit trail, results + acknowledgments, MAR, task completions, I&O, consults, clinical notes) with category and day/shift filters and deep-links back to the originating screens |
+| `/ai` · `/ai/:patientId` | AI Clinical Assistant — simulated risk predictions (canonical AI domain): unit-wide ranking by highest risk, per-risk trend from q15min history, contributing-factor breakdown, advisory-only suggestions; threshold crossings surface in the existing alert center (`?as=nurse` previews the view-only nurse session) |
 
 ## Structure
 
