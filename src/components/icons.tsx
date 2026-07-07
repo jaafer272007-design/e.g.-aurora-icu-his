@@ -125,6 +125,15 @@ export function IconFlask({ size = 15, stroke = 'currentColor', strokeWidth = 2 
   )
 }
 
+export function IconClock({ size = 16, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
+  return (
+    <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </svg>
+  )
+}
+
 export function IconPencil({ size = 15, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
   return (
     <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth}>

@@ -1,4 +1,4 @@
-import type { ActionQueuesResponse, Consult, OrderSetsResponse, RoundingListResponse } from '../types'
+import type { ActionQueuesResponse, OrderSetsResponse, RoundingListResponse } from '../types'
 
 /* Sample data from reference/icu-doctor-workspace.html — Dr. Rahman's panel. */
 
@@ -21,12 +21,6 @@ export const ACTION_QUEUES: ActionQueuesResponse = {
     { title: 'Procedure note — B-13 Aisha Mahmoud', detail: 'Bedside paracentesis performed 06:20 — note pending', time: '' },
   ],
 }
-
-export const CONSULTS: Consult[] = [
-  { specialty: 'Nephrology', message: 'Re: B-04 Susan Wright — CRRT circuit clotting recurring, requests bedside review', time: '08:10' },
-  { specialty: 'General Surgery', message: 'Re: B-13 Aisha Mahmoud — new fluid collection, considering drainage', time: '07:05' },
-  { specialty: 'Infectious Disease', message: 'Re: B-01 Ahmed Al-Saadi — culture sensitivities back, de-escalation advice pending your ack', time: '06:40' },
-]
 
 export const ORDER_SETS: OrderSetsResponse = {
   Medication: ['Sepsis Bundle', 'Insulin Sliding Scale', 'DVT Prophylaxis'],

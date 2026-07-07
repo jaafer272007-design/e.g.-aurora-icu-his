@@ -188,11 +188,15 @@
 .mc .tle p{font-size:12px;line-height:1.45;margin-top:6px;clear:both}
 .mc .tc.med{background:rgba(53,224,208,.14);color:var(--cyan)}
 .mc .tc.lab{background:rgba(77,163,255,.16);color:var(--blue)}
-.mc .tc.vnt{background:rgba(167,139,250,.16);color:var(--violet)}
-.mc .tc.prc{background:rgba(255,93,108,.16);color:var(--red)}
-.mc .tc.con{background:rgba(255,180,84,.16);color:var(--amber)}
-.mc .tc.nte{background:rgba(130,170,230,.14);color:var(--dim)}
-.mc .tc.txf{background:rgba(255,120,160,.16);color:#ff8fb0}
+.mc .tc.imaging{background:rgba(167,139,250,.16);color:var(--violet)}
+.mc .tc.order{background:rgba(255,120,160,.16);color:#ff8fb0}
+.mc .tc.consult{background:rgba(255,180,84,.16);color:var(--amber)}
+.mc .tc.note{background:rgba(130,170,230,.14);color:var(--dim)}
+.mc .tc.task{background:rgba(61,232,160,.13);color:var(--green)}
+.mc .tc.io{background:rgba(53,224,208,.08);color:#79cfc6}
+.mc .tlmore{font-size:11px;font-weight:600;color:var(--blue);padding:6px 10px;border-radius:8px;
+ border:1px solid rgba(77,163,255,.35);background:rgba(77,163,255,.07);transition:.15s;min-height:32px}
+.mc .tlmore:hover,.mc .tlmore:focus-visible{background:rgba(77,163,255,.16)}
 
 @media (max-width:1500px){
   .mc #monitor{grid-column:span 12}.mc .colR{grid-column:span 12;flex-direction:row}

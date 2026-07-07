@@ -25,7 +25,7 @@ real APIs and medical devices later.
 4. Nurse Workspace — ✅ built, formal review pending (`/nurse`, first screen built directly in React)
 5. Orders & Medication — ✅ built, formal review pending (`/orders/:patientId`, canonical orders model — DW/NW read derived views)
 6. Laboratory & Imaging — ✅ built, formal review pending (`/labs/:patientId`, canonical results model — MC lab card + DW results queue read derived views)
-7. Timeline — not started (standalone screen, own route — confirmed)
+7. Timeline — ✅ built, formal review pending (`/timeline/:patientId`, read-only aggregated feed derived from the canonical stores — no store of its own; MC timeline card reads the same feed; minimal ClinicalNote model added for freeform notes)
 8. AI Clinical Assistant — not started
 9. Login / Role-Switch screen — build right before API Integration
 10. API Integration (ASP.NET Core Web APIs)

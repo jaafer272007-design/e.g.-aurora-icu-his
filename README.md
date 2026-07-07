@@ -25,6 +25,7 @@ npm run preview  # serve the production build
 | `/patients/:patientId` | Patient Mission Control, keyed by the stable patient id (e.g. `/patients/P-1001`); bed number is display-only location data |
 | `/orders/:patientId` | Orders & Medication — canonical orders record with formulary, safety checks, order sets, audit history (doctor RBAC) |
 | `/labs/:patientId` | Laboratory & Imaging — canonical results record: lab trends, imaging reports, abnormal/critical flags, doctor-only acknowledge (`?as=nurse` previews the view-only nurse session until Stage 9 auth) |
+| `/timeline/:patientId` | Clinical Timeline — read-only aggregated feed over the canonical stores (order audit trail, results + acknowledgments, MAR, task completions, I&O, consults, clinical notes) with category and day/shift filters and deep-links back to the originating screens |
 
 ## Structure
 

@@ -5,17 +5,20 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, BedsResponse, Consult, FormularyDrug,
+  ActionQueuesResponse, AdministrationAction, BedsResponse, ClinicalNote, Consult, FormularyDrug,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
-  NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
+  NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
   OrderSetsResponse, PatientDetailResponse, PatientSummary, ResultInboxItem,
-  RoundingListResponse, UnitSummaryResponse,
+  RoundingListResponse, TimelineEvent, UnitSummaryResponse,
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY } from './data/beds'
 import { PATIENTS } from './data/patients'
-import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, TIMELINE, VENTILATOR } from './data/panels'
-import { ACTION_QUEUES, CONSULTS, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
-import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS } from './data/nursing'
+import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, VENTILATOR } from './data/panels'
+import { ACTION_QUEUES, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
+import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
+import { allConsults } from './data/consults'
+import { notesFor } from './data/notes'
+import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, ORDER_SET_DEFS } from './data/formulary'
 import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
@@ -26,7 +29,7 @@ import {
   imagingFor, labDrawsFor,
 } from './data/results'
 import type { SessionRole } from '../session'
-import { nowHm } from '../time'
+import { dayOffsetOf, nowHm } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 const respond = <T>(payload: T, latencyMs: number): Promise<T> =>
@@ -65,7 +68,9 @@ export function getPatientDetail(patientId: string): Promise<PatientDetailRespon
       labs: deriveMissionControlLabs(patientId),
       alerts: PATIENT_ALERTS,
       goals: GOALS,
-      timeline: TIMELINE,
+      /* the timeline card is a derived view over the aggregated feed
+         (Screen 7) — last ~24 h, capped for the horizontal strip */
+      timeline: deriveTimeline(patientId).filter(e => dayOffsetOf(e.time) >= -1).slice(0, 20),
     },
     120,
   )
@@ -81,9 +86,10 @@ export function getActionQueues(): Promise<ActionQueuesResponse> {
   return respond(ACTION_QUEUES, 120)
 }
 
-/** GET /api/icu/worklist/consults — incoming consults for the physician. */
+/** GET /api/icu/consults — incoming consults (shared store; the Timeline
+ *  reads the same records per patient). */
 export function getConsults(): Promise<Consult[]> {
-  return respond(CONSULTS, 120)
+  return respond(allConsults(), 120)
 }
 
 /** GET /api/icu/order-sets — quick order sets by order type. */
@@ -114,6 +120,17 @@ export function getNursingTasks(): Promise<NursingTask[]> {
 /** GET /api/icu/nursing/io — intake/output entries recorded this shift. */
 export function getIoEntries(): Promise<IoEntry[]> {
   return respond(IO_ENTRIES, 120)
+}
+
+/** POST /api/icu/nursing/tasks/:taskId/toggle — document (or undo) a task
+ *  completion in the store, so derived views (Timeline) see it. */
+export function toggleNursingTask(taskId: string, actor: string): Promise<NursingTask | null> {
+  return respond(applyTaskToggle(taskId, actor, nowHm()), 120)
+}
+
+/** POST /api/icu/nursing/io — record an intake/output entry in the store. */
+export function recordIoEntry(draft: NewIoEntry): Promise<IoEntry> {
+  return respond(insertIoEntry(draft, nowHm()), 120)
 }
 
 /* ---------------- Orders & Medication domain (Screen 5) ----------------
@@ -244,4 +261,18 @@ export function acknowledgeResult(
   kind: 'lab' | 'imaging', id: string, actor: string, role: SessionRole,
 ): Promise<LabDraw | ImagingStudy | null> {
   return kind === 'lab' ? acknowledgeLab(id, actor, role) : acknowledgeImaging(id, actor, role)
+}
+
+/* ---------------- Timeline domain (Screen 7) ----------------
+   Read-only aggregation over the canonical stores — no store of its own.
+   Mission Control's timeline card reads the same derivation. */
+
+/** GET /api/icu/patients/:patientId/timeline — aggregated feed, newest first. */
+export function getTimeline(patientId: string): Promise<TimelineEvent[]> {
+  return respond(deriveTimeline(patientId), 150)
+}
+
+/** GET /api/icu/patients/:patientId/notes — freeform clinical notes. */
+export function getClinicalNotes(patientId: string): Promise<ClinicalNote[]> {
+  return respond(notesFor(patientId), 120)
 }

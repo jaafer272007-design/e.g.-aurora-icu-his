@@ -7,7 +7,7 @@ import { dueStateFor, useNow } from '../../lib/time'
 import { IconCheck, IconPencil, IconUsers } from '../../components/icons'
 import {
   completeImplementation, documentAdministration, getImplementationQueue, getIoEntries,
-  getMarRows, getNurseAssignment, getNursingTasks,
+  getMarRows, getNurseAssignment, getNursingTasks, recordIoEntry, toggleNursingTask,
 } from '../../lib/api'
 import type {
   AdministrationAction, IoEntry, IoKind, MarRow, NurseAssignmentResponse, NursingTask, Order,
@@ -71,14 +71,20 @@ export function NurseWorkspace() {
     })
   }
 
+  /* both write to the nursing store via the service layer (not page-local
+     state) so derived views — e.g. the Timeline — see them */
   const toggleTask = (taskId: string) => {
-    setTasks(prev => prev && prev.map(t => (t.taskId === taskId ? { ...t, done: !t.done } : t)))
+    toggleNursingTask(taskId, NURSE_ACTOR).then(updated => {
+      if (!updated) return
+      setTasks(prev => prev && prev.map(t => (t.taskId === taskId ? updated : t)))
+    })
   }
 
   const recordIo = (patientId: string, kind: IoKind, category: string, volumeMl: number) => {
-    const time = nowHm()
-    setIo(prev => prev && [...prev, { entryId: `IO-LOCAL-${Date.now()}`, patientId, kind, category, volumeMl, time }])
-    showToast('I&O recorded', `${kind === 'intake' ? '+' : '−'}${volumeMl} mL ${category} · ${patientName(patientId)} · ${time}`)
+    recordIoEntry({ patientId, kind, category, volumeMl }).then(entry => {
+      setIo(prev => prev && [...prev, entry])
+      showToast('I&O recorded', `${kind === 'intake' ? '+' : '−'}${volumeMl} mL ${category} · ${patientName(patientId)} · ${entry.time}`)
+    })
   }
 
   const saveSbar = (patientId: string, note: SbarNote) => {
