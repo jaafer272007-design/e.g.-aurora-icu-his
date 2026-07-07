@@ -25,7 +25,9 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
   const [dose, setDose] = useState('')
   const [route, setRoute] = useState('')
   const [frequency, setFrequency] = useState('')
-  const [duration, setDuration] = useState('ongoing')
+  /* starts empty — blank means "ongoing", applied at submit (typing must
+     never have to fight pre-filled text) */
+  const [duration, setDuration] = useState('')
   const [prn, setPrn] = useState(false)
   const [prnIndication, setPrnIndication] = useState('')
   const [priority, setPriority] = useState<OrderPriority>('Routine')
@@ -50,7 +52,7 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
     setDose(d.doses[0] ?? '')
     setRoute(d.routes[0] ?? '')
     setFrequency(d.frequencies[0] ?? '')
-    setDuration('ongoing')
+    setDuration('')
     setPrn(false)
     setPrnIndication('')
     setAck(false)
@@ -79,7 +81,11 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
           .join(' | ')}${justification.trim() ? ` — ${justification.trim()}` : ''}`
       : undefined
     onCreate(
-      { drugId: drug.drugId, drug: drug.name, dose, route, frequency, duration, prn, prnIndication: prn ? prnIndication : undefined },
+      {
+        drugId: drug.drugId, drug: drug.name, dose, route, frequency,
+        duration: duration.trim() || 'ongoing',
+        prn, prnIndication: prn ? prnIndication : undefined,
+      },
       priority, sign, warnNote,
     )
     setQuery(''); setDrug(null); setAck(false); setJustification('')
@@ -163,7 +169,7 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
             </div>
             <div className="field">
               <label htmlFor="noDur">Duration</label>
-              <input id="noDur" value={duration} onChange={e => setDuration(e.target.value)} placeholder="e.g. 7 days / ongoing / once" />
+              <input id="noDur" value={duration} onChange={e => setDuration(e.target.value)} placeholder="e.g. 7 days · once — blank = ongoing" />
             </div>
             <div className="field">
               <label htmlFor="noPrio">Priority</label>
