@@ -6,6 +6,7 @@ import { NurseWorkspace } from './pages/NurseWorkspace/NurseWorkspace'
 import { OrdersMedication } from './pages/OrdersMedication/OrdersMedication'
 import { LabImaging } from './pages/LabImaging/LabImaging'
 import { Timeline } from './pages/Timeline/Timeline'
+import { AiAssistant } from './pages/AiAssistant/AiAssistant'
 
 /* Route map
    /workspace              Doctor Workspace — the role-personalized "Dashboard"
@@ -15,7 +16,9 @@ import { Timeline } from './pages/Timeline/Timeline'
    /patients/:patientId    Patient Mission Control, keyed by the stable
                            patient identifier (bed number is location only)
    /labs/:patientId        Laboratory & Imaging — canonical results record
-   /timeline/:patientId    Clinical Timeline — read-only aggregated feed */
+   /timeline/:patientId    Clinical Timeline — read-only aggregated feed
+   /ai                     AI Clinical Assistant — unit-wide risk ranking
+   /ai/:patientId          AI Clinical Assistant — patient risk profile */
 /* Vite injects BASE_URL from the build's --base flag ('/' locally,
    '/e.g.-aurora-icu-his/' on GitHub Pages) — the router must match it. */
 const BASENAME = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/'
@@ -35,6 +38,8 @@ export default function App() {
         <Route path="/labs/:patientId" element={<LabImaging />} />
         <Route path="/timeline" element={<Timeline />} />
         <Route path="/timeline/:patientId" element={<Timeline />} />
+        <Route path="/ai" element={<AiAssistant />} />
+        <Route path="/ai/:patientId" element={<AiAssistant />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

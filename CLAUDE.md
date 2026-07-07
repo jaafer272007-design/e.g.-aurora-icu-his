@@ -26,7 +26,7 @@ real APIs and medical devices later.
 5. Orders & Medication — ✅ built, formal review pending (`/orders/:patientId`, canonical orders model — DW/NW read derived views)
 6. Laboratory & Imaging — ✅ built, formal review pending (`/labs/:patientId`, canonical results model — MC lab card + DW results queue read derived views)
 7. Timeline — ✅ built, formal review pending (`/timeline/:patientId`, read-only aggregated feed derived from the canonical stores — no store of its own; MC timeline card reads the same feed; minimal ClinicalNote model added for freeform notes)
-8. AI Clinical Assistant — not started
+8. AI Clinical Assistant — ✅ built, formal review pending (`/ai` unit ranking + `/ai/:patientId`, canonical AI risk model — MC AI panel + alert-center risk alerts read derived views; all predictions simulated until Stage 11)
 9. Login / Role-Switch screen — build right before API Integration
 10. API Integration (ASP.NET Core Web APIs)
 11. Medical device integration (ventilators, monitors, lab) + AI
@@ -51,6 +51,10 @@ alert/device models. Apply incrementally; don't wholesale-refactor existing code
   stand in until Stage 11 device events)
 - `nursing.ts` — nursing tasks + I&O entries (writes go through the service
   layer, never page-local state)
+- `ai.ts` — AI risk predictions (Screen 8): per-patient category risks with
+  q15min history, factors, advisory suggestions. SIMULATED until Stage 11;
+  trend/elevation computed at read time; threshold crossings feed the
+  existing alert center (MC Smart Alerts), never a separate alert list.
 - Derived-only, never stored: Timeline feed (`timeline.ts`), MAR rows,
   results inbox, MC lab-trend card, rounding/assignment patient views.
 

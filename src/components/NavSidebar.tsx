@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import './NavSidebar.css'
 import {
-  IconAdmit, IconAlertTriangle, IconBed, IconClock, IconDischarge, IconFlask, IconGrid, IconPill, IconSettings, IconStats,
+  IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPill, IconSettings, IconStats,
 } from './icons'
 
-export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'admissions' | 'discharges' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'alerts' | 'statistics' | 'settings'
 
 interface NavSidebarProps {
   active: NavKey
@@ -26,6 +26,7 @@ export function NavSidebar({ active, alertCount, footerLines, dashboardRoute = '
     { key: 'orders', label: 'Orders & Meds', icon: <IconPill />, to: '/orders' },
     { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: '/labs' },
     { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: '/timeline' },
+    { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: '/ai' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit /> },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge /> },
     { key: 'alerts', label: 'Alerts', icon: <IconAlertTriangle />, badge: alertCount },

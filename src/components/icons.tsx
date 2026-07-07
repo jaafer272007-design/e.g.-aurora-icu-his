@@ -125,6 +125,15 @@ export function IconFlask({ size = 15, stroke = 'currentColor', strokeWidth = 2 
   )
 }
 
+export function IconBrain({ size = 16, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
+  return (
+    <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
+      <path d="M12 2a4 4 0 014 4c2.5.5 4 2.5 4 5a5 5 0 01-3 4.6V17a4 4 0 01-4 4 4 4 0 01-4-4v-1.4A5 5 0 014 11c0-2.5 1.5-4.5 4-5a4 4 0 014-4z" />
+      <path d="M12 6v12" />
+    </svg>
+  )
+}
+
 export function IconClock({ size = 16, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
   return (
     <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
