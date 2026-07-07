@@ -1,6 +1,4 @@
-import type {
-  ImplementOrder, IoEntry, MarEntry, NurseAssignmentResponse, NursingTask,
-} from '../types'
+import type { IoEntry, NurseAssignmentResponse, NursingTask } from '../types'
 
 /* Nurse Workspace sample data — RN Maya Chen, day shift, assigned two
    patients (real ICU nurse:patient ratio). Patient identity fields mirror
@@ -24,82 +22,6 @@ export const NURSE_ASSIGNMENT: NurseAssignmentResponse = {
     },
   ],
 }
-
-export const MAR_ENTRIES: MarEntry[] = [
-  {
-    marId: 'MAR-3001', patientId: 'P-1001', bedId: 'B-01', medication: 'Noradrenaline',
-    dose: '0.32 µg/kg/min', route: 'IV infusion · titration doc q1h', scheduledTime: '11:00',
-    status: 'overdue', orderedBy: 'Dr. S. Rahman',
-  },
-  {
-    marId: 'MAR-3002', patientId: 'P-1001', bedId: 'B-01', medication: 'Insulin (Actrapid)',
-    dose: '2.5 U/h', route: 'IV infusion · glucose check q1h', scheduledTime: '11:30',
-    status: 'due', orderedBy: 'Dr. S. Rahman',
-  },
-  {
-    marId: 'MAR-3003', patientId: 'P-1001', bedId: 'B-01', medication: 'Meropenem',
-    dose: '1 g', route: 'IV over 30 min · q8h (day 4)', scheduledTime: '12:00',
-    status: 'due', orderedBy: 'Dr. S. Rahman',
-  },
-  {
-    marId: 'MAR-3004', patientId: 'P-1001', bedId: 'B-01', medication: 'Paracetamol',
-    dose: '1 g', route: 'IV q6h PRN · temp ≥ 38.3 °C', scheduledTime: '',
-    status: 'prn', orderedBy: 'Dr. S. Rahman',
-  },
-  {
-    marId: 'MAR-3005', patientId: 'P-1001', bedId: 'B-01', medication: 'Enoxaparin',
-    dose: '40 mg', route: 'SC daily', scheduledTime: '18:00',
-    status: 'upcoming', orderedBy: 'Dr. S. Rahman',
-  },
-  {
-    marId: 'MAR-3006', patientId: 'P-1004', bedId: 'B-04', medication: 'Pantoprazole',
-    dose: '40 mg', route: 'IV daily', scheduledTime: '08:00',
-    status: 'given', documentedTime: '08:04', orderedBy: 'Dr. S. Rahman',
-  },
-  {
-    marId: 'MAR-3007', patientId: 'P-1004', bedId: 'B-04', medication: 'Calcium gluconate',
-    dose: '10 mL 10%', route: 'IV · CRRT protocol', scheduledTime: '10:00',
-    status: 'given', documentedTime: '10:12', orderedBy: 'Dr. S. Rahman',
-  },
-  {
-    marId: 'MAR-3008', patientId: 'P-1004', bedId: 'B-04', medication: 'Phosphate (K-Phos)',
-    dose: '15 mmol', route: 'IV over 4 h', scheduledTime: '12:00',
-    status: 'due', orderedBy: 'Dr. S. Rahman',
-  },
-  {
-    marId: 'MAR-3009', patientId: 'P-1004', bedId: 'B-04', medication: 'Metoprolol',
-    dose: '25 mg', route: 'PO bid · hold if HR < 60 or SBP < 100', scheduledTime: '12:00',
-    status: 'due', orderedBy: 'Dr. S. Rahman',
-  },
-]
-
-export const ORDERS_TO_IMPLEMENT: ImplementOrder[] = [
-  {
-    orderId: 'ORD-7001', patientId: 'P-1001', bedId: 'B-01', priority: 'STAT',
-    text: 'Repeat lactate + ScvO₂ with the 13:00 draw — sample from arterial line',
-    orderedBy: 'Dr. S. Rahman', time: '09:42', done: false,
-  },
-  {
-    orderId: 'ORD-7002', patientId: 'P-1001', bedId: 'B-01', priority: 'Urgent',
-    text: 'Titrate noradrenaline to MAP ≥ 65 — new ceiling 0.5 µg/kg/min',
-    orderedBy: 'Dr. S. Rahman', time: '09:31', done: false,
-  },
-  {
-    orderId: 'ORD-7003', patientId: 'P-1004', bedId: 'B-04', priority: 'Urgent',
-    text: 'Prime and stage CRRT filter change kit at bedside before 22:00',
-    orderedBy: 'Dr. S. Rahman', time: '08:55', done: false,
-  },
-  {
-    orderId: 'ORD-7004', patientId: 'P-1001', bedId: 'B-01', priority: 'Routine',
-    text: 'Change right IJ central line dressing during day shift',
-    orderedBy: 'Dr. S. Rahman', time: '07:50', done: false,
-  },
-  {
-    orderId: 'ORD-7005', patientId: 'P-1004', bedId: 'B-04', priority: 'Routine',
-    text: 'Daily weight on bed scale before 08:00 tomorrow',
-    orderedBy: 'Dr. S. Rahman', time: '08:30', done: false,
-  },
-]
 
 export const NURSING_TASKS: NursingTask[] = [
   { taskId: 'TSK-4001', patientId: 'P-1001', bedId: 'B-01', label: 'Hourly urine output', dueTime: '11:00', recurrence: 'q1h', done: false },

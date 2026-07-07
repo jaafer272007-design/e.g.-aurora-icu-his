@@ -142,6 +142,15 @@ export function IconNote({ size = 15, stroke = 'currentColor', strokeWidth = 2 }
   )
 }
 
+export function IconPill({ size = 16, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
+  return (
+    <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
+      <rect x="7" y="2" width="10" height="20" rx="4" />
+      <path d="M7 9h10M7 15h10" />
+    </svg>
+  )
+}
+
 export function IconUsers({ size = 14, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
   return (
     <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth}>

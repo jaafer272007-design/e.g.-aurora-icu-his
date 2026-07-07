@@ -23,6 +23,7 @@ npm run preview  # serve the production build
 | `/nurse` | Nurse Workspace — the nurse session's "Dashboard" (administer + document only, no order origination) |
 | `/beds` | ICU Bed Overview — click any occupied bed to open that patient |
 | `/patients/:patientId` | Patient Mission Control, keyed by the stable patient id (e.g. `/patients/P-1001`); bed number is display-only location data |
+| `/orders/:patientId` | Orders & Medication — canonical orders record with formulary, safety checks, order sets, audit history (doctor RBAC) |
 
 ## Structure
 

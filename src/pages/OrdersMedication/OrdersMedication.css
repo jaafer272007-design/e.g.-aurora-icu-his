@@ -1,0 +1,187 @@
+/* Orders & Medication — Screen 5. Canonical orders screen; follows
+   docs/design-system.md and reuses the shared components. */
+.om .shell{display:grid;grid-template-columns:198px 240px 1fr;min-height:0}
+.om main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+
+/* ===== patient rail ===== */
+.om .ptrail{border-right:1px solid var(--stroke);display:flex;flex-direction:column;min-height:0;
+ background:linear-gradient(180deg,rgba(11,17,29,.7),rgba(8,12,21,.7))}
+.om .ptrailhead{padding:14px 14px 8px;font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--dim)}
+.om .ptraillist{flex:1;overflow-y:auto;padding:4px 10px 14px;display:flex;flex-direction:column;gap:6px}
+.om .ptrailcard{display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:12px;padding:9px 10px;
+ background:rgba(255,255,255,.025);cursor:pointer;transition:.18s;text-align:left;color:var(--text);min-height:44px;width:100%}
+.om .ptrailcard:hover{border-color:var(--stroke2);transform:translateX(2px)}
+.om .ptrailcard.sel{border-color:rgba(77,163,255,.65);background:linear-gradient(135deg,rgba(77,163,255,.14),rgba(53,224,208,.07))}
+.om .prname{font-size:12.5px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.om .prpend{min-width:18px;height:18px;border-radius:9px;background:rgba(255,180,84,.2);color:var(--amber);
+ font-size:10.5px;font-weight:700;display:grid;place-items:center}
+
+/* ===== patient bar ===== */
+.om .ptbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--stroke);border-radius:var(--r);
+ background:var(--panel);box-shadow:var(--shadow);backdrop-filter:blur(14px);padding:12px 16px;animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+.om .ptbarname{font-size:16px;font-weight:700}
+.om .ptbarsub{font-size:11.5px;color:var(--dim)}
+.om .ptbarallergy{font-size:11px;font-weight:600;color:var(--red);background:rgba(255,93,108,.1);
+ border:1px solid rgba(255,93,108,.35);padding:4px 10px;border-radius:9px}
+.om .ptbarcode{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--green);
+ background:rgba(61,232,160,.12);padding:4px 10px;border-radius:9px}
+.om .ptbarlink{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--blue);padding:8px 12px;border-radius:9px;
+ border:1px solid rgba(77,163,255,.4);background:rgba(77,163,255,.08);transition:.15s;min-height:38px}
+.om .ptbarlink:hover,.om .ptbarlink:focus-visible{background:rgba(77,163,255,.18)}
+
+/* ===== columns ===== */
+.om .omcols{display:grid;grid-template-columns:1.35fr 1fr;gap:14px;align-items:start}
+.om .omcolL,.om .omcolR{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* ===== order list ===== */
+.om .oftabs{display:flex;gap:6px;margin-bottom:11px;flex-wrap:wrap}
+.om .oftab{padding:8px 12px;border-radius:10px;font-size:11.5px;color:var(--dim);border:1px solid var(--stroke);transition:.15s;min-height:38px;display:flex;align-items:center;gap:6px}
+.om .oftab:hover{color:var(--text)}
+.om .oftab.on{background:rgba(77,163,255,.16);border-color:rgba(77,163,255,.5);color:var(--blue);font-weight:600}
+.om .oftab .n{font-family:var(--mono);font-size:10px;background:rgba(130,170,230,.16);border-radius:6px;padding:1px 6px}
+.om .orderlist{display:flex;flex-direction:column;gap:9px}
+.om .oorow{position:relative;border:1px solid var(--stroke);border-radius:13px;padding:11px 13px 9px;background:rgba(255,255,255,.02);overflow:hidden}
+.om .oorow::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:4px}
+.om .oorow.os-pending::before{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.om .oorow.os-active::before{background:var(--green)}
+.om .oorow.os-completed::before{background:rgba(130,170,230,.35)}
+.om .oorow.os-discontinued::before{background:var(--red)}
+.om .oorow.os-completed,.om .oorow.os-discontinued{opacity:.75}
+.om .oor1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.om .oosum{font-size:12.5px;font-weight:600;flex:1;min-width:180px}
+.om .oostatus{font-size:9px;font-weight:700;letter-spacing:.7px;padding:2.5px 8px;border-radius:7px}
+.om .oostatus.os-pending{background:rgba(255,180,84,.16);color:var(--amber)}
+.om .oostatus.os-active{background:rgba(61,232,160,.14);color:var(--green)}
+.om .oostatus.os-completed{background:rgba(130,170,230,.14);color:var(--dim)}
+.om .oostatus.os-discontinued{background:rgba(255,93,108,.15);color:var(--red)}
+.om .oor2{font-size:10.5px;color:var(--faint);margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.om .oonext{font-weight:700;padding:2px 7px;border-radius:6px}
+.om .oo-overdue{color:var(--red);background:rgba(255,93,108,.12)}
+.om .oo-due{color:var(--amber);background:rgba(255,180,84,.12)}
+.om .oo-upcoming{color:var(--dim);background:rgba(130,170,230,.1)}
+.om .ooreason{font-size:11px;color:var(--red);margin-top:6px}
+.om .ooacts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.om .oab{font-size:10.5px;font-weight:600;padding:7px 11px;border-radius:9px;border:1px solid var(--stroke);color:var(--dim);transition:.15s;min-height:36px}
+.om .oab.sign{color:var(--green);border-color:rgba(61,232,160,.4);background:rgba(61,232,160,.08)}
+.om .oab.sign:hover,.om .oab.sign:focus-visible{background:rgba(61,232,160,.18)}
+.om .oab.modify{color:var(--blue);border-color:rgba(77,163,255,.4);background:rgba(77,163,255,.08)}
+.om .oab.modify:hover,.om .oab.modify:focus-visible{background:rgba(77,163,255,.18)}
+.om .oab.dc{color:var(--red);border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.08)}
+.om .oab.dc:hover,.om .oab.dc:focus-visible{background:rgba(255,93,108,.18)}
+.om .oab.hist:hover,.om .oab.hist:focus-visible{color:var(--text);border-color:var(--stroke2)}
+.om .oohist{margin-top:9px;border-top:1px dashed rgba(130,170,230,.12);padding-top:8px;display:flex;flex-direction:column;gap:5px}
+.om .oohrow{display:flex;gap:9px;font-size:11px;align-items:baseline}
+.om .oht{color:var(--faint);flex:none;width:74px}
+.om .oha{font-size:8.5px;font-weight:700;letter-spacing:.6px;padding:2px 6px;border-radius:5px;flex:none;background:rgba(130,170,230,.14);color:var(--dim)}
+.om .oha-created{background:rgba(77,163,255,.14);color:var(--blue)}
+.om .oha-signed{background:rgba(61,232,160,.14);color:var(--green)}
+.om .oha-modified{background:rgba(255,180,84,.16);color:var(--amber)}
+.om .oha-discontinued{background:rgba(255,93,108,.15);color:var(--red)}
+.om .oha-administered,.om .oha-implemented,.om .oha-completed{background:rgba(53,224,208,.14);color:var(--cyan)}
+.om .oha-held,.om .oha-refused{background:rgba(255,180,84,.16);color:var(--amber)}
+.om .ohd{color:var(--dim);line-height:1.4}
+.om .omempty{text-align:center;color:var(--faint);font-size:12px;padding:22px 0}
+
+/* ===== new order ===== */
+.om .omsearch{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:12px;min-height:44px;
+ background:rgba(255,255,255,.04);border:1px solid var(--stroke);transition:.18s}
+.om .omsearch:focus-within{border-color:rgba(77,163,255,.5)}
+.om .omsearch input{background:none;border:none;outline:none;flex:1;font-size:13px;color:var(--text)}
+.om .omsearch input::placeholder{color:var(--faint)}
+.om .omresults{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+.om .omresult{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-radius:10px;
+ border:1px solid var(--stroke);background:rgba(255,255,255,.02);transition:.15s;text-align:left;color:var(--text);min-height:44px}
+.om .omresult:hover{border-color:var(--stroke2)}
+.om .omresult.on{border-color:rgba(77,163,255,.6);background:rgba(77,163,255,.1)}
+.om .omresult b{font-size:12.5px}
+.om .omresult span{font-size:10.5px;color:var(--faint)}
+.om .omdrug{display:flex;align-items:baseline;gap:9px;margin:12px 0 4px}
+.om .omdrug b{font-size:14px}
+.om .omdrug span{font-size:10.5px;color:var(--faint)}
+.om .omsafety{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+.om .omissue{font-size:11.5px;line-height:1.45;padding:8px 11px;border-radius:10px}
+.om .omissue b{letter-spacing:.5px;font-size:9.5px;margin-right:4px}
+.om .omissue.block{color:var(--red);background:rgba(255,93,108,.1);border:1px solid rgba(255,93,108,.4)}
+.om .omissue.warn{color:var(--amber);background:rgba(255,180,84,.09);border:1px solid rgba(255,180,84,.35)}
+.om .omblocknote{font-size:11px;font-weight:700;color:var(--red)}
+.om .omoverride{display:flex;flex-direction:column;gap:7px;padding:8px 11px;border:1px dashed rgba(255,180,84,.4);border-radius:10px}
+.om .omack{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);cursor:pointer;min-height:24px}
+.om .omack input{width:16px;height:16px;accent-color:var(--amber)}
+.om .omjust{width:100%;padding:9px 11px;border-radius:9px;background:rgba(255,255,255,.04);border:1px solid var(--stroke);outline:none;min-height:40px}
+.om .omjust:focus{border-color:var(--amber)}
+.om .omgrid2{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-top:12px}
+.om .omspan2{grid-column:span 2}
+.om .field label{display:block;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+.om .field select,.om .field input,.om .field textarea{width:100%;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);
+ border:1px solid var(--stroke);outline:none;transition:.15s;min-height:44px}
+.om .field select:focus,.om .field input:focus,.om .field textarea:focus{border-color:var(--blue)}
+.om .field select option{background:#0d1524}
+.om .field textarea{min-height:64px;resize:vertical}
+.om .omprn{display:flex;flex-direction:column}
+.om .omdfoot{display:flex;gap:10px;margin-top:14px}
+.om .btn{flex:1;padding:12px;border-radius:11px;font-size:13px;font-weight:600;transition:.18s;min-height:46px}
+.om .btn.primary{background:linear-gradient(135deg,#1e5fb4,#35e0d0);color:#06121f}
+.om .btn.primary:hover,.om .btn.primary:focus-visible{filter:brightness(1.08)}
+.om .btn.ghost{border:1px solid var(--stroke2);color:var(--dim)}
+.om .btn.ghost:hover,.om .btn.ghost:focus-visible{color:var(--text)}
+.om .btn.danger{background:rgba(255,93,108,.16);border:1px solid rgba(255,93,108,.5);color:var(--red)}
+.om .btn.danger:hover,.om .btn.danger:focus-visible{background:rgba(255,93,108,.28)}
+.om .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.om .omhint{font-size:10.5px;color:var(--faint);margin-top:8px;text-align:center}
+
+/* ===== order sets ===== */
+.om .osset{border:1px solid var(--stroke);border-radius:13px;background:rgba(255,255,255,.02);margin-bottom:9px;overflow:hidden}
+.om .ossethead{display:flex;align-items:center;gap:10px;padding:11px 13px;width:100%;text-align:left;color:var(--text);transition:.15s;min-height:44px}
+.om .ossethead:hover{background:rgba(255,255,255,.03)}
+.om .ossethead b{font-size:12.5px;flex:none}
+.om .ossetdesc{font-size:10.5px;color:var(--faint);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.om .ossetn{font-size:10px;color:var(--dim);flex:none}
+.om .ossetbody{padding:4px 13px 12px;display:flex;flex-direction:column;gap:7px}
+.om .ositem{display:flex;align-items:center;gap:8px;font-size:11.5px;padding:7px 9px;border-radius:9px;border:1px solid rgba(130,170,230,.1);background:rgba(255,255,255,.015)}
+.om .ositem.blocked{opacity:.6;border-color:rgba(255,93,108,.35)}
+.om .ositemtext{flex:1;line-height:1.4}
+.om .osflag{font-size:9px;font-weight:700;letter-spacing:.5px;padding:2.5px 7px;border-radius:6px;flex:none}
+.om .osflag.block{background:rgba(255,93,108,.15);color:var(--red)}
+.om .osflag.warn{background:rgba(255,180,84,.16);color:var(--amber)}
+.om .ossetadd{margin-top:4px}
+
+/* ===== not found (locked pattern) ===== */
+.om .notfound{display:flex;flex-direction:column;align-items:center;gap:12px;padding:56px 24px;text-align:center}
+.om .notfound h2{font-size:17px;font-weight:700;letter-spacing:.3px}
+.om .notfound p{font-size:12.5px;color:var(--dim);max-width:420px;line-height:1.55}
+.om .notfound .nf-btn{margin-top:6px;font-size:12.5px;font-weight:600;padding:10px 18px;border-radius:11px;
+ border:1px solid rgba(77,163,255,.4);color:var(--blue);background:rgba(77,163,255,.08);transition:.15s;min-height:44px}
+.om .notfound .nf-btn:hover,.om .notfound .nf-btn:focus-visible{background:rgba(77,163,255,.18)}
+
+/* ===== dialogs ===== */
+.omscrim{position:fixed;inset:0;background:rgba(4,8,15,.65);backdrop-filter:blur(3px);z-index:60;display:grid;place-items:center;padding:20px}
+.omdialog{width:520px;max-width:94vw;max-height:90vh;overflow-y:auto;background:linear-gradient(160deg,#0d1626,#0a0f1c);
+ border:1px solid var(--stroke2);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.6);padding:20px}
+.omdialog h2{font-size:15px;margin-bottom:4px}
+.omdsub{font-size:12px;color:var(--dim);margin-bottom:12px}
+.omdwarn{font-size:11.5px;color:var(--amber);background:rgba(255,180,84,.09);border:1px solid rgba(255,180,84,.35);
+ border-radius:10px;padding:8px 11px;margin-bottom:12px;line-height:1.45}
+.omdialog .omgrid2{margin-top:0;margin-bottom:12px}
+.omdialog .field label{display:block;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+.omdialog .field input,.omdialog .field textarea{width:100%;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);
+ border:1px solid var(--stroke);outline:none;min-height:44px;transition:.15s}
+.omdialog .field input:focus,.omdialog .field textarea:focus{border-color:var(--blue)}
+.omdialog .field textarea{min-height:70px;resize:vertical}
+.omdfoot{display:flex;gap:10px;margin-top:14px}
+.omdialog .btn{flex:1;padding:12px;border-radius:11px;font-size:13px;font-weight:600;transition:.18s;min-height:46px}
+.omdialog .btn.primary{background:linear-gradient(135deg,#1e5fb4,#35e0d0);color:#06121f}
+.omdialog .btn.ghost{border:1px solid var(--stroke2);color:var(--dim)}
+.omdialog .btn.ghost:hover,.omdialog .btn.ghost:focus-visible{color:var(--text)}
+.omdialog .btn.danger{background:rgba(255,93,108,.16);border:1px solid rgba(255,93,108,.5);color:var(--red)}
+.omdialog .btn.danger:hover,.omdialog .btn.danger:focus-visible{background:rgba(255,93,108,.28)}
+.omdialog .btn:disabled{opacity:.45;cursor:not-allowed}
+.omhint{font-size:10.5px;color:var(--faint);margin-top:8px;text-align:center}
+
+@media(max-width:1500px){.om .shell{grid-template-columns:64px 220px 1fr}}
+@media(max-width:1280px){.om .omcols{grid-template-columns:1fr}}
+@media(max-width:1180px){
+ .om .shell{grid-template-columns:64px 1fr}
+ .om .ptrail{display:none}
+ .om.app-frame{height:auto;overflow:visible}
+ .om main{overflow:visible}
+}
