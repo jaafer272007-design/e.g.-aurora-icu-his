@@ -8,9 +8,13 @@ import { DoctorWorkspace } from './pages/DoctorWorkspace/DoctorWorkspace'
                        (defaults to the physician view until auth exists)
    /beds               ICU Bed Overview
    /patients/:bedId    Patient Mission Control, keyed by bed */
+/* Vite injects BASE_URL from the build's --base flag ('/' locally,
+   '/e.g.-aurora-icu-his/' on GitHub Pages) — the router must match it. */
+const BASENAME = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/'
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={BASENAME}>
       <Routes>
         <Route path="/" element={<Navigate to="/workspace" replace />} />
         <Route path="/workspace" element={<DoctorWorkspace />} />
