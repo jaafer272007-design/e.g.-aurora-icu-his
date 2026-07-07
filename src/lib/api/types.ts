@@ -25,6 +25,9 @@ export interface BedAlert {
 }
 
 export interface BedPatient {
+  /** stable patient identifier — the canonical key for routing/lookups
+      (bed number is location only and can change) */
+  patientId: string
   name: string
   age: number
   sex: Sex
@@ -86,7 +89,9 @@ export interface UnitSummaryResponse {
 /* ---------- GET /api/icu/patients ---------- */
 
 export interface PatientSummary {
-  id: number
+  /** stable patient identifier — the canonical key for routing/lookups */
+  patientId: string
+  /** current bed — location only, display data */
   bedId: string
   name: string
   mrn: string
@@ -96,7 +101,7 @@ export interface PatientSummary {
   alertCount: number
 }
 
-/* ---------- GET /api/icu/patients/:bedId ---------- */
+/* ---------- GET /api/icu/patients/:patientId ---------- */
 
 export interface MonitorVitals {
   hr: number
@@ -230,6 +235,7 @@ export interface PatientDetailResponse {
 /* ---------- GET /api/icu/worklist (doctor workspace) ---------- */
 
 export interface RoundingPatient {
+  patientId: string
   bedId: string
   name: string
   diagnosis: string

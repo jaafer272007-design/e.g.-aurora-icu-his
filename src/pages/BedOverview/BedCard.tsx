@@ -10,7 +10,7 @@ interface BedCardProps {
   index: number
   /** live-jittered display values (falls back to base vitals) */
   jitter?: { hr: number; map: number; spo2: number }
-  onOpen: (bedId: string) => void
+  onOpen: (patientId: string) => void
 }
 
 const scoreColor = (v: number, red: number, amber: number) =>
@@ -43,7 +43,7 @@ export function BedCard({ bed, index, jitter, onOpen }: BedCardProps) {
       className={`bcard sev-${p.severity}`}
       style={delay}
       aria-label={`Open chart ${p.name}`}
-      onClick={() => onOpen(bed.bedId)}
+      onClick={() => onOpen(p.patientId)}
     >
       <div className="brow1">
         <BedChip bedId={bed.bedId} />

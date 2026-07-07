@@ -30,15 +30,15 @@ export function getUnitSummary(): Promise<UnitSummaryResponse> {
 /** GET /api/icu/patients — sidebar roster for Mission Control. */
 export function getPatients(): Promise<PatientSummary[]> {
   const summaries: PatientSummary[] = PATIENTS.map(
-    ({ id, bedId, name, mrn, diagnosis, flags, isolation, alertCount }) =>
-      ({ id, bedId, name, mrn, diagnosis, flags, isolation, alertCount }),
+    ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }) =>
+      ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }),
   )
   return respond(summaries, 120)
 }
 
-/** GET /api/icu/patients/:bedId — full Mission Control payload for one patient. */
-export function getPatientDetail(bedId: string): Promise<PatientDetailResponse | null> {
-  const patient = PATIENTS.find(p => p.bedId === bedId)
+/** GET /api/icu/patients/:patientId — full Mission Control payload for one patient. */
+export function getPatientDetail(patientId: string): Promise<PatientDetailResponse | null> {
+  const patient = PATIENTS.find(p => p.patientId === patientId)
   if (!patient) return respond(null, 120)
   return respond(
     {

@@ -99,13 +99,13 @@ export function DoctorWorkspace() {
               <div className="rlist" role="list">
                 {rounding?.patients.map(p => (
                   <div
-                    key={p.bedId}
+                    key={p.patientId}
                     className={`rcard sev-${p.severity}`}
                     role="listitem"
                     tabIndex={0}
                     aria-label={`Open chart ${p.name}, bed ${p.bedId}`}
-                    onClick={() => navigate(`/patients/${p.bedId}`)}
-                    onKeyDown={e => { if (e.key === 'Enter') navigate(`/patients/${p.bedId}`) }}
+                    onClick={() => navigate(`/patients/${p.patientId}`)}
+                    onKeyDown={e => { if (e.key === 'Enter') navigate(`/patients/${p.patientId}`) }}
                   >
                     <BedChip bedId={p.bedId} />
                     <div className="rinfo">

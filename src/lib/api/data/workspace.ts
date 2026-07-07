@@ -5,12 +5,12 @@ import type { ActionQueuesResponse, Consult, OrderSetsResponse, RoundingListResp
 export const ROUNDING_LIST: RoundingListResponse = {
   physician: { name: 'Dr. Sara Rahman', initials: 'SR', role: 'Intensivist · Panel: Pod A/B' },
   patients: [
-    { bedId: 'B-01', name: 'Ahmed Al-Saadi', diagnosis: 'Septic shock · Pneumonia', flags: ['vent', 'pressor'], sofa: 11, severity: 'crit' },
-    { bedId: 'B-04', name: 'Susan Wright', diagnosis: 'AKI stage 3 · CRRT', flags: ['crrt'], sofa: 8, severity: 'high' },
-    { bedId: 'B-07', name: 'Robert Miller', diagnosis: 'Influenza A pneumonia', flags: ['vent'], sofa: 9, severity: 'crit' },
-    { bedId: 'B-09', name: 'Nadia Karim', diagnosis: 'Upper GI bleed · post-EGD', flags: [], sofa: 4, severity: 'high' },
-    { bedId: 'B-13', name: 'Aisha Mahmoud', diagnosis: 'Necrotizing pancreatitis', flags: ['vent', 'pressor'], sofa: 10, severity: 'crit' },
-    { bedId: 'B-14', name: 'Peter Novak', diagnosis: 'Status epilepticus · resolved', flags: [], sofa: 3, severity: 'stable' },
+    { patientId: 'P-1001', bedId: 'B-01', name: 'Ahmed Al-Saadi', diagnosis: 'Septic shock · Pneumonia', flags: ['vent', 'pressor'], sofa: 11, severity: 'crit' },
+    { patientId: 'P-1004', bedId: 'B-04', name: 'Susan Wright', diagnosis: 'AKI stage 3 · CRRT', flags: ['crrt'], sofa: 8, severity: 'high' },
+    { patientId: 'P-1007', bedId: 'B-07', name: 'Robert Miller', diagnosis: 'Influenza A pneumonia', flags: ['vent'], sofa: 9, severity: 'crit' },
+    { patientId: 'P-1008', bedId: 'B-09', name: 'Nadia Karim', diagnosis: 'Upper GI bleed · post-EGD', flags: [], sofa: 4, severity: 'high' },
+    { patientId: 'P-1012', bedId: 'B-13', name: 'Aisha Mahmoud', diagnosis: 'Necrotizing pancreatitis', flags: ['vent', 'pressor'], sofa: 10, severity: 'crit' },
+    { patientId: 'P-1013', bedId: 'B-14', name: 'Peter Novak', diagnosis: 'Status epilepticus · resolved', flags: [], sofa: 3, severity: 'stable' },
   ],
 }
 

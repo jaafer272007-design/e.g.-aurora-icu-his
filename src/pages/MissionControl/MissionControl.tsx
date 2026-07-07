@@ -39,7 +39,7 @@ interface LiveAlert extends PatientAlert {
 const initials = (name: string) => name.split(' ').map(w => w[0]).slice(0, 2).join('')
 
 export function MissionControl() {
-  const { bedId = '' } = useParams()
+  const { patientId = '' } = useParams()
   const navigate = useNavigate()
   const { time, date, shortTime } = useClock()
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
@@ -55,7 +55,7 @@ export function MissionControl() {
   useEffect(() => {
     let stale = false
     setMissing(false)
-    getPatientDetail(bedId).then(res => {
+    getPatientDetail(patientId).then(res => {
       if (stale) return
       if (!res) { setMissing(true); return }
       setDetail(res)
@@ -63,11 +63,11 @@ export function MissionControl() {
       setGoals(res.goals)
     })
     return () => { stale = true }
-  }, [bedId])
+  }, [patientId])
 
-  /* unknown bed (empty or bad URL) → fall back to the first patient */
+  /* unknown patient id (bad URL) → fall back to the first patient */
   useEffect(() => {
-    if (missing && patients?.length) navigate(`/patients/${patients[0].bedId}`, { replace: true })
+    if (missing && patients?.length) navigate(`/patients/${patients[0].patientId}`, { replace: true })
   }, [missing, patients, navigate])
 
   const unit = useMemo(() => {
@@ -154,9 +154,9 @@ export function MissionControl() {
           <div className="ptlist">
             {filtered.map(pt => (
               <button
-                key={pt.id}
-                className={`ptcard${pt.bedId === bedId ? ' sel' : ''}`}
-                onClick={() => navigate(`/patients/${pt.bedId}`)}
+                key={pt.patientId}
+                className={`ptcard${pt.patientId === patientId ? ' sel' : ''}`}
+                onClick={() => navigate(`/patients/${pt.patientId}`)}
                 aria-label={`Open ${pt.name}, bed ${pt.bedId}`}
               >
                 <div className="r1">

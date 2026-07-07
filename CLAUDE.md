@@ -31,6 +31,12 @@ real APIs and medical devices later.
 10. API Integration (ASP.NET Core Web APIs)
 11. Medical device integration (ventilators, monitors, lab) + AI
 
+## Architecture Rules (binding for all future screens)
+See `docs/architecture.md` — production-grade HIS rules: stable PatientID for all
+routing/lookups (bed = location only), separated domain models, service-layer
+data access, independent reusable components, real-time-ready design, structured
+alert/device models. Apply incrementally; don't wholesale-refactor existing code.
+
 ## Locked Decisions (do not re-litigate without asking)
 - RBAC: Doctor = full order/medication authority. Nurse = administer +
   document only, cannot originate orders.

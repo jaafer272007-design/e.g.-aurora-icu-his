@@ -21,7 +21,7 @@ npm run preview  # serve the production build
 | `/` | redirects to `/workspace` |
 | `/workspace` | Doctor Workspace — the role-personalized "Dashboard" (physician default until auth exists) |
 | `/beds` | ICU Bed Overview — click any occupied bed to open that patient |
-| `/patients/:bedId` | Patient Mission Control, keyed by bed (e.g. `/patients/B-01`) |
+| `/patients/:patientId` | Patient Mission Control, keyed by the stable patient id (e.g. `/patients/P-1001`); bed number is display-only location data |
 
 ## Structure
 

@@ -8,7 +8,7 @@ import type { Patient } from '../types'
 
 export const PATIENTS: Patient[] = [
   {
-    id: 0, bedId: 'B-01', name: 'Ahmed Al-Saadi', mrn: 'MRN-482913', age: 58, sex: 'M',
+    patientId: 'P-1001', bedId: 'B-01', name: 'Ahmed Al-Saadi', mrn: 'MRN-482913', age: 58, sex: 'M',
     diagnosis: 'Septic shock · Pneumonia', los: 4, allergies: 'Penicillin', attending: 'Dr. S. Rahman',
     codeStatus: 'Full Code', flags: ['vent', 'pressor'], isolation: false, alertCount: 3, rhythm: 'Sinus Tach',
     vitals: { hr: 118, sys: 92, dia: 54, map: 67, nibpSys: 96, nibpDia: 58, spo2: 93, rr: 24, temp: 38.4, etco2: 34, cvp: 12 },
@@ -22,7 +22,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 1, bedId: 'B-02', name: 'Maria Hansen', mrn: 'MRN-771204', age: 67, sex: 'F',
+    patientId: 'P-1002', bedId: 'B-02', name: 'Maria Hansen', mrn: 'MRN-771204', age: 67, sex: 'F',
     diagnosis: 'Severe ARDS · VV-ECMO', los: 9, allergies: 'None known', attending: 'Dr. L. Osei',
     codeStatus: 'Full Code', flags: ['vent', 'ecmo'], isolation: false, alertCount: 2, rhythm: 'Sinus',
     vitals: { hr: 96, sys: 104, dia: 62, map: 76, nibpSys: 108, nibpDia: 64, spo2: 91, rr: 14, temp: 37.2, etco2: 31, cvp: 10 },
@@ -36,7 +36,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 2, bedId: 'B-03', name: 'Omar Khalil', mrn: 'MRN-390155', age: 45, sex: 'M',
+    patientId: 'P-1003', bedId: 'B-03', name: 'Omar Khalil', mrn: 'MRN-390155', age: 45, sex: 'M',
     diagnosis: 'Severe TBI · ICP monitoring', los: 2, allergies: 'Sulfa', attending: 'Dr. E. Marchetti',
     codeStatus: 'Full Code', flags: ['vent'], isolation: true, alertCount: 1, rhythm: 'Sinus',
     vitals: { hr: 64, sys: 138, dia: 74, map: 96, nibpSys: 142, nibpDia: 78, spo2: 99, rr: 16, temp: 36.8, etco2: 35, cvp: 8 },
@@ -50,7 +50,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 3, bedId: 'B-04', name: 'Susan Wright', mrn: 'MRN-560981', age: 72, sex: 'F',
+    patientId: 'P-1004', bedId: 'B-04', name: 'Susan Wright', mrn: 'MRN-560981', age: 72, sex: 'F',
     diagnosis: 'AKI stage 3 · CRRT', los: 6, allergies: 'Contrast dye', attending: 'Dr. S. Rahman',
     codeStatus: 'DNR', flags: ['crrt'], isolation: false, alertCount: 1, rhythm: 'AFib',
     vitals: { hr: 88, sys: 110, dia: 60, map: 77, nibpSys: 112, nibpDia: 62, spo2: 96, rr: 18, temp: 36.9, etco2: 33, cvp: 14 },
@@ -64,7 +64,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 4, bedId: 'B-05', name: 'David Chen', mrn: 'MRN-118472', age: 61, sex: 'M',
+    patientId: 'P-1005', bedId: 'B-05', name: 'David Chen', mrn: 'MRN-118472', age: 61, sex: 'M',
     diagnosis: 'Post-CABG day 1 · Low CO', los: 1, allergies: 'Aspirin (GI)', attending: 'Dr. L. Osei',
     codeStatus: 'Full Code', flags: ['pressor'], isolation: false, alertCount: 2, rhythm: 'Paced',
     vitals: { hr: 90, sys: 98, dia: 58, map: 71, nibpSys: 100, nibpDia: 60, spo2: 97, rr: 15, temp: 36.2, etco2: 36, cvp: 11 },
@@ -78,7 +78,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 5, bedId: 'B-06', name: 'Layla Hassan', mrn: 'MRN-204863', age: 34, sex: 'F',
+    patientId: 'P-1006', bedId: 'B-06', name: 'Layla Hassan', mrn: 'MRN-204863', age: 34, sex: 'F',
     diagnosis: 'DKA · resolving', los: 2, allergies: 'None known', attending: 'Dr. E. Marchetti',
     codeStatus: 'Full Code', flags: [], isolation: false, alertCount: 0, rhythm: 'Sinus',
     vitals: { hr: 98, sys: 118, dia: 70, map: 86, nibpSys: 120, nibpDia: 72, spo2: 99, rr: 18, temp: 37.0, etco2: 38, cvp: 6 },
@@ -92,7 +92,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 6, bedId: 'B-07', name: 'Robert Miller', mrn: 'MRN-667310', age: 79, sex: 'M',
+    patientId: 'P-1007', bedId: 'B-07', name: 'Robert Miller', mrn: 'MRN-667310', age: 79, sex: 'M',
     diagnosis: 'Influenza A pneumonia', los: 5, allergies: 'Codeine', attending: 'Dr. S. Rahman',
     codeStatus: 'DNR / DNI', flags: ['vent'], isolation: true, alertCount: 2, rhythm: 'AFib RVR',
     vitals: { hr: 112, sys: 96, dia: 55, map: 69, nibpSys: 98, nibpDia: 57, spo2: 92, rr: 26, temp: 38.1, etco2: 30, cvp: 9 },
@@ -106,7 +106,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 7, bedId: 'B-09', name: 'Nadia Karim', mrn: 'MRN-935027', age: 52, sex: 'F',
+    patientId: 'P-1008', bedId: 'B-09', name: 'Nadia Karim', mrn: 'MRN-935027', age: 52, sex: 'F',
     diagnosis: 'Upper GI bleed · post-EGD', los: 1, allergies: 'Latex', attending: 'Dr. L. Osei',
     codeStatus: 'Full Code', flags: [], isolation: false, alertCount: 1, rhythm: 'Sinus',
     vitals: { hr: 104, sys: 102, dia: 64, map: 77, nibpSys: 104, nibpDia: 66, spo2: 98, rr: 17, temp: 36.6, etco2: 37, cvp: 5 },
@@ -120,7 +120,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 8, bedId: 'B-10', name: 'George Antoun', mrn: 'MRN-204518', age: 66, sex: 'M',
+    patientId: 'P-1009', bedId: 'B-10', name: 'George Antoun', mrn: 'MRN-204518', age: 66, sex: 'M',
     diagnosis: 'Cardiogenic shock · IABP', los: 3, allergies: 'None known', attending: 'Dr. H. Nakamura',
     codeStatus: 'Full Code', flags: ['pressor'], isolation: false, alertCount: 2, rhythm: 'Sinus Tach',
     vitals: { hr: 108, sys: 88, dia: 55, map: 66, nibpSys: 92, nibpDia: 58, spo2: 95, rr: 22, temp: 36.4, etco2: 32, cvp: 15 },
@@ -134,7 +134,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 9, bedId: 'B-11', name: 'Fatima Zahra', mrn: 'MRN-582047', age: 29, sex: 'F',
+    patientId: 'P-1010', bedId: 'B-11', name: 'Fatima Zahra', mrn: 'MRN-582047', age: 29, sex: 'F',
     diagnosis: 'Postpartum hemorrhage · POD 1', los: 1, allergies: 'None known', attending: 'Dr. E. Marchetti',
     codeStatus: 'Full Code', flags: [], isolation: false, alertCount: 0, rhythm: 'Sinus',
     vitals: { hr: 92, sys: 108, dia: 66, map: 80, nibpSys: 110, nibpDia: 68, spo2: 99, rr: 16, temp: 37.1, etco2: 37, cvp: 6 },
@@ -148,7 +148,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 10, bedId: 'B-12', name: 'Hans Becker', mrn: 'MRN-661093', age: 71, sex: 'M',
+    patientId: 'P-1011', bedId: 'B-12', name: 'Hans Becker', mrn: 'MRN-661093', age: 71, sex: 'M',
     diagnosis: 'COPD exacerbation · NIV', los: 3, allergies: 'Penicillin', attending: 'Dr. H. Nakamura',
     codeStatus: 'DNR', flags: [], isolation: false, alertCount: 1, rhythm: 'Sinus',
     vitals: { hr: 96, sys: 118, dia: 64, map: 82, nibpSys: 120, nibpDia: 66, spo2: 90, rr: 24, temp: 36.7, etco2: 52, cvp: 8 },
@@ -162,7 +162,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 11, bedId: 'B-13', name: 'Aisha Mahmoud', mrn: 'MRN-118834', age: 48, sex: 'F',
+    patientId: 'P-1012', bedId: 'B-13', name: 'Aisha Mahmoud', mrn: 'MRN-118834', age: 48, sex: 'F',
     diagnosis: 'Necrotizing pancreatitis', los: 7, allergies: 'Morphine', attending: 'Dr. S. Rahman',
     codeStatus: 'Full Code', flags: ['vent', 'pressor'], isolation: false, alertCount: 2, rhythm: 'Sinus Tach',
     vitals: { hr: 114, sys: 90, dia: 57, map: 68, nibpSys: 94, nibpDia: 60, spo2: 94, rr: 22, temp: 38.6, etco2: 33, cvp: 13 },
@@ -176,7 +176,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 12, bedId: 'B-14', name: 'Peter Novak', mrn: 'MRN-447120', age: 55, sex: 'M',
+    patientId: 'P-1013', bedId: 'B-14', name: 'Peter Novak', mrn: 'MRN-447120', age: 55, sex: 'M',
     diagnosis: 'Status epilepticus · resolved', los: 2, allergies: 'None known', attending: 'Dr. H. Nakamura',
     codeStatus: 'Full Code', flags: [], isolation: false, alertCount: 0, rhythm: 'Sinus',
     vitals: { hr: 78, sys: 124, dia: 70, map: 88, nibpSys: 126, nibpDia: 72, spo2: 98, rr: 15, temp: 36.9, etco2: 39, cvp: 7 },
@@ -190,7 +190,7 @@ export const PATIENTS: Patient[] = [
     ],
   },
   {
-    id: 13, bedId: 'B-15', name: 'Miriam Cohen', mrn: 'MRN-905331', age: 63, sex: 'F',
+    patientId: 'P-1014', bedId: 'B-15', name: 'Miriam Cohen', mrn: 'MRN-905331', age: 63, sex: 'F',
     diagnosis: 'Pulmonary embolism · massive', los: 2, allergies: 'NSAIDs', attending: 'Dr. L. Osei',
     codeStatus: 'Full Code', flags: [], isolation: false, alertCount: 1, rhythm: 'Sinus Tach',
     vitals: { hr: 102, sys: 98, dia: 62, map: 74, nibpSys: 102, nibpDia: 64, spo2: 94, rr: 22, temp: 37.0, etco2: 30, cvp: 12 },
