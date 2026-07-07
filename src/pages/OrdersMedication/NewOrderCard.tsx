@@ -64,19 +64,31 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
   const blocked = issues.some(i => i.severity === 'block')
   const warned = issues.some(i => i.severity === 'warn')
   const needsOverride = !blocked && warned
-  const overrideOk = !needsOverride || (ack && justification.trim().length > 0)
+  /* acknowledging the warnings is what gates ordering — the justification
+     text is optional context, captured in the audit trail either way */
+  const overrideOk = !needsOverride || ack
   const fieldsOk = !!drug && !!dose && !!route && (prn ? !!prnIndication : !!frequency)
   const canOrder = fieldsOk && !blocked && overrideOk
 
   const submit = (sign: boolean) => {
     if (!drug || !canOrder) return
+    const warnNote = needsOverride
+      ? `Safety warnings acknowledged and overridden: ${issues
+          .filter(i => i.severity === 'warn')
+          .map(i => i.message)
+          .join(' | ')}${justification.trim() ? ` — ${justification.trim()}` : ''}`
+      : undefined
     onCreate(
       { drugId: drug.drugId, drug: drug.name, dose, route, frequency, duration, prn, prnIndication: prn ? prnIndication : undefined },
-      priority, sign,
-      needsOverride ? `Warnings overridden — ${justification.trim()}` : undefined,
+      priority, sign, warnNote,
     )
     setQuery(''); setDrug(null); setAck(false); setJustification('')
   }
+
+  const disabledHint = !drug || canOrder ? null
+    : blocked ? 'Ordering blocked — contraindicated for this patient.'
+    : needsOverride && !ack ? 'Acknowledge the warnings above to enable ordering.'
+    : 'Complete dose, route and frequency (or PRN indication) to enable ordering.'
 
   return (
     <Card
@@ -120,13 +132,11 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
                     <input type="checkbox" checked={ack} onChange={e => setAck(e.target.checked)} />
                     Acknowledge warnings and override
                   </label>
-                  {ack && (
-                    <input
-                      className="omjust" placeholder="Clinical justification (required, audited)"
-                      aria-label="Override justification"
-                      value={justification} onChange={e => setJustification(e.target.value)}
-                    />
-                  )}
+                  <input
+                    className="omjust" placeholder="Clinical justification (optional — recorded in audit)"
+                    aria-label="Override justification (optional)"
+                    value={justification} onChange={e => setJustification(e.target.value)}
+                  />
                 </div>
               )}
             </div>
@@ -180,6 +190,7 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
             <button className="btn ghost" disabled={!canOrder} onClick={() => submit(false)}>Save as Pending</button>
             <button className="btn primary" disabled={!canOrder} onClick={() => submit(true)}>Sign &amp; Activate</button>
           </div>
+          {disabledHint && <p className="omhint" role="status">{disabledHint}</p>}
         </>
       )}
       {!drug && query.trim() && results.length === 0 && <div className="omempty">No formulary match for "{query}".</div>}
