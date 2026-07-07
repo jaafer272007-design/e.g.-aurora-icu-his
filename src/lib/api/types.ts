@@ -257,7 +257,9 @@ export interface ActionQueueItem {
 
 export type QueueKey = 'orders' | 'results' | 'notes'
 
-export type ActionQueuesResponse = Record<QueueKey, ActionQueueItem[]>
+/** results/notes only — the "orders to sign" queue is derived from the
+    canonical Order model (status === 'pending'), not stored here */
+export type ActionQueuesResponse = Record<'results' | 'notes', ActionQueueItem[]>
 
 export interface Consult {
   specialty: string
@@ -296,41 +298,7 @@ export interface NurseAssignmentResponse {
   patients: AssignedPatient[]
 }
 
-/* ---------- GET /api/icu/nursing/mar ---------- */
-
-/** pending states are precomputed server-side against the schedule */
-export type MarDueState = 'overdue' | 'due' | 'upcoming' | 'prn'
-export type MarAction = 'given' | 'held' | 'refused'
-
-export interface MarEntry {
-  marId: string
-  patientId: string
-  bedId: string
-  medication: string
-  dose: string
-  route: string
-  /** empty for PRN entries */
-  scheduledTime: string
-  status: MarDueState | MarAction
-  /** set once documented (given/held/refused) */
-  documentedTime?: string
-  orderedBy: string
-}
-
-/* ---------- GET /api/icu/nursing/orders-to-implement ---------- */
-
 export type OrderPriority = 'Routine' | 'Urgent' | 'STAT'
-
-export interface ImplementOrder {
-  orderId: string
-  patientId: string
-  bedId: string
-  text: string
-  priority: OrderPriority
-  orderedBy: string
-  time: string
-  done: boolean
-}
 
 /* ---------- GET /api/icu/nursing/tasks ---------- */
 
@@ -357,4 +325,139 @@ export interface IoEntry {
   category: string
   volumeMl: number
   time: string
+}
+
+/* ==================== Orders & Medication domain (Screen 5) ====================
+   THE canonical source of truth for orders and medications. Doctor Workspace's
+   "Orders to Sign", Nurse Workspace's MAR and "Orders to Implement" are all
+   derived views over this model — never separate lists.
+   Time-relative states (overdue/due) are ALWAYS computed at render against
+   the current clock (locked decision) — never stored here. */
+
+export type OrderStatus = 'pending' | 'active' | 'completed' | 'discontinued'
+export type OrderCategory = 'Medication' | 'Lab' | 'Imaging' | 'Nursing'
+export type AdministrationAction = 'given' | 'held' | 'refused'
+
+export interface MedicationDetails {
+  drugId: string
+  drug: string
+  dose: string
+  route: string
+  frequency: string
+  /** e.g. "7 days", "ongoing", "once" */
+  duration: string
+  prn: boolean
+  prnIndication?: string
+}
+
+export interface MedAdministration {
+  adminId: string
+  /** HH:MM · empty string for PRN availability rows */
+  scheduledTime: string
+  status: 'scheduled' | AdministrationAction
+  documentedTime?: string
+  documentedBy?: string
+}
+
+export interface OrderEvent {
+  /** HH:MM today, or "D-n HH:MM" for prior days */
+  time: string
+  actor: string
+  action: 'created' | 'signed' | 'modified' | 'implemented' | 'administered' | 'held' | 'refused' | 'completed' | 'discontinued'
+  detail?: string
+}
+
+export interface Order {
+  orderId: string
+  patientId: string
+  /** denormalized display fields (location + name snapshot) */
+  bedId: string
+  patientName: string
+  category: OrderCategory
+  /** one-line description; composed from medication fields for med orders */
+  summary: string
+  medication?: MedicationDetails
+  priority: OrderPriority
+  status: OrderStatus
+  orderedBy: string
+  orderedTime: string
+  /** non-med orders the nurse actions once from "Orders to Implement" */
+  requiresImplementation?: boolean
+  administrations?: MedAdministration[]
+  /** full audit trail, oldest first */
+  history: OrderEvent[]
+  /** required reason recorded on discontinue */
+  statusReason?: string
+}
+
+export interface NewOrderDraft {
+  patientId: string
+  category: OrderCategory
+  summary?: string
+  medication?: MedicationDetails
+  priority: OrderPriority
+  requiresImplementation?: boolean
+}
+
+/* ---------- GET /api/icu/formulary ---------- */
+
+export interface FormularyDrug {
+  drugId: string
+  name: string
+  drugClass: string
+  doses: string[]
+  routes: string[]
+  frequencies: string[]
+  prnCapable: boolean
+  /** allergy tags that BLOCK ordering (matched against the patient's documented allergy field) */
+  allergyBlock: string[]
+  /** cross-reactivity tags that WARN */
+  allergyWarn: string[]
+}
+
+export interface InteractionRule {
+  a: string
+  b: string
+  severity: 'block' | 'warn'
+  note: string
+}
+
+export interface SafetyIssue {
+  kind: 'allergy' | 'interaction' | 'duplicate'
+  severity: 'block' | 'warn'
+  message: string
+}
+
+/* ---------- GET /api/icu/order-sets/definitions ---------- */
+
+export interface OrderSetItemTemplate {
+  category: OrderCategory
+  summary?: string
+  medication?: MedicationDetails
+  priority: OrderPriority
+  requiresImplementation?: boolean
+}
+
+export interface OrderSetDef {
+  setId: string
+  name: string
+  description: string
+  items: OrderSetItemTemplate[]
+}
+
+/* ---------- GET /api/icu/nursing/mar (derived view) ---------- */
+
+export interface MarRow {
+  orderId: string
+  adminId: string
+  patientId: string
+  bedId: string
+  medication: string
+  dose: string
+  route: string
+  /** HH:MM · empty for PRN */
+  scheduledTime: string
+  prn: boolean
+  status: 'scheduled' | AdministrationAction
+  documentedTime?: string
 }

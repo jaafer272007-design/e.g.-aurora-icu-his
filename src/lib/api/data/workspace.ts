@@ -15,12 +15,6 @@ export const ROUNDING_LIST: RoundingListResponse = {
 }
 
 export const ACTION_QUEUES: ActionQueuesResponse = {
-  orders: [
-    { title: 'Noradrenaline titration order — B-01 Ahmed Al-Saadi', detail: 'MAP target ≥65, current dose 0.32 µg/kg/min', time: '09:20' },
-    { title: 'CRRT prescription renewal — B-04 Susan Wright', detail: '24 h renewal due, filter change anticipated 22:00', time: '08:55' },
-    { title: 'Meropenem day-4 review — B-01 Ahmed Al-Saadi', detail: 'De-escalate per culture sensitivity, ID recommends narrow', time: '07:40' },
-    { title: 'Proning protocol order — B-07 Robert Miller', detail: 'P/F 176, RT requesting order to proceed', time: '07:15' },
-  ],
   results: [
     { title: 'Lactate 3.8 mmol/L — B-01 Ahmed Al-Saadi', detail: 'Repeat drawn 13:00, clearance <10% over 6 h', time: '09:42' },
     { title: 'Platelets 96 ×10⁹/L — B-01 Ahmed Al-Saadi', detail: 'Down-trending 3rd consecutive draw', time: '07:30' },

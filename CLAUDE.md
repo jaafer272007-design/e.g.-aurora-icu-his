@@ -23,7 +23,7 @@ real APIs and medical devices later.
 2. Patient Mission Control — ✅ built, formal review pending (`/reference/icu-mission-control.html`)
 3. Doctor Workspace — ✅ approved (`/reference/icu-doctor-workspace.html`)
 4. Nurse Workspace — ✅ built, formal review pending (`/nurse`, first screen built directly in React)
-5. Orders & Medication — not started (standalone screen, own route — confirmed)
+5. Orders & Medication — ✅ built, formal review pending (`/orders/:patientId`, canonical orders model — DW/NW read derived views)
 6. Laboratory & Imaging — not started (standalone screen, own route — confirmed)
 7. Timeline — not started (standalone screen, own route — confirmed)
 8. AI Clinical Assistant — not started

@@ -7,9 +7,9 @@ import { Card } from '../../components/Card'
 import { BedChip, TagList } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconFlask, IconNote, IconPencil, IconUsers } from '../../components/icons'
-import { getActionQueues, getConsults, getOrderSets, getRoundingList } from '../../lib/api'
+import { getActionQueues, getConsults, getOrderSets, getPendingOrders, getRoundingList, signOrder } from '../../lib/api'
 import type {
-  ActionQueueItem, Consult, OrderSetsResponse, QueueKey, RoundingListResponse,
+  ActionQueueItem, Consult, Order, OrderSetsResponse, QueueKey, RoundingListResponse,
 } from '../../lib/api/types'
 import { OrderDrawer } from './OrderDrawer'
 
@@ -31,11 +31,16 @@ interface QueueRow extends ActionQueueItem {
 
 const sofaColor = (v: number) => (v >= 10 ? 'var(--red)' : v >= 6 ? 'var(--amber)' : 'var(--green)')
 
+const DOCTOR_ACTOR = 'Dr. S. Rahman'
+
 export function DoctorWorkspace() {
   const navigate = useNavigate()
   const { toast, showToast } = useToast()
   const [rounding, setRounding] = useState<RoundingListResponse | null>(null)
-  const [queues, setQueues] = useState<Record<QueueKey, QueueRow[]> | null>(null)
+  /* "Orders to Sign" is a derived view over the canonical Order model
+     (status === 'pending') — results/notes remain workspace-local queues */
+  const [pendingOrders, setPendingOrders] = useState<(Order & { leaving?: boolean })[] | null>(null)
+  const [queues, setQueues] = useState<Record<'results' | 'notes', QueueRow[]> | null>(null)
   const [consults, setConsults] = useState<Consult[] | null>(null)
   const [orderSets, setOrderSets] = useState<OrderSetsResponse | null>(null)
   const [qtab, setQtab] = useState<QueueKey>('orders')
@@ -45,9 +50,9 @@ export function DoctorWorkspace() {
 
   useEffect(() => {
     getRoundingList().then(setRounding)
+    getPendingOrders().then(setPendingOrders)
     getActionQueues().then(q =>
       setQueues({
-        orders: q.orders.map(i => ({ ...i, leaving: false })),
         results: q.results.map(i => ({ ...i, leaving: false })),
         notes: q.notes.map(i => ({ ...i, leaving: false })),
       }))
@@ -55,7 +60,18 @@ export function DoctorWorkspace() {
     getOrderSets().then(setOrderSets)
   }, [])
 
-  const completeItem = (key: QueueKey, title: string) => {
+  /* doctor RBAC: signing activates the order in the canonical store */
+  const signPending = (orderId: string) => {
+    const order = pendingOrders?.find(o => o.orderId === orderId)
+    signOrder(orderId, DOCTOR_ACTOR).then(updated => {
+      if (!updated) return
+      setPendingOrders(prev => prev && prev.map(o => (o.orderId === orderId ? { ...o, leaving: true } : o)))
+      setTimeout(() => setPendingOrders(prev => prev && prev.filter(o => o.orderId !== orderId)), 280)
+      if (order) showToast('Order signed', `${order.summary} · ${order.patientName}`)
+    })
+  }
+
+  const completeItem = (key: 'results' | 'notes', title: string) => {
     setQueues(prev => prev && ({ ...prev, [key]: prev[key].map(i => (i.title === title ? { ...i, leaving: true } : i)) }))
     setTimeout(() => {
       setQueues(prev => prev && ({ ...prev, [key]: prev[key].filter(i => i.title !== title) }))
@@ -73,12 +89,13 @@ export function DoctorWorkspace() {
 
   const kpis: KpiSpec[] = [
     { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: rounding ? rounding.patients.length : '—', label: 'My Patients' },
-    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: queues ? queues.orders.length : '—', label: 'Orders to Sign' },
+    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: pendingOrders ? pendingOrders.filter(o => !o.leaving).length : '—', label: 'Orders to Sign' },
     { icon: <IconFlask size={14} stroke="var(--red)" />, iconBg: 'rgba(255,93,108,.14)', value: queues ? queues.results.length : '—', label: 'Results to Ack.' },
     { icon: <IconNote size={14} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: queues ? queues.notes.length : '—', label: 'Notes Due' },
   ]
 
-  const items = queues?.[qtab] ?? []
+  const queueCount = (k: QueueKey) =>
+    k === 'orders' ? pendingOrders?.filter(o => !o.leaving).length ?? 0 : queues?.[k].length ?? 0
 
   return (
     <div className="app-frame dw">
@@ -143,19 +160,35 @@ export function DoctorWorkspace() {
               <div className="qtabs" role="tablist">
                 {(Object.keys(QUEUE_LABEL) as QueueKey[]).map(k => (
                   <button key={k} className={`qtab${k === qtab ? ' on' : ''}`} role="tab" aria-selected={k === qtab} onClick={() => setQtab(k)}>
-                    {QUEUE_LABEL[k]}<span className="n">{queues?.[k].length ?? 0}</span>
+                    {QUEUE_LABEL[k]}<span className="n">{queueCount(k)}</span>
                   </button>
                 ))}
               </div>
               <div className="qlist" role="tabpanel">
-                {items.length === 0 ? (
+                {qtab === 'orders' ? (
+                  !pendingOrders || pendingOrders.length === 0 ? (
+                    <div className="qempty">Nothing pending — you're caught up.</div>
+                  ) : (
+                    pendingOrders.map(o => (
+                      <div className={`qrow${o.leaving ? ' done' : ''}`} key={o.orderId}>
+                        <span className="qi">{QUEUE_ICON.orders}</span>
+                        <div className="qt">
+                          <b>{o.summary} — {o.bedId} {o.patientName}</b><br />
+                          {o.priority} · {o.category}
+                          <small>{o.orderedTime} · {o.orderedBy} · {o.orderId}</small>
+                        </div>
+                        <button className="qbtn" aria-label={`Sign: ${o.summary}`} onClick={() => signPending(o.orderId)}>✓</button>
+                      </div>
+                    ))
+                  )
+                ) : queueCount(qtab) === 0 ? (
                   <div className="qempty">Nothing pending — you're caught up.</div>
                 ) : (
-                  items.map(item => (
+                  (queues?.[qtab] ?? []).map(item => (
                     <div className={`qrow${item.leaving ? ' done' : ''}`} key={item.title}>
                       <span className="qi">{QUEUE_ICON[qtab]}</span>
                       <div className="qt"><b>{item.title}</b><br />{item.detail}{item.time && <small>{item.time}</small>}</div>
-                      <button className="qbtn" aria-label={`Complete: ${item.title}`} onClick={() => completeItem(qtab, item.title)}>✓</button>
+                      <button className="qbtn" aria-label={`Complete: ${item.title}`} onClick={() => completeItem(qtab as 'results' | 'notes', item.title)}>✓</button>
                     </div>
                   ))
                 )}

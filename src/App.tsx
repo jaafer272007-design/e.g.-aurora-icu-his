@@ -3,6 +3,7 @@ import { BedOverview } from './pages/BedOverview/BedOverview'
 import { MissionControl } from './pages/MissionControl/MissionControl'
 import { DoctorWorkspace } from './pages/DoctorWorkspace/DoctorWorkspace'
 import { NurseWorkspace } from './pages/NurseWorkspace/NurseWorkspace'
+import { OrdersMedication } from './pages/OrdersMedication/OrdersMedication'
 
 /* Route map
    /workspace              Doctor Workspace — the role-personalized "Dashboard"
@@ -24,6 +25,8 @@ export default function App() {
         <Route path="/nurse" element={<NurseWorkspace />} />
         <Route path="/beds" element={<BedOverview />} />
         <Route path="/patients/:patientId" element={<MissionControl />} />
+        <Route path="/orders" element={<OrdersMedication />} />
+        <Route path="/orders/:patientId" element={<OrdersMedication />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
