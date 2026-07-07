@@ -45,6 +45,11 @@ alert/device models. Apply incrementally; don't wholesale-refactor existing code
 - Nav: the sidebar "Dashboard" item is role-personalized — it renders
   Doctor Workspace for a physician session, Nurse Workspace for a nurse
   session, once auth exists. Until then, default to Doctor Workspace.
+- Doctor Workspace's quick-order drawer stays lightweight (free text +
+  quick-set bundle shortcuts, no drug formulary) — do not expand it. Full
+  medication ordering (searchable formulary, dose/route/frequency,
+  allergy/interaction checking against the patient's allergy field) is
+  Screen 5 (Orders & Medication) scope, built after Nurse Workspace.
 
 ## Design System (extract into src/styles/tokens.css, reuse everywhere)
 Dark medical theme, glassmorphism, background `#060b13`.
