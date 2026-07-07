@@ -102,14 +102,14 @@ export const ORDERS_TO_IMPLEMENT: ImplementOrder[] = [
 ]
 
 export const NURSING_TASKS: NursingTask[] = [
-  { taskId: 'TSK-4001', patientId: 'P-1001', bedId: 'B-01', label: 'Hourly urine output', dueTime: '11:00', recurrence: 'q1h', dueState: 'overdue', done: false },
-  { taskId: 'TSK-4002', patientId: 'P-1001', bedId: 'B-01', label: 'Sedation score (RASS) documentation', dueTime: '11:00', recurrence: 'q2h', dueState: 'overdue', done: false },
-  { taskId: 'TSK-4003', patientId: 'P-1001', bedId: 'B-01', label: 'Glucose check — insulin infusion', dueTime: '11:30', recurrence: 'q1h', dueState: 'due', done: false },
-  { taskId: 'TSK-4004', patientId: 'P-1001', bedId: 'B-01', label: 'Turn & reposition', dueTime: '12:00', recurrence: 'q2h', dueState: 'upcoming', done: false },
-  { taskId: 'TSK-4005', patientId: 'P-1001', bedId: 'B-01', label: 'Oral care — VAP bundle', dueTime: '12:00', recurrence: 'q4h', dueState: 'upcoming', done: false },
-  { taskId: 'TSK-4006', patientId: 'P-1004', bedId: 'B-04', label: 'CRRT circuit pressure check', dueTime: '12:00', recurrence: 'q2h', dueState: 'upcoming', done: false },
-  { taskId: 'TSK-4007', patientId: 'P-1004', bedId: 'B-04', label: 'Vascath site assessment', dueTime: '13:00', recurrence: 'q shift', dueState: 'upcoming', done: false },
-  { taskId: 'TSK-4008', patientId: 'P-1004', bedId: 'B-04', label: 'Turn & reposition', dueTime: '10:00', recurrence: 'q2h', dueState: 'due', done: true },
+  { taskId: 'TSK-4001', patientId: 'P-1001', bedId: 'B-01', label: 'Hourly urine output', dueTime: '11:00', recurrence: 'q1h', done: false },
+  { taskId: 'TSK-4002', patientId: 'P-1001', bedId: 'B-01', label: 'Sedation score (RASS) documentation', dueTime: '11:00', recurrence: 'q2h', done: false },
+  { taskId: 'TSK-4003', patientId: 'P-1001', bedId: 'B-01', label: 'Glucose check — insulin infusion', dueTime: '11:30', recurrence: 'q1h', done: false },
+  { taskId: 'TSK-4004', patientId: 'P-1001', bedId: 'B-01', label: 'Turn & reposition', dueTime: '12:00', recurrence: 'q2h', done: false },
+  { taskId: 'TSK-4005', patientId: 'P-1001', bedId: 'B-01', label: 'Oral care — VAP bundle', dueTime: '12:00', recurrence: 'q4h', done: false },
+  { taskId: 'TSK-4006', patientId: 'P-1004', bedId: 'B-04', label: 'CRRT circuit pressure check', dueTime: '12:00', recurrence: 'q2h', done: false },
+  { taskId: 'TSK-4007', patientId: 'P-1004', bedId: 'B-04', label: 'Vascath site assessment', dueTime: '13:00', recurrence: 'q shift', done: false },
+  { taskId: 'TSK-4008', patientId: 'P-1004', bedId: 'B-04', label: 'Turn & reposition', dueTime: '10:00', recurrence: 'q2h', done: true },
 ]
 
 export const IO_ENTRIES: IoEntry[] = [

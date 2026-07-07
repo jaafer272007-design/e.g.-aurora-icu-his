@@ -55,6 +55,11 @@ alert/device models. Apply incrementally; don't wholesale-refactor existing code
   Patient Not Found card) — never redirect to or display another record's
   data. Applies to Nurse Workspace and every future screen that resolves
   an ID from a URL.
+- Branching: every new screen starts from a fresh branch off the latest
+  main with its own PR. Never continue building the next screen on a
+  branch that already has an open PR — one screen (or fix-set) per PR.
+- Time-relative states (OVERDUE/DUE for tasks, meds, etc.) are computed
+  against the current clock at render time — never stored in data.
 
 ## Design System (extract into src/styles/tokens.css, reuse everywhere)
 Dark medical theme, glassmorphism, background `#060b13`.

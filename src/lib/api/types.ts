@@ -339,10 +339,10 @@ export interface NursingTask {
   patientId: string
   bedId: string
   label: string
+  /** HH:MM — overdue/due/upcoming is computed client-side against the
+      current time, never stored (see TasksCard) */
   dueTime: string
   recurrence: string
-  /** precomputed against the schedule, like MAR dueState */
-  dueState: 'overdue' | 'due' | 'upcoming'
   done: boolean
 }
 
