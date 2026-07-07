@@ -1,0 +1,5 @@
+.badge{font-size:10px;font-weight:700;letter-spacing:.8px;padding:3px 9px;border-radius:8px}
+.badge.blue{background:rgba(77,163,255,.16);color:var(--blue)}
+.badge.green{background:rgba(61,232,160,.14);color:var(--green)}
+.badge.amber{background:rgba(255,180,84,.16);color:var(--amber)}
+.badge.red{background:rgba(255,93,108,.15);color:var(--red)}

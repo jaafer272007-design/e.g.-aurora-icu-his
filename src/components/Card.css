@@ -1,0 +1,6 @@
+.card{background:var(--panel);border:1px solid var(--stroke);border-radius:var(--r);box-shadow:var(--shadow);
+ backdrop-filter:blur(16px);padding:16px;animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+.chead{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.chead svg{flex:none}
+.chead .t{font-size:11px;letter-spacing:1.7px;text-transform:uppercase;color:var(--dim);font-weight:600}
+.chead .x{margin-left:auto;font-size:11px;color:var(--faint)}
