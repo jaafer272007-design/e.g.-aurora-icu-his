@@ -15,11 +15,6 @@ export const ROUNDING_LIST: RoundingListResponse = {
 }
 
 export const ACTION_QUEUES: ActionQueuesResponse = {
-  results: [
-    { title: 'Lactate 3.8 mmol/L — B-01 Ahmed Al-Saadi', detail: 'Repeat drawn 13:00, clearance <10% over 6 h', time: '09:42' },
-    { title: 'Platelets 96 ×10⁹/L — B-01 Ahmed Al-Saadi', detail: 'Down-trending 3rd consecutive draw', time: '07:30' },
-    { title: 'CT abdomen prelim — B-13 Aisha Mahmoud', detail: 'Radiology: increasing peripancreatic fluid collection', time: '06:50' },
-  ],
   notes: [
     { title: 'Daily progress note — B-01 Ahmed Al-Saadi', detail: 'Septic shock day 4 — due before 12:00 rounds', time: '' },
     { title: 'Daily progress note — B-04 Susan Wright', detail: 'AKI/CRRT day 6', time: '' },

@@ -24,6 +24,7 @@ npm run preview  # serve the production build
 | `/beds` | ICU Bed Overview — click any occupied bed to open that patient |
 | `/patients/:patientId` | Patient Mission Control, keyed by the stable patient id (e.g. `/patients/P-1001`); bed number is display-only location data |
 | `/orders/:patientId` | Orders & Medication — canonical orders record with formulary, safety checks, order sets, audit history (doctor RBAC) |
+| `/labs/:patientId` | Laboratory & Imaging — canonical results record: lab trends, imaging reports, abnormal/critical flags, doctor-only acknowledge (`?as=nurse` previews the view-only nurse session until Stage 9 auth) |
 
 ## Structure
 

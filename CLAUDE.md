@@ -24,7 +24,7 @@ real APIs and medical devices later.
 3. Doctor Workspace — ✅ approved (`/reference/icu-doctor-workspace.html`)
 4. Nurse Workspace — ✅ built, formal review pending (`/nurse`, first screen built directly in React)
 5. Orders & Medication — ✅ built, formal review pending (`/orders/:patientId`, canonical orders model — DW/NW read derived views)
-6. Laboratory & Imaging — not started (standalone screen, own route — confirmed)
+6. Laboratory & Imaging — ✅ built, formal review pending (`/labs/:patientId`, canonical results model — MC lab card + DW results queue read derived views)
 7. Timeline — not started (standalone screen, own route — confirmed)
 8. AI Clinical Assistant — not started
 9. Login / Role-Switch screen — build right before API Integration

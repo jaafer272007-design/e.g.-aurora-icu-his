@@ -6,13 +6,14 @@
 
 import type {
   ActionQueuesResponse, AdministrationAction, BedsResponse, Consult, FormularyDrug,
-  InteractionRule, IoEntry, MarRow, MedicationDetails, NewOrderDraft, NurseAssignmentResponse,
-  NursingTask, Order, OrderSetDef, OrderSetsResponse, PatientDetailResponse,
-  PatientSummary, RoundingListResponse, UnitSummaryResponse,
+  ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
+  NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
+  OrderSetsResponse, PatientDetailResponse, PatientSummary, ResultInboxItem,
+  RoundingListResponse, UnitSummaryResponse,
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY } from './data/beds'
 import { PATIENTS } from './data/patients'
-import { GOALS, HEMODYNAMICS, INFUSIONS, LABS, PATIENT_ALERTS, TIMELINE, VENTILATOR } from './data/panels'
+import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, TIMELINE, VENTILATOR } from './data/panels'
 import { ACTION_QUEUES, CONSULTS, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
 import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS } from './data/nursing'
 import { FORMULARY, INTERACTION_RULES, ORDER_SET_DEFS } from './data/formulary'
@@ -20,6 +21,12 @@ import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
   applySign, deriveMarRows, insertOrder,
 } from './data/orders'
+import {
+  applyAcknowledgeImaging, applyAcknowledgeLab, deriveMissionControlLabs, deriveResultInbox,
+  imagingFor, labDrawsFor,
+} from './data/results'
+import type { SessionRole } from '../session'
+import { nowHm } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 const respond = <T>(payload: T, latencyMs: number): Promise<T> =>
@@ -54,7 +61,8 @@ export function getPatientDetail(patientId: string): Promise<PatientDetailRespon
       ventilator: VENTILATOR,
       hemodynamics: HEMODYNAMICS,
       infusions: INFUSIONS,
-      labs: LABS,
+      /* lab trends are a derived view over the canonical results store (Screen 6) */
+      labs: deriveMissionControlLabs(patientId),
       alerts: PATIENT_ALERTS,
       goals: GOALS,
       timeline: TIMELINE,
@@ -68,7 +76,7 @@ export function getRoundingList(): Promise<RoundingListResponse> {
   return respond(ROUNDING_LIST, 120)
 }
 
-/** GET /api/icu/worklist/queues — orders to sign / results to ack / notes due. */
+/** GET /api/icu/worklist/queues — notes due (orders/results queues are derived views). */
 export function getActionQueues(): Promise<ActionQueuesResponse> {
   return respond(ACTION_QUEUES, 120)
 }
@@ -195,4 +203,45 @@ export function documentAdministration(
   orderId: string, adminId: string, action: AdministrationAction, actor: string,
 ): Promise<Order | null> {
   return respond(applyAdministration(orderId, adminId, action, actor), 120)
+}
+
+/* ---------------- Laboratory & Imaging results domain (Screen 6) ----------------
+   The canonical results service. Screen 5 places lab/imaging orders; these
+   adapters expose what RESULTED. Mission Control's lab card and Doctor
+   Workspace's "Results to Acknowledge" read the same store. Acknowledge is
+   doctor RBAC — enforced here in the service layer (and again server-side
+   at Stage 10), not just hidden in the UI:
+   POST /api/icu/results/labs/:labId/acknowledge
+   POST /api/icu/results/imaging/:studyId/acknowledge */
+
+/** GET /api/icu/results/labs?patientId — all lab draws for a patient, oldest first. */
+export function getLabDraws(patientId: string): Promise<LabDraw[]> {
+  return respond(labDrawsFor(patientId), 120)
+}
+
+/** GET /api/icu/results/imaging?patientId — imaging studies incl. reports. */
+export function getImagingStudies(patientId: string): Promise<ImagingStudy[]> {
+  return respond(imagingFor(patientId), 120)
+}
+
+/** GET /api/icu/results/inbox — unit-wide unacknowledged results (labs + imaging). */
+export function getResultInbox(): Promise<ResultInboxItem[]> {
+  return respond(deriveResultInbox(), 120)
+}
+
+/** POST /api/icu/results/labs/:labId/acknowledge — doctor RBAC; null if not permitted. */
+export function acknowledgeLab(labId: string, actor: string, role: SessionRole): Promise<LabDraw | null> {
+  return respond(applyAcknowledgeLab(labId, actor, role, nowHm()), 120)
+}
+
+/** POST /api/icu/results/imaging/:studyId/acknowledge — doctor RBAC; null if not permitted. */
+export function acknowledgeImaging(studyId: string, actor: string, role: SessionRole): Promise<ImagingStudy | null> {
+  return respond(applyAcknowledgeImaging(studyId, actor, role, nowHm()), 120)
+}
+
+/** Convenience dispatcher for inbox items (lab or imaging). Resolves truthy on success. */
+export function acknowledgeResult(
+  kind: 'lab' | 'imaging', id: string, actor: string, role: SessionRole,
+): Promise<LabDraw | ImagingStudy | null> {
+  return kind === 'lab' ? acknowledgeLab(id, actor, role) : acknowledgeImaging(id, actor, role)
 }

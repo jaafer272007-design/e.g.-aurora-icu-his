@@ -1,0 +1,111 @@
+/* Laboratory & Imaging — Screen 6. Canonical results screen; follows
+   docs/design-system.md and reuses the shared components. */
+.li .shell{display:grid;grid-template-columns:198px 240px 1fr;min-height:0}
+.li main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+
+/* ===== patient rail (shared pattern) ===== */
+.li .ptrail{border-right:1px solid var(--stroke);display:flex;flex-direction:column;min-height:0;
+ background:linear-gradient(180deg,rgba(11,17,29,.7),rgba(8,12,21,.7))}
+.li .ptrailhead{padding:14px 14px 8px;font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--dim)}
+.li .ptraillist{flex:1;overflow-y:auto;padding:4px 10px 14px;display:flex;flex-direction:column;gap:6px}
+.li .ptrailcard{display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:12px;padding:9px 10px;
+ background:rgba(255,255,255,.025);cursor:pointer;transition:.18s;text-align:left;color:var(--text);min-height:44px;width:100%}
+.li .ptrailcard:hover{border-color:var(--stroke2);transform:translateX(2px)}
+.li .ptrailcard.sel{border-color:rgba(77,163,255,.65);background:linear-gradient(135deg,rgba(77,163,255,.14),rgba(53,224,208,.07))}
+.li .prname{font-size:12.5px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .prpend{min-width:18px;height:18px;border-radius:9px;background:rgba(255,93,108,.2);color:var(--red);
+ font-size:10.5px;font-weight:700;display:grid;place-items:center}
+
+/* ===== patient bar ===== */
+.li .ptbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--stroke);border-radius:var(--r);
+ background:var(--panel);box-shadow:var(--shadow);backdrop-filter:blur(14px);padding:12px 16px;animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+.li .ptbarname{font-size:16px;font-weight:700}
+.li .ptbarsub{font-size:11.5px;color:var(--dim)}
+.li .ptbardx{font-size:11.5px;color:var(--dim)}
+.li .ptbarviewonly{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--amber);
+ background:rgba(255,180,84,.12);border:1px solid rgba(255,180,84,.4);padding:4px 10px;border-radius:9px}
+.li .ptbarlink{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--blue);padding:8px 12px;border-radius:9px;
+ border:1px solid rgba(77,163,255,.4);background:rgba(77,163,255,.08);transition:.15s;min-height:38px}
+.li .ptbarlink:hover,.li .ptbarlink:focus-visible{background:rgba(77,163,255,.18)}
+
+/* ===== columns ===== */
+.li .licols{display:grid;grid-template-columns:1.3fr 1fr;gap:14px;align-items:start}
+.li .licolL,.li .licolR{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* ===== lab trends ===== */
+.li .litabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.li .litab{padding:6px 12px;border-radius:9px;font-size:11px;color:var(--dim);border:1px solid var(--stroke);transition:.15s;min-height:34px}
+.li .litab:hover{color:var(--text)}
+.li .litab.on{background:rgba(77,163,255,.16);border-color:rgba(77,163,255,.5);color:var(--blue);font-weight:600}
+.li .lichart{width:100%;height:210px}
+.li .lichartmeta{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10.5px;color:var(--faint);margin:6px 2px 10px}
+.li .liband{display:inline-block;width:14px;height:8px;border-radius:3px;background:rgba(61,232,160,.18);border:1px dashed rgba(61,232,160,.4);vertical-align:-1px;margin-right:4px}
+.li .liacked{color:var(--green)}
+.li .liunacked{color:var(--red);font-weight:600}
+.li .lianalytes{display:flex;flex-direction:column;gap:6px}
+.li .liarow{display:grid;grid-template-columns:1fr auto auto auto 64px;gap:10px;align-items:center;
+ padding:8px 11px;border-radius:11px;border:1px solid var(--stroke);background:rgba(255,255,255,.02);
+ cursor:pointer;transition:.15s;text-align:left;color:var(--text);min-height:44px;width:100%}
+.li .liarow:hover{border-color:var(--stroke2)}
+.li .liarow.on{border-color:rgba(77,163,255,.6);background:rgba(77,163,255,.08)}
+.li .lianame{font-size:12.5px;font-weight:600}
+.li .liaval{font-size:14px;font-weight:700}
+.li .liaval small{font-size:9.5px;color:var(--dim);font-weight:500;margin-left:4px}
+.li .liaval.fl-normal{color:var(--green)}
+.li .liaval.fl-abnormal{color:var(--amber)}
+.li .liaval.fl-critical{color:var(--red)}
+.li .liaref{font-size:10.5px;color:var(--faint)}
+.li .liempty{text-align:center;color:var(--faint);font-size:12px;padding:32px 0}
+
+/* ===== imaging ===== */
+.li .listudy{border:1px solid var(--stroke);border-radius:13px;padding:11px 13px;background:rgba(255,255,255,.02);margin-bottom:9px}
+.li .listudy.crit{border-color:rgba(255,93,108,.4)}
+.li .lisr1{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.li .limod{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:7px;
+ background:rgba(167,139,250,.16);color:var(--violet)}
+.li .lidesc{font-size:12.5px;flex:1}
+.li .listeps{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.li .listep{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:7px;
+ background:rgba(130,170,230,.08);color:var(--faint);border:1px solid transparent}
+.li .listep.done{background:rgba(61,232,160,.1);color:var(--green)}
+.li .listep.cur{background:rgba(77,163,255,.16);color:var(--blue);border-color:rgba(77,163,255,.45)}
+.li .lismeta{font-size:10px;color:var(--faint);margin-top:7px}
+.li .lisexp{font-size:11px;font-weight:600;color:var(--blue);padding:7px 0;min-height:36px;margin-top:2px}
+.li .lisexp:hover,.li .lisexp:focus-visible{text-decoration:underline}
+.li .lisreport{border-top:1px dashed rgba(130,170,230,.12);padding-top:8px;margin-top:4px;display:flex;flex-direction:column;gap:8px}
+.li .lisrsec span{display:block;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+.li .lisrsec p{font-size:12px;line-height:1.5;color:var(--text)}
+.li .lisrsec p.critimp{color:var(--red)}
+.li .lisack{margin-top:9px}
+.li .lispending{margin-top:9px;font-size:11px;color:var(--dim);font-style:italic}
+.li .liackbtn{font-size:11px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid rgba(61,232,160,.4);
+ color:var(--green);background:rgba(61,232,160,.08);transition:.15s;min-height:44px}
+.li .liackbtn:hover,.li .liackbtn:focus-visible{background:rgba(61,232,160,.18)}
+.li .liviewonly{font-size:10.5px;color:var(--amber)}
+
+/* ===== result inbox ===== */
+.li .liinrow{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;
+ background:rgba(255,255,255,.02);margin-bottom:8px}
+.li .liinrow.crit{border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.05)}
+.li .liinrow .badge{flex:none;margin-top:2px}
+.li .liintext{flex:1;font-size:12px;line-height:1.4}
+.li .liintext b{display:block;font-weight:600}
+.li .liintext span{color:var(--dim)}
+.li .liintext small{display:block;color:var(--faint);font-size:10px;margin-top:3px}
+
+/* ===== not found (locked pattern) ===== */
+.li .notfound{display:flex;flex-direction:column;align-items:center;gap:12px;padding:56px 24px;text-align:center}
+.li .notfound h2{font-size:17px;font-weight:700;letter-spacing:.3px}
+.li .notfound p{font-size:12.5px;color:var(--dim);max-width:420px;line-height:1.55}
+.li .notfound .nf-btn{margin-top:6px;font-size:12.5px;font-weight:600;padding:10px 18px;border-radius:11px;
+ border:1px solid rgba(77,163,255,.4);color:var(--blue);background:rgba(77,163,255,.08);transition:.15s;min-height:44px}
+.li .notfound .nf-btn:hover,.li .notfound .nf-btn:focus-visible{background:rgba(77,163,255,.18)}
+
+@media(max-width:1500px){.li .shell{grid-template-columns:64px 220px 1fr}}
+@media(max-width:1280px){.li .licols{grid-template-columns:1fr}}
+@media(max-width:1180px){
+ .li .shell{grid-template-columns:64px 1fr}
+ .li .ptrail{display:none}
+ .li.app-frame{height:auto;overflow:visible}
+ .li main{overflow:visible}
+}

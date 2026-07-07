@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom'
 import './NavSidebar.css'
 import {
-  IconAdmit, IconAlertTriangle, IconBed, IconDischarge, IconGrid, IconPill, IconSettings, IconStats,
+  IconAdmit, IconAlertTriangle, IconBed, IconDischarge, IconFlask, IconGrid, IconPill, IconSettings, IconStats,
 } from './icons'
 
-export type NavKey = 'dashboard' | 'beds' | 'orders' | 'admissions' | 'discharges' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'admissions' | 'discharges' | 'alerts' | 'statistics' | 'settings'
 
 interface NavSidebarProps {
   active: NavKey
@@ -24,6 +24,7 @@ export function NavSidebar({ active, alertCount, footerLines, dashboardRoute = '
     { key: 'dashboard', label: 'Dashboard', icon: <IconGrid />, to: dashboardRoute },
     { key: 'beds', label: 'ICU Beds', icon: <IconBed />, to: '/beds' },
     { key: 'orders', label: 'Orders & Meds', icon: <IconPill />, to: '/orders' },
+    { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: '/labs' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit /> },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge /> },
     { key: 'alerts', label: 'Alerts', icon: <IconAlertTriangle />, badge: alertCount },

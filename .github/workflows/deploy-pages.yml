@@ -1,8 +1,11 @@
 name: Deploy to GitHub Pages
 
+# Deploys the live preview from whichever branch is being worked on:
+# any push to a claude/* branch that has an open PR against main redeploys
+# the site (last push wins). workflow_dispatch always deploys the chosen ref.
 on:
   push:
-    branches: [claude/vite-react-scaffold-routing-7t8hps]
+    branches: ['claude/**']
   workflow_dispatch:
 
 permissions:
@@ -15,7 +18,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.pr.outputs.deploy }}
+    steps:
+      - name: Only deploy branches with an open PR against main
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          n=$(gh api "repos/${{ github.repository }}/pulls?state=open&base=main&head=${{ github.repository_owner }}:${{ github.ref_name }}" --jq 'length')
+          echo "open PRs against main for ${{ github.ref_name }}: $n"
+          if [ "$n" -gt 0 ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
   deploy:
+    needs: check
+    if: needs.check.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
