@@ -268,3 +268,93 @@ export interface Consult {
 export type OrderType = 'Medication' | 'Lab' | 'Imaging' | 'Nursing'
 
 export type OrderSetsResponse = Record<OrderType, string[]>
+
+/* ==================== Nursing domain (Screen 4) ====================
+   Independent domain models per docs/architecture.md rule 2 — each block
+   below maps to its own future endpoint and is replaceable in isolation. */
+
+/* ---------- GET /api/icu/nursing/assignment ---------- */
+
+export interface AssignedPatient {
+  patientId: string
+  /** location only — display data */
+  bedId: string
+  name: string
+  age: number
+  sex: Sex
+  diagnosis: string
+  allergies: string
+  codeStatus: string
+  flags: SupportFlag[]
+  isolation: boolean
+  severity: Severity
+  vitals: BedCardVitals
+}
+
+export interface NurseAssignmentResponse {
+  nurse: { name: string; initials: string; role: string; shift: string }
+  patients: AssignedPatient[]
+}
+
+/* ---------- GET /api/icu/nursing/mar ---------- */
+
+/** pending states are precomputed server-side against the schedule */
+export type MarDueState = 'overdue' | 'due' | 'upcoming' | 'prn'
+export type MarAction = 'given' | 'held' | 'refused'
+
+export interface MarEntry {
+  marId: string
+  patientId: string
+  bedId: string
+  medication: string
+  dose: string
+  route: string
+  /** empty for PRN entries */
+  scheduledTime: string
+  status: MarDueState | MarAction
+  /** set once documented (given/held/refused) */
+  documentedTime?: string
+  orderedBy: string
+}
+
+/* ---------- GET /api/icu/nursing/orders-to-implement ---------- */
+
+export type OrderPriority = 'Routine' | 'Urgent' | 'STAT'
+
+export interface ImplementOrder {
+  orderId: string
+  patientId: string
+  bedId: string
+  text: string
+  priority: OrderPriority
+  orderedBy: string
+  time: string
+  done: boolean
+}
+
+/* ---------- GET /api/icu/nursing/tasks ---------- */
+
+export interface NursingTask {
+  taskId: string
+  patientId: string
+  bedId: string
+  label: string
+  dueTime: string
+  recurrence: string
+  /** precomputed against the schedule, like MAR dueState */
+  dueState: 'overdue' | 'due' | 'upcoming'
+  done: boolean
+}
+
+/* ---------- GET /api/icu/nursing/io ---------- */
+
+export type IoKind = 'intake' | 'output'
+
+export interface IoEntry {
+  entryId: string
+  patientId: string
+  kind: IoKind
+  category: string
+  volumeMl: number
+  time: string
+}

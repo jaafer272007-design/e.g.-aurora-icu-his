@@ -22,7 +22,7 @@ real APIs and medical devices later.
 1. ICU Bed Overview — ✅ approved (`/reference/icu-bed-overview.html`)
 2. Patient Mission Control — ✅ built, formal review pending (`/reference/icu-mission-control.html`)
 3. Doctor Workspace — ✅ approved (`/reference/icu-doctor-workspace.html`)
-4. Nurse Workspace — not started
+4. Nurse Workspace — ✅ built, formal review pending (`/nurse`, first screen built directly in React)
 5. Orders & Medication — not started (standalone screen, own route — confirmed)
 6. Laboratory & Imaging — not started (standalone screen, own route — confirmed)
 7. Timeline — not started (standalone screen, own route — confirmed)

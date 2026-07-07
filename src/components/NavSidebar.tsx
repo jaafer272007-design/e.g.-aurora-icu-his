@@ -11,14 +11,17 @@ interface NavSidebarProps {
   alertCount: number
   /** Lines shown under "AURORA HIS v4.2" in the sidebar footer. */
   footerLines: string[]
+  /** Role-personalized "Dashboard" target — /workspace for a physician
+   *  session (default until auth exists), /nurse for a nurse session. */
+  dashboardRoute?: string
 }
 
 /** Primary navigation rail. "Dashboard" is role-personalized — it routes to the
- *  Doctor Workspace until auth exists (locked decision in CLAUDE.md). */
-export function NavSidebar({ active, alertCount, footerLines }: NavSidebarProps) {
+ *  role's own workspace (locked decision in CLAUDE.md). */
+export function NavSidebar({ active, alertCount, footerLines, dashboardRoute = '/workspace' }: NavSidebarProps) {
   const navigate = useNavigate()
   const items: { key: NavKey; label: string; icon: JSX.Element; to?: string; badge?: number }[] = [
-    { key: 'dashboard', label: 'Dashboard', icon: <IconGrid />, to: '/workspace' },
+    { key: 'dashboard', label: 'Dashboard', icon: <IconGrid />, to: dashboardRoute },
     { key: 'beds', label: 'ICU Beds', icon: <IconBed />, to: '/beds' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit /> },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge /> },

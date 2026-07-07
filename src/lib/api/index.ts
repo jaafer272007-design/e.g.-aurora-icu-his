@@ -5,13 +5,15 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, BedsResponse, Consult, OrderSetsResponse, PatientDetailResponse,
+  ActionQueuesResponse, BedsResponse, Consult, ImplementOrder, IoEntry, MarEntry,
+  NurseAssignmentResponse, NursingTask, OrderSetsResponse, PatientDetailResponse,
   PatientSummary, RoundingListResponse, UnitSummaryResponse,
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY } from './data/beds'
 import { PATIENTS } from './data/patients'
 import { GOALS, HEMODYNAMICS, INFUSIONS, LABS, PATIENT_ALERTS, TIMELINE, VENTILATOR } from './data/panels'
 import { ACTION_QUEUES, CONSULTS, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
+import { IO_ENTRIES, MAR_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS, ORDERS_TO_IMPLEMENT } from './data/nursing'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 const respond = <T>(payload: T, latencyMs: number): Promise<T> =>
@@ -73,4 +75,39 @@ export function getConsults(): Promise<Consult[]> {
 /** GET /api/icu/order-sets — quick order sets by order type. */
 export function getOrderSets(): Promise<OrderSetsResponse> {
   return respond(ORDER_SETS, 120)
+}
+
+/* ---------------- Nursing domain (Screen 4) ----------------
+   Write actions (document administration, complete order/task, record I&O,
+   save handoff) are POSTs in the real API; the UI applies them to local
+   state today so wiring them later is additive, not a rewrite:
+   POST /api/icu/nursing/mar/:marId/administration   { action, time }
+   POST /api/icu/nursing/orders/:orderId/complete
+   POST /api/icu/nursing/tasks/:taskId/complete
+   POST /api/icu/nursing/io                          { patientId, kind, category, volumeMl }
+   PUT  /api/icu/nursing/handoff/:patientId          { s, b, a, r }              */
+
+/** GET /api/icu/nursing/assignment — the signed-in nurse and assigned patients. */
+export function getNurseAssignment(): Promise<NurseAssignmentResponse> {
+  return respond(NURSE_ASSIGNMENT, 120)
+}
+
+/** GET /api/icu/nursing/mar — medication administration record for the shift. */
+export function getMarEntries(): Promise<MarEntry[]> {
+  return respond(MAR_ENTRIES, 120)
+}
+
+/** GET /api/icu/nursing/orders-to-implement — physician orders awaiting nursing action. */
+export function getOrdersToImplement(): Promise<ImplementOrder[]> {
+  return respond(ORDERS_TO_IMPLEMENT, 120)
+}
+
+/** GET /api/icu/nursing/tasks — time-driven nursing task checklist. */
+export function getNursingTasks(): Promise<NursingTask[]> {
+  return respond(NURSING_TASKS, 120)
+}
+
+/** GET /api/icu/nursing/io — intake/output entries recorded this shift. */
+export function getIoEntries(): Promise<IoEntry[]> {
+  return respond(IO_ENTRIES, 120)
 }
