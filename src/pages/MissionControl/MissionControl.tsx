@@ -7,7 +7,7 @@ import { BedChip, TagList } from '../../components/Tag'
 import { AlertRow } from '../../components/AlertRow'
 import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
-import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
+import { IconAlertTriangle, IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
 import { getPatientDetail, getPatients } from '../../lib/api'
 import type { PatientAlert, PatientDetailResponse, PatientSummary } from '../../lib/api/types'
@@ -57,18 +57,21 @@ export function MissionControl() {
     setMissing(false)
     getPatientDetail(patientId).then(res => {
       if (stale) return
-      if (!res) { setMissing(true); return }
+      if (!res) {
+        /* Locked decision: an unresolved ID must render an explicit not-found
+           state — never redirect to or display another patient's chart. */
+        setDetail(null)
+        setAlerts([])
+        setGoals([])
+        setMissing(true)
+        return
+      }
       setDetail(res)
       setAlerts(res.alerts.map((a, i) => ({ ...a, key: i, leaving: false })))
       setGoals(res.goals)
     })
     return () => { stale = true }
   }, [patientId])
-
-  /* unknown patient id (bad URL) → fall back to the first patient */
-  useEffect(() => {
-    if (missing && patients?.length) navigate(`/patients/${patients[0].patientId}`, { replace: true })
-  }, [missing, patients, navigate])
 
   const unit = useMemo(() => {
     if (!patients) return null
@@ -172,6 +175,18 @@ export function MissionControl() {
         </aside>
 
         <main>
+          {missing && (
+            <section className="card notfound" role="alert">
+              <IconAlertTriangle size={28} stroke="var(--amber)" />
+              <h2>Patient Not Found</h2>
+              <p>
+                No patient found for this ID — they may have been discharged, transferred,
+                or this link is outdated.
+              </p>
+              <button className="nf-btn" onClick={() => navigate('/beds')}>← Back to Bed Overview</button>
+            </section>
+          )}
+
           {detail && <MonitorCard vitals={detail.patient.vitals} rhythm={detail.patient.rhythm} />}
 
           {detail && (
@@ -274,7 +289,7 @@ export function MissionControl() {
               </div>
             </Card>
           )}
-          {!detail && <div style={{ gridColumn: '1/-1' }} aria-busy="true" />}
+          {!detail && !missing && <div style={{ gridColumn: '1/-1' }} aria-busy="true" />}
         </main>
       </div>
     </div>

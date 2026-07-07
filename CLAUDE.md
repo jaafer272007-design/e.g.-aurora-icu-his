@@ -50,6 +50,11 @@ alert/device models. Apply incrementally; don't wholesale-refactor existing code
   medication ordering (searchable formulary, dose/route/frequency,
   allergy/interaction checking against the patient's allergy field) is
   Screen 5 (Orders & Medication) scope, built after Nurse Workspace.
+- An ID in a URL that doesn't resolve (patient, order, …) must render an
+  explicit "not found" state with a route back (see Mission Control's
+  Patient Not Found card) — never redirect to or display another record's
+  data. Applies to Nurse Workspace and every future screen that resolves
+  an ID from a URL.
 
 ## Design System (extract into src/styles/tokens.css, reuse everywhere)
 Dark medical theme, glassmorphism, background `#060b13`.
