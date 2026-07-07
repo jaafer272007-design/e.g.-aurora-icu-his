@@ -3,6 +3,9 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import './AiAssistant.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
+import { NotFoundCard } from '../../components/NotFoundCard'
+import { PatientBar } from '../../components/PatientBar'
+import { PatientRail } from '../../components/PatientRail'
 import { BedChip } from '../../components/Tag'
 import { Sparkline } from '../../components/Sparkline'
 import { Toast, useToast } from '../../components/Toast'
@@ -10,7 +13,8 @@ import { IconAlertTriangle, IconBrain } from '../../components/icons'
 import { AI_ALERT_THRESHOLD, getPatientDetail, getRiskProfile, getRiskRanking } from '../../lib/api'
 import { CURRENT_SESSION, type SessionRole } from '../../lib/session'
 import type { Patient, PatientRiskProfile, RiskRankingRow } from '../../lib/api/types'
-import { RiskCard, riskColor, trendLabel } from './RiskCard'
+import { riskColor } from '../../lib/risk'
+import { RiskCard, trendLabel } from './RiskCard'
 
 /** Screen 8 — AI Clinical Assistant. THE canonical view over the AI risk
  *  domain: unit-wide ranking at /ai, per-patient profile at /ai/:patientId.
@@ -97,23 +101,14 @@ export function AiAssistant() {
           footerLines={[role === 'nurse' ? 'Role: Nurse' : 'Role: Physician', 'Simulated · advisory only']}
         />
 
-        <aside className="ptrail" aria-label="Patients by risk">
-          <div className="ptrailhead">Patients · by risk</div>
-          <div className="ptraillist">
-            {ranking?.map(r => (
-              <button
-                key={r.patientId}
-                className={`ptrailcard${r.patientId === patientId ? ' sel' : ''}`}
-                aria-current={r.patientId === patientId ? 'page' : undefined}
-                onClick={() => navigate(`/ai/${r.patientId}${location.search}`)}
-              >
-                <BedChip bedId={r.bedId} />
-                <span className="prname">{r.patientName}</span>
-                <span className="prtop num" style={{ color: riskColor(r.top.probability) }}>{r.top.probability}%</span>
-              </button>
-            ))}
-          </div>
-        </aside>
+        <PatientRail
+          title="Patients · by risk"
+          accent="violet"
+          patients={ranking?.map(r => ({ patientId: r.patientId, bedId: r.bedId, name: r.patientName, top: r.top }))}
+          selectedId={patientId}
+          onSelect={id => navigate(`/ai/${id}${location.search}`)}
+          badge={p => <span className="prtop num" style={{ color: riskColor(p.top.probability) }}>{p.top.probability}%</span>}
+        />
 
         <main>
           <div className="aidisclaimer" role="note">
@@ -125,14 +120,7 @@ export function AiAssistant() {
             </span>
           </div>
 
-          {missing && (
-            <section className="card notfound" role="alert">
-              <IconAlertTriangle size={28} stroke="var(--amber)" />
-              <h2>Patient Not Found</h2>
-              <p>No patient found for this ID — they may have been discharged, transferred, or this link is outdated.</p>
-              <button className="nf-btn" onClick={() => navigate('/beds')}>← Back to Bed Overview</button>
-            </section>
-          )}
+          {missing && <NotFoundCard />}
 
           {/* ===== unit-wide ranking (/ai) ===== */}
           {!patientId && ranking && (
@@ -179,19 +167,18 @@ export function AiAssistant() {
           {/* ===== patient profile (/ai/:patientId) ===== */}
           {patientId && patient && profile && (
             <>
-              <div className="ptbar">
-                <BedChip bedId={patient.bedId} />
-                <b className="ptbarname">{patient.name}</b>
-                <span className="ptbarsub num">{patient.mrn} · {patient.age} · {patient.sex}</span>
+              <PatientBar
+                patient={patient}
+                links={[
+                  { label: 'Chart →', to: `/patients/${patient.patientId}` },
+                  { label: 'Orders →', to: `/orders/${patient.patientId}` },
+                  { label: 'Results →', to: `/labs/${patient.patientId}` },
+                  { label: 'Timeline →', to: `/timeline/${patient.patientId}` },
+                ]}
+              >
                 <span className="ptbardx">{patient.diagnosis}</span>
                 {role === 'nurse' && <span className="ptbarviewonly">View only — nurse session</span>}
-                <div className="ptbarlinks">
-                  <button className="ptbarlink" onClick={() => navigate(`/patients/${patient.patientId}`)}>Chart →</button>
-                  <button className="ptbarlink" onClick={() => navigate(`/orders/${patient.patientId}`)}>Orders →</button>
-                  <button className="ptbarlink" onClick={() => navigate(`/labs/${patient.patientId}`)}>Results →</button>
-                  <button className="ptbarlink" onClick={() => navigate(`/timeline/${patient.patientId}`)}>Timeline →</button>
-                </div>
-              </div>
+              </PatientBar>
               <div className="aacards">
                 {[...profile.risks].sort((a, b) => b.probability - a.probability).map(r => (
                   <RiskCard key={r.category} risk={r} />

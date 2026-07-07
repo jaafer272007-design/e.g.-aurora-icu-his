@@ -1,0 +1,18 @@
+/* Patient switcher rail — shared component (PatientRail.tsx). Pages own the
+   grid column sizing / responsive hiding; everything visual lives here. */
+.ptrail{border-right:1px solid var(--stroke);display:flex;flex-direction:column;min-height:0;
+ background:linear-gradient(180deg,rgba(11,17,29,.7),rgba(8,12,21,.7))}
+.ptrailhead{padding:14px 14px 8px;font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--dim)}
+.ptraillist{flex:1;overflow-y:auto;padding:4px 10px 14px;display:flex;flex-direction:column;gap:6px}
+.ptrailcard{display:flex;align-items:center;gap:8px;border:1px solid var(--stroke);border-radius:12px;padding:9px 10px;
+ background:rgba(255,255,255,.025);cursor:pointer;transition:.18s;text-align:left;color:var(--text);min-height:44px;width:100%}
+.ptrailcard:hover{border-color:var(--stroke2);transform:translateX(2px)}
+.ptrailcard.sel{border-color:rgba(77,163,255,.65);background:linear-gradient(135deg,rgba(77,163,255,.14),rgba(53,224,208,.07))}
+.ptrail.accent-violet .ptrailcard.sel{border-color:rgba(167,139,250,.65);
+ background:linear-gradient(135deg,rgba(167,139,250,.14),rgba(77,163,255,.07))}
+.prname{font-size:12.5px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* badge variants (pages pass the badge node; styles live here) */
+.prpend{min-width:18px;height:18px;border-radius:9px;background:rgba(255,93,108,.2);color:var(--red);
+ font-size:10.5px;font-weight:700;display:grid;place-items:center}
+.prpend.amber{background:rgba(255,180,84,.2);color:var(--amber)}
+.prtop{font-size:11.5px;font-weight:700}

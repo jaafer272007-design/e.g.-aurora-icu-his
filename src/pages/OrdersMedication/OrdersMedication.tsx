@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom'
 import './OrdersMedication.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
-import { BedChip } from '../../components/Tag'
+import { NotFoundCard } from '../../components/NotFoundCard'
+import { PatientBar } from '../../components/PatientBar'
+import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconPencil, IconPill } from '../../components/icons'
 import {
@@ -160,45 +162,21 @@ export function OrdersMedication() {
       <div className="shell">
         <NavSidebar active="orders" alertCount={5} footerLines={['Role: Physician', 'Create · modify · discontinue']} />
 
-        <aside className="ptrail" aria-label="Patients">
-          <div className="ptrailhead">Patients</div>
-          <div className="ptraillist">
-            {patients?.map(p => (
-              <button
-                key={p.patientId}
-                className={`ptrailcard${p.patientId === patientId ? ' sel' : ''}`}
-                aria-current={p.patientId === patientId ? 'page' : undefined}
-                onClick={() => navigate(`/orders/${p.patientId}`)}
-              >
-                <BedChip bedId={p.bedId} />
-                <span className="prname">{p.name}</span>
-                {pendingCountFor(p.patientId) > 0 && <span className="prpend num">{pendingCountFor(p.patientId)}</span>}
-              </button>
-            ))}
-          </div>
-        </aside>
+        <PatientRail
+          patients={patients}
+          selectedId={patientId}
+          onSelect={id => navigate(`/orders/${id}`)}
+          badge={p => (pendingCountFor(p.patientId) > 0 ? <span className="prpend amber num">{pendingCountFor(p.patientId)}</span> : null)}
+        />
 
         <main>
-          {missing && (
-            <section className="card notfound" role="alert">
-              <IconAlertTriangle size={28} stroke="var(--amber)" />
-              <h2>Patient Not Found</h2>
-              <p>No patient found for this ID — they may have been discharged, transferred, or this link is outdated.</p>
-              <button className="nf-btn" onClick={() => navigate('/beds')}>← Back to Bed Overview</button>
-            </section>
-          )}
+          {missing && <NotFoundCard />}
 
           {patient && (
-            <div className="ptbar">
-              <BedChip bedId={patient.bedId} />
-              <b className="ptbarname">{patient.name}</b>
-              <span className="ptbarsub num">{patient.mrn} · {patient.age} · {patient.sex}</span>
+            <PatientBar patient={patient} links={[{ label: 'Open Mission Control →', to: `/patients/${patient.patientId}` }]}>
               <span className="ptbarallergy">⚠ Allergies: {patient.allergies}</span>
               <span className="ptbarcode">{patient.codeStatus}</span>
-              <button className="ptbarlink" onClick={() => navigate(`/patients/${patient.patientId}`)}>
-                Open Mission Control →
-              </button>
-            </div>
+            </PatientBar>
           )}
 
           {patient && orders && (

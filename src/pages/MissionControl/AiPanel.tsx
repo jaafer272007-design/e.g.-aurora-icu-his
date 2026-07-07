@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card } from '../../components/Card'
 import type { AiRisk } from '../../lib/api/types'
-
-const riskColor = (x: number) => (x >= 70 ? 'var(--red)' : x >= 40 ? 'var(--amber)' : 'var(--green)')
+import { riskColor } from '../../lib/risk'
 
 function RiskBar({ pct }: { pct: number }) {
   const [w, setW] = useState(0)

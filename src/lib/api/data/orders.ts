@@ -1,6 +1,7 @@
 import type {
   AdministrationAction, MarRow, MedAdministration, MedicationDetails, NewOrderDraft, Order,
 } from '../types'
+import { nowHm } from '../../time'
 
 /* Canonical orders store — THE single source of truth for orders and
    medications. Doctor Workspace's "Orders to Sign", Nurse Workspace's MAR
@@ -22,7 +23,6 @@ const nextOrderId = () => `ORD-${++seq}`
 let adminSeq = 500
 const nextAdminId = () => `ADM-${++adminSeq}`
 
-const nowHm = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 
 /* Mock schedule generation for newly signed medication orders. The real API
    computes proper schedules server-side; here we produce the next dose(s)

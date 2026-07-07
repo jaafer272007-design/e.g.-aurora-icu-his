@@ -22,6 +22,8 @@ export interface BedCardVitals {
 export interface BedAlert {
   severity: AlertSeverity
   message: string
+  /** "HH:MM" raised time — unit summary derives its high-priority list from these */
+  time: string
 }
 
 export interface BedPatient {

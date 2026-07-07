@@ -5,9 +5,10 @@ import { Card } from '../../components/Card'
 import { Badge } from '../../components/Badge'
 import { BedChip, TagList } from '../../components/Tag'
 import { AlertRow } from '../../components/AlertRow'
+import { NotFoundCard } from '../../components/NotFoundCard'
 import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
-import { IconAlertTriangle, IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
+import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
 import { getPatientDetail, getPatients } from '../../lib/api'
 import type { PatientAlert, PatientDetailResponse, PatientSummary } from '../../lib/api/types'
@@ -175,17 +176,7 @@ export function MissionControl() {
         </aside>
 
         <main>
-          {missing && (
-            <section className="card notfound" role="alert">
-              <IconAlertTriangle size={28} stroke="var(--amber)" />
-              <h2>Patient Not Found</h2>
-              <p>
-                No patient found for this ID — they may have been discharged, transferred,
-                or this link is outdated.
-              </p>
-              <button className="nf-btn" onClick={() => navigate('/beds')}>← Back to Bed Overview</button>
-            </section>
-          )}
+          {missing && <NotFoundCard />}
 
           {detail && <MonitorCard vitals={detail.patient.vitals} rhythm={detail.patient.rhythm} />}
 

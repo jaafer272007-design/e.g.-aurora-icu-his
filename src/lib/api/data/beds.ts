@@ -1,4 +1,4 @@
-import type { Bed, BedPatient, BedsResponse, UnitSummaryResponse } from '../types'
+import type { Bed, BedPatient, BedsResponse, UnitAlert, UnitSummaryResponse } from '../types'
 import { ROSTER, type UnitPatientRecord } from './roster'
 
 /* Bed board — Unit 4B, 16 beds. The bed LAYOUT (bed ↔ location ↔ occupant
@@ -65,18 +65,26 @@ export const BEDS_RESPONSE: BedsResponse = {
   beds: BED_LAYOUT.map(toBed),
 }
 
+/* High-priority unit alerts — DERIVED from the roster's bed alerts (crit
+   first, then by raised time), never a hand-maintained parallel list. */
+function deriveHighPriorityAlerts(): UnitAlert[] {
+  return ROSTER
+    .filter(r => r.bedAlert.severity === 'crit' || r.bedAlert.severity === 'high')
+    .map(r => ({
+      severity: r.bedAlert.severity as UnitAlert['severity'],
+      message: `${r.bedId} · ${r.bedAlert.message}`,
+      time: r.bedAlert.time,
+    }))
+    .sort((a, b) =>
+      a.severity === b.severity ? b.time.localeCompare(a.time) : a.severity === 'crit' ? -1 : 1)
+}
+
 export const UNIT_SUMMARY: UnitSummaryResponse = {
   unitId: '4B',
   admissionsInProgress: 3,
   dischargesPlanned: 2,
   pendingConsults: 4,
-  highPriorityAlerts: [
-    { severity: 'crit', message: 'B-01 · MAP <65 mmHg ×12 min despite norad 0.32', time: '09:31' },
-    { severity: 'crit', message: 'B-10 · Cardiac index 1.9 — escalation in progress', time: '09:18' },
-    { severity: 'crit', message: 'B-13 · IAP 19 mmHg — surgical review requested', time: '08:47' },
-    { severity: 'high', message: 'B-07 · SpO₂ 92% on FiO₂ 60% — proning considered', time: '08:22' },
-    { severity: 'high', message: 'B-12 · pCO₂ 61 on NIV — reassess in 2 h', time: '07:55' },
-  ],
+  highPriorityAlerts: deriveHighPriorityAlerts(),
   stats: [
     { label: 'Admissions Today', value: '3', delta: '+1 vs avg', trend: 'up' },
     { label: 'Discharges Today', value: '2', delta: 'on plan', trend: 'fl' },
