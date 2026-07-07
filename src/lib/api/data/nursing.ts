@@ -1,26 +1,27 @@
-import type { IoEntry, NewIoEntry, NurseAssignmentResponse, NursingTask } from '../types'
+import type { AssignedPatient, IoEntry, NewIoEntry, NurseAssignmentResponse, NursingTask } from '../types'
+import { ROSTER } from './roster'
 
 /* Nurse Workspace sample data — RN Maya Chen, day shift, assigned two
-   patients (real ICU nurse:patient ratio). Patient identity fields mirror
-   the unit roster in beds.ts/patients.ts; nursing records are their own
-   domain models keyed by patientId. */
+   patients (real ICU nurse:patient ratio). The assignment is a list of
+   patient ids; every patient field derives from the canonical roster
+   (roster.ts). Nursing records below are their own domain models keyed
+   by patientId. */
+
+const ASSIGNED_PATIENT_IDS = ['P-1001', 'P-1004']
+
+const toAssignedPatient = (patientId: string): AssignedPatient => {
+  const r = ROSTER.find(x => x.patientId === patientId)!
+  return {
+    patientId: r.patientId, bedId: r.bedId, name: r.name, age: r.age, sex: r.sex,
+    diagnosis: r.diagnosis, allergies: r.allergies, codeStatus: r.codeStatus,
+    flags: r.flags, isolation: r.isolation, severity: r.severity,
+    vitals: r.bedsideVitals,
+  }
+}
 
 export const NURSE_ASSIGNMENT: NurseAssignmentResponse = {
   nurse: { name: 'RN Maya Chen', initials: 'MC', role: 'ICU Nurse · Beds B-01 / B-04', shift: '07:00–19:00' },
-  patients: [
-    {
-      patientId: 'P-1001', bedId: 'B-01', name: 'Ahmed Al-Saadi', age: 58, sex: 'M',
-      diagnosis: 'Septic shock · Pneumonia', allergies: 'Penicillin', codeStatus: 'Full Code',
-      flags: ['vent', 'pressor'], isolation: false, severity: 'crit',
-      vitals: { hr: 118, map: 64, spo2: 93, temp: 38.4, uo: 28 },
-    },
-    {
-      patientId: 'P-1004', bedId: 'B-04', name: 'Susan Wright', age: 72, sex: 'F',
-      diagnosis: 'AKI stage 3 · CRRT', allergies: 'Contrast dye', codeStatus: 'DNR',
-      flags: ['crrt'], isolation: false, severity: 'high',
-      vitals: { hr: 88, map: 77, spo2: 96, temp: 36.9, uo: 5 },
-    },
-  ],
+  patients: ASSIGNED_PATIENT_IDS.map(toAssignedPatient),
 }
 
 export const NURSING_TASKS: NursingTask[] = [

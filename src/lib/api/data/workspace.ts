@@ -1,17 +1,24 @@
-import type { ActionQueuesResponse, OrderSetsResponse, RoundingListResponse } from '../types'
+import type { ActionQueuesResponse, OrderSetsResponse, RoundingListResponse, RoundingPatient } from '../types'
+import { ROSTER } from './roster'
 
-/* Sample data from reference/icu-doctor-workspace.html — Dr. Rahman's panel. */
+/* Sample data from reference/icu-doctor-workspace.html — Dr. Rahman's panel.
+   The panel is an explicit ASSIGNMENT (a list of patient ids — it is not
+   attending-derived: it includes cross-cover patients); every display field
+   comes from the canonical roster. */
+
+const PANEL_PATIENT_IDS = ['P-1001', 'P-1004', 'P-1007', 'P-1008', 'P-1012', 'P-1013']
+
+const toRoundingPatient = (patientId: string): RoundingPatient => {
+  const r = ROSTER.find(x => x.patientId === patientId)!
+  return {
+    patientId: r.patientId, bedId: r.bedId, name: r.name, diagnosis: r.diagnosis,
+    flags: r.flags, sofa: r.sofa, severity: r.severity,
+  }
+}
 
 export const ROUNDING_LIST: RoundingListResponse = {
   physician: { name: 'Dr. Sara Rahman', initials: 'SR', role: 'Intensivist · Panel: Pod A/B' },
-  patients: [
-    { patientId: 'P-1001', bedId: 'B-01', name: 'Ahmed Al-Saadi', diagnosis: 'Septic shock · Pneumonia', flags: ['vent', 'pressor'], sofa: 11, severity: 'crit' },
-    { patientId: 'P-1004', bedId: 'B-04', name: 'Susan Wright', diagnosis: 'AKI stage 3 · CRRT', flags: ['crrt'], sofa: 8, severity: 'high' },
-    { patientId: 'P-1007', bedId: 'B-07', name: 'Robert Miller', diagnosis: 'Influenza A pneumonia', flags: ['vent'], sofa: 9, severity: 'crit' },
-    { patientId: 'P-1008', bedId: 'B-09', name: 'Nadia Karim', diagnosis: 'Upper GI bleed · post-EGD', flags: [], sofa: 4, severity: 'high' },
-    { patientId: 'P-1012', bedId: 'B-13', name: 'Aisha Mahmoud', diagnosis: 'Necrotizing pancreatitis', flags: ['vent', 'pressor'], sofa: 10, severity: 'crit' },
-    { patientId: 'P-1013', bedId: 'B-14', name: 'Peter Novak', diagnosis: 'Status epilepticus · resolved', flags: [], sofa: 3, severity: 'stable' },
-  ],
+  patients: PANEL_PATIENT_IDS.map(toRoundingPatient),
 }
 
 export const ACTION_QUEUES: ActionQueuesResponse = {

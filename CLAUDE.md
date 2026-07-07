@@ -37,6 +37,34 @@ routing/lookups (bed = location only), separated domain models, service-layer
 data access, independent reusable components, real-time-ready design, structured
 alert/device models. Apply incrementally; don't wholesale-refactor existing code.
 
+## Canonical Data Domains (mock stores in src/lib/api/data — each maps to a future ASP.NET Core service)
+- `roster.ts` — patient identity, location, and bedside state (ONE record per
+  patient). Bed board, MC roster/detail, DW rounding list, and NW assignment
+  are all derived views; assignments/panels store patient IDs only.
+  Orders/results/consults keep denormalized name/bed DISPLAY snapshots by
+  design (audit records) but never redefine identity.
+- `orders.ts` — orders & medications incl. full audit history + MAR (Screen 5)
+- `results.ts` — lab draws + imaging studies incl. acknowledgments (Screen 6)
+- `consults.ts` — consult requests, shared by DW and Timeline
+- `notes.ts` — ClinicalNote (progress/nursing/procedure/vent): freeform notes
+  tied to no structured store action (introduced with Screen 7; 'vent' notes
+  stand in until Stage 11 device events)
+- `nursing.ts` — nursing tasks + I&O entries (writes go through the service
+  layer, never page-local state)
+- Derived-only, never stored: Timeline feed (`timeline.ts`), MAR rows,
+  results inbox, MC lab-trend card, rounding/assignment patient views.
+
+## Known Deferred Debt (documented, intentionally not yet unified)
+- `panels.ts` attaches the same VENTILATOR/HEMODYNAMICS/INFUSIONS/
+  PATIENT_ALERTS/GOALS to every patient — awaits Stage 11 device models and
+  the structured alert model (architecture rule 5).
+- Infusion channels (`panels.ts` INFUSIONS) overlap active continuous
+  medication orders (Screen 5) — post-Stage-11, derive infusions from active
+  med orders + pump data.
+- DW "Notes Due" queue (`workspace.ts` ACTION_QUEUES.notes) is workspace-local —
+  should become a state of the ClinicalNote domain (a due note = one not yet
+  written) when note authoring gets built.
+
 ## Locked Decisions (do not re-litigate without asking)
 - RBAC: Doctor = full order/medication authority. Nurse = administer +
   document only, cannot originate orders.
