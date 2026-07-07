@@ -1,0 +1,9 @@
+.tag{font-size:9.5px;letter-spacing:.6px;padding:2.5px 7px;border-radius:6px;font-weight:700;text-transform:uppercase}
+.tag.vent{background:rgba(77,163,255,.16);color:var(--blue)}
+.tag.pressor{background:rgba(255,180,84,.16);color:var(--amber)}
+.tag.crrt{background:rgba(167,139,250,.16);color:var(--violet)}
+.tag.ecmo{background:rgba(255,93,108,.16);color:var(--red)}
+.tag.iso{background:rgba(61,232,160,.14);color:var(--green)}
+.tag.tag-sm{font-size:8.5px;letter-spacing:.5px;padding:2px 6px;border-radius:5px}
+
+.bedchip{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:7px;background:rgba(77,163,255,.14);color:var(--blue);font-weight:700}

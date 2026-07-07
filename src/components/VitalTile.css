@@ -1,0 +1,33 @@
+.vt{border:1px solid var(--stroke);background:rgba(255,255,255,.025)}
+.vt .k{letter-spacing:1px;text-transform:uppercase;color:var(--faint)}
+.vt .v{font-family:var(--mono);font-weight:700}
+.vt .v small{color:var(--dim);font-weight:500}
+
+/* right-panel tile (Bed Overview aside) */
+.vt-rt{border-radius:12px;padding:9px 11px;transition:.18s}
+.vt-rt:hover{border-color:var(--stroke2);transform:translateY(-1px)}
+.vt-rt .k{font-size:9px;letter-spacing:.9px}
+.vt-rt .v{font-size:17px;margin-top:2px}
+.vt-rt .v small{font-size:9.5px}
+
+/* monitor substrip tile (Mission Control) */
+.vt-mini{border-radius:13px;padding:9px 12px;transition:.18s}
+.vt-mini:hover{border-color:var(--stroke2);transform:translateY(-1px)}
+.vt-mini .k{font-size:9.5px;letter-spacing:1.2px}
+.vt-mini .v{font-size:19px;margin-top:2px}
+.vt-mini .v small{font-size:10px;margin-left:4px}
+
+/* vent / hemodynamics grid tile (Mission Control) */
+.vt-tile{border-radius:12px;padding:8px 11px;transition:.18s}
+.vt-tile:hover{border-color:var(--stroke2);transform:translateY(-1px)}
+.vt-tile .k{font-size:9px}
+.vt-tile .v{font-size:17px;margin-top:2px}
+.vt-tile .v small{font-size:9.5px;margin-left:3px}
+.vt-tile.warn .v{color:var(--amber)}
+
+/* bed-card vital cell (Bed Overview grid) */
+.vt-vg{text-align:center;border-radius:9px;padding:5px 2px;border-color:rgba(130,170,230,.08)}
+.vt-vg .k{font-size:8.5px;letter-spacing:.7px}
+.vt-vg .v{font-size:13px;margin-top:1px}
+.vt-vg .v.bad{color:var(--red)}
+.vt-vg .v.warn{color:var(--amber)}

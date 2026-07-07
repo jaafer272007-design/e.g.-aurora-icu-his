@@ -1,0 +1,4 @@
+.sevdot{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor;background:currentColor;flex:none}
+.sevdot.sd-crit{color:var(--red);animation:blink 1.15s infinite}
+.sevdot.sd-high{color:var(--amber)}
+.sevdot.sd-stable{color:var(--green)}
