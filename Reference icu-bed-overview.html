@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AURORA ICU · Bed Overview — Mission Control</title>
+<style>
+:root{
+  --bg:#060b13; --panel:linear-gradient(160deg,rgba(20,31,50,.82),rgba(11,17,29,.78));
+  --stroke:rgba(130,170,230,.13); --stroke2:rgba(130,170,230,.24);
+  --text:#e9f1fb; --dim:#8fa3bc; --faint:#5d7089;
+  --blue:#4da3ff; --cyan:#35e0d0; --green:#3de8a0; --amber:#ffb454; --red:#ff5d6c; --violet:#a78bfa;
+  --mono:"SF Mono","Cascadia Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  --r:18px; --shadow:0 12px 34px rgba(0,0,0,.38);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{font-family:var(--sans);color:var(--text);overflow:hidden;-webkit-font-smoothing:antialiased;background:
+ radial-gradient(1300px 750px at 78% -12%,rgba(38,88,160,.17),transparent 60%),
+ radial-gradient(900px 650px at -6% 112%,rgba(24,120,110,.11),transparent 60%),var(--bg)}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input,select{font:inherit;color:var(--text)}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:rgba(130,170,230,.18);border-radius:8px}
+::-webkit-scrollbar-track{background:transparent}
+
+#app{display:grid;grid-template-rows:auto 1fr;height:100vh}
+
+/* ===== header ===== */
+header{display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--stroke);
+ background:linear-gradient(180deg,rgba(14,22,37,.94),rgba(9,14,24,.86));backdrop-filter:blur(18px);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:11px;font-weight:700;letter-spacing:.4px;padding-right:16px;border-right:1px solid var(--stroke2)}
+.logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
+ background:linear-gradient(135deg,#1e5fb4,#35e0d0);box-shadow:0 0 20px rgba(53,224,208,.35)}
+.brand small{display:block;font-weight:500;color:var(--dim);letter-spacing:1.6px;font-size:10px;text-transform:uppercase}
+.datetime{padding-right:16px;border-right:1px solid var(--stroke2)}
+.datetime b{font-family:var(--mono);font-size:17px;letter-spacing:.5px}
+.datetime span{display:block;font-size:11px;color:var(--dim)}
+.kpis{display:flex;gap:10px;flex-wrap:wrap}
+.kpi{display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:12px;border:1px solid var(--stroke);
+ background:rgba(255,255,255,.03);transition:.18s}
+.kpi:hover{border-color:var(--stroke2);transform:translateY(-1px)}
+.kpi .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none}
+.kpi .kv{font-family:var(--mono);font-size:16px;font-weight:700;line-height:1}
+.kpi .kl{font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-top:2px}
+.hspace{flex:1}
+.bell{position:relative;width:38px;height:38px;border-radius:12px;border:1px solid var(--stroke);display:grid;place-items:center;transition:.18s;color:var(--dim)}
+.bell:hover{color:var(--text);border-color:var(--stroke2)}
+.bell .bdg{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;border-radius:9px;background:var(--red);
+ color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;font-family:var(--mono);box-shadow:0 0 10px rgba(255,93,108,.55)}
+.user{display:flex;align-items:center;gap:10px;padding:5px 12px 5px 6px;border-radius:13px;border:1px solid var(--stroke);transition:.18s;cursor:pointer}
+.user:hover{border-color:var(--stroke2)}
+.uav{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:12px;
+ background:linear-gradient(135deg,rgba(77,163,255,.3),rgba(53,224,208,.2));border:1px solid var(--stroke2)}
+.user .un{font-size:12.5px;font-weight:600;line-height:1.15}
+.user .ur{font-size:10px;color:var(--dim)}
+
+/* ===== shell ===== */
+.shell{display:grid;grid-template-columns:198px 1fr 278px;min-height:0}
+
+/* sidebar */
+nav{border-right:1px solid var(--stroke);padding:14px 10px;display:flex;flex-direction:column;gap:4px;
+ background:linear-gradient(180deg,rgba(11,17,29,.72),rgba(8,12,21,.72))}
+.nv{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:12px;color:var(--dim);font-size:13px;font-weight:500;transition:.16s;border:1px solid transparent;text-align:left;width:100%}
+.nv svg{flex:none}
+.nv:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.nv.on{color:var(--text);background:linear-gradient(135deg,rgba(77,163,255,.16),rgba(53,224,208,.08));
+ border-color:rgba(77,163,255,.4);box-shadow:0 4px 16px rgba(20,80,160,.25)}
+.nv .nbdg{margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;
+ font-size:10px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
+.navfoot{margin-top:auto;font-size:10px;color:var(--faint);padding:0 13px;line-height:1.6}
+
+/* ===== main ===== */
+main{min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.fbar{display:flex;gap:9px;align-items:center;padding:13px 16px 11px;flex-wrap:wrap;border-bottom:1px solid rgba(130,170,230,.08)}
+.searchbox{display:flex;align-items:center;gap:8px;padding:8px 13px;border-radius:12px;min-width:230px;
+ background:rgba(255,255,255,.04);border:1px solid var(--stroke);transition:.18s}
+.searchbox:focus-within{border-color:rgba(77,163,255,.5)}
+.searchbox input{background:none;border:none;outline:none;flex:1;font-size:13px}
+.searchbox input::placeholder{color:var(--faint)}
+.sel{padding:8px 11px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--stroke);font-size:12px;outline:none;transition:.18s}
+.sel:hover,.sel:focus{border-color:var(--stroke2)}
+.sel option{background:#0d1524;color:var(--text)}
+.fchip{padding:8px 13px;border-radius:12px;font-size:12px;color:var(--dim);border:1px solid var(--stroke);transition:.18s;display:flex;gap:7px;align-items:center}
+.fchip:hover{color:var(--text);border-color:var(--stroke2)}
+.fchip.on{color:#06121f;background:var(--blue);border-color:var(--blue);font-weight:600}
+.fchip.on.red{background:var(--red);border-color:var(--red);color:#fff}
+.showing{margin-left:auto;font-size:11.5px;color:var(--faint)}
+.showing b{color:var(--cyan);font-family:var(--mono)}
+
+/* bed grid */
+.gridwrap{flex:1;overflow-y:auto;padding:14px 16px}
+.bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(295px,1fr));gap:13px}
+.bcard{position:relative;border-radius:var(--r);border:1px solid var(--stroke);background:var(--panel);
+ box-shadow:var(--shadow);backdrop-filter:blur(14px);padding:13px 14px 11px;cursor:pointer;
+ transition:transform .22s cubic-bezier(.2,.7,.2,1),box-shadow .22s,border-color .22s;overflow:hidden;
+ animation:pop .5s cubic-bezier(.2,.7,.2,1) both}
+@keyframes pop{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+.bcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3.5px;border-radius:4px}
+.bcard:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(0,0,0,.5);border-color:var(--stroke2)}
+.bcard:active{transform:translateY(-1px) scale(.99)}
+.sev-crit::before{background:var(--red);box-shadow:0 0 14px var(--red)}
+.sev-high::before{background:var(--amber);box-shadow:0 0 12px var(--amber)}
+.sev-stable::before{background:var(--green);box-shadow:0 0 10px rgba(61,232,160,.7)}
+.sev-crit{border-color:rgba(255,93,108,.3)}
+.sev-crit:hover{border-color:rgba(255,93,108,.55)}
+.brow1{display:flex;align-items:center;gap:8px}
+.bed{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:7px;background:rgba(77,163,255,.14);color:var(--blue);font-weight:700}
+.sevdot{width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor}
+.sev-crit .sevdot{color:var(--red);background:var(--red);animation:blink 1.15s infinite}
+.sev-high .sevdot{color:var(--amber);background:var(--amber)}
+.sev-stable .sevdot{color:var(--green);background:var(--green)}
+@keyframes blink{50%{opacity:.4}}
+.los{font-size:10px;color:var(--faint);font-family:var(--mono)}
+.codechip{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.7px;padding:2.5px 8px;border-radius:7px;text-transform:uppercase}
+.codechip.full{background:rgba(61,232,160,.13);color:var(--green)}
+.codechip.dnr{background:rgba(255,180,84,.15);color:var(--amber)}
+.bname{font-size:15px;font-weight:700;margin-top:8px;letter-spacing:.2px}
+.bname small{font-weight:500;color:var(--dim);font-size:11.5px;margin-left:6px}
+.bdx{font-size:11.5px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btags{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;min-height:18px}
+.tag{font-size:9px;letter-spacing:.6px;padding:2.5px 7px;border-radius:6px;font-weight:700;text-transform:uppercase}
+.tag.vent{background:rgba(77,163,255,.16);color:var(--blue)}
+.tag.pressor{background:rgba(255,180,84,.16);color:var(--amber)}
+.tag.crrt{background:rgba(167,139,250,.16);color:var(--violet)}
+.tag.ecmo{background:rgba(255,93,108,.16);color:var(--red)}
+.tag.iso{background:rgba(61,232,160,.14);color:var(--green)}
+.scores{display:flex;gap:7px;margin-top:9px}
+.score{flex:1;border:1px solid var(--stroke);border-radius:10px;padding:5px 9px;background:rgba(255,255,255,.02);display:flex;align-items:baseline;gap:7px}
+.score .sk{font-size:9px;letter-spacing:.9px;color:var(--faint);text-transform:uppercase}
+.score .sv{font-family:var(--mono);font-size:15px;font-weight:700;margin-left:auto}
+.vgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:9px}
+.vg{text-align:center;border-radius:9px;padding:5px 2px;background:rgba(255,255,255,.025);border:1px solid rgba(130,170,230,.08)}
+.vg .k{font-size:8.5px;letter-spacing:.7px;color:var(--faint);text-transform:uppercase}
+.vg .v{font-family:var(--mono);font-size:13px;font-weight:700;margin-top:1px}
+.vg .v.bad{color:var(--red)}.vg .v.warn{color:var(--amber)}
+.balert{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:11px;line-height:1.35;color:var(--dim);min-height:16px}
+.balert svg{flex:none}
+.balert.crit{color:var(--red)}.balert.high{color:var(--amber)}
+.bfoot{display:flex;align-items:center;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(130,170,230,.1);font-size:10.5px;color:var(--faint)}
+.bfoot .spark{margin-left:auto}
+.spark{width:64px;height:20px}
+/* empty bed */
+.bcard.empty{border-style:dashed;background:rgba(255,255,255,.015);cursor:default;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:240px}
+.bcard.empty::before{background:rgba(130,170,230,.25);box-shadow:none}
+.bcard.empty:hover{transform:none;box-shadow:var(--shadow)}
+.bcard.empty .eb{font-size:12px;color:var(--faint);letter-spacing:1.2px;text-transform:uppercase}
+.bcard.empty .ready{font-size:10px;color:var(--green);border:1px solid rgba(61,232,160,.35);padding:3px 10px;border-radius:8px}
+
+/* skeleton loading */
+.skel{border-radius:var(--r);border:1px solid var(--stroke);min-height:266px;position:relative;overflow:hidden;background:rgba(255,255,255,.03)}
+.skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+ background:linear-gradient(90deg,transparent,rgba(140,180,240,.09),transparent);animation:shim 1.2s infinite}
+@keyframes shim{to{transform:translateX(100%)}}
+
+/* ===== right panel ===== */
+.rp{border-left:1px solid var(--stroke);padding:14px;overflow-y:auto;
+ background:linear-gradient(180deg,rgba(11,17,29,.72),rgba(8,12,21,.72))}
+.rp h3{font-size:10.5px;letter-spacing:1.7px;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.rp h3 .live{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 1.6s infinite}
+.ring{display:flex;align-items:center;gap:14px;border:1px solid var(--stroke);border-radius:15px;padding:12px;background:rgba(255,255,255,.025);margin-bottom:11px}
+.ring svg{flex:none}
+.ring .rv{font-family:var(--mono);font-size:21px;font-weight:700}
+.ring .rl{font-size:10.5px;color:var(--dim);margin-top:2px;line-height:1.4}
+.rtiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.rt{border:1px solid var(--stroke);border-radius:12px;padding:9px 11px;background:rgba(255,255,255,.025);transition:.18s}
+.rt:hover{border-color:var(--stroke2);transform:translateY(-1px)}
+.rt .k{font-size:9px;letter-spacing:.9px;text-transform:uppercase;color:var(--faint)}
+.rt .v{font-family:var(--mono);font-size:17px;font-weight:700;margin-top:2px}
+.rt .v small{font-size:9.5px;color:var(--dim);font-weight:500}
+.rphead{margin-top:15px}
+.hal{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--stroke);border-radius:11px;padding:8px 10px;background:rgba(255,255,255,.02);margin-bottom:7px;font-size:11px;line-height:1.4}
+.hal .dot{width:8px;height:8px;border-radius:50%;margin-top:3px;flex:none;box-shadow:0 0 8px currentColor;background:currentColor}
+.hal small{display:block;color:var(--faint);font-family:var(--mono);font-size:9.5px;margin-top:2px}
+.hal.crit{color:var(--red);border-color:rgba(255,93,108,.3)}
+.hal.high{color:var(--amber)}
+.hal .ht{color:var(--text)}
+
+/* ===== bottom stats ===== */
+.bottom{border-top:1px solid var(--stroke);padding:11px 16px;display:grid;gap:10px;
+ grid-template-columns:repeat(6,1fr);background:linear-gradient(180deg,rgba(9,14,24,.6),rgba(9,14,24,.9))}
+.bs{border:1px solid var(--stroke);border-radius:13px;padding:9px 13px;background:rgba(255,255,255,.025);display:flex;align-items:center;gap:11px;transition:.18s}
+.bs:hover{border-color:var(--stroke2);transform:translateY(-2px)}
+.bs .v{font-family:var(--mono);font-size:18px;font-weight:700}
+.bs .k{font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--faint);margin-top:1px}
+.bs .delta{margin-left:auto;font-size:10px;font-family:var(--mono);font-weight:700}
+.up{color:var(--green)}.dn{color:var(--red)}.fl{color:var(--dim)}
+
+/* toast */
+#toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,80px);padding:11px 18px;border-radius:13px;
+ background:rgba(13,21,36,.95);border:1px solid rgba(77,163,255,.45);font-size:13px;box-shadow:0 14px 40px rgba(0,0,0,.5);
+ transition:transform .3s cubic-bezier(.2,.7,.2,1);z-index:50;backdrop-filter:blur(10px)}
+#toast.show{transform:translate(-50%,0)}
+#toast b{color:var(--blue)}
+
+@media(max-width:1500px){.shell{grid-template-columns:64px 1fr 260px}.nv span,.navfoot{display:none}.nv{justify-content:center;padding:11px}.nv .nbdg{position:absolute;transform:translate(12px,-10px)}.nv{position:relative}}
+@media(max-width:1180px){.shell{grid-template-columns:64px 1fr}.rp{display:none}.bottom{grid-template-columns:repeat(3,1fr)}body{overflow:auto}#app{height:auto}main{overflow:visible}.gridwrap{overflow:visible}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body>
+<div id="app">
+<header>
+  <div class="brand">
+    <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#06121f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h8"/></svg></div>
+    <div>AURORA ICU<small>Mission Control · Bed Overview</small></div>
+  </div>
+  <div class="datetime"><b id="clk">--:--:--</b><span id="dte">—</span></div>
+  <div class="kpis">
+    <div class="kpi"><span class="ic" style="background:rgba(77,163,255,.15)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round"><path d="M3 18v-6a2 2 0 012-2h14a2 2 0 012 2v6M3 18h18M6 10V7a2 2 0 012-2h3v5"/></svg></span><div><div class="kv" id="kOcc">—</div><div class="kl">Occupied</div></div></div>
+    <div class="kpi"><span class="ic" style="background:rgba(61,232,160,.13)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span><div><div class="kv" id="kAvail">—</div><div class="kl">Available</div></div></div>
+    <div class="kpi"><span class="ic" style="background:rgba(255,93,108,.14)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4m0 3v.01"/></svg></span><div><div class="kv" id="kCrit" style="color:var(--red)">—</div><div class="kl">Critical</div></div></div>
+    <div class="kpi"><span class="ic" style="background:rgba(77,163,255,.15)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round"><path d="M12 3v8m0 0c-3 0-5 2-5 5s2 5 5 5 5-2 5-5-2-5-5-5z"/></svg></span><div><div class="kv" id="kVent">—</div><div class="kl">Ventilated</div></div></div>
+    <div class="kpi"><span class="ic" style="background:rgba(255,180,84,.14)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round"><path d="M4 20V10m6 10V4m6 16v-7"/></svg></span><div><div class="kv" id="kSofa">—</div><div class="kl">Avg SOFA</div></div></div>
+  </div>
+  <div class="hspace"></div>
+  <button class="bell" id="bell" title="Notifications">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>
+    <span class="bdg" id="bellN">5</span>
+  </button>
+  <div class="user">
+    <div class="uav">SR</div>
+    <div><div class="un">Dr. Sara Rahman</div><div class="ur">Intensivist · On call</div></div>
+  </div>
+</header>
+
+<div class="shell">
+<nav>
+  <button class="nv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="5" rx="2"/><rect x="13" y="10" width="8" height="11" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/></svg><span>Dashboard</span></button>
+  <button class="nv on"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 18v-6a2 2 0 012-2h14a2 2 0 012 2v6M3 18h18M6 10V7a2 2 0 012-2h3v5"/></svg><span>ICU Beds</span></button>
+  <button class="nv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h3a2 2 0 012 2v14a2 2 0 01-2 2h-3M10 17l5-5-5-5M15 12H3"/></svg><span>Admissions</span></button>
+  <button class="nv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 00-2 2v14a2 2 0 002 2h3M14 17l5-5-5-5M19 12H7"/></svg><span>Discharges</span></button>
+  <button class="nv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4m0 3v.01"/></svg><span>Alerts</span><span class="nbdg">5</span></button>
+  <button class="nv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10m6 10V4m6 16v-7"/></svg><span>Statistics</span></button>
+  <button class="nv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.9 2.9l-.1-.1a1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.2a1.7 1.7 0 00-1-1.5 1.7 1.7 0 00-1.9.3l-.1.1a2 2 0 11-2.9-2.9l.1-.1a1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.2a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9l-.1-.1a2 2 0 112.9-2.9l.1.1a1.7 1.7 0 001.9.3h.1a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.2a1.7 1.7 0 001 1.5h.1a1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.9 2.9l-.1.1a1.7 1.7 0 00-.3 1.9v.1a1.7 1.7 0 001.5 1h.2a2 2 0 110 4h-.2a1.7 1.7 0 00-1.5 1z"/></svg><span>Settings</span></button>
+  <div class="navfoot">AURORA HIS v4.2<br>Unit 4B · 16 beds<br>Sync: live</div>
+</nav>
+
+<main>
+  <div class="fbar">
+    <div class="searchbox">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="q" placeholder="Search patient, bed, diagnosis…">
+    </div>
+    <select class="sel" id="fDoc"><option value="">All physicians</option></select>
+    <select class="sel" id="fArea"><option value="">All areas</option><option>Pod A</option><option>Pod B</option></select>
+    <button class="fchip" id="fVent"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v8m0 0c-3 0-5 2-5 5s2 5 5 5 5-2 5-5-2-5-5-5z"/></svg>Ventilated</button>
+    <button class="fchip" id="fIso"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>Isolation</button>
+    <button class="fchip" id="fCrit"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/></svg>Critical</button>
+    <span class="showing">Showing <b id="shown">—</b> of <b id="total">—</b> occupied beds</span>
+  </div>
+  <div class="gridwrap"><div class="bgrid" id="grid"></div></div>
+  <div class="bottom" id="bstats"></div>
+</main>
+
+<aside class="rp">
+  <h3><span class="live"></span>Real-Time ICU Summary</h3>
+  <div class="ring">
+    <svg width="66" height="66" viewBox="0 0 66 66">
+      <circle cx="33" cy="33" r="27" fill="none" stroke="rgba(130,170,230,.14)" stroke-width="7"/>
+      <circle id="occRing" cx="33" cy="33" r="27" fill="none" stroke="url(#rg)" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="169.6" stroke-dashoffset="169.6" transform="rotate(-90 33 33)" style="transition:stroke-dashoffset 1s cubic-bezier(.2,.7,.2,1)"/>
+      <defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4da3ff"/><stop offset="1" stop-color="#35e0d0"/></linearGradient></defs>
+      <text id="occPct" x="33" y="38" text-anchor="middle" fill="#e9f1fb" font-size="14" font-weight="700" font-family="SF Mono,ui-monospace,monospace">—</text>
+    </svg>
+    <div><div class="rv"><span id="rOcc">—</span><small style="font-size:11px;color:var(--dim)"> / 16 beds</small></div>
+      <div class="rl">Unit occupancy<br><span id="rAvail" style="color:var(--green)">— available</span></div></div>
+  </div>
+  <div class="rtiles">
+    <div class="rt"><div class="k">Avg MAP</div><div class="v" id="rMap">—<small> mmHg</small></div></div>
+    <div class="rt"><div class="k">Avg ICU Stay</div><div class="v" id="rLos">—<small> days</small></div></div>
+    <div class="rt"><div class="k">Admissions</div><div class="v" id="rAdm">—<small> in progress</small></div></div>
+    <div class="rt"><div class="k">Discharges</div><div class="v" id="rDis">—<small> planned</small></div></div>
+    <div class="rt"><div class="k">Pending Consults</div><div class="v" id="rCon">—</div></div>
+    <div class="rt"><div class="k">High Priority</div><div class="v" id="rHp" style="color:var(--red)">—</div></div>
+  </div>
+  <h3 class="rphead">High Priority Alerts</h3>
+  <div id="halList"></div>
+</aside>
+</div>
+</div>
+<div id="toast"><b>Opening chart</b> <span id="toastTxt"></span></div>
+<script>
+const $=id=>document.getElementById(id);
+const REDUCED=matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ============ SAMPLE DATA — 16 BEDS ============ */
+const DOCS=["Dr. S. Rahman","Dr. L. Osei","Dr. E. Marchetti","Dr. H. Nakamura"];
+/* sev: crit | high | stable ; empty beds have p:null */
+const BEDS=[
+ {bed:"B-01",area:"Pod A",p:{name:"Ahmed Al-Saadi",age:58,sex:"M",dx:"Septic shock · Pneumonia",los:4,flags:["vent","pressor"],iso:false,code:"Full Code",sofa:11,ews:9,hr:118,map:64,spo2:93,temp:38.4,uo:28,alert:["crit","MAP <65 ×12 min — norad 0.32 µg/kg/min"],doc:DOCS[0],sev:"crit",trend:[72,70,68,66,65,64,64]}},
+ {bed:"B-02",area:"Pod A",p:{name:"Maria Hansen",age:67,sex:"F",dx:"Severe ARDS · VV-ECMO day 5",los:9,flags:["vent","ecmo"],iso:false,code:"Full Code",sofa:12,ews:8,hr:96,map:76,spo2:91,temp:37.2,uo:55,alert:["high","ECMO flow variability — circuit check 10:00"],doc:DOCS[1],sev:"crit",trend:[74,75,73,76,77,76,76]}},
+ {bed:"B-03",area:"Pod A",p:{name:"Omar Khalil",age:45,sex:"M",dx:"Severe TBI · ICP monitor",los:2,flags:["vent"],iso:true,code:"Full Code",sofa:7,ews:5,hr:64,map:96,spo2:99,temp:36.8,uo:110,alert:["high","ICP 18–22 mmHg — hypertonic saline q6h"],doc:DOCS[2],sev:"high",trend:[92,94,95,97,96,95,96]}},
+ {bed:"B-04",area:"Pod A",p:{name:"Susan Wright",age:72,sex:"F",dx:"AKI stage 3 · CRRT",los:6,flags:["crrt"],iso:false,code:"DNR",sofa:8,ews:4,hr:88,map:77,spo2:96,temp:36.9,uo:5,alert:["med","CRRT filter life 68% — change anticipated 22:00"],doc:DOCS[0],sev:"high",trend:[75,76,78,77,76,77,77]}},
+ {bed:"B-05",area:"Pod A",p:{name:"David Chen",age:61,sex:"M",dx:"Post-CABG day 1 · Low CO",los:1,flags:["pressor"],iso:false,code:"Full Code",sofa:6,ews:4,hr:90,map:71,spo2:97,temp:36.2,uo:60,alert:["med","Chest drain 40 mL/h — trending down"],doc:DOCS[1],sev:"high",trend:[66,68,70,69,71,72,71]}},
+ {bed:"B-06",area:"Pod A",p:{name:"Layla Hassan",age:34,sex:"F",dx:"DKA · resolving",los:2,flags:[],iso:false,code:"Full Code",sofa:2,ews:2,hr:98,map:86,spo2:99,temp:37.0,uo:120,alert:["info","Anion gap closed — transition to SC insulin"],doc:DOCS[2],sev:"stable",trend:[80,82,84,85,86,86,86]}},
+ {bed:"B-07",area:"Pod A",p:{name:"Robert Miller",age:79,sex:"M",dx:"Influenza A pneumonia",los:5,flags:["vent"],iso:true,code:"DNR / DNI",sofa:9,ews:7,hr:112,map:69,spo2:92,temp:38.1,uo:40,alert:["crit","SpO₂ 92% on FiO₂ 60% — proning considered"],doc:DOCS[0],sev:"crit",trend:[74,73,72,70,70,69,69]}},
+ {bed:"B-08",area:"Pod A",p:null},
+ {bed:"B-09",area:"Pod B",p:{name:"Nadia Karim",age:52,sex:"F",dx:"Upper GI bleed · post-EGD",los:1,flags:[],iso:false,code:"Full Code",sofa:4,ews:3,hr:104,map:77,spo2:98,temp:36.6,uo:70,alert:["med","Hgb recheck 14:00 — rebleed surveillance"],doc:DOCS[1],sev:"high",trend:[70,72,74,75,76,77,77]}},
+ {bed:"B-10",area:"Pod B",p:{name:"George Antoun",age:66,sex:"M",dx:"Cardiogenic shock · IABP",los:3,flags:["pressor"],iso:false,code:"Full Code",sofa:10,ews:8,hr:108,map:66,spo2:95,temp:36.4,uo:25,alert:["crit","CI 1.9 L/min/m² — milrinone uptitrated"],doc:DOCS[3],sev:"crit",trend:[70,69,68,67,66,66,66]}},
+ {bed:"B-11",area:"Pod B",p:{name:"Fatima Zahra",age:29,sex:"F",dx:"Postpartum hemorrhage · POD 1",los:1,flags:[],iso:false,code:"Full Code",sofa:3,ews:2,hr:92,map:80,spo2:99,temp:37.1,uo:95,alert:["info","Coags normalized — step-down review AM"],doc:DOCS[2],sev:"stable",trend:[72,75,77,78,79,80,80]}},
+ {bed:"B-12",area:"Pod B",p:{name:"Hans Becker",age:71,sex:"M",dx:"COPD exacerbation · NIV",los:3,flags:[],iso:false,code:"DNR",sofa:5,ews:5,hr:96,map:82,spo2:90,temp:36.7,uo:75,alert:["high","pCO₂ 61 mmHg on NIV — ABG q4h"],doc:DOCS[3],sev:"high",trend:[80,81,82,81,82,82,82]}},
+ {bed:"B-13",area:"Pod B",p:{name:"Aisha Mahmoud",age:48,sex:"F",dx:"Necrotizing pancreatitis",los:7,flags:["vent","pressor"],iso:false,code:"Full Code",sofa:10,ews:7,hr:114,map:68,spo2:94,temp:38.6,uo:30,alert:["crit","Intra-abdominal pressure 19 mmHg — trending up"],doc:DOCS[0],sev:"crit",trend:[72,71,70,69,69,68,68]}},
+ {bed:"B-14",area:"Pod B",p:{name:"Peter Novak",age:55,sex:"M",dx:"Status epilepticus · resolved",los:2,flags:[],iso:false,code:"Full Code",sofa:3,ews:2,hr:78,map:88,spo2:98,temp:36.9,uo:100,alert:["info","EEG: no epileptiform activity ×24 h"],doc:DOCS[3],sev:"stable",trend:[84,85,86,87,88,88,88]}},
+ {bed:"B-15",area:"Pod B",p:{name:"Miriam Cohen",age:63,sex:"F",dx:"Pulmonary embolism · massive",los:2,flags:[],iso:false,code:"Full Code",sofa:6,ews:5,hr:102,map:74,spo2:94,temp:37.0,uo:65,alert:["high","RV strain on echo — heparin therapeutic"],doc:DOCS[1],sev:"high",trend:[68,70,71,72,73,74,74]}},
+ {bed:"B-16",area:"Pod B",p:null}
+];
+
+const HAL=[
+ ["crit","B-01 · MAP <65 mmHg ×12 min despite norad 0.32","09:31"],
+ ["crit","B-10 · Cardiac index 1.9 — escalation in progress","09:18"],
+ ["crit","B-13 · IAP 19 mmHg — surgical review requested","08:47"],
+ ["high","B-07 · SpO₂ 92% on FiO₂ 60% — proning considered","08:22"],
+ ["high","B-12 · pCO₂ 61 on NIV — reassess in 2 h","07:55"]];
+
+const BOTTOM=[
+ ["Admissions Today","3","+1 vs avg","up"],
+ ["Discharges Today","2","on plan","fl"],
+ ["Mortality (30 d)","6.8%","−1.2%","up"],
+ ["Readmissions (48 h)","1","−","fl"],
+ ["Vent Utilization","5 / 16","31%","fl"],
+ ["Avg ICU Stay","3.6 d","−0.4 d","up"]];
+
+/* ============ CLOCK ============ */
+function tick(){const d=new Date();
+ $("clk").textContent=d.toLocaleTimeString("en-GB");
+ $("dte").textContent=d.toLocaleDateString("en-GB",{weekday:"short",day:"2-digit",month:"short",year:"numeric"});}
+setInterval(tick,1000);tick();
+
+/* ============ FILTER STATE ============ */
+const F={q:"",doc:"",area:"",vent:false,iso:false,crit:false};
+DOCS.forEach(d=>{const o=document.createElement("option");o.textContent=d;$("fDoc").appendChild(o);});
+$("q").addEventListener("input",e=>{F.q=e.target.value.trim().toLowerCase();renderGrid();});
+$("fDoc").addEventListener("change",e=>{F.doc=e.target.value;renderGrid();});
+$("fArea").addEventListener("change",e=>{F.area=e.target.value;renderGrid();});
+[["fVent","vent"],["fIso","iso"],["fCrit","crit"]].forEach(([id,k])=>{
+ $(id).addEventListener("click",()=>{F[k]=!F[k];$(id).classList.toggle("on",F[k]);
+  if(id==="fCrit")$(id).classList.toggle("red",F[k]);renderGrid();});});
+
+function visible(b){const p=b.p;if(!p)return !F.q&&!F.doc&&!F.vent&&!F.iso&&!F.crit&&(!F.area||b.area===F.area);
+ if(F.q&&!((p.name+b.bed+p.dx).toLowerCase().includes(F.q)))return false;
+ if(F.doc&&p.doc!==F.doc)return false;
+ if(F.area&&b.area!==F.area)return false;
+ if(F.vent&&!p.flags.includes("vent"))return false;
+ if(F.iso&&!p.iso)return false;
+ if(F.crit&&p.sev!=="crit")return false;
+ return true;}
+
+/* ============ CARD RENDER ============ */
+const vClass=(v,lo,hi,rev)=>{const bad=rev?v>hi:v<lo;const warn=rev?v>lo:v<hi;return bad?"bad":warn?"warn":"";};
+function spark(data,color){const w=64,h=20,mn=Math.min(...data),mx=Math.max(...data),sp=(mx-mn)||1;
+ const pts=data.map((d,i)=>`${(i/(data.length-1))*w},${h-2-((d-mn)/sp)*(h-5)}`).join(" ");
+ return `<svg class="spark" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;}
+const AICON=`<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4m0 3v.01"/></svg>`;
+
+function cardHTML(b,i){
+ if(!b.p)return `<div class="bcard empty" style="animation-delay:${i*40}ms">
+   <span class="bed">${b.bed}</span><span class="eb">Bed Available</span><span class="ready">✓ Cleaned · Ready</span></div>`;
+ const p=b.p,tc=p.sev==="crit"?"var(--red)":p.sev==="high"?"var(--amber)":"var(--green)";
+ return `<div class="bcard sev-${p.sev}" style="animation-delay:${i*40}ms" data-bed="${b.bed}" data-name="${p.name}" tabindex="0" role="button" aria-label="Open chart ${p.name}">
+  <div class="brow1"><span class="bed">${b.bed}</span><span class="sevdot"></span>
+   <span class="los">ICU D${p.los} · ${b.area}</span>
+   <span class="codechip ${p.code.startsWith("Full")?"full":"dnr"}">${p.code}</span></div>
+  <div class="bname">${p.name}<small>${p.age} · ${p.sex}</small></div>
+  <div class="bdx">${p.dx}</div>
+  <div class="btags">${p.flags.map(f=>`<span class="tag ${f}">${f==="vent"?"Vent":f==="pressor"?"Pressor":f.toUpperCase()}</span>`).join("")}${p.iso?'<span class="tag iso">Isolation</span>':""}</div>
+  <div class="scores">
+   <div class="score"><span class="sk">SOFA</span><span class="sv" style="color:${p.sofa>=10?"var(--red)":p.sofa>=6?"var(--amber)":"var(--green)"}">${p.sofa}</span></div>
+   <div class="score"><span class="sk">EWS</span><span class="sv" style="color:${p.ews>=7?"var(--red)":p.ews>=4?"var(--amber)":"var(--green)"}">${p.ews}</span></div>
+  </div>
+  <div class="vgrid">
+   <div class="vg"><div class="k">HR</div><div class="v ${vClass(p.hr,50,111,true)}" data-v="hr">${p.hr}</div></div>
+   <div class="vg"><div class="k">MAP</div><div class="v ${p.map<65?"bad":p.map<70?"warn":""}" data-v="map">${p.map}</div></div>
+   <div class="vg"><div class="k">SpO₂</div><div class="v ${p.spo2<92?"bad":p.spo2<95?"warn":""}" data-v="spo2">${p.spo2}</div></div>
+   <div class="vg"><div class="k">Temp</div><div class="v ${p.temp>=38.3?"warn":""}">${p.temp.toFixed(1)}</div></div>
+   <div class="vg"><div class="k">UO</div><div class="v ${p.uo<30?"bad":p.uo<50?"warn":""}">${p.uo}<span style="font-size:8px;color:var(--faint)">mL/h</span></div></div>
+  </div>
+  <div class="balert ${p.alert[0]==="crit"?"crit":p.alert[0]==="high"?"high":""}">${AICON}<span>${p.alert[1]}</span></div>
+  <div class="bfoot"><span>${p.doc}</span>${spark(p.trend,tc)}</div>
+ </div>`;}
+
+function renderGrid(){
+ const vis=BEDS.filter(visible);
+ $("grid").innerHTML=vis.map((b,i)=>cardHTML(b,i)).join("")||
+  `<div style="grid-column:1/-1;text-align:center;color:var(--faint);padding:60px 0;font-size:13px">No beds match the current filters.</div>`;
+ $("shown").textContent=vis.filter(b=>b.p).length;
+ $("total").textContent=BEDS.filter(b=>b.p).length;
+ [...$("grid").querySelectorAll(".bcard:not(.empty)")].forEach(el=>{
+  const open=()=>showToast(el.dataset.bed,el.dataset.name);
+  el.addEventListener("click",open);
+  el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});});}
+
+/* ============ TOAST ============ */
+let toastT;
+function showToast(bed,name){$("toastTxt").textContent=`${name} · ${bed} → Patient Mission Control`;
+ $("toast").classList.add("show");clearTimeout(toastT);
+ toastT=setTimeout(()=>$("toast").classList.remove("show"),2400);}
+
+/* ============ HEADER + RIGHT PANEL ============ */
+function renderStats(){
+ const occ=BEDS.filter(b=>b.p),n=occ.length;
+ const crit=occ.filter(b=>b.p.sev==="crit").length;
+ const vent=occ.filter(b=>b.p.flags.includes("vent")).length;
+ const sofa=(occ.reduce((s,b)=>s+b.p.sofa,0)/n).toFixed(1);
+ const map=Math.round(occ.reduce((s,b)=>s+b.p.map,0)/n);
+ const los=(occ.reduce((s,b)=>s+b.p.los,0)/n).toFixed(1);
+ $("kOcc").textContent=n+" / 16";$("kAvail").textContent=16-n;
+ $("kCrit").textContent=crit;$("kVent").textContent=vent;$("kSofa").textContent=sofa;
+ $("rOcc").textContent=n;$("rAvail").textContent=(16-n)+" available";
+ $("rMap").innerHTML=map+"<small> mmHg</small>";$("rLos").innerHTML=los+"<small> days</small>";
+ $("rAdm").innerHTML='3<small> in progress</small>';$("rDis").innerHTML='2<small> planned</small>';
+ $("rCon").textContent=4;$("rHp").textContent=HAL.filter(h=>h[0]==="crit").length;
+ const pct=n/16;$("occPct").textContent=Math.round(pct*100)+"%";
+ requestAnimationFrame(()=>requestAnimationFrame(()=>$("occRing").style.strokeDashoffset=169.6*(1-pct)));
+ $("halList").innerHTML=HAL.map(([s,t,tm])=>`<div class="hal ${s}"><span class="dot"></span><div class="ht">${t}<small>${tm} · ${s==="crit"?"Critical":"High"}</small></div></div>`).join("");
+ $("bellN").textContent=HAL.length;
+ $("bstats").innerHTML=BOTTOM.map(([k,v,d,c])=>`<div class="bs"><div><div class="v">${v}</div><div class="k">${k}</div></div><span class="delta ${c}">${d}</span></div>`).join("");}
+
+/* ============ LIVE JITTER ============ */
+setInterval(()=>{if(REDUCED)return;
+ document.querySelectorAll('[data-v]').forEach(el=>{
+  const base=parseFloat(el.textContent);if(isNaN(base))return;
+  el.textContent=Math.round(base+(Math.random()-.5)*1.6);});},3000);
+
+/* ============ LOADING → INIT ============ */
+$("grid").innerHTML=Array.from({length:8},()=>'<div class="skel"></div>').join("");
+renderStats();
+setTimeout(()=>{renderGrid();},REDUCED?0:850);
+$("bell").addEventListener("click",()=>showToast("Alerts","5 active notifications"));
+</script></body></html>

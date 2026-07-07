@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AURORA ICU · Mission Control</title>
+<style>
+:root{
+  --bg:#060b13; --bg2:#0a1220;
+  --panel:linear-gradient(160deg,rgba(20,31,50,.82),rgba(11,17,29,.78));
+  --stroke:rgba(130,170,230,.13); --stroke2:rgba(130,170,230,.22);
+  --text:#e9f1fb; --dim:#8fa3bc; --faint:#5d7089;
+  --blue:#4da3ff; --cyan:#35e0d0; --green:#3de8a0; --amber:#ffb454; --red:#ff5d6c; --violet:#a78bfa;
+  --mono:"SF Mono","Cascadia Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  --r:18px; --shadow:0 12px 34px rgba(0,0,0,.38);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--sans); color:var(--text); background:
+   radial-gradient(1200px 700px at 75% -10%,rgba(38,88,160,.16),transparent 60%),
+   radial-gradient(900px 600px at -5% 110%,rgba(24,120,110,.10),transparent 60%),
+   var(--bg);
+  overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input{font:inherit;color:inherit}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(130,170,230,.18);border-radius:8px}
+::-webkit-scrollbar-track{background:transparent}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ===== app frame ===== */
+#app{display:grid;grid-template-rows:auto 1fr;height:100vh}
+.shell{display:grid;grid-template-columns:296px 1fr;min-height:0}
+
+/* ===== header ===== */
+header.top{
+  border-bottom:1px solid var(--stroke);
+  background:linear-gradient(180deg,rgba(14,22,37,.92),rgba(9,14,24,.85));
+  backdrop-filter:blur(18px);
+}
+.brandrow{display:flex;align-items:center;gap:18px;padding:10px 20px;border-bottom:1px solid rgba(130,170,230,.08)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.4px}
+.brand .logo{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(135deg,#1e5fb4,#35e0d0);box-shadow:0 0 18px rgba(53,224,208,.35)}
+.brand small{display:block;font-weight:500;color:var(--dim);letter-spacing:1.6px;font-size:10px;text-transform:uppercase}
+.unitstats{display:flex;gap:22px;margin-left:8px}
+.unitstats .us{font-size:11px;color:var(--dim)}
+.unitstats .us b{display:block;font-size:15px;color:var(--text);font-family:var(--mono)}
+.spacer{flex:1}
+.clock{text-align:right}
+.clock b{font-family:var(--mono);font-size:17px;letter-spacing:.5px}
+.clock span{display:block;font-size:11px;color:var(--dim)}
+.banner{display:flex;align-items:center;gap:10px;padding:12px 20px;flex-wrap:wrap}
+.pt-id{display:flex;align-items:center;gap:14px;padding-right:16px;border-right:1px solid var(--stroke2)}
+.avatar{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-weight:700;font-size:16px;
+  background:linear-gradient(135deg,rgba(77,163,255,.25),rgba(53,224,208,.18));border:1px solid var(--stroke2)}
+.pt-id h1{font-size:19px;font-weight:700;letter-spacing:.2px}
+.pt-id .sub{font-size:12px;color:var(--dim);font-family:var(--mono)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.chip{padding:6px 11px;border-radius:11px;border:1px solid var(--stroke);background:rgba(255,255,255,.03);font-size:12px}
+.chip .k{color:var(--faint);font-size:9.5px;letter-spacing:1.1px;text-transform:uppercase;display:block;margin-bottom:1px}
+.chip .v{font-weight:600}
+.chip.alert{border-color:rgba(255,93,108,.45);background:rgba(255,93,108,.10)}
+.chip.alert .v{color:var(--red)}
+.chip.code{border-color:rgba(61,232,160,.4);background:rgba(61,232,160,.08)}
+.chip.code .v{color:var(--green)}
+.chip.upd .v{color:var(--cyan);font-family:var(--mono);font-size:11.5px}
+
+/* ===== sidebar ===== */
+aside{border-right:1px solid var(--stroke);display:flex;flex-direction:column;min-height:0;
+  background:linear-gradient(180deg,rgba(11,17,29,.7),rgba(8,12,21,.7))}
+.side-head{padding:14px 14px 10px}
+.side-head .ttl{font-size:10.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--dim);display:flex;justify-content:space-between;align-items:center}
+.searchbox{margin-top:10px;display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:12px;
+  background:rgba(255,255,255,.04);border:1px solid var(--stroke)}
+.searchbox input{background:none;border:none;outline:none;flex:1;font-size:13px;color:var(--text)}
+.searchbox input::placeholder{color:var(--faint)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.fbtn{padding:5px 10px;border-radius:9px;font-size:11px;color:var(--dim);border:1px solid var(--stroke);transition:.18s}
+.fbtn:hover{color:var(--text);border-color:var(--stroke2)}
+.fbtn.on{color:#06121f;background:var(--blue);border-color:var(--blue);font-weight:600}
+.ptlist{flex:1;overflow-y:auto;padding:6px 10px 14px;display:flex;flex-direction:column;gap:8px}
+.ptcard{border:1px solid var(--stroke);border-radius:14px;padding:10px 12px;cursor:pointer;transition:.18s;
+  background:rgba(255,255,255,.025)}
+.ptcard:hover{border-color:var(--stroke2);transform:translateX(2px)}
+.ptcard.sel{border-color:rgba(77,163,255,.65);background:linear-gradient(135deg,rgba(77,163,255,.14),rgba(53,224,208,.07));
+  box-shadow:0 0 0 1px rgba(77,163,255,.25), 0 6px 18px rgba(20,80,160,.25)}
+.ptcard .r1{display:flex;align-items:center;gap:8px}
+.bed{font-family:var(--mono);font-size:11px;padding:3px 7px;border-radius:7px;background:rgba(77,163,255,.14);color:var(--blue);font-weight:700}
+.ptcard .nm{font-size:13px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acount{min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:700;
+  display:grid;place-items:center;font-family:var(--mono);box-shadow:0 0 10px rgba(255,93,108,.5)}
+.acount.zero{background:rgba(130,170,230,.15);color:var(--dim);box-shadow:none}
+.ptcard .dx{font-size:11px;color:var(--dim);margin:4px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tags{display:flex;gap:5px;flex-wrap:wrap}
+.tag{font-size:9.5px;letter-spacing:.6px;padding:2.5px 7px;border-radius:6px;font-weight:700;text-transform:uppercase}
+.tag.vent{background:rgba(77,163,255,.16);color:var(--blue)}
+.tag.pressor{background:rgba(255,180,84,.16);color:var(--amber)}
+.tag.crrt{background:rgba(167,139,250,.16);color:var(--violet)}
+.tag.ecmo{background:rgba(255,93,108,.16);color:var(--red)}
+.tag.iso{background:rgba(61,232,160,.14);color:var(--green)}
+
+/* ===== main ===== */
+main{overflow-y:auto;min-height:0;padding:16px;display:grid;gap:14px;
+  grid-template-columns:repeat(12,1fr);align-content:start}
+.card{background:var(--panel);border:1px solid var(--stroke);border-radius:var(--r);box-shadow:var(--shadow);
+  backdrop-filter:blur(16px);padding:16px;animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.card:nth-child(2){animation-delay:.05s}.card:nth-child(3){animation-delay:.1s}
+.card:nth-child(4){animation-delay:.14s}.card:nth-child(5){animation-delay:.18s}
+.card:nth-child(6){animation-delay:.22s}.card:nth-child(7){animation-delay:.26s}
+.card:nth-child(8){animation-delay:.3s}.card:nth-child(9){animation-delay:.34s}
+.chead{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.chead svg{flex:none}
+.chead .t{font-size:11px;letter-spacing:1.7px;text-transform:uppercase;color:var(--dim);font-weight:600}
+.chead .x{margin-left:auto;font-size:11px;color:var(--faint)}
+.badge{font-size:10px;font-weight:700;letter-spacing:.8px;padding:3px 9px;border-radius:8px}
+.badge.blue{background:rgba(77,163,255,.16);color:var(--blue)}
+.badge.green{background:rgba(61,232,160,.14);color:var(--green)}
+.badge.amber{background:rgba(255,180,84,.16);color:var(--amber)}
+
+/* monitor */
+#monitor{grid-column:span 8;padding:12px 16px}
+.wfrow{display:grid;grid-template-columns:1fr 148px;gap:12px;align-items:center;
+  border-bottom:1px dashed rgba(130,170,230,.09);padding:4px 0}
+.wfrow:last-of-type{border-bottom:none}
+.wfwrap{position:relative;height:64px}
+.wfwrap canvas{position:absolute;inset:0;width:100%;height:100%}
+.wflabel{position:absolute;top:4px;left:6px;font-size:10px;letter-spacing:1.2px;font-weight:700;opacity:.75}
+.vt{display:flex;align-items:baseline;gap:8px;justify-content:flex-end}
+.vt .big{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1;text-shadow:0 0 18px currentColor}
+.vt .med{font-family:var(--mono);font-size:20px;font-weight:700}
+.vt .u{font-size:10px;color:var(--dim);letter-spacing:.6px}
+.vt .lbl{font-size:10px;letter-spacing:1.3px;color:var(--dim);text-transform:uppercase;text-align:right;display:block}
+.vtcol{text-align:right}
+.substrip{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+.mini{border:1px solid var(--stroke);border-radius:13px;padding:9px 12px;background:rgba(255,255,255,.025);transition:.18s}
+.mini:hover{border-color:var(--stroke2);transform:translateY(-1px)}
+.mini .k{font-size:9.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint)}
+.mini .v{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:2px}
+.mini .v small{font-size:10px;color:var(--dim);font-weight:500;margin-left:4px}
+.crit{color:var(--red)!important;animation:blink 1.1s ease-in-out infinite}
+@keyframes blink{50%{opacity:.45}}
+
+/* right column */
+.colR{grid-column:span 4;display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* digital twin */
+.twin{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center}
+.twin svg{width:100%;height:auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.4))}
+.organlist{display:flex;flex-direction:column;gap:7px}
+.orow{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:11px;border:1px solid var(--stroke);
+  background:rgba(255,255,255,.02);cursor:pointer;transition:.15s}
+.orow:hover{border-color:var(--stroke2)}
+.odot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 8px currentColor}
+.orow .on{font-size:12px;font-weight:600;flex:1}
+.orow .os{font-size:10.5px;color:var(--dim)}
+.st-ok{color:var(--green)} .st-watch{color:var(--amber)} .st-crit{color:var(--red)}
+.organ{transition:fill .5s, filter .5s}
+.o-ok{fill:rgba(61,232,160,.75);filter:drop-shadow(0 0 5px rgba(61,232,160,.8))}
+.o-watch{fill:rgba(255,180,84,.85);filter:drop-shadow(0 0 6px rgba(255,180,84,.9))}
+.o-crit{fill:rgba(255,93,108,.9);filter:drop-shadow(0 0 8px rgba(255,93,108,1));animation:blink 1.2s infinite}
+
+/* AI panel */
+.ai .airow{padding:9px 0;border-bottom:1px dashed rgba(130,170,230,.09)}
+.ai .airow:last-child{border-bottom:none;padding-bottom:0}
+.aihead{display:flex;align-items:center;gap:8px}
+.aihead .an{font-size:12.5px;font-weight:600;flex:1}
+.aihead .ap{font-family:var(--mono);font-size:15px;font-weight:700}
+.aibar{height:5px;border-radius:4px;background:rgba(130,170,230,.12);margin:6px 0 5px;overflow:hidden}
+.aibar i{display:block;height:100%;border-radius:4px;transition:width .8s cubic-bezier(.2,.7,.2,1)}
+.aiex{font-size:11px;color:var(--dim);line-height:1.45}
+
+/* generic tile grids */
+#vent,#hemo,#meds{grid-column:span 4}
+.tgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+.tgrid.g3{grid-template-columns:repeat(3,1fr)}
+.tile{border:1px solid var(--stroke);border-radius:12px;padding:8px 11px;background:rgba(255,255,255,.025);transition:.18s}
+.tile:hover{border-color:var(--stroke2);transform:translateY(-1px)}
+.tile .k{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--faint)}
+.tile .v{font-family:var(--mono);font-size:17px;font-weight:700;margin-top:2px}
+.tile .v small{font-size:9.5px;font-weight:500;color:var(--dim);margin-left:3px}
+.tile.warn .v{color:var(--amber)}
+.fluid{margin-top:10px}
+.fluid .fk{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:5px}
+.fbar{height:8px;border-radius:6px;background:rgba(130,170,230,.12);position:relative;overflow:hidden}
+.fbar i{position:absolute;top:0;bottom:0;left:50%;background:linear-gradient(90deg,var(--cyan),var(--blue));border-radius:6px}
+
+/* meds */
+.medrow{display:grid;grid-template-columns:1fr auto 62px auto;gap:10px;align-items:center;
+  padding:8px 4px;border-bottom:1px dashed rgba(130,170,230,.09)}
+.medrow:last-child{border-bottom:none}
+.medrow .mn{font-size:12.5px;font-weight:600}
+.medrow .md{font-size:10.5px;color:var(--dim);font-family:var(--mono)}
+.medrow .mr{font-family:var(--mono);font-size:11.5px;color:var(--cyan);text-align:right}
+.spark{width:62px;height:22px}
+.mwarn{width:8px;height:8px;border-radius:50%;justify-self:end}
+.mwarn.hi{background:var(--red);box-shadow:0 0 8px var(--red);animation:blink 1.2s infinite}
+.mwarn.md{background:var(--amber);box-shadow:0 0 7px var(--amber)}
+.mwarn.ok{background:rgba(130,170,230,.25)}
+
+/* labs */
+#labs{grid-column:span 5}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
+.tab{padding:5px 11px;border-radius:9px;font-size:11px;color:var(--dim);border:1px solid var(--stroke);transition:.15s}
+.tab:hover{color:var(--text)}
+.tab.on{background:rgba(77,163,255,.16);border-color:rgba(77,163,255,.5);color:var(--blue);font-weight:600}
+#labChart{width:100%;height:190px;cursor:crosshair}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px}
+.lg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dim)}
+.lg i{width:10px;height:3px;border-radius:2px;display:inline-block}
+.labvals{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.lv{font-size:11px;padding:5px 9px;border-radius:9px;border:1px solid var(--stroke);background:rgba(255,255,255,.02)}
+.lv b{font-family:var(--mono)}
+.lv.abn{border-color:rgba(255,180,84,.4)} .lv.abn b{color:var(--amber)}
+.lv.crit2{border-color:rgba(255,93,108,.45)} .lv.crit2 b{color:var(--red)}
+
+/* alerts */
+#alerts{grid-column:span 3}
+.alist{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto}
+.al{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--stroke);border-radius:12px;padding:9px 11px;
+  background:rgba(255,255,255,.02);transition:.3s}
+.al .dot{width:10px;height:10px;border-radius:50%;margin-top:3px;flex:none;box-shadow:0 0 9px currentColor}
+.al .at{font-size:12px;line-height:1.4;flex:1}
+.al .at small{display:block;color:var(--faint);font-size:10px;font-family:var(--mono);margin-top:2px}
+.al .ack{color:var(--faint);border:1px solid var(--stroke);border-radius:8px;width:24px;height:24px;flex:none;transition:.15s}
+.al .ack:hover{color:var(--green);border-color:var(--green)}
+.al.gone{opacity:0;transform:translateX(14px)}
+.s-crit{color:var(--red)} .s-high{color:var(--amber)} .s-med{color:#ffe07a} .s-info{color:var(--blue)}
+.al.s-critB{border-color:rgba(255,93,108,.35);background:rgba(255,93,108,.06)}
+
+/* goals */
+#goals{grid-column:span 4}
+.gprog{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.gprog .gbar{flex:1;height:7px;border-radius:5px;background:rgba(130,170,230,.12);overflow:hidden}
+.gprog .gbar i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--green));border-radius:5px;transition:width .4s}
+.gprog b{font-family:var(--mono);font-size:12px;color:var(--cyan)}
+.glist{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.goal{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:10px;border:1px solid var(--stroke);
+  background:rgba(255,255,255,.02);cursor:pointer;font-size:12px;transition:.15s;user-select:none}
+.goal:hover{border-color:var(--stroke2)}
+.cb{width:17px;height:17px;border-radius:6px;border:1.5px solid var(--faint);display:grid;place-items:center;flex:none;transition:.18s}
+.cb svg{opacity:0;transform:scale(.4);transition:.18s}
+.goal.done .cb{background:var(--green);border-color:var(--green)}
+.goal.done .cb svg{opacity:1;transform:scale(1)}
+.goal.done span{color:var(--dim);text-decoration:line-through}
+
+/* timeline */
+#timeline{grid-column:span 12}
+.tl{display:flex;gap:12px;overflow-x:auto;padding:6px 2px 10px}
+.tle{flex:0 0 235px;border:1px solid var(--stroke);border-radius:14px;padding:11px 13px;background:rgba(255,255,255,.025);
+  position:relative;transition:.18s}
+.tle:hover{border-color:var(--stroke2);transform:translateY(-2px)}
+.tle .tt{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.tle .tc{font-size:9.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:2px 7px;border-radius:6px;float:right}
+.tle p{font-size:12px;line-height:1.45;margin-top:6px;clear:both}
+.tc.med{background:rgba(53,224,208,.14);color:var(--cyan)}
+.tc.lab{background:rgba(77,163,255,.16);color:var(--blue)}
+.tc.vnt{background:rgba(167,139,250,.16);color:var(--violet)}
+.tc.prc{background:rgba(255,93,108,.16);color:var(--red)}
+.tc.con{background:rgba(255,180,84,.16);color:var(--amber)}
+.tc.nte{background:rgba(130,170,230,.14);color:var(--dim)}
+.tc.txf{background:rgba(255,120,160,.16);color:#ff8fb0}
+
+@media (max-width:1500px){
+  #monitor{grid-column:span 12}.colR{grid-column:span 12;flex-direction:row}
+  .colR>.card{flex:1}
+  #vent,#hemo,#meds{grid-column:span 4}
+  #labs{grid-column:span 6}#alerts{grid-column:span 6}#goals{grid-column:span 12}
+}
+@media (max-width:1100px){
+  .shell{grid-template-columns:1fr}aside{display:none}
+  #vent,#hemo,#meds,#labs,#alerts,#goals{grid-column:span 12}
+  .colR{flex-direction:column}
+  body{overflow:auto}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<header class="top">
+  <div class="brandrow">
+    <div class="brand">
+      <div class="logo"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#06121f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h8"/></svg></div>
+      <div>AURORA ICU<small>Mission Control · Unit 4B</small></div>
+    </div>
+    <div class="unitstats">
+      <div class="us">Census<b>8 / 10</b></div>
+      <div class="us">Ventilated<b>4</b></div>
+      <div class="us">On Pressors<b>3</b></div>
+      <div class="us">Critical Alerts<b id="usCrit" style="color:var(--red)">2</b></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="clock"><b id="clkTime">--:--:--</b><span id="clkDate">—</span></div>
+  </div>
+  <div class="banner">
+    <div class="pt-id">
+      <div class="avatar" id="bAvatar">AA</div>
+      <div>
+        <h1 id="bName">—</h1>
+        <div class="sub"><span id="bMRN">MRN —</span> · <span id="bBed">Bed —</span></div>
+      </div>
+    </div>
+    <div class="chips">
+      <div class="chip"><span class="k">Age / Sex</span><span class="v" id="bAge">—</span></div>
+      <div class="chip"><span class="k">Diagnosis</span><span class="v" id="bDx">—</span></div>
+      <div class="chip"><span class="k">ICU Day</span><span class="v num" id="bLOS">—</span></div>
+      <div class="chip alert"><span class="k">Allergies</span><span class="v" id="bAllergy">—</span></div>
+      <div class="chip"><span class="k">Attending</span><span class="v" id="bAtt">—</span></div>
+      <div class="chip code"><span class="k">Code Status</span><span class="v" id="bCode">—</span></div>
+      <div class="chip upd"><span class="k">Last Updated</span><span class="v" id="bUpd">—</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="shell">
+<aside>
+  <div class="side-head">
+    <div class="ttl">Patients <span class="badge blue" id="ptCount">8</span></div>
+    <div class="searchbox">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="ptSearch" placeholder="Search name, bed, MRN…">
+    </div>
+    <div class="filters" id="ptFilters">
+      <button class="fbtn on" data-f="all">All</button>
+      <button class="fbtn" data-f="vent">Vent</button>
+      <button class="fbtn" data-f="pressor">Pressors</button>
+      <button class="fbtn" data-f="crrt">CRRT</button>
+      <button class="fbtn" data-f="ecmo">ECMO</button>
+      <button class="fbtn" data-f="iso">Isolation</button>
+      <button class="fbtn" data-f="alerts">Alerts</button>
+    </div>
+  </div>
+  <div class="ptlist" id="ptList"></div>
+</aside>
+
+<main>
+  <!-- ======= LIVE MONITOR ======= -->
+  <section class="card" id="monitor">
+    <div class="chead">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-6 4 12 2-6h8"/></svg>
+      <span class="t">Live Physiologic Monitor</span>
+      <span class="x">Lead II · 25 mm/s · <span class="badge green">STREAMING</span></span>
+    </div>
+
+    <div class="wfrow">
+      <div class="wfwrap"><span class="wflabel" style="color:var(--green)">ECG · II</span><canvas id="wfECG"></canvas></div>
+      <div class="vtcol"><span class="lbl" style="color:var(--green)">Heart Rate</span>
+        <div class="vt" style="color:var(--green)"><span class="big" id="vHR">—</span><span class="u">bpm</span></div></div>
+    </div>
+    <div class="wfrow">
+      <div class="wfwrap"><span class="wflabel" style="color:var(--red)">ART · IBP</span><canvas id="wfART"></canvas></div>
+      <div class="vtcol"><span class="lbl" style="color:var(--red)">IBP · MAP</span>
+        <div class="vt" style="color:var(--red)"><span class="med" id="vIBP">—</span><span class="u">(<span id="vMAP">—</span>)</span></div></div>
+    </div>
+    <div class="wfrow">
+      <div class="wfwrap"><span class="wflabel" style="color:var(--cyan)">PLETH</span><canvas id="wfPLE"></canvas></div>
+      <div class="vtcol"><span class="lbl" style="color:var(--cyan)">SpO₂</span>
+        <div class="vt" style="color:var(--cyan)"><span class="big" id="vSPO2">—</span><span class="u">%</span></div></div>
+    </div>
+    <div class="wfrow">
+      <div class="wfwrap"><span class="wflabel" style="color:var(--amber)">RESP</span><canvas id="wfRSP"></canvas></div>
+      <div class="vtcol"><span class="lbl" style="color:var(--amber)">Resp Rate</span>
+        <div class="vt" style="color:var(--amber)"><span class="med" id="vRR">—</span><span class="u">/min</span></div></div>
+    </div>
+    <div class="wfrow">
+      <div class="wfwrap"><span class="wflabel" style="color:#dfe8f4">EtCO₂</span><canvas id="wfCO2"></canvas></div>
+      <div class="vtcol"><span class="lbl">EtCO₂</span>
+        <div class="vt" style="color:#dfe8f4"><span class="med" id="vCO2">—</span><span class="u">mmHg</span></div></div>
+    </div>
+
+    <div class="substrip">
+      <div class="mini"><div class="k">NIBP</div><div class="v" id="vNIBP">—<small>mmHg</small></div></div>
+      <div class="mini"><div class="k">Temperature</div><div class="v" id="vTEMP">—<small>°C</small></div></div>
+      <div class="mini"><div class="k">CVP</div><div class="v" id="vCVP">—<small>mmHg</small></div></div>
+      <div class="mini"><div class="k">Rhythm</div><div class="v" id="vRHY" style="font-size:14px;padding-top:4px">—</div></div>
+    </div>
+  </section>
+
+  <!-- ======= RIGHT COLUMN ======= -->
+  <div class="colR">
+    <section class="card">
+      <div class="chead">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><path d="M12 8v5m0 0l-4 8m4-8l4 8M6 12h12"/></svg>
+        <span class="t">Patient Digital Twin</span><span class="x">Organ status</span>
+      </div>
+      <div class="twin">
+        <svg viewBox="0 0 120 240" aria-label="Body diagram">
+          <defs>
+            <linearGradient id="bodyG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="rgba(140,175,225,.16)"/><stop offset="1" stop-color="rgba(140,175,225,.06)"/>
+            </linearGradient>
+          </defs>
+          <!-- silhouette -->
+          <g fill="url(#bodyG)" stroke="rgba(150,185,235,.35)" stroke-width="1.4">
+            <circle cx="60" cy="26" r="16"/>
+            <path d="M60 42c-14 0-22 8-24 20l-4 34c-1 8 2 12 6 12l2 44c0 6 3 10 8 10h24c5 0 8-4 8-10l2-44c4 0 7-4 6-12l-4-34c-2-12-10-20-24-20z"/>
+            <path d="M36 66l-10 40c-1 5 1 8 4 9l4 1 8-46"/>
+            <path d="M84 66l10 40c1 5-1 8-4 9l-4 1-8-46"/>
+            <path d="M50 162l-3 60c0 4 2 7 6 7h4l3-64"/>
+            <path d="M70 162l3 60c0 4-2 7-6 7h-4l-3-64"/>
+          </g>
+          <!-- circulation ring -->
+          <ellipse id="orgCirc" class="organ" cx="60" cy="118" rx="30" ry="66" fill="none" stroke="rgba(61,232,160,.4)" stroke-width="2" stroke-dasharray="4 7"/>
+          <!-- organs -->
+          <ellipse id="orgBrain" class="organ" cx="60" cy="24" rx="10" ry="8"/>
+          <path id="orgLungL" class="organ" d="M54 62c-8 0-12 8-12 18s3 16 9 16c4 0 6-4 6-10V68c0-4-1-6-3-6z"/>
+          <path id="orgLungR" class="organ" d="M66 62c8 0 12 8 12 18s-3 16-9 16c-4 0-6-4-6-10V68c0-4 1-6 3-6z"/>
+          <path id="orgHeart" class="organ" d="M60 74c3-4 9-4 11 0 2 3 1 7-3 11l-8 7-8-7c-4-4-5-8-3-11 2-4 8-4 11 0z"/>
+          <path id="orgLiver" class="organ" d="M46 104c-5 1-8 5-7 10 1 4 5 6 11 5l16-4c4-1 5-5 3-8-3-4-14-5-23-3z"/>
+          <ellipse id="orgKidL" class="organ" cx="48" cy="128" rx="5" ry="8"/>
+          <ellipse id="orgKidR" class="organ" cx="72" cy="128" rx="5" ry="8"/>
+        </svg>
+        <div class="organlist" id="organList"></div>
+      </div>
+    </section>
+
+    <section class="card ai">
+      <div class="chead">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 014 4c2.5.5 4 2.5 4 5a5 5 0 01-3 4.6V17a4 4 0 01-4 4 4 4 0 01-4-4v-1.4A5 5 0 014 11c0-2.5 1.5-4.5 4-5a4 4 0 014-4z"/><path d="M12 6v12"/></svg>
+        <span class="t">Predictive AI · Clinical Risk</span><span class="x">Simulated · updated q15min</span>
+      </div>
+      <div id="aiList"></div>
+    </section>
+  </div>
+
+  <!-- ======= VENTILATOR ======= -->
+  <section class="card" id="vent">
+    <div class="chead">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v8m0 0c-3 0-5 2-5 5s2 5 5 5 5-2 5-5-2-5-5-5z"/></svg>
+      <span class="t">Ventilator</span>
+      <span class="x"><span class="badge blue" id="ventMode">—</span></span>
+    </div>
+    <div class="tgrid" id="ventGrid"></div>
+  </section>
+
+  <!-- ======= HEMODYNAMICS ======= -->
+  <section class="card" id="hemo">
+    <div class="chead">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21C7 17 3 13.5 3 9a5 5 0 019-3 5 5 0 019 3c0 4.5-4 8-9 12z"/></svg>
+      <span class="t">Hemodynamics</span><span class="x">PiCCO · q1h</span>
+    </div>
+    <div class="tgrid" id="hemoGrid"></div>
+    <div class="fluid">
+      <div class="fk"><span>Fluid balance · 24 h</span><b class="num" id="fbVal" style="color:var(--cyan)">—</b></div>
+      <div class="fbar"><i id="fbBar" style="width:18%"></i></div>
+    </div>
+  </section>
+
+  <!-- ======= MEDICATIONS ======= -->
+  <section class="card" id="meds">
+    <div class="chead">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="4"/><path d="M7 9h10M7 15h10"/></svg>
+      <span class="t">Active Infusions</span><span class="x" id="medCount">—</span>
+    </div>
+    <div id="medList"></div>
+  </section>
+
+  <!-- ======= LABS ======= -->
+  <section class="card" id="labs">
+    <div class="chead">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5 9a3 3 0 003 5h8a3 3 0 003-5l-5-9V3"/></svg>
+      <span class="t">Laboratory Trends</span><span class="x">Last 7 draws · tap a series</span>
+    </div>
+    <div class="tabs" id="labTabs"></div>
+    <canvas id="labChart"></canvas>
+    <div class="legend" id="labLegend"></div>
+    <div class="labvals" id="labVals"></div>
+  </section>
+
+  <!-- ======= ALERTS ======= -->
+  <section class="card" id="alerts">
+    <div class="chead">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l10 18H2L12 3z"/><path d="M12 10v5m0 3v.01"/></svg>
+      <span class="t">Smart Alerts</span><span class="x" id="alCount">—</span>
+    </div>
+    <div class="alist" id="alList"></div>
+  </section>
+
+  <!-- ======= DAILY GOALS ======= -->
+  <section class="card" id="goals">
+    <div class="chead">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      <span class="t">Daily Goals · Rounding Checklist</span><span class="x">Tap to complete</span>
+    </div>
+    <div class="gprog"><div class="gbar"><i id="gBar"></i></div><b id="gPct">0%</b></div>
+    <div class="glist" id="goalList"></div>
+  </section>
+
+  <!-- ======= TIMELINE ======= -->
+  <section class="card" id="timeline">
+    <div class="chead">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      <span class="t">Clinical Timeline · Last 24 h</span><span class="x">Newest first · scroll →</span>
+    </div>
+    <div class="tl" id="tlList"></div>
+  </section>
+</main>
+</div>
+</div>
+<script>
+/* ================= SAMPLE DATA ================= */
+const PATIENTS=[
+ {id:0,bed:"B-01",name:"Ahmed Al-Saadi",mrn:"MRN-482913",age:58,sex:"M",dx:"Septic shock · Pneumonia",los:4,
+  allergy:"Penicillin",att:"Dr. S. Rahman",code:"Full Code",flags:["vent","pressor"],iso:false,alerts:3,rhythm:"Sinus Tach",
+  v:{hr:118,sys:92,dia:54,map:67,nsys:96,ndia:58,spo2:93,rr:24,temp:38.4,etco2:34,cvp:12},
+  organs:{Brain:"watch",Heart:"watch",Lungs:"crit",Kidneys:"watch",Liver:"ok",Circulation:"crit"},
+  ai:{Sepsis:[86,"SOFA ↑2 in 24 h, lactate 3.8 rising, persistent vasopressor need."],
+      AKI:[62,"Urine output 0.4 mL/kg/h ×5 h; creatinine ↑ 38% from baseline."],
+      ARDS:[71,"P/F ratio 148 on FiO₂ 0.55; bilateral infiltrates on imaging."],
+      Delirium:[44,"Age + sedation depth (RASS −3) + sepsis raise risk; CAM-ICU due."],
+      Mortality:[28,"APACHE II 24 → predicted in-ICU mortality; trending stable."]}},
+ {id:1,bed:"B-02",name:"Maria Hansen",mrn:"MRN-771204",age:67,sex:"F",dx:"Severe ARDS · VV-ECMO",los:9,
+  allergy:"None known",att:"Dr. L. Osei",code:"Full Code",flags:["vent","ecmo"],iso:false,alerts:2,rhythm:"Sinus",
+  v:{hr:96,sys:104,dia:62,map:76,nsys:108,ndia:64,spo2:91,rr:14,temp:37.2,etco2:31,cvp:10},
+  organs:{Brain:"ok",Heart:"ok",Lungs:"crit",Kidneys:"ok",Liver:"ok",Circulation:"watch"},
+  ai:{Sepsis:[31,"No new fever; procalcitonin falling on day 6 of therapy."],
+      AKI:[24,"Stable creatinine; adequate urine output on low-dose support."],
+      ARDS:[92,"Established severe ARDS on ECMO day 5; compliance 18 mL/cmH₂O."],
+      Delirium:[58,"Prolonged sedation and ECMO immobility elevate risk."],
+      Mortality:[35,"RESP score 2 → favorable ECMO survival category."]}},
+ {id:2,bed:"B-03",name:"Omar Khalil",mrn:"MRN-390155",age:45,sex:"M",dx:"Severe TBI · ICP monitoring",los:2,
+  allergy:"Sulfa",att:"Dr. E. Marchetti",code:"Full Code",flags:["vent"],iso:true,alerts:1,rhythm:"Sinus",
+  v:{hr:64,sys:138,dia:74,map:96,nsys:142,ndia:78,spo2:99,rr:16,temp:36.8,etco2:35,cvp:8},
+  organs:{Brain:"crit",Heart:"ok",Lungs:"ok",Kidneys:"ok",Liver:"ok",Circulation:"ok"},
+  ai:{Sepsis:[12,"No infectious signs; surveillance cultures negative."],
+      AKI:[18,"Hypertonic saline in use — monitoring sodium and creatinine."],
+      ARDS:[22,"Lung-protective settings; oxygenation preserved."],
+      Delirium:[66,"TBI itself is a major risk factor once sedation is weaned."],
+      Mortality:[21,"GCS motor 4, reactive pupils → intermediate IMPACT score."]}},
+ {id:3,bed:"B-04",name:"Susan Wright",mrn:"MRN-560981",age:72,sex:"F",dx:"AKI stage 3 · CRRT",los:6,
+  allergy:"Contrast dye",att:"Dr. S. Rahman",code:"DNR",flags:["crrt"],iso:false,alerts:1,rhythm:"AFib",
+  v:{hr:88,sys:110,dia:60,map:77,nsys:112,ndia:62,spo2:96,rr:18,temp:36.9,etco2:33,cvp:14},
+  organs:{Brain:"ok",Heart:"watch",Lungs:"ok",Kidneys:"crit",Liver:"ok",Circulation:"ok"},
+  ai:{Sepsis:[26,"Line day 6 — site clean; low-grade risk from access."],
+      AKI:[95,"Established stage 3 AKI on CRRT hour 41."],
+      ARDS:[15,"No respiratory failure; volume status controlled by CRRT."],
+      Delirium:[52,"Age >70 and uremia both contribute; reorient q shift."],
+      Mortality:[33,"AKI-on-CKD with cardiac history; goals discussed."]}},
+ {id:4,bed:"B-05",name:"David Chen",mrn:"MRN-118472",age:61,sex:"M",dx:"Post-CABG day 1 · Low CO",los:1,
+  allergy:"Aspirin (GI)",att:"Dr. L. Osei",code:"Full Code",flags:["pressor"],iso:false,alerts:2,rhythm:"Paced",
+  v:{hr:90,sys:98,dia:58,map:71,nsys:100,ndia:60,spo2:97,rr:15,temp:36.2,etco2:36,cvp:11},
+  organs:{Brain:"ok",Heart:"watch",Lungs:"ok",Kidneys:"ok",Liver:"ok",Circulation:"watch"},
+  ai:{Sepsis:[9,"POD 1 — no infectious concern; prophylaxis on schedule."],
+      AKI:[38,"Bypass time 118 min; watching post-pump creatinine."],
+      ARDS:[14,"Extubated at hour 9; incentive spirometry started."],
+      Delirium:[47,"Cardiac surgery + age → moderate postoperative risk."],
+      Mortality:[8,"EuroSCORE II low; expected routine recovery."]}},
+ {id:5,bed:"B-06",name:"Layla Hassan",mrn:"MRN-204863",age:34,sex:"F",dx:"DKA · resolving",los:2,
+  allergy:"None known",att:"Dr. E. Marchetti",code:"Full Code",flags:[],iso:false,alerts:0,rhythm:"Sinus",
+  v:{hr:98,sys:118,dia:70,map:86,nsys:120,ndia:72,spo2:99,rr:18,temp:37.0,etco2:38,cvp:6},
+  organs:{Brain:"ok",Heart:"ok",Lungs:"ok",Kidneys:"watch",Liver:"ok",Circulation:"ok"},
+  ai:{Sepsis:[11,"UTI trigger treated; afebrile 24 h."],
+      AKI:[29,"Prerenal pattern resolving with volume repletion."],
+      ARDS:[5,"No pulmonary involvement."],
+      Delirium:[12,"Young, awake, oriented — low risk."],
+      Mortality:[3,"Anion gap closed; transfer planning underway."]}},
+ {id:6,bed:"B-07",name:"Robert Miller",mrn:"MRN-667310",age:79,sex:"M",dx:"Influenza A pneumonia",los:5,
+  allergy:"Codeine",att:"Dr. S. Rahman",code:"DNR / DNI",flags:["vent"],iso:true,alerts:2,rhythm:"AFib RVR",
+  v:{hr:112,sys:96,dia:55,map:69,nsys:98,ndia:57,spo2:92,rr:26,temp:38.1,etco2:30,cvp:9},
+  organs:{Brain:"watch",Heart:"watch",Lungs:"crit",Kidneys:"ok",Liver:"ok",Circulation:"watch"},
+  ai:{Sepsis:[54,"Secondary bacterial pneumonia suspected; cultures pending."],
+      AKI:[41,"Creatinine drift + diuretic exposure — monitor closely."],
+      ARDS:[63,"P/F 176; droplet isolation, proning considered."],
+      Delirium:[78,"Age 79, hypoxemia, ICU day 5 — CAM-ICU positive overnight."],
+      Mortality:[42,"CURB-65 4 with treatment limits in place."]}},
+ {id:7,bed:"B-08",name:"Nadia Karim",mrn:"MRN-935027",age:52,sex:"F",dx:"Upper GI bleed · post-EGD",los:1,
+  allergy:"Latex",att:"Dr. L. Osei",code:"Full Code",flags:[],iso:false,alerts:1,rhythm:"Sinus",
+  v:{hr:104,sys:102,dia:64,map:77,nsys:104,ndia:66,spo2:98,rr:17,temp:36.6,etco2:37,cvp:5},
+  organs:{Brain:"ok",Heart:"ok",Lungs:"ok",Kidneys:"ok",Liver:"watch",Circulation:"watch"},
+  ai:{Sepsis:[13,"No fever; prophylactic ceftriaxone for cirrhosis."],
+      AKI:[27,"Watching post-hemorrhage perfusion; urine output adequate."],
+      ARDS:[7,"No transfusion-related lung injury observed."],
+      Delirium:[35,"Hepatic encephalopathy history — lactulose resumed."],
+      Mortality:[16,"Rockall 5 → rebleed surveillance for 72 h."]}}
+];
+
+const VENT={mode:"PC-AC (Lung Protective)",tiles:[
+ ["Tidal Volume","420","mL (6 mL/kg)",0],["Set Rate","18","/min",0],["FiO₂","55","%",1],
+ ["PEEP","10","cmH₂O",0],["Peak Pressure","28","cmH₂O",1],["Plateau","24","cmH₂O",0],
+ ["Driving Pressure","14","cmH₂O",1],["Compliance","30","mL/cmH₂O",0],["Minute Vent.","8.9","L/min",0],["I:E","1:2","",0]]};
+
+const HEMO=[["Cardiac Output","5.1","L/min",0],["Cardiac Index","2.4","L/min/m²",0],
+ ["SVR","680","dyn·s/cm⁵",1],["SVV","16","%",1],["Lactate","3.8","mmol/L",1],["Urine Output","28","mL/h",1]];
+const FLUID={val:"+1,850 mL",pct:34};
+
+const MEDS=[
+ ["Noradrenaline","0.32 µg/kg/min","12.4 mL/h","hi",[.1,.14,.2,.24,.3,.32,.32]],
+ ["Vasopressin","0.03 U/min","1.8 mL/h","md",[.03,.03,.03,.03,.03,.03,.03]],
+ ["Adrenaline","— standby","0 mL/h","ok",[0,0,0,0,0,0,0]],
+ ["Dobutamine","3.0 µg/kg/min","6.1 mL/h","ok",[0,0,2,2.5,3,3,3]],
+ ["Milrinone","— standby","0 mL/h","ok",[0,0,0,0,0,0,0]],
+ ["Propofol","35 mg/h","3.5 mL/h","ok",[50,45,40,40,35,35,35]],
+ ["Midazolam","— paused (SAT)","0 mL/h","md",[2,2,2,1,0,0,0]],
+ ["Dexmedetomidine","0.4 µg/kg/h","4.0 mL/h","ok",[0,0,.2,.3,.4,.4,.4]],
+ ["Fentanyl","50 µg/h","2.5 mL/h","ok",[75,75,60,50,50,50,50]],
+ ["Insulin","2.5 U/h","2.5 mL/h","ok",[4,4,3,3,2.5,2.5,2.5]]];
+
+const LABTIMES=["D-6","D-5","D-4","D-3","D-2","D-1","Now"];
+const LABS={
+ CBC:{series:[["WBC ×10⁹/L","#4da3ff",[9.8,12.4,16.2,18.9,17.4,15.8,14.2]],
+   ["Hgb g/dL","#ff5d6c",[11.2,10.8,10.1,9.6,9.2,9.0,8.8]],
+   ["Plt ×10⁹/L ÷10","#3de8a0",[21,18,14,11,9.8,9.2,9.6]]],
+  vals:[["WBC","14.2","abn"],["Hgb","8.8","abn"],["Plt","96","crit2"],["Neut%","88","abn"]]},
+ ABG:{series:[["pH ×10","#4da3ff",[7.41,7.36,7.31,7.28,7.30,7.32,7.33].map(x=>x*10-66)],
+   ["PaO₂/10 mmHg","#35e0d0",[9.8,8.8,7.4,6.9,7.6,8.1,8.2]],
+   ["PaCO₂/10","#ffb454",[4.0,4.4,4.9,5.2,5.0,4.7,4.6]]],
+  vals:[["pH","7.33","abn"],["PaO₂","82","abn"],["PaCO₂","46",""],["HCO₃","19","abn"],["P/F","148","crit2"]]},
+ Electrolytes:{series:[["Na⁺/10 mmol/L","#4da3ff",[13.8,13.6,13.4,13.3,13.4,13.5,13.6]],
+   ["K⁺ mmol/L","#ffb454",[4.1,4.4,4.9,5.3,4.8,4.4,4.2]],
+   ["Mg²⁺ mg/dL","#3de8a0",[1.9,1.8,1.7,1.9,2.0,2.1,2.0]]],
+  vals:[["Na⁺","136",""],["K⁺","4.2",""],["Cl⁻","104",""],["Mg²⁺","2.0",""],["Ca²⁺","8.4","abn"]]},
+ Renal:{series:[["Creatinine mg/dL","#ff5d6c",[0.9,1.1,1.4,1.8,2.1,2.0,1.9]],
+   ["BUN/10 mg/dL","#ffb454",[1.8,2.2,3.0,3.9,4.6,4.4,4.2]]],
+  vals:[["Creat","1.9","crit2"],["BUN","42","abn"],["eGFR","36","abn"],["UO 24 h","680 mL","abn"]]},
+ Liver:{series:[["AST /10 U/L","#4da3ff",[3.1,3.4,4.2,5.8,6.4,5.9,5.2]],
+   ["ALT /10 U/L","#35e0d0",[2.8,3.0,3.6,4.9,5.6,5.4,5.0]],
+   ["Bili mg/dL","#ffb454",[0.8,0.9,1.2,1.6,1.9,1.8,1.7]]],
+  vals:[["AST","52","abn"],["ALT","50","abn"],["T.Bili","1.7","abn"],["Albumin","2.6","abn"]]},
+ Coagulation:{series:[["INR","#ff5d6c",[1.1,1.2,1.3,1.5,1.6,1.5,1.4]],
+   ["aPTT /10 s","#4da3ff",[3.0,3.2,3.6,4.1,4.4,4.2,4.0]],
+   ["Fibrinogen /100","#3de8a0",[3.8,3.4,2.9,2.4,2.2,2.3,2.5]]],
+  vals:[["INR","1.4","abn"],["aPTT","40","abn"],["Fibrinogen","250",""],["D-dimer","4.8","crit2"]]},
+ Lactate:{series:[["Lactate mmol/L","#ff5d6c",[1.4,1.9,2.8,4.6,4.1,3.9,3.8]]],
+  vals:[["Lactate","3.8","crit2"],["Cleared 6 h","−8%","abn"],["Base excess","−6.2","abn"]]}
+};
+
+const ALERTS=[
+ ["crit","Lactate 3.8 mmol/L — clearance <10% over 6 h despite resuscitation","09:42"],
+ ["crit","MAP < 65 mmHg for 12 min — noradrenaline at 0.32 µg/kg/min","09:31"],
+ ["high","Urine output 0.4 mL/kg/h × 5 h — AKI criteria approaching","08:55"],
+ ["high","Driving pressure 14 cmH₂O — consider TV / PEEP adjustment","08:10"],
+ ["med","Platelets 96 ×10⁹/L — down-trending, recheck with 14:00 draw","07:40"],
+ ["med","Potassium 4.2 → replaced; repeat level due 12:00","06:58"],
+ ["info","SAT window opens 10:00 — midazolam paused per protocol","06:30"],
+ ["info","Blood culture ×2 collected — preliminary result expected 18:00","05:12"]];
+
+const GOALS=["Sedation Target","RASS Goal −1 to 0","SAT (Awakening Trial)","SBT (Breathing Trial)",
+ "Nutrition ≥ 80% goal","DVT Prophylaxis","GI Prophylaxis","Antibiotic Review (Day 4)",
+ "Central Line Review","Foley Review","Family Meeting"];
+
+const TIMELINE=[
+ ["09:42","lab","LAB","Lactate resulted 3.8 mmol/L — repeat ordered for 13:00 with ScvO₂."],
+ ["09:31","med","MED","Noradrenaline titrated 0.24 → 0.32 µg/kg/min for MAP < 65."],
+ ["08:55","nte","NURSING","Hourly urine output 25–30 mL; nephrology aware, foley patent."],
+ ["08:10","vnt","VENT","PEEP increased 8 → 10 cmH₂O; FiO₂ weaned 60 → 55%."],
+ ["07:15","con","CONSULT","Infectious Diseases: continue meropenem, day 4 of 7; de-escalate per cultures."],
+ ["06:30","med","MED","Midazolam paused for spontaneous awakening trial at 10:00."],
+ ["05:40","prc","PROCEDURE","Right IJ central line dressing changed; site clean, no erythema."],
+ ["04:20","txf","TRANSFUSION","1 unit PRBC completed for Hgb 7.9 → post-count 8.8 g/dL."],
+ ["02:10","lab","LAB","ABG: pH 7.31 / PaCO₂ 49 / PaO₂ 74 on FiO₂ 60% — vent adjusted."],
+ ["00:45","nte","PROGRESS","Night intensivist note: septic shock day 4, slow pressor wean attempted, reversed at 00:30."],
+ ["23:30","med","MED","Dexmedetomidine started 0.2 µg/kg/h to facilitate sedation wean."],
+ ["22:15","prc","PROCEDURE","Bedside ultrasound: IVC 1.8 cm, minimal collapse — volume replete."]];
+/* ================= HELPERS / STATE ================= */
+const $=id=>document.getElementById(id);
+let SEL=0, FILTER="all", QUERY="";
+const REDUCED=matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- clock ---------- */
+function tickClock(){const d=new Date();
+ $("clkTime").textContent=d.toLocaleTimeString("en-GB");
+ $("clkDate").textContent=d.toLocaleDateString("en-GB",{weekday:"short",day:"2-digit",month:"short",year:"numeric"});
+ $("bUpd").textContent=d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})+" · auto";}
+setInterval(tickClock,1000);tickClock();
+
+/* ---------- patient list ---------- */
+function matches(p){
+ if(QUERY&&!(p.name+p.bed+p.mrn).toLowerCase().includes(QUERY))return false;
+ if(FILTER==="all")return true;
+ if(FILTER==="iso")return p.iso;
+ if(FILTER==="alerts")return p.alerts>0;
+ return p.flags.includes(FILTER);}
+function renderList(){
+ const box=$("ptList");box.innerHTML="";let n=0;
+ PATIENTS.forEach(p=>{if(!matches(p))return;n++;
+  const el=document.createElement("div");
+  el.className="ptcard"+(p.id===SEL?" sel":"");
+  el.innerHTML=`<div class="r1"><span class="bed">${p.bed}</span><span class="nm">${p.name}</span>
+   <span class="acount ${p.alerts?'':'zero'}">${p.alerts}</span></div>
+   <div class="dx">${p.dx}</div><div class="tags">
+   ${p.flags.map(f=>`<span class="tag ${f}">${f==="vent"?"Vent":f==="pressor"?"Pressor":f.toUpperCase()}</span>`).join("")}
+   ${p.iso?'<span class="tag iso">Isolation</span>':""}</div>`;
+  el.onclick=()=>selectPatient(p.id);
+  box.appendChild(el);});
+ $("ptCount").textContent=n;}
+$("ptSearch").addEventListener("input",e=>{QUERY=e.target.value.trim().toLowerCase();renderList();});
+$("ptFilters").addEventListener("click",e=>{const b=e.target.closest(".fbtn");if(!b)return;
+ FILTER=b.dataset.f;[...$("ptFilters").children].forEach(x=>x.classList.toggle("on",x===b));renderList();});
+
+/* ---------- banner + vitals ---------- */
+function selectPatient(id){SEL=id;const p=PATIENTS[id];
+ $("bAvatar").textContent=p.name.split(" ").map(w=>w[0]).slice(0,2).join("");
+ $("bName").textContent=p.name;$("bMRN").textContent=p.mrn;$("bBed").textContent="Bed "+p.bed;
+ $("bAge").textContent=p.age+" · "+p.sex;$("bDx").textContent=p.dx;$("bLOS").textContent="Day "+p.los;
+ $("bAllergy").textContent=p.allergy;$("bAtt").textContent=p.att;$("bCode").textContent=p.code;
+ renderList();updateVitals(true);renderOrgans();renderAI();}
+function fmt(v,d=0){return v.toFixed(d)}
+function updateVitals(hard){
+ const p=PATIENTS[SEL],v=p.v,j=(x,a)=>x+(hard?0:(Math.random()-.5)*a);
+ const hr=Math.round(j(v.hr,3)),spo2=Math.min(100,Math.round(j(v.spo2,1.2))),
+  sys=Math.round(j(v.sys,4)),dia=Math.round(j(v.dia,3)),map=Math.round((sys+2*dia)/3),
+  rr=Math.round(j(v.rr,1.6)),co2=Math.round(j(v.etco2,1.4));
+ $("vHR").textContent=hr;$("vSPO2").textContent=spo2;
+ $("vIBP").textContent=sys+"/"+dia;$("vMAP").textContent=map;
+ $("vRR").textContent=rr;$("vCO2").textContent=co2;
+ $("vNIBP").innerHTML=v.nsys+"/"+v.ndia+"<small>mmHg</small>";
+ $("vTEMP").innerHTML=fmt(j(v.temp,.08),1)+"<small>°C</small>";
+ $("vCVP").innerHTML=Math.round(j(v.cvp,.8))+"<small>mmHg</small>";
+ $("vRHY").textContent=p.rhythm;
+ $("vSPO2").classList.toggle("crit",spo2<94);
+ $("vMAP").parentElement.classList.toggle("crit",map<65);
+ $("vHR").classList.toggle("crit",hr>130||hr<45);
+ WF.hr=hr;WF.rr=rr;}
+setInterval(()=>updateVitals(false),2500);
+
+/* ---------- digital twin ---------- */
+const ORGAN_MAP={Brain:["orgBrain"],Heart:["orgHeart"],Lungs:["orgLungL","orgLungR"],
+ Kidneys:["orgKidL","orgKidR"],Liver:["orgLiver"],Circulation:["orgCirc"]};
+const ST_TXT={ok:"Stable",watch:"Watch",crit:"Critical"};
+function renderOrgans(){const p=PATIENTS[SEL];const list=$("organList");list.innerHTML="";
+ Object.entries(p.organs).forEach(([name,st])=>{
+  ORGAN_MAP[name].forEach(id=>{const el=$(id);el.classList.remove("o-ok","o-watch","o-crit");
+   if(id==="orgCirc"){el.setAttribute("stroke",st==="ok"?"rgba(61,232,160,.5)":st==="watch"?"rgba(255,180,84,.65)":"rgba(255,93,108,.75)");}
+   else el.classList.add("o-"+st);});
+  const row=document.createElement("div");row.className="orow st-"+st;
+  row.innerHTML=`<span class="odot" style="background:currentColor"></span>
+   <span class="on" style="color:var(--text)">${name}</span><span class="os">${ST_TXT[st]}</span>`;
+  list.appendChild(row);});}
+
+/* ---------- AI panel ---------- */
+function riskColor(x){return x>=70?"var(--red)":x>=40?"var(--amber)":"var(--green)"}
+function renderAI(){const p=PATIENTS[SEL];const box=$("aiList");box.innerHTML="";
+ Object.entries(p.ai).forEach(([k,[pct,why]])=>{
+  const row=document.createElement("div");row.className="airow";
+  row.innerHTML=`<div class="aihead"><span class="an">${k} Risk</span>
+   <span class="ap num" style="color:${riskColor(pct)}">${pct}%</span></div>
+   <div class="aibar"><i style="width:0;background:${riskColor(pct)}"></i></div>
+   <div class="aiex">${why}</div>`;
+  box.appendChild(row);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>row.querySelector("i").style.width=pct+"%"));});}
+
+/* ---------- static cards ---------- */
+function renderVent(){$("ventMode").textContent=VENT.mode;
+ $("ventGrid").innerHTML=VENT.tiles.map(([k,v,u,w])=>
+  `<div class="tile${w?" warn":""}"><div class="k">${k}</div><div class="v">${v}<small>${u}</small></div></div>`).join("");}
+function renderHemo(){$("hemoGrid").innerHTML=HEMO.map(([k,v,u,w])=>
+  `<div class="tile${w?" warn":""}"><div class="k">${k}</div><div class="v">${v}<small>${u}</small></div></div>`).join("");
+ $("fbVal").textContent=FLUID.val;$("fbBar").style.width=FLUID.pct+"%";}
+function sparkSVG(data,color){const w=62,h=22,mx=Math.max(...data,0.001);
+ const pts=data.map((d,i)=>`${(i/(data.length-1))*w},${h-3-(d/mx)*(h-6)}`).join(" ");
+ return `<svg class="spark" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round"/></svg>`;}
+function renderMeds(){const box=$("medList");
+ box.innerHTML=MEDS.map(([n,dose,rate,w,tr])=>{
+  const run=tr[tr.length-1]>0;
+  return `<div class="medrow"><div><div class="mn">${n}</div><div class="md">${dose}</div></div>
+   <div class="mr">${rate}</div>${sparkSVG(tr,run?"var(--cyan)":"rgba(130,170,230,.3)")}
+   <span class="mwarn ${w}" title="${w==='hi'?'High-dose warning':w==='md'?'Review due':'Nominal'}"></span></div>`;}).join("");
+ $("medCount").textContent=MEDS.filter(m=>m[4][m[4].length-1]>0).length+" running · 10 channels";}
+
+/* ---------- alerts ---------- */
+function renderAlerts(){const box=$("alList");box.innerHTML="";
+ ALERTS.forEach(([sev,txt,t])=>{const el=document.createElement("div");
+  el.className="al"+(sev==="crit"?" s-critB":"");
+  el.innerHTML=`<span class="dot s-${sev}" style="background:currentColor"></span>
+   <div class="at">${txt}<small>${t} · ${sev==="crit"?"🔴 Critical":sev==="high"?"🟠 High":sev==="med"?"🟡 Medium":"🔵 Information"}</small></div>
+   <button class="ack" title="Acknowledge">✓</button>`;
+  el.querySelector(".ack").onclick=()=>{el.classList.add("gone");setTimeout(()=>{el.remove();countAlerts();},320)};
+  box.appendChild(el);});countAlerts();}
+function countAlerts(){const n=$("alList").children.length;
+ $("alCount").textContent=n+" active";
+ $("usCrit").textContent=[...$("alList").children].filter(x=>x.classList.contains("s-critB")).length;}
+
+/* ---------- goals ---------- */
+function renderGoals(){const box=$("goalList");
+ box.innerHTML=GOALS.map(g=>`<div class="goal"><span class="cb">
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#06121f" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+  </span><span>${g}</span></div>`).join("");
+ [...box.children].forEach((el,i)=>{if(i===5||i===6)el.classList.add("done");
+  el.onclick=()=>{el.classList.toggle("done");goalProg();};});goalProg();}
+function goalProg(){const all=[...$("goalList").children],d=all.filter(x=>x.classList.contains("done")).length,
+ pct=Math.round(d/all.length*100);$("gBar").style.width=pct+"%";$("gPct").textContent=pct+"%";}
+
+/* ---------- timeline ---------- */
+function renderTL(){$("tlList").innerHTML=TIMELINE.map(([t,c,cl,txt])=>
+ `<div class="tle"><span class="tt">${t}</span><span class="tc ${c}">${cl}</span><p>${txt}</p></div>`).join("");}
+/* ================= WAVEFORM ENGINE ================= */
+const WF={hr:118,rr:24,list:[]};
+const g=(t,c,w)=>Math.exp(-(((t-c)/w)**2));
+const GEN={
+ ecg:t=>.14*g(t,.16,.03)-.13*g(t,.235,.012)+1*g(t,.262,.011)-.26*g(t,.29,.014)+.28*g(t,.5,.05),
+ art:t=>Math.max(0,Math.sin(Math.PI*Math.min(t*2.7,1)))*Math.exp(-t*1.7)+.16*g(t,.42,.045),
+ ple:t=>Math.max(0,Math.sin(Math.PI*Math.min(t*2.1,1)))*Math.exp(-t*1.3),
+ rsp:t=>(Math.sin(2*Math.PI*t-Math.PI/2)+1)/2,
+ co2:t=>t<.06?t/.06:t<.55?1+.06*(t-.06):t<.64?1.03*(1-(t-.55)/.09):0
+};
+function addWF(id,gen,color,slow,amp=.72){const cv=$(id);
+ WF.list.push({cv,ctx:cv.getContext("2d"),gen,color,slow,amp,x:0,py:null});}
+function sizeWF(){const dpr=Math.min(devicePixelRatio||1,2);
+ WF.list.forEach(w=>{const r=w.cv.getBoundingClientRect();
+  w.cv.width=r.width*dpr;w.cv.height=r.height*dpr;
+  w.ctx.setTransform(dpr,0,0,dpr,0,0);w.W=r.width;w.H=r.height;w.x=0;w.py=null;
+  w.ctx.clearRect(0,0,w.W,w.H);});}
+let LT=performance.now();
+function loop(now){const dt=Math.min((now-LT)/1000,.05);LT=now;const T=now/1000;
+ WF.list.forEach(w=>{
+  const freq=(w.slow?WF.rr:WF.hr)/60;
+  const speed=w.slow?46:110;
+  let nx=w.x+speed*dt;
+  const c=w.ctx;
+  c.clearRect(w.x,0,Math.min(nx-w.x+22,w.W-w.x),w.H);
+  if(nx>=w.W){c.clearRect(w.x,0,w.W-w.x,w.H);nx=0;w.py=null;c.clearRect(0,0,24,w.H);}
+  const ph=(T*freq)%1;
+  const y=w.H*(0.86-w.amp*w.gen(ph)*(w.gen===GEN.rsp||w.gen===GEN.co2?0.9:1));
+  c.strokeStyle=w.color;c.lineWidth=1.8;c.lineCap="round";
+  c.shadowColor=w.color;c.shadowBlur=REDUCED?0:6;
+  if(w.py!==null&&nx>w.x){c.beginPath();c.moveTo(w.x,w.py);c.lineTo(nx,y);c.stroke();}
+  w.x=nx;w.py=y;});
+ if(!REDUCED)requestAnimationFrame(loop);}
+function drawStatic(){WF.list.forEach(w=>{const c=w.ctx;c.clearRect(0,0,w.W,w.H);
+ c.strokeStyle=w.color;c.lineWidth=1.8;c.beginPath();
+ const freq=w.slow?2:4;
+ for(let x=0;x<=w.W;x++){const ph=(x/w.W*freq)%1;
+  const y=w.H*(0.86-w.amp*w.gen(ph));x?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();});}
+
+/* ================= LAB CHART ================= */
+let LABTAB="CBC",HOVER=null;
+function renderLabTabs(){$("labTabs").innerHTML=Object.keys(LABS).map(k=>
+ `<button class="tab${k===LABTAB?" on":""}" data-t="${k}">${k}</button>`).join("");}
+$("labTabs").addEventListener("click",e=>{const b=e.target.closest(".tab");if(!b)return;
+ LABTAB=b.dataset.t;renderLabTabs();drawLab();renderLabVals();});
+function renderLabVals(){const L=LABS[LABTAB];
+ $("labLegend").innerHTML=L.series.map(([n,c])=>`<span class="lg"><i style="background:${c}"></i>${n}</span>`).join("");
+ $("labVals").innerHTML=L.vals.map(([k,v,cl])=>`<span class="lv ${cl}">${k} <b>${v}</b></span>`).join("");}
+function drawLab(){const cv=$("labChart"),dpr=Math.min(devicePixelRatio||1,2);
+ const r=cv.getBoundingClientRect();cv.width=r.width*dpr;cv.height=r.height*dpr;
+ const c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);
+ const W=r.width,H=r.height,padL=34,padR=12,padT=12,padB=22;
+ c.clearRect(0,0,W,H);
+ const L=LABS[LABTAB],all=L.series.flatMap(s=>s[2]);
+ let mn=Math.min(...all),mx=Math.max(...all);const sp=(mx-mn)||1;mn-=sp*.12;mx+=sp*.12;
+ const X=i=>padL+(i/(LABTIMES.length-1))*(W-padL-padR);
+ const Y=v=>padT+(1-(v-mn)/(mx-mn))*(H-padT-padB);
+ c.strokeStyle="rgba(130,170,230,.12)";c.lineWidth=1;c.font="10px "+getComputedStyle(document.body).getPropertyValue("--mono");
+ c.fillStyle="rgba(143,163,188,.8)";c.textAlign="center";
+ for(let i=0;i<LABTIMES.length;i++){c.beginPath();c.moveTo(X(i),padT);c.lineTo(X(i),H-padB);c.stroke();
+  c.fillText(LABTIMES[i],X(i),H-8);}
+ for(let j=0;j<=3;j++){const y=padT+j/3*(H-padT-padB);
+  c.beginPath();c.moveTo(padL,y);c.lineTo(W-padR,y);c.stroke();
+  c.textAlign="right";c.fillText((mx-j/3*(mx-mn)).toFixed(1),padL-6,y+3);c.textAlign="center";}
+ L.series.forEach(([n,col,data])=>{
+  c.strokeStyle=col;c.lineWidth=2;c.lineJoin="round";c.beginPath();
+  data.forEach((v,i)=>i?c.lineTo(X(i),Y(v)):c.moveTo(X(i),Y(v)));c.stroke();
+  c.fillStyle=col;data.forEach((v,i)=>{c.beginPath();c.arc(X(i),Y(v),HOVER===i?4.5:2.6,0,7);c.fill();});});
+ if(HOVER!==null){c.strokeStyle="rgba(233,241,251,.35)";c.setLineDash([3,4]);
+  c.beginPath();c.moveTo(X(HOVER),padT);c.lineTo(X(HOVER),H-padB);c.stroke();c.setLineDash([]);
+  const lines=L.series.map(([n,col,d])=>({t:d[HOVER].toFixed(1),col}));
+  const bw=54,bh=14*lines.length+10;let bx=X(HOVER)+10;if(bx+bw>W-6)bx=X(HOVER)-bw-10;
+  c.fillStyle="rgba(10,16,28,.94)";c.strokeStyle="rgba(130,170,230,.3)";
+  c.beginPath();c.roundRect(bx,padT+4,bw,bh,8);c.fill();c.stroke();
+  lines.forEach((l,k)=>{c.fillStyle=l.col;c.textAlign="left";c.fillText(l.t,bx+10,padT+20+k*14);});}}
+$("labChart").addEventListener("mousemove",e=>{const r=e.target.getBoundingClientRect();
+ const padL=34,padR=12,x=e.clientX-r.left;
+ let i=Math.round((x-padL)/((r.width-padL-padR)/(LABTIMES.length-1)));
+ i=Math.max(0,Math.min(LABTIMES.length-1,i));if(i!==HOVER){HOVER=i;drawLab();}});
+$("labChart").addEventListener("mouseleave",()=>{HOVER=null;drawLab();});
+
+/* ================= INIT ================= */
+addWF("wfECG",GEN.ecg,"#3de8a0",false,.68);
+addWF("wfART",GEN.art,"#ff5d6c",false,.6);
+addWF("wfPLE",GEN.ple,"#35e0d0",false,.58);
+addWF("wfRSP",GEN.rsp,"#ffb454",true,.55);
+addWF("wfCO2",GEN.co2,"#dfe8f4",true,.6);
+function relayout(){sizeWF();drawLab();if(REDUCED)drawStatic();}
+addEventListener("resize",relayout);
+renderVent();renderHemo();renderMeds();renderAlerts();renderGoals();renderTL();
+renderLabTabs();renderLabVals();
+selectPatient(0);
+sizeWF();drawLab();
+if(REDUCED)drawStatic();else requestAnimationFrame(t=>{LT=t;loop(t);});
+</script>
+</body>
+</html>
