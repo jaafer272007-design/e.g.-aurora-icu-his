@@ -93,8 +93,16 @@ export function LabsCard({ labs }: { labs: Labs }) {
     if (i !== hover) setHover(i)
   }
 
+  if (!labs.panels.length) {
+    return (
+      <Card id="labs" icon={<IconFlask size={15} stroke="var(--blue)" />} title="Laboratory Trends" aside="from results store">
+        <div className="labempty">No lab results on file for this patient yet.</div>
+      </Card>
+    )
+  }
+
   return (
-    <Card id="labs" icon={<IconFlask size={15} stroke="var(--blue)" />} title="Laboratory Trends" aside="Last 7 draws · tap a series">
+    <Card id="labs" icon={<IconFlask size={15} stroke="var(--blue)" />} title="Laboratory Trends" aside="Recent draws · tap a series">
       <div className="tabs" role="tablist">
         {labs.panels.map(p => (
           <button key={p.name} role="tab" aria-selected={p.name === tab} className={`tab${p.name === tab ? ' on' : ''}`} onClick={() => setTab(p.name)}>

@@ -257,9 +257,10 @@ export interface ActionQueueItem {
 
 export type QueueKey = 'orders' | 'results' | 'notes'
 
-/** results/notes only — the "orders to sign" queue is derived from the
-    canonical Order model (status === 'pending'), not stored here */
-export type ActionQueuesResponse = Record<'results' | 'notes', ActionQueueItem[]>
+/** notes only — "orders to sign" derives from the canonical Order model
+    (Screen 5) and "results to acknowledge" from the canonical results
+    domain (Screen 6) */
+export type ActionQueuesResponse = Record<'notes', ActionQueueItem[]>
 
 export interface Consult {
   specialty: string
@@ -460,4 +461,93 @@ export interface MarRow {
   prn: boolean
   status: 'scheduled' | AdministrationAction
   documentedTime?: string
+}
+
+/* ==================== Laboratory & Imaging domain (Screen 6) ====================
+   THE canonical source of truth for lab and imaging RESULTS. Screen 5
+   (Orders & Medication) places lab/imaging orders; this domain holds what
+   comes back. Mission Control's lab trend card and Doctor Workspace's
+   "Results to Acknowledge" are derived views over this model — never
+   separate lists. Result ages shown in the UI are computed at render
+   against the clock (locked decision) — never stored. */
+
+export type ResultFlag = 'normal' | 'abnormal' | 'critical'
+export type LabPanelKey = 'CBC' | 'ABG' | 'Electrolytes' | 'Renal' | 'Liver' | 'Coagulation' | 'Lactate'
+
+/* ---------- GET /api/icu/results/labs?patientId ---------- */
+
+export interface LabResultItem {
+  analyte: string
+  value: number
+  unit: string
+  /** display range, e.g. "4.0–11.0" */
+  refRange: string
+  /** numeric bounds for chart reference bands */
+  refLow: number
+  refHigh: number
+  flag: ResultFlag
+}
+
+export interface LabDraw {
+  labId: string
+  patientId: string
+  /** denormalized display fields */
+  bedId: string
+  patientName: string
+  panel: LabPanelKey
+  /** short x-axis label for trend charts, e.g. "D-6" … "Now" */
+  label: string
+  /** "HH:MM" today or "D-n HH:MM" for prior days */
+  collectedAt: string
+  resultedAt: string
+  items: LabResultItem[]
+  /** worst flag across items (validated server-side) */
+  flag: ResultFlag
+  /** short lab/clinical note surfaced in the results inbox */
+  note?: string
+  acknowledged: boolean
+  acknowledgedBy?: string
+  acknowledgedAt?: string
+}
+
+/* ---------- GET /api/icu/results/imaging?patientId ---------- */
+
+export type ImagingModality = 'CXR' | 'CT' | 'US' | 'Echo' | 'MRI'
+/** status progression: ordered → in-progress → preliminary → final */
+export type ImagingStatus = 'ordered' | 'in-progress' | 'preliminary' | 'final'
+
+export interface ImagingStudy {
+  studyId: string
+  patientId: string
+  bedId: string
+  patientName: string
+  modality: ImagingModality
+  description: string
+  orderedAt: string
+  performedAt?: string
+  reportedAt?: string
+  status: ImagingStatus
+  /** findings text — present from "preliminary" onward */
+  report?: string
+  impression?: string
+  flag: ResultFlag
+  note?: string
+  acknowledged: boolean
+  acknowledgedBy?: string
+  acknowledgedAt?: string
+}
+
+/* ---------- GET /api/icu/results/inbox — unit-wide unacknowledged ---------- */
+
+export interface ResultInboxItem {
+  kind: 'lab' | 'imaging'
+  /** labId or studyId */
+  id: string
+  patientId: string
+  bedId: string
+  patientName: string
+  title: string
+  detail: string
+  time: string
+  flag: ResultFlag
 }
