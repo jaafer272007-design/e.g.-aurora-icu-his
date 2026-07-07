@@ -277,13 +277,19 @@ export function MissionControl() {
           {detail && (
             <Card id="timeline"
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>}
-              title="Clinical Timeline · Last 24 h" aside="Newest first · scroll →">
+              title="Clinical Timeline · Last 24 h"
+              aside={(
+                <button className="tlmore" onClick={() => navigate(`/timeline/${patientId}`)}>
+                  Full timeline →
+                </button>
+              )}>
+              {/* derived view over the aggregated feed (Screen 7) — same data, compact strip */}
               <div className="tl">
-                {detail.timeline.map((ev, i) => (
-                  <div className="tle" key={i}>
+                {detail.timeline.map(ev => (
+                  <div className="tle" key={ev.id}>
                     <span className="tt">{ev.time}</span>
                     <span className={`tc ${ev.category}`}>{ev.categoryLabel}</span>
-                    <p>{ev.text}</p>
+                    <p>{ev.title}{ev.detail ? ` — ${ev.detail}` : ''}</p>
                   </div>
                 ))}
               </div>

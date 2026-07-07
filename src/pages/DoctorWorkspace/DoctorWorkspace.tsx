@@ -159,11 +159,13 @@ export function DoctorWorkspace() {
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>}
               title="Incoming Consults" aside={consults ? `${consults.length} pending` : '—'}
             >
+              {/* shared consult store (patient linkage structured, not free text) —
+                  the Timeline reads the same records */}
               <div>
                 {consults?.map(c => (
-                  <div className="consult" key={c.specialty}>
+                  <div className="consult" key={c.consultId}>
                     <span className="cav">{c.specialty.split(' ').map(w => w[0]).slice(0, 2).join('')}</span>
-                    <div className="ct"><b>{c.specialty}</b> — {c.message}<small>{c.time}</small></div>
+                    <div className="ct"><b>{c.specialty}</b> — Re: {c.bedId} {c.patientName} — {c.message}<small>{c.time}</small></div>
                   </div>
                 ))}
               </div>

@@ -1,5 +1,5 @@
 import type {
-  Goal, Hemodynamics, Infusion, PatientAlert, TimelineEvent, Ventilator,
+  Goal, Hemodynamics, Infusion, PatientAlert, Ventilator,
 } from '../types'
 
 /* Clinical panel sample data from reference/icu-mission-control.html.
@@ -70,19 +70,4 @@ export const GOALS: Goal[] = [
   { label: 'Central Line Review', done: false },
   { label: 'Foley Review', done: false },
   { label: 'Family Meeting', done: false },
-]
-
-export const TIMELINE: TimelineEvent[] = [
-  { time: '09:42', category: 'lab', categoryLabel: 'LAB', text: 'Lactate resulted 3.8 mmol/L — repeat ordered for 13:00 with ScvO₂.' },
-  { time: '09:31', category: 'med', categoryLabel: 'MED', text: 'Noradrenaline titrated 0.24 → 0.32 µg/kg/min for MAP < 65.' },
-  { time: '08:55', category: 'nte', categoryLabel: 'NURSING', text: 'Hourly urine output 25–30 mL; nephrology aware, foley patent.' },
-  { time: '08:10', category: 'vnt', categoryLabel: 'VENT', text: 'PEEP increased 8 → 10 cmH₂O; FiO₂ weaned 60 → 55%.' },
-  { time: '07:15', category: 'con', categoryLabel: 'CONSULT', text: 'Infectious Diseases: continue meropenem, day 4 of 7; de-escalate per cultures.' },
-  { time: '06:30', category: 'med', categoryLabel: 'MED', text: 'Midazolam paused for spontaneous awakening trial at 10:00.' },
-  { time: '05:40', category: 'prc', categoryLabel: 'PROCEDURE', text: 'Right IJ central line dressing changed; site clean, no erythema.' },
-  { time: '04:20', category: 'txf', categoryLabel: 'TRANSFUSION', text: '1 unit PRBC completed for Hgb 7.9 → post-count 8.8 g/dL.' },
-  { time: '02:10', category: 'lab', categoryLabel: 'LAB', text: 'ABG: pH 7.31 / PaCO₂ 49 / PaO₂ 74 on FiO₂ 60% — vent adjusted.' },
-  { time: '00:45', category: 'nte', categoryLabel: 'PROGRESS', text: 'Night intensivist note: septic shock day 4, slow pressor wean attempted, reversed at 00:30.' },
-  { time: '23:30', category: 'med', categoryLabel: 'MED', text: 'Dexmedetomidine started 0.2 µg/kg/h to facilitate sedation wean.' },
-  { time: '22:15', category: 'prc', categoryLabel: 'PROCEDURE', text: 'Bedside ultrasound: IVC 1.8 cm, minimal collapse — volume replete.' },
 ]

@@ -37,6 +37,26 @@ export function agoLabel(t: string, now: Date): string {
   return `${Math.floor(m / 60)} h ${m % 60} min ago`
 }
 
+/* Absolute-timestamp helpers for the "HH:MM today | D-n HH:MM prior day"
+   convention used across the stores. These parse stored facts — no
+   time-relative state involved. */
+
+/** 0 for today, -n for "D-n …" */
+export const dayOffsetOf = (t: string): number => {
+  const m = /^D-(\d+)/.exec(t)
+  return m ? -Number(m[1]) : 0
+}
+
+/** the HH:MM portion of either form */
+export const hmOf = (t: string): string => {
+  const parts = t.split(' ')
+  return parts[parts.length - 1]
+}
+
+/** total minutes relative to today 00:00 — a sort key across days */
+export const timestampMinutes = (t: string): number =>
+  dayOffsetOf(t) * 1440 + toMinutes(hmOf(t))
+
 export const nowHm = () =>
   new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 

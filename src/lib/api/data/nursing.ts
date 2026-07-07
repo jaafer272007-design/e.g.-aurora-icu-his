@@ -1,4 +1,4 @@
-import type { IoEntry, NurseAssignmentResponse, NursingTask } from '../types'
+import type { IoEntry, NewIoEntry, NurseAssignmentResponse, NursingTask } from '../types'
 
 /* Nurse Workspace sample data — RN Maya Chen, day shift, assigned two
    patients (real ICU nurse:patient ratio). Patient identity fields mirror
@@ -31,8 +31,28 @@ export const NURSING_TASKS: NursingTask[] = [
   { taskId: 'TSK-4005', patientId: 'P-1001', bedId: 'B-01', label: 'Oral care — VAP bundle', dueTime: '12:00', recurrence: 'q4h', done: false },
   { taskId: 'TSK-4006', patientId: 'P-1004', bedId: 'B-04', label: 'CRRT circuit pressure check', dueTime: '12:00', recurrence: 'q2h', done: false },
   { taskId: 'TSK-4007', patientId: 'P-1004', bedId: 'B-04', label: 'Vascath site assessment', dueTime: '13:00', recurrence: 'q shift', done: false },
-  { taskId: 'TSK-4008', patientId: 'P-1004', bedId: 'B-04', label: 'Turn & reposition', dueTime: '10:00', recurrence: 'q2h', done: true },
+  { taskId: 'TSK-4008', patientId: 'P-1004', bedId: 'B-04', label: 'Turn & reposition', dueTime: '10:00', recurrence: 'q2h', done: true, completedAt: '10:05', completedBy: 'RN M. Chen' },
 ]
+
+/* Store mutators — task completion and I&O entry write to THIS store (not
+   page-local state) so derived views like the Timeline see them. They map to
+   POST /api/icu/nursing/tasks/:taskId/toggle and POST /api/icu/nursing/io. */
+
+export function applyTaskToggle(taskId: string, actor: string, time: string): NursingTask | null {
+  const t = NURSING_TASKS.find(x => x.taskId === taskId)
+  if (!t) return null
+  t.done = !t.done
+  t.completedAt = t.done ? time : undefined
+  t.completedBy = t.done ? actor : undefined
+  return t
+}
+
+let ioSeq = 5100
+export function insertIoEntry(draft: NewIoEntry, time: string): IoEntry {
+  const entry: IoEntry = { entryId: `IO-${++ioSeq}`, ...draft, time }
+  IO_ENTRIES.push(entry)
+  return entry
+}
 
 export const IO_ENTRIES: IoEntry[] = [
   { entryId: 'IO-5001', patientId: 'P-1001', kind: 'intake', category: 'IV fluids', volumeMl: 450, time: '09:30' },

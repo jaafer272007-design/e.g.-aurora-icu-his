@@ -214,11 +214,32 @@ export interface Goal {
   done: boolean
 }
 
+/* ---------- GET /api/icu/patients/:patientId/timeline ----------
+   Read-only AGGREGATED feed (Screen 7) — derived at read time from the
+   canonical stores (order audit history, lab draws, imaging studies,
+   nursing tasks, I&O, consults, clinical notes). It is never stored as
+   its own list; Mission Control's timeline card reads the same feed. */
+
+export type TimelineCategory =
+  | 'order' | 'med' | 'lab' | 'imaging' | 'task' | 'io' | 'consult' | 'note'
+
 export interface TimelineEvent {
+  /** synthetic stable id: `${refId}-${suffix}` */
+  id: string
+  patientId: string
+  /** "HH:MM" today or "D-n HH:MM" for prior days */
   time: string
-  category: 'med' | 'lab' | 'vnt' | 'prc' | 'con' | 'nte' | 'txf'
+  category: TimelineCategory
   categoryLabel: string
-  text: string
+  title: string
+  detail?: string
+  actor?: string
+  /** result severity, for lab/imaging events */
+  flag?: ResultFlag
+  /** route to the originating screen (view-only feed — act there, not here) */
+  link?: string
+  /** id of the source record (orderId / labId / studyId / taskId / …) */
+  refId: string
 }
 
 export interface PatientDetailResponse {
@@ -262,9 +283,20 @@ export type QueueKey = 'orders' | 'results' | 'notes'
     domain (Screen 6) */
 export type ActionQueuesResponse = Record<'notes', ActionQueueItem[]>
 
+/* ---------- GET /api/icu/consults ---------- */
+
+/** Consult request — shared store: Doctor Workspace's "Incoming Consults"
+    and the Timeline both read it. Patient linkage is structured
+    (patientId), never embedded in free text. */
 export interface Consult {
+  consultId: string
+  patientId: string
+  /** denormalized display fields */
+  bedId: string
+  patientName: string
   specialty: string
   message: string
+  /** "HH:MM" today or "D-n HH:MM" */
   time: string
 }
 
@@ -313,6 +345,10 @@ export interface NursingTask {
   dueTime: string
   recurrence: string
   done: boolean
+  /** absolute completion timestamp/actor — set when documented, cleared on
+      un-toggle (facts, not time-relative state) */
+  completedAt?: string
+  completedBy?: string
 }
 
 /* ---------- GET /api/icu/nursing/io ---------- */
@@ -326,6 +362,34 @@ export interface IoEntry {
   category: string
   volumeMl: number
   time: string
+}
+
+/** POST /api/icu/nursing/io request body */
+export interface NewIoEntry {
+  patientId: string
+  kind: IoKind
+  category: string
+  volumeMl: number
+}
+
+/* ---------- GET /api/icu/patients/:patientId/notes ----------
+   Minimal ClinicalNote model — the ONE genuine gap the Timeline exposed:
+   freeform progress/nursing/procedure/vent-adjustment notes are not tied to
+   any structured action in the orders/results/nursing stores. Everything
+   else on the Timeline derives from those stores; only these notes needed
+   a model of their own. Vent ('vent') notes are a stand-in until device
+   integration (Stage 11) emits structured ventilator events. */
+
+export type ClinicalNoteKind = 'progress' | 'nursing' | 'procedure' | 'vent'
+
+export interface ClinicalNote {
+  noteId: string
+  patientId: string
+  kind: ClinicalNoteKind
+  /** "HH:MM" today or "D-n HH:MM" */
+  time: string
+  author: string
+  text: string
 }
 
 /* ==================== Orders & Medication domain (Screen 5) ====================
