@@ -88,7 +88,38 @@ export interface UnitSummaryResponse {
   stats: UnitKpiStat[]
 }
 
-/* ---------- GET /api/icu/patients ---------- */
+/* ---------- GET /api/icu/patients ----------
+   STAGE 10 PHASE 1: this endpoint is REAL (ASP.NET Core + SQLite, /server).
+   The wire response is RosterRecordDto[] below — the canonical roster
+   record. PatientSummary.alertCount is NOT on the wire: it is derived
+   client-side (AI alerts + unacked results + bed alert) because those
+   domains are still mock; derived state is never stored or served. */
+
+/** Stage 10 roster service wire contract (mirrors server/Program.cs). */
+export interface RosterRecordDto {
+  patientId: string
+  bedId: string
+  name: string
+  mrn: string
+  age: number
+  sex: Sex
+  diagnosis: string
+  los: number
+  allergies: string
+  attending: string
+  codeStatus: string
+  rhythm: string
+  isolation: boolean
+  severity: Severity
+  sofa: number
+  ews: number
+  flags: SupportFlag[]
+  bedsideVitals: BedCardVitals
+  bedAlert: BedAlert
+  mapTrend: number[]
+  monitorVitals: MonitorVitals
+  organs: Record<OrganName, OrganStatus>
+}
 
 export interface PatientSummary {
   /** stable patient identifier — the canonical key for routing/lookups */
