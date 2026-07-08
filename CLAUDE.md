@@ -58,13 +58,49 @@ alert/device models. Apply incrementally; don't wholesale-refactor existing code
 - Derived-only, never stored: Timeline feed (`timeline.ts`), MAR rows,
   results inbox, MC lab-trend card, rounding/assignment patient views.
 
+## Stage 11 — Interchangeable Clinical Data Sources (locked architecture rule)
+Every clinical observation — vitals, ventilator settings/readings,
+hemodynamics, infusion pumps, dialysis/CRRT, temperature, urine output —
+must eventually support three interchangeable sources: **Manual / Device /
+Hybrid**, expressed through ONE Observation model:
+
+```
+Observation {
+  value, unit,
+  source: 'manual' | 'device' | 'hybrid',
+  deviceId?,            // set when source involves a device
+  capturedAt,           // when the value was measured
+  recordedBy,           // who entered/accepted it into the record
+  verifiedBy?,          // clinician verification of a device value
+  isOverridden,         // a manual override exists
+  overrideValue?, overrideReason?,
+}
+```
+
+Rules:
+- Data flows ONE way: Device Adapter → Observation Service → Clinical
+  Store → derived views. Devices NEVER write directly to UI state.
+- A manual override NEVER destroys the device reading — the original
+  device value is always preserved alongside `overrideValue` /
+  `overrideReason`, with `isOverridden` flagging the record.
+- This supersedes and formalizes the `panels.ts` deferred-debt entry
+  below (the identical per-patient vent/hemo/infusion data is exactly
+  what the Observation model replaces).
+- Implementation is Stage 11 scope, NOT before — do not build the
+  Observation model or touch `panels.ts`, vitals, ventilator,
+  hemodynamics, or infusion code until then.
+
 ## Known Deferred Debt (documented, intentionally not yet unified)
 - `panels.ts` attaches the same VENTILATOR/HEMODYNAMICS/INFUSIONS/
-  PATIENT_ALERTS/GOALS to every patient — awaits Stage 11 device models and
-  the structured alert model (architecture rule 5).
+  PATIENT_ALERTS/GOALS to every patient — vent/hemo/infusions are now
+  formally governed by the "Stage 11 — Interchangeable Clinical Data
+  Sources" rule above (Observation model, Manual/Device/Hybrid); alerts
+  still await the structured alert model (architecture rule 5). Stage 11
+  scope — do not touch before then.
 - Infusion channels (`panels.ts` INFUSIONS) overlap active continuous
   medication orders (Screen 5) — post-Stage-11, derive infusions from active
-  med orders + pump data.
+  med orders + pump data arriving as Observations per the Stage 11 rule
+  above.
 - DW "Notes Due" queue (`workspace.ts` ACTION_QUEUES.notes) is workspace-local —
   should become a state of the ClinicalNote domain (a due note = one not yet
   written) when note authoring gets built.
