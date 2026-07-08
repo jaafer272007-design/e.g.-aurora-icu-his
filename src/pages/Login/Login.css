@@ -1,4 +1,4 @@
-/* Login / Role-Switch — Stage 9. Local role simulation, not authentication. */
+/* Login — Stage 10 Phase 2 real authentication (Stage 9 local fallback). */
 .lg{min-height:100vh;overflow:auto}
 .lg .lgwrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;
  background:
@@ -29,6 +29,19 @@
 .lg .lgselect{width:100%;min-height:44px;border:1px solid var(--stroke2);border-radius:11px;background:rgba(10,16,28,.9);
  color:var(--text);font-size:13px;padding:10px 12px}
 .lg .lgselect:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.lg .lginput{width:100%;min-height:44px;border:1px solid var(--stroke2);border-radius:11px;background:rgba(10,16,28,.9);
+ color:var(--text);font-size:13px;padding:10px 12px}
+.lg .lginput:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.lg .lginput::placeholder{color:var(--faint)}
+.lg .lgerror{font-size:12px;font-weight:600;color:var(--red);border:1px solid rgba(255,93,108,.4);
+ background:rgba(255,93,108,.08);border-radius:11px;padding:9px 12px}
+.lg .lgmode{font-size:11px;line-height:1.5;color:var(--dim);border:1px solid var(--stroke);
+ background:rgba(255,255,255,.02);border-radius:11px;padding:8px 11px}
+.lg .lgdirectory{margin-top:12px;font-size:11.5px;color:var(--dim)}
+.lg .lgdirectory summary{cursor:pointer;min-height:32px;display:flex;align-items:center;color:var(--blue);font-weight:600}
+.lg .lgdirectory summary:focus-visible{outline:2px solid var(--blue);outline-offset:1px;border-radius:6px}
+.lg .lgdirectory ul{list-style:none;margin-top:6px;display:flex;flex-direction:column;gap:3px;max-height:180px;overflow:auto}
+.lg .lgdirectory .num{color:var(--cyan)}
 .lg .lgderived{border:1px solid var(--stroke);border-radius:13px;background:rgba(255,255,255,.02);padding:12px 13px;
  display:flex;flex-direction:column;gap:10px}
 .lg .lgwho{display:flex;align-items:center;gap:10px}

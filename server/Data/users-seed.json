@@ -1,0 +1,102 @@
+[
+  {
+    "username": "sara.rahman",
+    "name": "Dr. Sara Rahman",
+    "jobTitle": "Consultant"
+  },
+  {
+    "username": "liam.osei",
+    "name": "Dr. Liam Osei",
+    "jobTitle": "Specialist"
+  },
+  {
+    "username": "yara.haddad",
+    "name": "Dr. Yara Haddad",
+    "jobTitle": "Senior Resident"
+  },
+  {
+    "username": "jonas.weber",
+    "name": "Dr. Jonas Weber",
+    "jobTitle": "Resident"
+  },
+  {
+    "username": "amina.diallo",
+    "name": "Dr. Amina Diallo",
+    "jobTitle": "Intern"
+  },
+  {
+    "username": "samir.qassem",
+    "name": "Samir Qassem",
+    "jobTitle": "Pharmacist"
+  },
+  {
+    "username": "anna.kovacs",
+    "name": "Anna Kovacs",
+    "jobTitle": "Clinical Pharmacist"
+  },
+  {
+    "username": "maya.chen",
+    "name": "RN Maya Chen",
+    "jobTitle": "Staff Nurse"
+  },
+  {
+    "username": "priya.patel",
+    "name": "RN Priya Patel",
+    "jobTitle": "Charge Nurse"
+  },
+  {
+    "username": "daniel.okoro",
+    "name": "RN Daniel Okoro",
+    "jobTitle": "Head Nurse"
+  },
+  {
+    "username": "noor.al-amin",
+    "name": "Noor Al-Amin",
+    "jobTitle": "Laboratory Technician"
+  },
+  {
+    "username": "pablo.reyes",
+    "name": "Pablo Reyes",
+    "jobTitle": "Radiology Technician"
+  },
+  {
+    "username": "dina.silva",
+    "name": "RT Dina Silva",
+    "jobTitle": "Respiratory Therapist"
+  },
+  {
+    "username": "marco.bianchi",
+    "name": "Marco Bianchi",
+    "jobTitle": "Physiotherapist"
+  },
+  {
+    "username": "sofia.lindgren",
+    "name": "Sofia Lindgren",
+    "jobTitle": "Dietitian"
+  },
+  {
+    "username": "huda.nasser",
+    "name": "Huda Nasser",
+    "jobTitle": "Receptionist"
+  },
+  {
+    "username": "kofi.mensah",
+    "name": "Kofi Mensah",
+    "jobTitle": "Billing Officer"
+  },
+  {
+    "username": "emma.larsson",
+    "name": "Emma Larsson",
+    "jobTitle": "Medical Records Officer"
+  },
+  {
+    "username": "yusuf.karim",
+    "name": "Yusuf Karim",
+    "jobTitle": "Hospital Administrator"
+  },
+  {
+    "username": "alex.novak",
+    "name": "Alex Novak",
+    "jobTitle": "IT Administrator"
+  }
+]

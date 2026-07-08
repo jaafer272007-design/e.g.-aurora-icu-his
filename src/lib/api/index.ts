@@ -29,7 +29,7 @@ import {
   applyAcknowledgeImaging, applyAcknowledgeLab, deriveMissionControlLabs, deriveResultInbox,
   imagingFor, labDrawsFor,
 } from './data/results'
-import { hasPermission, type JobTitle } from '../session'
+import { getToken, hasPermission, type JobTitle } from '../session'
 import { dayOffsetOf, nowHm } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
@@ -61,6 +61,56 @@ const API_TIMEOUT_MS = 8000
 /** exposed for diagnostics/tests: 'api' after a successful live fetch */
 export let patientsSource: 'mock' | 'api' = 'mock'
 
+/* ---------------- Stage 10 Phase 2 — REAL authentication ----------------
+   POST /api/auth/login exchanges username (or full display name) +
+   password for a JWT; the session layer stores it and adapters attach it
+   as a Bearer token. `invalid` (server said 401) is a REAL rejection and
+   must be shown to the user; `unreachable` (no API base, timeout, network
+   or server error) triggers the Stage 9 local-session fallback in the
+   Login screen — same resilience pattern as the roster fallback below. */
+
+/** false in pure mock mode (no VITE_API_BASE_URL) — the Login screen then
+ *  labels sign-ins as Stage 9 local sessions up front */
+export const authApiConfigured = API_BASE !== ''
+
+export type LoginResult =
+  | { ok: true; name: string; jobTitle: string; token: string }
+  | { ok: false; reason: 'invalid' | 'unreachable' }
+
+/** POST /api/auth/login — real credential check (Stage 10 Phase 2). */
+export async function login(username: string, password: string): Promise<LoginResult> {
+  if (!API_BASE) return { ok: false, reason: 'unreachable' }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      signal: ctrl.signal,
+    })
+    clearTimeout(timer)
+    if (res.status === 401) return { ok: false, reason: 'invalid' }
+    if (res.ok) {
+      const body = (await res.json()) as { token?: string; name?: string; jobTitle?: string }
+      if (body.token && body.name && body.jobTitle)
+        return { ok: true, name: body.name, jobTitle: body.jobTitle, token: body.token }
+    }
+    console.info(`[aurora] auth API responded ${res.status} — falling back to local session`)
+  } catch {
+    console.info('[aurora] auth API unreachable (cold start?) — falling back to local session')
+  }
+  return { ok: false, reason: 'unreachable' }
+}
+
+/** Authorization header for the real endpoints (empty when the session is
+ *  a Stage 9 local fallback — the server then answers 401 and the adapter
+ *  falls back to mock data, never a broken UI). */
+const authHeaders = (): Record<string, string> => {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 const toSummary = (r: RosterRecordDto): PatientSummary => ({
   patientId: r.patientId,
   bedId: r.bedId,
@@ -80,7 +130,7 @@ export async function getPatients(): Promise<PatientSummary[]> {
     try {
       const ctrl = new AbortController()
       const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
-      const res = await fetch(`${API_BASE}/api/icu/patients`, { signal: ctrl.signal })
+      const res = await fetch(`${API_BASE}/api/icu/patients`, { signal: ctrl.signal, headers: authHeaders() })
       clearTimeout(timer)
       if (res.ok) {
         const roster = (await res.json()) as RosterRecordDto[]
