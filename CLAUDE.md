@@ -331,6 +331,52 @@ own phases.
   prescriber mutations, doctor-200 with token actor, implement
   doctor-403/nurse-200 on the LIVE service.
 
+## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
+The remaining build is organized as four data layers. Each layer must sit
+on a FULLY-REAL data foundation beneath it — never mix a new write-feature
+onto a still-mock store.
+
+1. **Layer 1 — Transactional data** (orders, results, medication
+   administrations): mid-migration in Stage 10 Phase 3. Labs/Imaging done
+   (PR #12) and Orders done (PR #14); MAR, Timeline, and AI still to
+   migrate — in that order, one domain per PR, each with the proven JWT +
+   server-side RBAC pattern.
+2. **Layer 2 — Entity/ADT data** (patient Admission / Discharge /
+   Transfer): the most clinically central WRITE feature — activates the
+   existing placeholder "Admissions"/"Discharges" nav items
+   (`NavSidebar.tsx`). Build only after Phase 3 completes (ADT writes
+   must land on the real roster/orders/results foundation) AND after the
+   database-persistence prerequisite below is resolved.
+3. **Layer 3 — Identity/access** (user administration: create / manage /
+   deactivate accounts, password reset): ties to the existing
+   Administrator profile and its `/admin` landing screen; supersedes the
+   Phase 2 "no registration/reset flow yet" note.
+4. **Layer 4 — Master/reference data** (drug formulary, lab test catalog,
+   order sets as maintained DATABASE tables with a manual data-entry UI —
+   not hardcoded frontend lists): the reference layer Pharmacy/Lab
+   admins maintain. Orders & Medication then reads the formulary from
+   here instead of the current hardcoded 19-drug list in
+   `src/lib/api/data/formulary.ts`.
+
+**Database persistence — BLOCKING prerequisite for Layer 2 (ADT).**
+SQLite currently lives inside the Render container's ephemeral
+filesystem: the DB is rebuilt and reseeded on every restart/redeploy, so
+ALL writes (acknowledged results, signed/modified orders, …) are lost
+when the free-tier service recycles. Acceptable for the prototype —
+reads always reseed to a known state — but it must be fixed before any
+real use, and BEFORE Layer 2: ADT events are the system of record for
+who was admitted where and cannot be rebuilt from a seed file. The fix
+is the EF Core provider swap the architecture was built for (`UseSqlite`
+→ Npgsql for Render Postgres, or `UseSqlServer` per the original plan, +
+connection string), replacing the boot-time `EnsureDeleted`/seed with
+migrations — a data-layer change, not a rewrite.
+
+Build order (locked): finish Phase 3 (Orders → MAR → Timeline → AI) →
+database persistence (Postgres/SQL Server provider swap, prerequisite
+above) → Layer 2 (ADT) → Layer 3 (user administration) → Layer 4
+(master data / formulary) → the deferred Print Center → Stage 11 (device
+integration + the Observation model per the locked rule above).
+
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
 - Touch targets ≥ 44×44px
