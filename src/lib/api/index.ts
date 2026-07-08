@@ -111,6 +111,53 @@ const authHeaders = (): Record<string, string> => {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+/** Shared GET against the real API (Stage 10 Phase 3+). Resolves null on
+ *  ANY failure — unreachable, timeout, 401 (tokenless/stale session) — so
+ *  each adapter falls back to its mock, console-logged, never a broken UI. */
+async function apiGet<T>(path: string, what: string): Promise<T | null> {
+  if (!API_BASE) return null
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}${path}`, { signal: ctrl.signal, headers: authHeaders() })
+    clearTimeout(timer)
+    if (res.ok) return (await res.json()) as T
+    console.info(`[aurora] ${what} API responded ${res.status} — using mock data`)
+  } catch {
+    console.info(`[aurora] ${what} API unreachable (cold start?) — using mock data`)
+  }
+  return null
+}
+
+/** Shared POST for real mutating endpoints. Three outcomes, handled
+ *  differently on purpose:
+ *  - ok: the server applied the change (response body = updated record)
+ *  - denied: the server REJECTED it (403 RBAC / 404 already-applied) —
+ *    the caller must NOT apply the mock mutation; enforcement is real
+ *  - offline: unreachable, or a 401 tokenless/stale session whose READS
+ *    are already coming from mock — the caller applies the mock mutation
+ *    so the Stage 9 offline experience stays coherent */
+type ApiPostResult<T> = { kind: 'ok'; data: T } | { kind: 'denied' } | { kind: 'offline' }
+async function apiPost<T>(path: string, what: string): Promise<ApiPostResult<T>> {
+  if (!API_BASE) return { kind: 'offline' }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}${path}`, { method: 'POST', signal: ctrl.signal, headers: authHeaders() })
+    clearTimeout(timer)
+    if (res.ok) return { kind: 'ok', data: (await res.json()) as T }
+    if (res.status === 401) {
+      console.info(`[aurora] ${what} API responded 401 (local session) — applying to mock data`)
+      return { kind: 'offline' }
+    }
+    console.info(`[aurora] ${what} API rejected the action (${res.status})`)
+    return { kind: 'denied' }
+  } catch {
+    console.info(`[aurora] ${what} API unreachable (cold start?) — applying to mock data`)
+    return { kind: 'offline' }
+  }
+}
+
 const toSummary = (r: RosterRecordDto): PatientSummary => ({
   patientId: r.patientId,
   bedId: r.bedId,
@@ -334,38 +381,50 @@ export function documentAdministration(
 }
 
 /* ---------------- Laboratory & Imaging results domain (Screen 6) ----------------
-   The canonical results service. Screen 5 places lab/imaging orders; these
-   adapters expose what RESULTED. Mission Control's lab card and Doctor
-   Workspace's "Results to Acknowledge" read the same store. Acknowledge is
-   doctor RBAC — enforced here in the service layer (and again server-side
-   at Stage 10), not just hidden in the UI:
-   POST /api/icu/results/labs/:labId/acknowledge
-   POST /api/icu/results/imaging/:studyId/acknowledge */
+   REAL service since Stage 10 Phase 3 (ASP.NET Core + SQLite in /server) —
+   the first domain with server-side RBAC: acknowledge requires the
+   results.acknowledge permission derived from the JWT's jobTitle claim ON
+   THE SERVER; a nurse token gets 403 regardless of the UI. The client
+   hasPermission checks below REMAIN as defense in depth. The acknowledging
+   actor is server-derived from the token — the `actor` argument is only
+   used on the mock fallback path. Mission Control's lab-trend card stays a
+   client-side derived view (chart presentation metadata is not served). */
 
-/** GET /api/icu/results/labs?patientId — all lab draws for a patient, oldest first. */
-export function getLabDraws(patientId: string): Promise<LabDraw[]> {
-  return respond(labDrawsFor(patientId), 120)
+/** GET /api/icu/results/labs?patientId — REAL endpoint; mock fallback. */
+export async function getLabDraws(patientId: string): Promise<LabDraw[]> {
+  const real = await apiGet<LabDraw[]>(`/api/icu/results/labs?patientId=${encodeURIComponent(patientId)}`, 'labs')
+  return real ?? respond(labDrawsFor(patientId), 120)
 }
 
-/** GET /api/icu/results/imaging?patientId — imaging studies incl. reports. */
-export function getImagingStudies(patientId: string): Promise<ImagingStudy[]> {
-  return respond(imagingFor(patientId), 120)
+/** GET /api/icu/results/imaging?patientId — REAL endpoint; mock fallback. */
+export async function getImagingStudies(patientId: string): Promise<ImagingStudy[]> {
+  const real = await apiGet<ImagingStudy[]>(`/api/icu/results/imaging?patientId=${encodeURIComponent(patientId)}`, 'imaging')
+  return real ?? respond(imagingFor(patientId), 120)
 }
 
-/** GET /api/icu/results/inbox — unit-wide unacknowledged results (labs + imaging). */
-export function getResultInbox(): Promise<ResultInboxItem[]> {
-  return respond(deriveResultInbox(), 120)
+/** GET /api/icu/results/inbox — unit-wide unacknowledged results, DERIVED
+ *  server-side at read time (REAL endpoint; mock fallback). */
+export async function getResultInbox(): Promise<ResultInboxItem[]> {
+  const real = await apiGet<ResultInboxItem[]>('/api/icu/results/inbox', 'results inbox')
+  return real ?? respond(deriveResultInbox(), 120)
 }
 
-/** POST /api/icu/results/labs/:labId/acknowledge — requires results.acknowledge; null if not permitted. */
-export function acknowledgeLab(labId: string, actor: string, jobTitle: JobTitle): Promise<LabDraw | null> {
+/** POST /api/icu/results/labs/:labId/acknowledge — REAL endpoint; requires
+ *  results.acknowledge (checked client-side AND re-enforced server-side). */
+export async function acknowledgeLab(labId: string, actor: string, jobTitle: JobTitle): Promise<LabDraw | null> {
   if (!hasPermission(jobTitle, 'results.acknowledge')) return respond(null, 120)
+  const r = await apiPost<LabDraw>(`/api/icu/results/labs/${encodeURIComponent(labId)}/acknowledge`, 'acknowledge')
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
   return respond(applyAcknowledgeLab(labId, actor, nowHm()), 120)
 }
 
-/** POST /api/icu/results/imaging/:studyId/acknowledge — requires results.acknowledge; null if not permitted. */
-export function acknowledgeImaging(studyId: string, actor: string, jobTitle: JobTitle): Promise<ImagingStudy | null> {
+/** POST /api/icu/results/imaging/:studyId/acknowledge — REAL endpoint; same RBAC. */
+export async function acknowledgeImaging(studyId: string, actor: string, jobTitle: JobTitle): Promise<ImagingStudy | null> {
   if (!hasPermission(jobTitle, 'results.acknowledge')) return respond(null, 120)
+  const r = await apiPost<ImagingStudy>(`/api/icu/results/imaging/${encodeURIComponent(studyId)}/acknowledge`, 'acknowledge')
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
   return respond(applyAcknowledgeImaging(studyId, actor, nowHm()), 120)
 }
 
