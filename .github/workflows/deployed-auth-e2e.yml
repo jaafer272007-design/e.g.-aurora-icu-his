@@ -1,0 +1,66 @@
+# Deployed API smoke test — verifies the LIVE Render service end-to-end:
+# health, login issuing a real JWT, generic 401s on bad credentials, the
+# roster endpoint rejecting missing/invalid tokens and serving 14 records
+# with a valid one, and CORS headers for the GitHub Pages origin.
+# Dispatch manually after a merge deploys /server changes to Render.
+name: Deployed API E2E
+on: workflow_dispatch
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up (Render free tier cold start)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            echo "healthz attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "service never became healthy" && exit 1
+
+      - name: Login issues a JWT (correct credentials)
+        run: |
+          body=$(curl -sf -X POST "$API/api/auth/login" \
+            -H "Content-Type: application/json" -H "Origin: $PAGES_ORIGIN" \
+            -d '{"username":"sara.rahman","password":"Aurora2026!"}')
+          token=$(echo "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          echo "$body" | python3 -c '
+          import json,sys,base64
+          d=json.load(sys.stdin)
+          assert d["name"]=="Dr. Sara Rahman" and d["jobTitle"]=="Consultant", d
+          p=d["token"].split(".")[1]; p+="="*(-len(p)%4)
+          c=json.loads(base64.urlsafe_b64decode(p))
+          assert c["sub"]=="sara.rahman" and c["jobTitle"]=="Consultant", c
+          print("JWT claims OK:", {k:c[k] for k in ("sub","jobTitle","iss","aud")})'
+          echo "TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Bad credentials → generic 401 (both cases identical)
+        run: |
+          for creds in '{"username":"sara.rahman","password":"wrong"}' '{"username":"ghost.user","password":"Aurora2026!"}'; do
+            out=$(curl -s -w '\n%{http_code}' -X POST "$API/api/auth/login" \
+              -H "Content-Type: application/json" -d "$creds")
+            echo "$creds -> $out"
+            [ "$(echo "$out" | tail -1)" = "401" ] || exit 1
+            echo "$out" | head -1 | grep -q '"Invalid credentials"' || exit 1
+          done
+
+      - name: Roster rejects missing and invalid tokens
+        run: |
+          for auth in "" "Authorization: Bearer not.a.jwt"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' ${auth:+-H "$auth"} "$API/api/icu/patients")
+            echo "auth='$auth' -> HTTP $code"
+            [ "$code" = "401" ] || exit 1
+          done
+
+      - name: Roster serves 14 records with a valid token (+ CORS header)
+        run: |
+          curl -sf -D /tmp/headers -H "Authorization: Bearer $TOKEN" -H "Origin: $PAGES_ORIGIN" \
+            "$API/api/icu/patients" -o /tmp/body.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/headers
+          python3 -c 'import json; d=json.load(open("/tmp/body.json")); assert len(d)==14, len(d); print("records:", len(d), "| first:", d[0]["name"], "| last:", d[-1]["name"])'

@@ -27,9 +27,10 @@ real APIs and medical devices later.
 6. Laboratory & Imaging — ✅ built, formal review pending (`/labs/:patientId`, canonical results model — MC lab card + DW results queue read derived views)
 7. Timeline — ✅ built, formal review pending (`/timeline/:patientId`, read-only aggregated feed derived from the canonical stores — no store of its own; MC timeline card reads the same feed; minimal ClinicalNote model added for freeform notes)
 8. AI Clinical Assistant — ✅ built, formal review pending (`/ai` unit ranking + `/ai/:patientId`, canonical AI risk model — MC AI panel + alert-center risk alerts read derived views; all predictions simulated until Stage 11)
-9. Login / Role-Switch screen — ✅ built (`/login`, local session simulation — three-layer RBAC below; real auth is Stage 10)
+9. Login / Role-Switch screen — ✅ built (`/login`, three-layer RBAC below; real username+password auth added in Stage 10 Phase 2, Stage 9 local session kept as the offline fallback)
 10. API Integration (ASP.NET Core Web APIs) — 🔄 in progress: Phase 1
-    (roster/patients) built — see "Stage 10 — API Integration" below
+    (roster/patients) + Phase 2 (authentication) built — see "Stage 10 —
+    API Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
 ## Architecture Rules (binding for all future screens)
@@ -43,11 +44,15 @@ User → Role (JobTitle) → PermissionProfile → Permissions. Roles are NEVER
 bound to permissions directly. Profile and permissions are ALWAYS computed
 from the JobTitle at read time via lookup (`src/lib/session.ts`) — never
 stored redundantly (same rule as clock-computed states). The session stores
-ONLY `{ name, jobTitle }` in sessionStorage (survives refresh, tab-scoped).
-LOCAL SESSION ONLY — no passwords/JWT/user DB until Stage 10. Service-layer
-adapters re-enforce permissions (defense in depth); Stage 10 re-enforces
-server-side. Finer-grained permissions per profile come in a later stage —
-these tables are provisional.
+ONLY `{ name, jobTitle, token? }` in sessionStorage (survives refresh,
+tab-scoped) — `token` is the JWT from Stage 10 Phase 2 authentication;
+it adds server-verified identity but permissions are NEVER read from it
+client-side. When the auth API is unreachable/unconfigured, login falls
+back to the Stage 9 LOCAL session (no token, password not verified,
+console-logged). Service-layer adapters re-enforce permissions (defense in
+depth); server-side permission enforcement per endpoint is Stage 10
+Phase 3+ scope. Finer-grained permissions per profile come in a later
+stage — these tables are provisional.
 
 JobTitle → PermissionProfile:
 | PermissionProfile    | JobTitles |
@@ -214,8 +219,43 @@ their own turns in later Stage 10 phases.
   fetch failure it falls back to the mock roster (never a broken UI).
 - **CORS**: explicit allowlist only — the GitHub Pages origin
   (`https://jaafer272007-design.github.io`) + local dev/preview ports;
-  override via `CORS_ORIGINS` (semicolon-separated). GET only.
-- No auth on the endpoint yet — Phase 2 scope.
+  override via `CORS_ORIGINS` (semicolon-separated). GET + POST.
+
+### Phase 2 — authentication (built)
+- **Users table** (same SQLite DB): the SAME 20 staff as the Stage 9
+  preset list. `server/Data/users-seed.json` is GENERATED from
+  `src/lib/session.ts` (`SAMPLE_STAFF` + `usernameOf`, e.g.
+  "Dr. Sara Rahman" → `sara.rahman`) — never hand-edit it. Only bcrypt
+  hashes are stored (work factor 10, one salt per user), never plaintext.
+- **Demo credential — NON-PRODUCTION**: all 20 accounts share the password
+  `Aurora2026!` (override via `DEMO_PASSWORD` env). No registration or
+  password-reset flow exists yet. This is a documented prototype
+  simplification only.
+- **`POST /api/auth/login`** (anonymous): username OR full display name +
+  password → `{ token, name, jobTitle }`. Any failure returns the SAME
+  generic 401 `{"error":"Invalid credentials"}` — never reveals whether
+  the username or password was wrong (an unknown user still runs a bcrypt
+  verify against a decoy hash so timing doesn't leak either).
+- **JWT**: HS256, claims `sub` (username), `name`, `jobTitle`, 12 h expiry
+  (one shift). Signing key = `JWT_SECRET` env (render.yaml generates it);
+  unset → random per-boot key (tokens just expire on service restart —
+  acceptable for the demo, no secret in the repo). Validation middleware
+  is registered once; endpoints opt in with `.RequireAuthorization()` —
+  currently ONLY `GET /api/icu/patients` (Phase 3 endpoints adopt the
+  same line). `/healthz` and login stay anonymous.
+- **Frontend**: the login screen is a real username+password form
+  (`login()` in `src/lib/api/index.ts`); on success the session stores the
+  JWT and adapters attach `Authorization: Bearer` (see `authHeaders()`).
+  Profile/permissions are STILL derived from JobTitle — unchanged. If the
+  auth API is unreachable/times out (8 s) or `VITE_API_BASE_URL` is unset,
+  login falls back to the Stage 9 local session (password NOT verified,
+  console-logged) — same resilience pattern as the roster fallback. A
+  401 on the roster (stale/tokenless session) falls back to the mock
+  roster, console-logged, never a broken UI.
+- **Deployed verification**: `.github/workflows/deployed-auth-e2e.yml`
+  (manual dispatch) smoke-tests the LIVE Render service — health, login
+  JWT, generic 401s, roster 401/200, CORS — run it after any /server
+  deploy.
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
@@ -228,10 +268,12 @@ their own turns in later Stage 10 phases.
 ## Current Status
 Screens 1–8 are built as componentized, routed React pages backed by
 canonical mock stores (see Canonical Data Domains); Stage 9 login/RBAC is
-in place as a LOCAL session simulation. Screens 2, 4–8 await formal review.
-Stage 10 Phase 1 (roster/patients) is built: real ASP.NET Core + SQLite +
-Docker service in /server, deployable via render.yaml, with the roster
-adapter swapped to the real endpoint behind VITE_API_BASE_URL (mock
-fallback). Next: later Stage 10 phases — remaining domains one at a time,
-then real authentication (Phase 2+), then Stage 11 device + AI
-integration per the locked rules above.
+in place with real authentication layered on top (Stage 10 Phase 2).
+Screens 2, 4–8 await formal review. Stage 10 Phase 1 (roster/patients) and
+Phase 2 (auth: bcrypt users table, POST /api/auth/login, JWT middleware on
+the roster endpoint, Bearer-token frontend with Stage 9 local-session
+fallback) are built on the ASP.NET Core + SQLite + Docker service in
+/server, deployable via render.yaml. Next: later Stage 10 phases —
+remaining domains one at a time with server-side permission enforcement
+(Phase 3+), then Stage 11 device + AI integration per the locked rules
+above.

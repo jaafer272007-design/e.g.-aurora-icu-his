@@ -1,14 +1,18 @@
-/* Session + three-layer, permission-based RBAC (Stage 9).
+/* Session + three-layer, permission-based RBAC (Stage 9, auth in Stage 10.2).
    User → Role (JobTitle) → PermissionProfile → Permissions — roles are
    NEVER bound to permissions directly; both the profile and the permission
    set are COMPUTED from the JobTitle at read time via lookup (same rule as
    clock-computed states), never stored redundantly. The session persists
-   ONLY { name, jobTitle } in sessionStorage.
+   ONLY { name, jobTitle, token? } in sessionStorage.
 
-   LOCAL SESSION ONLY — this is role simulation for design review, not
-   authentication. No passwords, JWT, or user database until Stage 10.
-   Service-layer adapters enforce the same permissions (defense in depth);
-   Stage 10 re-enforces them server-side. */
+   Stage 10 Phase 2: real authentication. The login screen calls
+   POST /api/auth/login; on success the session carries the issued JWT and
+   adapters attach it as a Bearer token. When the auth API is unreachable
+   (or VITE_API_BASE_URL is unset) the login falls back to the Stage 9
+   LOCAL SESSION (no token, password not verified) so the prototype keeps
+   working — same resilience pattern as the roster adapter. Profile and
+   permissions are STILL derived from the JobTitle exactly as before;
+   the JWT only adds server-verified identity. */
 
 /* ---------------- Layer 1 — JobTitle (19 real titles) ---------------- */
 
@@ -121,11 +125,15 @@ export const hasPermission = (title: JobTitle, permission: Permission): boolean 
 export const landingRouteOf = (title: JobTitle): string =>
   PROFILE_LANDING[TITLE_PROFILE[title]]
 
-/* ---------------- session (sessionStorage: name + JobTitle ONLY) ---------------- */
+/* ------------- session (sessionStorage: name + JobTitle + optional JWT) ------------- */
 
 export interface Session {
   name: string
   jobTitle: JobTitle
+  /** JWT issued by POST /api/auth/login (Stage 10 Phase 2); absent on the
+   *  Stage 9 local-session fallback. Attached as a Bearer token by the
+   *  API adapters — permissions are NEVER read from it client-side. */
+  token?: string
 }
 
 const STORAGE_KEY = 'aurora.session'
@@ -137,18 +145,38 @@ export function getSession(): Session | null {
     const parsed = JSON.parse(raw) as Partial<Session>
     if (typeof parsed.name === 'string' && parsed.name.trim() &&
         (JOB_TITLES as readonly string[]).includes(parsed.jobTitle as string)) {
-      return { name: parsed.name, jobTitle: parsed.jobTitle as JobTitle }
+      return {
+        name: parsed.name,
+        jobTitle: parsed.jobTitle as JobTitle,
+        ...(typeof parsed.token === 'string' && parsed.token ? { token: parsed.token } : {}),
+      }
     }
   } catch { /* corrupted/absent storage → signed out */ }
   return null
 }
 
-export function signIn(name: string, jobTitle: JobTitle): void {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ name, jobTitle }))
+/** the current session's Bearer token, if the sign-in was API-authenticated */
+export function getToken(): string | null {
+  return getSession()?.token ?? null
+}
+
+export function signIn(name: string, jobTitle: JobTitle, token?: string): void {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(token ? { name, jobTitle, token } : { name, jobTitle }))
 }
 
 export function signOut(): void {
   sessionStorage.removeItem(STORAGE_KEY)
+}
+
+/** "Dr. Sara Rahman" → "sara.rahman" — deterministic demo username.
+ *  The SAME derivation generates server/Data/users-seed.json, so the
+ *  fallback local login and the real user table always agree. */
+export function usernameOf(name: string): string {
+  return name
+    .replace(/^(Dr\.|RN|RT)\s+/, '')
+    .toLowerCase()
+    .replace(/\s+/g, '.')
+    .replace(/[^a-z.-]/g, '')
 }
 
 /** "Dr. Sara Rahman" → "SR" (title prefixes ignored) */
