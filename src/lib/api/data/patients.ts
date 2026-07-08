@@ -12,10 +12,13 @@ import { unackedResultCountFor } from './results'
    crit/high bed alert — never stored as its own number. (The static
    PATIENT_ALERTS list in panels.ts is deliberately excluded: it is known
    deferred debt attached identically to every patient.) */
+export const derivedAlertCount = (patientId: string, bedAlertSeverity: string): number =>
+  deriveRiskAlerts(patientId).length +
+  unackedResultCountFor(patientId) +
+  (bedAlertSeverity === 'crit' || bedAlertSeverity === 'high' ? 1 : 0)
+
 const alertCountFor = (r: UnitPatientRecord): number =>
-  deriveRiskAlerts(r.patientId).length +
-  unackedResultCountFor(r.patientId) +
-  (r.bedAlert.severity === 'crit' || r.bedAlert.severity === 'high' ? 1 : 0)
+  derivedAlertCount(r.patientId, r.bedAlert.severity)
 
 const toPatient = (r: UnitPatientRecord): Patient => ({
   patientId: r.patientId,

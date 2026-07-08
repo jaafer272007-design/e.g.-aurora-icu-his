@@ -54,8 +54,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # project Pages are served from /<repo>/, so the bundle needs that base path
+      # project Pages are served from /<repo>/, so the bundle needs that base path.
+      # VITE_API_BASE_URL points the roster adapter at the Stage 10 API (repo
+      # variable API_BASE_URL — the Render service URL); empty = mock fallback.
       - run: npm run build -- --base=/e.g.-aurora-icu-his/
+        env:
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
       # SPA fallback: Pages serves 404.html for unknown paths, letting the router take over
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5

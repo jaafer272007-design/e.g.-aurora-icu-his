@@ -28,7 +28,8 @@ real APIs and medical devices later.
 7. Timeline — ✅ built, formal review pending (`/timeline/:patientId`, read-only aggregated feed derived from the canonical stores — no store of its own; MC timeline card reads the same feed; minimal ClinicalNote model added for freeform notes)
 8. AI Clinical Assistant — ✅ built, formal review pending (`/ai` unit ranking + `/ai/:patientId`, canonical AI risk model — MC AI panel + alert-center risk alerts read derived views; all predictions simulated until Stage 11)
 9. Login / Role-Switch screen — ✅ built (`/login`, local session simulation — three-layer RBAC below; real auth is Stage 10)
-10. API Integration (ASP.NET Core Web APIs)
+10. API Integration (ASP.NET Core Web APIs) — 🔄 in progress: Phase 1
+    (roster/patients) built — see "Stage 10 — API Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
 ## Architecture Rules (binding for all future screens)
@@ -184,6 +185,38 @@ Shared components to build once and reuse: Card, Badge/Tag, SeverityDot
 AppHeader, PatientRail, PatientBar, NotFoundCard (the locked not-found
 pattern lives in ONE component).
 
+## Stage 10 — API Integration (Phase 1: roster/patients ONLY)
+One domain per phase, one phase per PR. Phase 1 replaces ONLY the
+roster/patients read path with a real service; Orders, Labs/Results, MAR,
+Consults, Notes, Nursing, Timeline, and AI all remain mock adapters until
+their own turns in later Stage 10 phases.
+- `/server` — ASP.NET Core 8 minimal API, Dockerized (2-stage build).
+  One real endpoint: `GET /api/icu/patients` (+ `GET /healthz` probe).
+  The wire contract mirrors the mock adapter exactly — `RosterRecordDto`
+  in `src/lib/api/types.ts` is the single source of truth for the shape.
+  `alertCount` is NOT served: it is derived (AI alerts + unacked results +
+  bed alert) from domains that are still mock, so the frontend keeps
+  deriving it (derived state is never stored/served — locked rule).
+- **SQLite, deliberately** — a documented Phase 1 simplification. Moving
+  to SQL Server later is an EF Core provider swap (`UseSqlite` →
+  `UseSqlServer` + connection string), not a rewrite. The DB is created
+  and seeded at startup from `server/Data/roster-seed.json`, which is
+  GENERATED from `src/lib/api/data/roster.ts` — never hand-edit it.
+- **Hosting: Render free tier** (`render.yaml` blueprint, Docker runtime,
+  rootDir `server`, health check `/healthz`). Free tier spins down when
+  idle — cold starts of ~30–60s are expected; the frontend adapter
+  handles this with an 8s timeout + silent fallback to the mock roster,
+  so the UI never blocks on a sleeping server.
+- **Frontend config**: `VITE_API_BASE_URL` env var (see `.env.example`).
+  Unset/empty = pure mock mode (safe default). The Pages deploy workflow
+  reads it from the `API_BASE_URL` GitHub repo variable. Only
+  `getPatients()` in `src/lib/api/index.ts` calls the real API; on any
+  fetch failure it falls back to the mock roster (never a broken UI).
+- **CORS**: explicit allowlist only — the GitHub Pages origin
+  (`https://jaafer272007-design.github.io`) + local dev/preview ports;
+  override via `CORS_ORIGINS` (semicolon-separated). GET only.
+- No auth on the endpoint yet — Phase 2 scope.
+
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
 - Touch targets ≥ 44×44px
@@ -196,6 +229,9 @@ pattern lives in ONE component).
 Screens 1–8 are built as componentized, routed React pages backed by
 canonical mock stores (see Canonical Data Domains); Stage 9 login/RBAC is
 in place as a LOCAL session simulation. Screens 2, 4–8 await formal review.
-Next: Stage 10 — replace the mock adapters in src/lib/api with ASP.NET
-Core Web APIs and real authentication, then Stage 11 device + AI
+Stage 10 Phase 1 (roster/patients) is built: real ASP.NET Core + SQLite +
+Docker service in /server, deployable via render.yaml, with the roster
+adapter swapped to the real endpoint behind VITE_API_BASE_URL (mock
+fallback). Next: later Stage 10 phases — remaining domains one at a time,
+then real authentication (Phase 2+), then Stage 11 device + AI
 integration per the locked rules above.

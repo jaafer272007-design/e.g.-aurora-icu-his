@@ -1,0 +1,19 @@
+# Render blueprint — declarative config for the "ICU" web service
+# (Stage 10 Phase 1). Docker-based so the hosting choice stays swappable;
+# free plan (cold starts after ~15 min idle are expected and documented —
+# the frontend roster adapter falls back to mock data while the service
+# wakes).
+services:
+  - type: web
+    name: ICU
+    runtime: docker
+    repo: https://github.com/jaafer272007-design/e.g.-aurora-icu-his
+    branch: main
+    rootDir: server
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: CORS_ORIGINS
+        value: https://jaafer272007-design.github.io

@@ -9,10 +9,10 @@ import type {
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
   OrderSetsResponse, PatientDetailResponse, PatientRiskProfile, PatientSummary, ResultInboxItem,
-  RiskRankingRow, RoundingListResponse, TimelineEvent, UnitSummaryResponse,
+  RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse,
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY } from './data/beds'
-import { allPatients } from './data/patients'
+import { allPatients, derivedAlertCount } from './data/patients'
 import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, VENTILATOR } from './data/panels'
 import { ACTION_QUEUES, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
 import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
@@ -46,8 +46,55 @@ export function getUnitSummary(): Promise<UnitSummaryResponse> {
   return respond(UNIT_SUMMARY, 120)
 }
 
-/** GET /api/icu/patients — sidebar roster for Mission Control. */
-export function getPatients(): Promise<PatientSummary[]> {
+/* ---------------- Stage 10 Phase 1 — REAL roster endpoint ----------------
+   GET /api/icu/patients is served by the ASP.NET Core + SQLite service in
+   /server. The base URL comes from VITE_API_BASE_URL (never hardcoded);
+   when it is unset or the service is unreachable (Render free tier cold
+   starts take ~30-60 s), the adapter falls back to the local mock so the
+   app keeps working — the first request also wakes the service for the
+   next load. Every OTHER adapter below remains mock until its own Stage 10
+   phase. */
+
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+const API_TIMEOUT_MS = 8000
+
+/** exposed for diagnostics/tests: 'api' after a successful live fetch */
+export let patientsSource: 'mock' | 'api' = 'mock'
+
+const toSummary = (r: RosterRecordDto): PatientSummary => ({
+  patientId: r.patientId,
+  bedId: r.bedId,
+  name: r.name,
+  mrn: r.mrn,
+  diagnosis: r.diagnosis,
+  flags: r.flags,
+  isolation: r.isolation,
+  /* alertCount stays client-derived — see the wire-contract note in types.ts */
+  alertCount: derivedAlertCount(r.patientId, r.bedAlert.severity),
+})
+
+/** GET /api/icu/patients — sidebar roster for Mission Control.
+ *  REAL endpoint (Stage 10 Phase 1); mock fallback documented above. */
+export async function getPatients(): Promise<PatientSummary[]> {
+  if (API_BASE) {
+    try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+      const res = await fetch(`${API_BASE}/api/icu/patients`, { signal: ctrl.signal })
+      clearTimeout(timer)
+      if (res.ok) {
+        const roster = (await res.json()) as RosterRecordDto[]
+        if (Array.isArray(roster) && roster.length > 0) {
+          patientsSource = 'api'
+          return roster.map(toSummary)
+        }
+      }
+      console.info(`[aurora] roster API responded ${res.status} — using mock roster`)
+    } catch {
+      console.info('[aurora] roster API unreachable (cold start?) — using mock roster')
+    }
+  }
+  patientsSource = 'mock'
   const summaries: PatientSummary[] = allPatients().map(
     ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }) =>
       ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }),
