@@ -1,0 +1,97 @@
+# Deployed Orders E2E — verifies the LIVE Render service after a /server
+# deploy (Stage 10 Phase 3, Orders): authenticated order reads return the
+# real seeded data, unauthenticated calls are 401, and EVERY prescriber
+# mutation (create/sign/modify/discontinue) enforces RBAC SERVER-SIDE — a
+# nurse token is rejected 403 on all four while a doctor token succeeds
+# with the actor derived from the token; implement is nurse-only (doctor
+# 403). Dispatch manually after merging /server changes to main.
+name: Deployed Orders E2E
+on: workflow_dispatch
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up (Render free tier cold start)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            echo "healthz attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "service never became healthy" && exit 1
+
+      - name: Login as doctor and nurse
+        run: |
+          for u in sara.rahman maya.chen; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+
+      - name: Unauthenticated order reads → 401
+        run: |
+          for qs in "patientId=P-1001" "status=pending" "implement=true"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/orders?$qs")
+            echo "orders?$qs -> HTTP $code"
+            [ "$code" = "401" ] || exit 1
+          done
+
+      - name: Authenticated reads return real seeded data (+ CORS)
+        run: |
+          curl -sf -D /tmp/h -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" \
+            "$API/api/icu/orders?patientId=P-1001" -o /tmp/orders.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c '
+          import json; d=json.load(open("/tmp/orders.json"))
+          assert len(d)==11, len(d)
+          assert d[0]["orderId"]=="ORD-2001" and d[0]["status"]=="active", d[0]
+          print("P-1001 orders:", len(d), "| first:", d[0]["orderId"], d[0]["summary"][:40])'
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/orders?status=pending" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); ids=[o["orderId"] for o in d]; assert "ORD-2007" in ids, ids; print("pending queue:", ids)'
+
+      - name: NURSE token → 403 on ALL prescriber mutations (server-side RBAC)
+        run: |
+          check() { echo "$1 -> HTTP $2"; [ "$2" = "403" ] || exit 1; }
+          check "create" "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"P-1001","category":"Nursing","summary":"x","priority":"Routine"}],"sign":false}' "$API/api/icu/orders")"
+          check "sign" "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/orders/ORD-2007/sign")"
+          check "modify" "$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"changes":{"dose":"2 g"},"reason":"x"}' "$API/api/icu/orders/ORD-2003")"
+          check "discontinue" "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"reason":"x"}' "$API/api/icu/orders/ORD-2003/discontinue")"
+
+      - name: DOCTOR token succeeds on every mutation (actor from token)
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"P-1001","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":true,"note":"deployed E2E"}' \
+            "$API/api/icu/orders" | python3 -c '
+          import json,sys; d=json.load(sys.stdin)[0]
+          assert d["status"]=="active" and d["orderedBy"]=="Dr. Sara Rahman", d
+          assert [h["actor"] for h in d["history"]]==["Dr. Sara Rahman"]*2, d["history"]
+          print("create+sign:", d["orderId"], "| by:", d["orderedBy"], "| admins:", len(d["administrations"]))'
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/orders/ORD-2007/sign" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); h=d["history"][-1]; assert d["status"]=="active" and h["actor"]=="Dr. Sara Rahman" and h["action"]=="signed", d; print("sign ORD-2007:", d["status"], "| by:", h["actor"])'
+          curl -sf -X PUT -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"changes":{"dose":"500 mg"},"reason":"deployed E2E"}' "$API/api/icu/orders/ORD-2003" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); h=d["history"][-1]; assert h["actor"]=="Dr. Sara Rahman" and "dose: 1 g → 500 mg" in h["detail"], h; print("modify ORD-2003:", h["detail"])'
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"reason":"deployed E2E"}' "$API/api/icu/orders/ORD-2004/discontinue" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="discontinued" and d["history"][-1]["actor"]=="Dr. Sara Rahman", d; print("discontinue ORD-2004:", d["status"], "| reason:", d["statusReason"])'
+
+      - name: Implement is nurse-only (doctor 403, nurse 200)
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/orders/ORD-2008/implement")
+          echo "doctor implement -> HTTP $code"; [ "$code" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/orders/ORD-2008/implement" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="completed" and d["history"][-1]["actor"]=="RN Maya Chen", d; print("nurse implement:", d["status"], "| by:", d["history"][-1]["actor"])'

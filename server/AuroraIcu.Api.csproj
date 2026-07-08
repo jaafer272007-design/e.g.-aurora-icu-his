@@ -18,6 +18,7 @@
     <Content Update="Data\users-seed.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Update="Data\labs-seed.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Update="Data\imaging-seed.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="Data\orders-seed.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

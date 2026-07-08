@@ -1,0 +1,684 @@
+[
+  {
+    "orderId": "ORD-2001",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Urgent",
+    "status": "active",
+    "medication": {
+      "drugId": "noradrenaline",
+      "drug": "Noradrenaline",
+      "dose": "0.32 µg/kg/min",
+      "route": "IV infusion (central)",
+      "frequency": "continuous",
+      "duration": "ongoing",
+      "prn": false
+    },
+    "summary": "Noradrenaline 0.32 µg/kg/min · IV infusion (central) · continuous",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-3 21:10",
+    "administrations": [
+      {
+        "adminId": "ADM-401",
+        "scheduledTime": "11:00",
+        "status": "scheduled"
+      }
+    ],
+    "history": [
+      {
+        "time": "D-3 21:10",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Start 0.1 µg/kg/min, titrate to MAP ≥ 65"
+      },
+      {
+        "time": "D-3 21:12",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      },
+      {
+        "time": "09:31",
+        "actor": "Dr. S. Rahman",
+        "action": "modified",
+        "detail": "Dose 0.24 → 0.32 µg/kg/min — MAP < 65 for 12 min"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2002",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "active",
+    "medication": {
+      "drugId": "insulin-actrapid",
+      "drug": "Insulin (Actrapid)",
+      "dose": "2.5 U/h",
+      "route": "IV infusion",
+      "frequency": "continuous",
+      "duration": "ongoing",
+      "prn": false
+    },
+    "summary": "Insulin (Actrapid) 2.5 U/h · IV infusion · continuous",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-2 08:40",
+    "administrations": [
+      {
+        "adminId": "ADM-402",
+        "scheduledTime": "11:30",
+        "status": "scheduled"
+      }
+    ],
+    "history": [
+      {
+        "time": "D-2 08:40",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Glucose check q1h while on infusion"
+      },
+      {
+        "time": "D-2 08:41",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2003",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "active",
+    "medication": {
+      "drugId": "meropenem",
+      "drug": "Meropenem",
+      "dose": "1 g",
+      "route": "IV over 30 min",
+      "frequency": "q8h",
+      "duration": "7 days",
+      "prn": false
+    },
+    "summary": "Meropenem 1 g · IV over 30 min · q8h (day 4 of 7)",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-4 02:15",
+    "administrations": [
+      {
+        "adminId": "ADM-403",
+        "scheduledTime": "04:00",
+        "status": "given",
+        "documentedTime": "04:05",
+        "documentedBy": "RN night shift"
+      },
+      {
+        "adminId": "ADM-404",
+        "scheduledTime": "12:00",
+        "status": "scheduled"
+      }
+    ],
+    "history": [
+      {
+        "time": "D-4 02:15",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Empiric cover, de-escalate per cultures"
+      },
+      {
+        "time": "D-4 02:16",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      },
+      {
+        "time": "04:05",
+        "actor": "RN night shift",
+        "action": "administered",
+        "detail": "04:00 dose given"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2004",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "active",
+    "medication": {
+      "drugId": "paracetamol",
+      "drug": "Paracetamol",
+      "dose": "1 g",
+      "route": "IV",
+      "frequency": "q6h",
+      "duration": "ongoing",
+      "prn": true,
+      "prnIndication": "temp ≥ 38.3 °C"
+    },
+    "summary": "Paracetamol 1 g · IV · PRN (temp ≥ 38.3 °C)",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-3 22:00",
+    "administrations": [
+      {
+        "adminId": "ADM-405",
+        "scheduledTime": "",
+        "status": "scheduled"
+      }
+    ],
+    "history": [
+      {
+        "time": "D-3 22:00",
+        "actor": "Dr. S. Rahman",
+        "action": "created"
+      },
+      {
+        "time": "D-3 22:01",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2005",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "active",
+    "medication": {
+      "drugId": "enoxaparin",
+      "drug": "Enoxaparin",
+      "dose": "40 mg",
+      "route": "SC",
+      "frequency": "daily",
+      "duration": "ongoing",
+      "prn": false
+    },
+    "summary": "Enoxaparin 40 mg · SC · daily (18:00)",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-3 21:20",
+    "administrations": [
+      {
+        "adminId": "ADM-406",
+        "scheduledTime": "18:00",
+        "status": "scheduled"
+      }
+    ],
+    "history": [
+      {
+        "time": "D-3 21:20",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "DVT prophylaxis"
+      },
+      {
+        "time": "D-3 21:21",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2006",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Urgent",
+    "status": "pending",
+    "medication": {
+      "drugId": "noradrenaline",
+      "drug": "Noradrenaline",
+      "dose": "titrate, max 0.5 µg/kg/min",
+      "route": "IV infusion (central)",
+      "frequency": "continuous",
+      "duration": "ongoing",
+      "prn": false
+    },
+    "summary": "Noradrenaline — raise titration ceiling to 0.5 µg/kg/min, MAP target ≥ 65",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "09:31",
+    "history": [
+      {
+        "time": "09:31",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Ceiling change awaiting signature"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2007",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "pending",
+    "medication": {
+      "drugId": "meropenem",
+      "drug": "Meropenem",
+      "dose": "1 g",
+      "route": "IV over 30 min",
+      "frequency": "q12h",
+      "duration": "3 days",
+      "prn": false
+    },
+    "summary": "Meropenem de-escalation — narrow per culture sensitivities (ID rec)",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "07:40",
+    "history": [
+      {
+        "time": "07:40",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Per ID: de-escalate, day 4 of 7"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2008",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Lab",
+    "priority": "STAT",
+    "status": "active",
+    "requiresImplementation": true,
+    "summary": "Repeat lactate + ScvO₂ with the 13:00 draw — sample from arterial line",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "09:42",
+    "history": [
+      {
+        "time": "09:42",
+        "actor": "Dr. S. Rahman",
+        "action": "created"
+      },
+      {
+        "time": "09:42",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2009",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Nursing",
+    "priority": "Routine",
+    "status": "active",
+    "requiresImplementation": true,
+    "summary": "Change right IJ central line dressing during day shift",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "07:50",
+    "history": [
+      {
+        "time": "07:50",
+        "actor": "Dr. S. Rahman",
+        "action": "created"
+      },
+      {
+        "time": "07:50",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2010",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "discontinued",
+    "medication": {
+      "drugId": "midazolam",
+      "drug": "Midazolam",
+      "dose": "2 mg/h",
+      "route": "IV infusion",
+      "frequency": "continuous",
+      "duration": "ongoing",
+      "prn": false
+    },
+    "summary": "Midazolam 2 mg/h · IV infusion · continuous",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-3 21:30",
+    "statusReason": "Paused for spontaneous awakening trial (SAT) per protocol",
+    "history": [
+      {
+        "time": "D-3 21:30",
+        "actor": "Dr. S. Rahman",
+        "action": "created"
+      },
+      {
+        "time": "D-3 21:31",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      },
+      {
+        "time": "06:30",
+        "actor": "Dr. S. Rahman",
+        "action": "discontinued",
+        "detail": "Paused for spontaneous awakening trial (SAT) per protocol"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2011",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "category": "Medication",
+    "priority": "Urgent",
+    "status": "completed",
+    "medication": {
+      "drugId": "prbc",
+      "drug": "Packed red blood cells",
+      "dose": "1 unit",
+      "route": "IV transfusion",
+      "frequency": "once",
+      "duration": "once",
+      "prn": false
+    },
+    "summary": "PRBC 1 unit · IV transfusion · once (Hgb 7.9)",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "02:30",
+    "history": [
+      {
+        "time": "02:30",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Hgb 7.9 g/dL"
+      },
+      {
+        "time": "02:31",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      },
+      {
+        "time": "04:20",
+        "actor": "RN night shift",
+        "action": "completed",
+        "detail": "Transfusion completed, post-count 8.8 g/dL"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2012",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "active",
+    "medication": {
+      "drugId": "pantoprazole",
+      "drug": "Pantoprazole",
+      "dose": "40 mg",
+      "route": "IV",
+      "frequency": "daily",
+      "duration": "ongoing",
+      "prn": false
+    },
+    "summary": "Pantoprazole 40 mg · IV · daily",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-6 10:00",
+    "administrations": [
+      {
+        "adminId": "ADM-407",
+        "scheduledTime": "08:00",
+        "status": "given",
+        "documentedTime": "08:04",
+        "documentedBy": "RN M. Chen"
+      }
+    ],
+    "history": [
+      {
+        "time": "D-6 10:00",
+        "actor": "Dr. S. Rahman",
+        "action": "created"
+      },
+      {
+        "time": "D-6 10:01",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      },
+      {
+        "time": "08:04",
+        "actor": "RN M. Chen",
+        "action": "administered",
+        "detail": "08:00 dose given"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2013",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "active",
+    "medication": {
+      "drugId": "calcium-gluconate",
+      "drug": "Calcium gluconate",
+      "dose": "10 mL 10%",
+      "route": "IV",
+      "frequency": "per CRRT protocol",
+      "duration": "ongoing",
+      "prn": false
+    },
+    "summary": "Calcium gluconate 10 mL 10% · IV · per CRRT protocol",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-2 14:20",
+    "administrations": [
+      {
+        "adminId": "ADM-408",
+        "scheduledTime": "10:00",
+        "status": "given",
+        "documentedTime": "10:12",
+        "documentedBy": "RN M. Chen"
+      }
+    ],
+    "history": [
+      {
+        "time": "D-2 14:20",
+        "actor": "Dr. S. Rahman",
+        "action": "created"
+      },
+      {
+        "time": "D-2 14:21",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      },
+      {
+        "time": "10:12",
+        "actor": "RN M. Chen",
+        "action": "administered",
+        "detail": "10:00 dose given"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2014",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "active",
+    "medication": {
+      "drugId": "phosphate",
+      "drug": "Phosphate (K-Phos)",
+      "dose": "15 mmol",
+      "route": "IV over 4 h",
+      "frequency": "once",
+      "duration": "once",
+      "prn": false
+    },
+    "summary": "Phosphate (K-Phos) 15 mmol · IV over 4 h · once",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "06:10",
+    "administrations": [
+      {
+        "adminId": "ADM-409",
+        "scheduledTime": "12:00",
+        "status": "scheduled"
+      }
+    ],
+    "history": [
+      {
+        "time": "06:10",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "PO₄ 0.5 mmol/L on AM labs"
+      },
+      {
+        "time": "06:11",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2015",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "category": "Medication",
+    "priority": "Routine",
+    "status": "active",
+    "medication": {
+      "drugId": "metoprolol",
+      "drug": "Metoprolol",
+      "dose": "25 mg",
+      "route": "PO",
+      "frequency": "bid",
+      "duration": "ongoing",
+      "prn": false
+    },
+    "summary": "Metoprolol 25 mg · PO · bid — hold if HR < 60 or SBP < 100",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "D-5 09:00",
+    "administrations": [
+      {
+        "adminId": "ADM-410",
+        "scheduledTime": "12:00",
+        "status": "scheduled"
+      }
+    ],
+    "history": [
+      {
+        "time": "D-5 09:00",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Rate control, AFib"
+      },
+      {
+        "time": "D-5 09:01",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2016",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "category": "Nursing",
+    "priority": "Urgent",
+    "status": "pending",
+    "requiresImplementation": true,
+    "summary": "CRRT prescription renewal — 24 h renewal due, filter change anticipated 22:00",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "08:55",
+    "history": [
+      {
+        "time": "08:55",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Awaiting signature"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2017",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "category": "Nursing",
+    "priority": "Urgent",
+    "status": "active",
+    "requiresImplementation": true,
+    "summary": "Prime and stage CRRT filter change kit at bedside before 22:00",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "08:55",
+    "history": [
+      {
+        "time": "08:55",
+        "actor": "Dr. S. Rahman",
+        "action": "created"
+      },
+      {
+        "time": "08:55",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2018",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "category": "Nursing",
+    "priority": "Routine",
+    "status": "active",
+    "requiresImplementation": true,
+    "summary": "Daily weight on bed scale before 08:00 tomorrow",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "08:30",
+    "history": [
+      {
+        "time": "08:30",
+        "actor": "Dr. S. Rahman",
+        "action": "created"
+      },
+      {
+        "time": "08:30",
+        "actor": "Dr. S. Rahman",
+        "action": "signed"
+      }
+    ]
+  },
+  {
+    "orderId": "ORD-2019",
+    "patientId": "P-1007",
+    "bedId": "B-07",
+    "patientName": "Robert Miller",
+    "category": "Nursing",
+    "priority": "Urgent",
+    "status": "pending",
+    "requiresImplementation": true,
+    "summary": "Proning protocol — P/F 176, RT requesting order to proceed",
+    "orderedBy": "Dr. S. Rahman",
+    "orderedTime": "07:15",
+    "history": [
+      {
+        "time": "07:15",
+        "actor": "Dr. S. Rahman",
+        "action": "created",
+        "detail": "Awaiting signature"
+      }
+    ]
+  }
+]
