@@ -334,6 +334,12 @@ export function deriveResultInbox(): ResultInboxItem[] {
   return [...labs, ...imaging].sort((a, b) => b.time.localeCompare(a.time))
 }
 
+/** live unacknowledged results for one patient (labs + imaging) — feeds the
+    derived roster alertCount */
+export const unackedResultCountFor = (patientId: string): number =>
+  LAB_DRAWS.filter(d => d.patientId === patientId && !d.acknowledged).length +
+  IMAGING.filter(x => x.patientId === patientId && !x.acknowledged).length
+
 export function applyAcknowledgeLab(labId: string, actor: string, role: SessionRole, time: string): LabDraw | null {
   if (!canAcknowledgeResults(role)) return null
   const d = LAB_DRAWS.find(x => x.labId === labId && !x.acknowledged)

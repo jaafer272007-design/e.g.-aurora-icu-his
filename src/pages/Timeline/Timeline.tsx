@@ -3,7 +3,9 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import './Timeline.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
-import { BedChip } from '../../components/Tag'
+import { NotFoundCard } from '../../components/NotFoundCard'
+import { PatientBar } from '../../components/PatientBar'
+import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconClock, IconNote, IconPill } from '../../components/icons'
 import { getPatientDetail, getPatients, getTimeline } from '../../lib/api'
@@ -155,46 +157,27 @@ export function Timeline() {
           footerLines={[role === 'nurse' ? 'Role: Nurse' : 'Role: Physician', 'Timeline is view-only']}
         />
 
-        <aside className="ptrail" aria-label="Patients">
-          <div className="ptrailhead">Patients</div>
-          <div className="ptraillist">
-            {patients?.map(p => (
-              <button
-                key={p.patientId}
-                className={`ptrailcard${p.patientId === patientId ? ' sel' : ''}`}
-                aria-current={p.patientId === patientId ? 'page' : undefined}
-                onClick={() => navigate(`/timeline/${p.patientId}${location.search}`)}
-              >
-                <BedChip bedId={p.bedId} />
-                <span className="prname">{p.name}</span>
-              </button>
-            ))}
-          </div>
-        </aside>
+        <PatientRail
+          patients={patients}
+          selectedId={patientId}
+          onSelect={id => navigate(`/timeline/${id}${location.search}`)}
+        />
 
         <main>
-          {missing && (
-            <section className="card notfound" role="alert">
-              <IconAlertTriangle size={28} stroke="var(--amber)" />
-              <h2>Patient Not Found</h2>
-              <p>No patient found for this ID — they may have been discharged, transferred, or this link is outdated.</p>
-              <button className="nf-btn" onClick={() => navigate('/beds')}>← Back to Bed Overview</button>
-            </section>
-          )}
+          {missing && <NotFoundCard />}
 
           {patient && (
-            <div className="ptbar">
-              <BedChip bedId={patient.bedId} />
-              <b className="ptbarname">{patient.name}</b>
-              <span className="ptbarsub num">{patient.mrn} · {patient.age} · {patient.sex}</span>
+            <PatientBar
+              patient={patient}
+              links={[
+                { label: 'Chart →', to: `/patients/${patient.patientId}` },
+                { label: 'Orders →', to: `/orders/${patient.patientId}` },
+                { label: 'Results →', to: `/labs/${patient.patientId}` },
+              ]}
+            >
               <span className="ptbardx">{patient.diagnosis}</span>
               <span className="ptbarviewonly">Read-only feed</span>
-              <div className="ptbarlinks">
-                <button className="ptbarlink" onClick={() => navigate(`/patients/${patient.patientId}`)}>Chart →</button>
-                <button className="ptbarlink" onClick={() => navigate(`/orders/${patient.patientId}`)}>Orders →</button>
-                <button className="ptbarlink" onClick={() => navigate(`/labs/${patient.patientId}`)}>Results →</button>
-              </div>
-            </div>
+            </PatientBar>
           )}
 
           {patient && events && (

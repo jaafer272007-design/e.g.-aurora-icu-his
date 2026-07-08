@@ -104,7 +104,8 @@ Card radius 18px, `1px solid rgba(130,170,230,.13)` border, blur 14–18px,
 shadow `0 12px 34px rgba(0,0,0,.38)`.
 Shared components to build once and reuse: Card, Badge/Tag, SeverityDot
 (pulses on critical), VitalTile, Sparkline, AlertRow, KpiPill, NavSidebar,
-AppHeader.
+AppHeader, PatientRail, PatientBar, NotFoundCard (the locked not-found
+pattern lives in ONE component).
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)

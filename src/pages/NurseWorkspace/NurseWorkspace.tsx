@@ -3,7 +3,7 @@ import './NurseWorkspace.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Toast, useToast } from '../../components/Toast'
-import { dueStateFor, useNow } from '../../lib/time'
+import { dueStateFor, nowHm, useNow } from '../../lib/time'
 import { IconCheck, IconPencil, IconUsers } from '../../components/icons'
 import {
   completeImplementation, documentAdministration, getImplementationQueue, getIoEntries,
@@ -19,7 +19,6 @@ import { TasksCard } from './TasksCard'
 import { IoCard } from './IoCard'
 import { SbarCard, type SbarNote } from './SbarCard'
 
-const nowHm = () => new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 
 const NURSE_ACTOR = 'RN M. Chen'
 

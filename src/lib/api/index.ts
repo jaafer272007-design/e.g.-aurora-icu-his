@@ -12,7 +12,7 @@ import type {
   RiskRankingRow, RoundingListResponse, TimelineEvent, UnitSummaryResponse,
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY } from './data/beds'
-import { PATIENTS } from './data/patients'
+import { allPatients } from './data/patients'
 import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, VENTILATOR } from './data/panels'
 import { ACTION_QUEUES, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
 import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
@@ -48,7 +48,7 @@ export function getUnitSummary(): Promise<UnitSummaryResponse> {
 
 /** GET /api/icu/patients — sidebar roster for Mission Control. */
 export function getPatients(): Promise<PatientSummary[]> {
-  const summaries: PatientSummary[] = PATIENTS.map(
+  const summaries: PatientSummary[] = allPatients().map(
     ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }) =>
       ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }),
   )
@@ -57,7 +57,7 @@ export function getPatients(): Promise<PatientSummary[]> {
 
 /** GET /api/icu/patients/:patientId — full Mission Control payload for one patient. */
 export function getPatientDetail(patientId: string): Promise<PatientDetailResponse | null> {
-  const patient = PATIENTS.find(p => p.patientId === patientId)
+  const patient = allPatients().find(p => p.patientId === patientId)
   if (!patient) return respond(null, 120)
   return respond(
     {
@@ -191,7 +191,7 @@ export function getMarRows(patientIds: string[]): Promise<MarRow[]> {
  *  `note` (e.g. an acknowledged safety-warning override) is written to the audit history. */
 export function createOrders(drafts: NewOrderDraft[], actor: string, sign: boolean, note?: string): Promise<Order[]> {
   const created = drafts.map(d => {
-    const pt = PATIENTS.find(p => p.patientId === d.patientId)
+    const pt = allPatients().find(p => p.patientId === d.patientId)
     return insertOrder(d, actor, sign, pt?.name ?? d.patientId, pt?.bedId ?? '—', note)
   })
   return respond(created, 150)

@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { Sparkline } from '../../components/Sparkline'
 import { riskTrendOf } from '../../lib/api'
+import { riskColor } from '../../lib/risk'
 import type { RiskPrediction, RiskTrend } from '../../lib/api/types'
 
 /* one prediction card — everything on it is read-only; suggestions are
    advisory text and never trigger an order */
-
-export const riskColor = (x: number) => (x >= 70 ? 'var(--red)' : x >= 40 ? 'var(--amber)' : 'var(--green)')
 
 export function trendLabel(trend: RiskTrend, delta: number): string {
   if (trend === 'rising') return `▲ Rising +${delta} / 2 h`
