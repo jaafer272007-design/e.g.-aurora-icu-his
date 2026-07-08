@@ -15,7 +15,7 @@ import type {
   ActionQueueItem, Consult, Order, OrderSetsResponse, QueueKey, ResultInboxItem,
   RoundingListResponse,
 } from '../../lib/api/types'
-import { CURRENT_SESSION } from '../../lib/session'
+import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { OrderDrawer } from './OrderDrawer'
 
 const QUEUE_LABEL: Record<QueueKey, string> = {
@@ -37,6 +37,8 @@ interface QueueRow extends ActionQueueItem {
 const sofaColor = (v: number) => (v >= 10 ? 'var(--red)' : v >= 6 ? 'var(--amber)' : 'var(--green)')
 
 export function DoctorWorkspace() {
+  /* behind RequireSession(orders.sign) — session is present */
+  const session = getSession()!
   const navigate = useNavigate()
   const { toast, showToast } = useToast()
   const [rounding, setRounding] = useState<RoundingListResponse | null>(null)
@@ -66,7 +68,7 @@ export function DoctorWorkspace() {
   /* doctor RBAC: signing activates the order in the canonical store */
   const signPending = (orderId: string) => {
     const order = pendingOrders?.find(o => o.orderId === orderId)
-    signOrder(orderId, CURRENT_SESSION.actor).then(updated => {
+    signOrder(orderId, session.name, session.jobTitle).then(updated => {
       if (!updated) return
       setPendingOrders(prev => prev && prev.map(o => (o.orderId === orderId ? { ...o, leaving: true } : o)))
       setTimeout(() => setPendingOrders(prev => prev && prev.filter(o => o.orderId !== orderId)), 280)
@@ -76,7 +78,7 @@ export function DoctorWorkspace() {
 
   /* doctor RBAC: acknowledging writes to the canonical results store */
   const ackResult = (item: ResultInboxItem) => {
-    acknowledgeResult(item.kind, item.id, CURRENT_SESSION.actor, CURRENT_SESSION.role).then(ok => {
+    acknowledgeResult(item.kind, item.id, session.name, session.jobTitle).then(ok => {
       if (!ok) return
       setResults(prev => prev && prev.map(r => (r.id === item.id ? { ...r, leaving: true } : r)))
       setTimeout(() => setResults(prev => prev && prev.filter(r => r.id !== item.id)), 280)
@@ -119,10 +121,10 @@ export function DoctorWorkspace() {
         kpis={kpis}
         bellCount={5}
         onBellClick={() => showToast('Alerts', '5 active notifications across your panel')}
-        user={{ initials: 'SR', name: 'Dr. Sara Rahman', role: 'Intensivist · Panel: Pod A/B' }}
+        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
-        <NavSidebar active="dashboard" alertCount={5} footerLines={['Role: Physician', 'Full order/med authority']} />
+        <NavSidebar active="dashboard" alertCount={5} footerLines={['Role: Doctor profile', 'Full order/med authority']} />
 
         <main>
           <div className="col">

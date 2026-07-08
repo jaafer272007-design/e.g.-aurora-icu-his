@@ -18,6 +18,8 @@ type FilterKey = 'all' | OrderStatus
 const FILTERS: FilterKey[] = ['all', 'pending', 'active', 'completed', 'discontinued']
 
 interface OrderListCardProps {
+  /** false = read-only list (no sign/modify/discontinue controls) */
+  canManage: boolean
   orders: Order[]
   onSign: (orderId: string) => void
   onModify: (orderId: string) => void
@@ -26,7 +28,7 @@ interface OrderListCardProps {
 
 /** Full per-patient order list with status filters, audit history, and
  *  doctor RBAC actions (sign / modify / discontinue). */
-export function OrderListCard({ orders, onSign, onModify, onDiscontinue }: OrderListCardProps) {
+export function OrderListCard({ orders, canManage, onSign, onModify, onDiscontinue }: OrderListCardProps) {
   const now = useNow()
   const [filter, setFilter] = useState<FilterKey>('all')
   const [openHistory, setOpenHistory] = useState<Set<string>>(new Set())
@@ -89,13 +91,13 @@ export function OrderListCard({ orders, onSign, onModify, onDiscontinue }: Order
                 <div className="ooreason">⛔ Discontinued: {o.statusReason}</div>
               )}
               <div className="ooacts">
-                {o.status === 'pending' && (
+                {canManage && o.status === 'pending' && (
                   <button className="oab sign" onClick={() => onSign(o.orderId)} aria-label={`Sign order ${o.orderId}`}>✓ Sign</button>
                 )}
-                {(o.status === 'pending' || o.status === 'active') && o.medication && (
+                {canManage && (o.status === 'pending' || o.status === 'active') && o.medication && (
                   <button className="oab modify" onClick={() => onModify(o.orderId)} aria-label={`Modify order ${o.orderId}`}>✎ Modify</button>
                 )}
-                {(o.status === 'pending' || o.status === 'active') && (
+                {canManage && (o.status === 'pending' || o.status === 'active') && (
                   <button className="oab dc" onClick={() => onDiscontinue(o.orderId)} aria-label={`Discontinue order ${o.orderId}`}>⊘ Discontinue</button>
                 )}
                 <button

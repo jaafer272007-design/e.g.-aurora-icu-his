@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import './AiAssistant.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
@@ -11,7 +11,7 @@ import { Sparkline } from '../../components/Sparkline'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconBrain } from '../../components/icons'
 import { AI_ALERT_THRESHOLD, getPatientDetail, getRiskProfile, getRiskRanking } from '../../lib/api'
-import { CURRENT_SESSION, type SessionRole } from '../../lib/session'
+import { getSession, initialsOf, profileOf } from '../../lib/session'
 import type { Patient, PatientRiskProfile, RiskRankingRow } from '../../lib/api/types'
 import { riskColor } from '../../lib/risk'
 import { RiskCard, trendLabel } from './RiskCard'
@@ -24,11 +24,10 @@ import { RiskCard, trendLabel } from './RiskCard'
 export function AiAssistant() {
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
-  const location = useLocation()
   const { toast, showToast } = useToast()
-  /* dev preview of the nurse view until Stage 9 auth: /ai/P-1001?as=nurse */
-  const role: SessionRole =
-    new URLSearchParams(location.search).get('as') === 'nurse' ? 'nurse' : CURRENT_SESSION.role
+  /* Stage 9 session — the assistant is advisory-only for every profile */
+  const session = getSession()!
+  const sessionProfile = profileOf(session.jobTitle)
 
   const [ranking, setRanking] = useState<RiskRankingRow[] | null>(null)
   const [patient, setPatient] = useState<Patient | null>(null)
@@ -89,16 +88,13 @@ export function AiAssistant() {
         kpis={kpis}
         bellCount={alertsRaised}
         onBellClick={() => showToast('Alert center', `${alertsRaised} simulated AI risk(s) above the ${AI_ALERT_THRESHOLD}% alert threshold — see each patient's alert center`)}
-        user={role === 'nurse'
-          ? { initials: 'MC', name: 'RN Maya Chen', role: 'ICU Nurse · view only' }
-          : { initials: 'SR', name: 'Dr. Sara Rahman', role: 'Intensivist · advisory review' }}
+        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${sessionProfile} profile` }}
       />
       <div className="shell">
         <NavSidebar
           active="ai"
           alertCount={alertsRaised}
-          dashboardRoute={role === 'nurse' ? '/nurse' : '/workspace'}
-          footerLines={[role === 'nurse' ? 'Role: Nurse' : 'Role: Physician', 'Simulated · advisory only']}
+          footerLines={[`Role: ${sessionProfile} profile`, 'Simulated · advisory only']}
         />
 
         <PatientRail
@@ -106,7 +102,7 @@ export function AiAssistant() {
           accent="violet"
           patients={ranking?.map(r => ({ patientId: r.patientId, bedId: r.bedId, name: r.patientName, top: r.top }))}
           selectedId={patientId}
-          onSelect={id => navigate(`/ai/${id}${location.search}`)}
+          onSelect={id => navigate(`/ai/${id}`)}
           badge={p => <span className="prtop num" style={{ color: riskColor(p.top.probability) }}>{p.top.probability}%</span>}
         />
 
@@ -134,7 +130,7 @@ export function AiAssistant() {
                   <button
                     key={r.patientId}
                     className={`aarow${r.top.probability >= 70 ? ' crit' : ''}`}
-                    onClick={() => navigate(`/ai/${r.patientId}${location.search}`)}
+                    onClick={() => navigate(`/ai/${r.patientId}`)}
                     aria-label={`Open risk profile: ${r.patientName}, top risk ${r.top.category} ${r.top.probability}%`}
                   >
                     <span className="aarank-n num">{i + 1}</span>
@@ -177,7 +173,7 @@ export function AiAssistant() {
                 ]}
               >
                 <span className="ptbardx">{patient.diagnosis}</span>
-                {role === 'nurse' && <span className="ptbarviewonly">View only — nurse session</span>}
+                {sessionProfile !== 'Doctor' && <span className="ptbarviewonly">View only — advisory screen</span>}
               </PatientBar>
               <div className="aacards">
                 {[...profile.risks].sort((a, b) => b.probability - a.probability).map(r => (

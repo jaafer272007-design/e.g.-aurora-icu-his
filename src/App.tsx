@@ -7,39 +7,52 @@ import { OrdersMedication } from './pages/OrdersMedication/OrdersMedication'
 import { LabImaging } from './pages/LabImaging/LabImaging'
 import { Timeline } from './pages/Timeline/Timeline'
 import { AiAssistant } from './pages/AiAssistant/AiAssistant'
+import { AdminHome } from './pages/AdminHome/AdminHome'
+import { Login } from './pages/Login/Login'
+import { RequireSession } from './components/RequireSession'
+import { getSession, landingRouteOf } from './lib/session'
 
-/* Route map
-   /workspace              Doctor Workspace — the role-personalized "Dashboard"
-                           (defaults to the physician view until auth exists)
-   /nurse                  Nurse Workspace — the nurse session's "Dashboard"
-   /beds                   ICU Bed Overview
-   /patients/:patientId    Patient Mission Control, keyed by the stable
-                           patient identifier (bed number is location only)
-   /labs/:patientId        Laboratory & Imaging — canonical results record
-   /timeline/:patientId    Clinical Timeline — read-only aggregated feed
-   /ai                     AI Clinical Assistant — unit-wide risk ranking
-   /ai/:patientId          AI Clinical Assistant — patient risk profile */
+/* Route map (all except /login require a session; each route also requires
+   the listed permission — Stage 9 three-layer RBAC, see lib/session.ts)
+   /login                  Login / Role-Switch — LOCAL session only
+   /                       redirects to the signed-in profile's landing view
+   /workspace              Doctor Workspace           orders.sign
+   /nurse                  Nurse Workspace            meds.administer
+   /admin                  Administrator landing      admin.view
+   /beds                   ICU Bed Overview           patients.view
+   /patients/:patientId    Patient Mission Control    patients.view
+   /orders(/:patientId)    Orders & Medication        orders.view (mutations need more)
+   /labs(/:patientId)      Laboratory & Imaging       results.view
+   /timeline(/:patientId)  Clinical Timeline          patients.view
+   /ai(/:patientId)        AI Clinical Assistant      ai.view */
 /* Vite injects BASE_URL from the build's --base flag ('/' locally,
    '/e.g.-aurora-icu-his/' on GitHub Pages) — the router must match it. */
 const BASENAME = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/'
+
+function HomeRedirect() {
+  const session = getSession()
+  return <Navigate to={session ? landingRouteOf(session.jobTitle) : '/login'} replace />
+}
 
 export default function App() {
   return (
     <BrowserRouter basename={BASENAME}>
       <Routes>
-        <Route path="/" element={<Navigate to="/workspace" replace />} />
-        <Route path="/workspace" element={<DoctorWorkspace />} />
-        <Route path="/nurse" element={<NurseWorkspace />} />
-        <Route path="/beds" element={<BedOverview />} />
-        <Route path="/patients/:patientId" element={<MissionControl />} />
-        <Route path="/orders" element={<OrdersMedication />} />
-        <Route path="/orders/:patientId" element={<OrdersMedication />} />
-        <Route path="/labs" element={<LabImaging />} />
-        <Route path="/labs/:patientId" element={<LabImaging />} />
-        <Route path="/timeline" element={<Timeline />} />
-        <Route path="/timeline/:patientId" element={<Timeline />} />
-        <Route path="/ai" element={<AiAssistant />} />
-        <Route path="/ai/:patientId" element={<AiAssistant />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<HomeRedirect />} />
+        <Route path="/workspace" element={<RequireSession permission="orders.sign"><DoctorWorkspace /></RequireSession>} />
+        <Route path="/nurse" element={<RequireSession permission="meds.administer"><NurseWorkspace /></RequireSession>} />
+        <Route path="/admin" element={<RequireSession permission="admin.view"><AdminHome /></RequireSession>} />
+        <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
+        <Route path="/patients/:patientId" element={<RequireSession permission="patients.view"><MissionControl /></RequireSession>} />
+        <Route path="/orders" element={<RequireSession permission="orders.view"><OrdersMedication /></RequireSession>} />
+        <Route path="/orders/:patientId" element={<RequireSession permission="orders.view"><OrdersMedication /></RequireSession>} />
+        <Route path="/labs" element={<RequireSession permission="results.view"><LabImaging /></RequireSession>} />
+        <Route path="/labs/:patientId" element={<RequireSession permission="results.view"><LabImaging /></RequireSession>} />
+        <Route path="/timeline" element={<RequireSession permission="patients.view"><Timeline /></RequireSession>} />
+        <Route path="/timeline/:patientId" element={<RequireSession permission="patients.view"><Timeline /></RequireSession>} />
+        <Route path="/ai" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />
+        <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

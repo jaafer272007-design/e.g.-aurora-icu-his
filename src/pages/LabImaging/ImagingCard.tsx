@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
 import { agoLabel, useNow } from '../../lib/time'
-import { canAcknowledgeResults, type SessionRole } from '../../lib/session'
 import type { ImagingStatus, ImagingStudy, ResultFlag } from '../../lib/api/types'
 
 const STATUS_STEPS: ImagingStatus[] = ['ordered', 'in-progress', 'preliminary', 'final']
@@ -18,16 +17,16 @@ const FLAG_BADGE: Record<ResultFlag, { color: BadgeColor; label: string }> = {
 
 interface ImagingCardProps {
   studies: ImagingStudy[]
-  role: SessionRole
+  /** derived from the session's permissions (results.acknowledge) */
+  canAcknowledge: boolean
   onAcknowledge: (studyId: string) => void
 }
 
 /** Imaging study list with report/impression text and status progression.
  *  Acknowledge is doctor RBAC — nurses view only. */
-export function ImagingCard({ studies, role, onAcknowledge }: ImagingCardProps) {
+export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge }: ImagingCardProps) {
   const now = useNow()
   const [open, setOpen] = useState<Set<string>>(new Set())
-  const canAck = canAcknowledgeResults(role)
 
   const toggle = (id: string) =>
     setOpen(prev => {

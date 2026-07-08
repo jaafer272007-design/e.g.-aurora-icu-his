@@ -205,3 +205,8 @@
   .mc .colR{flex-direction:column}
   .mc.app-frame{height:auto;overflow:visible}
 }
+
+/* Stage 9 — sign out / switch role from the MC header */
+.mc .switchrole{font-size:10.5px;font-weight:600;color:var(--dim);border:1px solid var(--stroke);border-radius:9px;
+ padding:8px 12px;min-height:36px;margin-left:12px;transition:.15s}
+.mc .switchrole:hover,.mc .switchrole:focus-visible{color:var(--red);border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.07)}

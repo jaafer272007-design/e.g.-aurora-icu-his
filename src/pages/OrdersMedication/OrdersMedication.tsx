@@ -16,17 +16,22 @@ import type {
   FormularyDrug, InteractionRule, MedicationDetails, NewOrderDraft, Order, OrderPriority,
   OrderSetDef, OrderSetItemTemplate, Patient, PatientSummary,
 } from '../../lib/api/types'
+import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { OrderListCard } from './OrderListCard'
 import { NewOrderCard } from './NewOrderCard'
 import { OrderSetsCard } from './OrderSetsCard'
 import { DiscontinueDialog, ModifyDialog } from './OrderDialogs'
 
-const DOCTOR_ACTOR = 'Dr. S. Rahman'
 
 /** Screen 5 — Orders & Medication. The canonical source of truth for orders
  *  and medications; Doctor Workspace and Nurse Workspace read derived views
  *  of the same model. Doctor RBAC: create / modify / discontinue. */
 export function OrdersMedication() {
+  /* behind RequireSession(orders.view); mutations additionally need the
+     prescriber permissions — checked here for the UI and re-checked in the
+     service layer */
+  const session = getSession()!
+  const canPrescribe = hasPermission(session.jobTitle, 'orders.create')
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
   const { toast, showToast } = useToast()
@@ -80,7 +85,7 @@ export function OrdersMedication() {
   const orderById = (id: string | null) => orders?.find(o => o.orderId === id) ?? null
 
   const handleSign = (orderId: string) => {
-    signOrder(orderId, DOCTOR_ACTOR).then(o => {
+    signOrder(orderId, session.name, session.jobTitle).then(o => {
       if (!o) return
       refresh()
       showToast('Order signed', `${o.summary} · now active`)
@@ -89,7 +94,7 @@ export function OrdersMedication() {
 
   const handleModify = (changes: Partial<MedicationDetails>, reason: string) => {
     if (!modifyId) return
-    modifyOrder(modifyId, changes, reason, DOCTOR_ACTOR).then(o => {
+    modifyOrder(modifyId, changes, reason, session.name, session.jobTitle).then(o => {
       setModifyId(null)
       if (!o) return
       refresh()
@@ -99,7 +104,7 @@ export function OrdersMedication() {
 
   const handleDiscontinue = (reason: string) => {
     if (!discontinueId) return
-    discontinueOrder(discontinueId, reason, DOCTOR_ACTOR).then(o => {
+    discontinueOrder(discontinueId, reason, session.name, session.jobTitle).then(o => {
       setDiscontinueId(null)
       if (!o) return
       refresh()
@@ -109,7 +114,7 @@ export function OrdersMedication() {
 
   const handleCreate = (medication: MedicationDetails, priority: OrderPriority, sign: boolean, overrideNote?: string) => {
     const draft: NewOrderDraft = { patientId, category: 'Medication', medication, priority }
-    createOrders([draft], DOCTOR_ACTOR, sign, overrideNote).then(([o]) => {
+    createOrders([draft], session.name, sign, session.jobTitle, overrideNote).then(([o]) => {
       refresh()
       showToast(sign ? 'Order signed & active' : 'Order saved as pending', o?.summary ?? '')
     })
@@ -124,7 +129,7 @@ export function OrdersMedication() {
       priority: it.priority,
       requiresImplementation: it.requiresImplementation,
     }))
-    createOrders(drafts, DOCTOR_ACTOR, false).then(created => {
+    createOrders(drafts, session.name, false, session.jobTitle).then(created => {
       refresh()
       showToast(
         `${set.name} expanded`,
@@ -157,10 +162,10 @@ export function OrdersMedication() {
         kpis={kpis}
         bellCount={pendingAll.length}
         onBellClick={() => showToast('Pending signatures', `${pendingAll.length} order(s) awaiting signature across the unit`)}
-        user={{ initials: 'SR', name: 'Dr. Sara Rahman', role: 'Intensivist · Full order authority' }}
+        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
-        <NavSidebar active="orders" alertCount={5} footerLines={['Role: Physician', 'Create · modify · discontinue']} />
+        <NavSidebar active="orders" alertCount={5} footerLines={[`Role: ${profileOf(session.jobTitle)} profile`, canPrescribe ? 'Create · modify · discontinue' : 'View orders only']} />
 
         <PatientRail
           patients={patients}
@@ -176,6 +181,7 @@ export function OrdersMedication() {
             <PatientBar patient={patient} links={[{ label: 'Open Mission Control →', to: `/patients/${patient.patientId}` }]}>
               <span className="ptbarallergy">⚠ Allergies: {patient.allergies}</span>
               <span className="ptbarcode">{patient.codeStatus}</span>
+              {!canPrescribe && <span className="ptbarviewonly">View only — no prescribing authority</span>}
             </PatientBar>
           )}
 
@@ -184,13 +190,14 @@ export function OrdersMedication() {
               <div className="omcolL">
                 <OrderListCard
                   orders={orders}
+                  canManage={canPrescribe}
                   onSign={handleSign}
                   onModify={setModifyId}
                   onDiscontinue={setDiscontinueId}
                 />
               </div>
               <div className="omcolR">
-                {formulary && (
+                {formulary && canPrescribe && (
                   <NewOrderCard
                     patient={{ patientId: patient.patientId, name: patient.name, allergies: patient.allergies }}
                     formulary={formulary}
@@ -199,7 +206,7 @@ export function OrdersMedication() {
                     onCreate={handleCreate}
                   />
                 )}
-                {formulary && (
+                {formulary && canPrescribe && (
                   <OrderSetsCard
                     sets={setDefs}
                     patient={{ patientId: patient.patientId, allergies: patient.allergies }}
