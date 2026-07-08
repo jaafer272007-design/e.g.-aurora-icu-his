@@ -29,8 +29,9 @@ real APIs and medical devices later.
 8. AI Clinical Assistant — ✅ built, formal review pending (`/ai` unit ranking + `/ai/:patientId`, canonical AI risk model — MC AI panel + alert-center risk alerts read derived views; all predictions simulated until Stage 11)
 9. Login / Role-Switch screen — ✅ built (`/login`, three-layer RBAC below; real username+password auth added in Stage 10 Phase 2, Stage 9 local session kept as the offline fallback)
 10. API Integration (ASP.NET Core Web APIs) — 🔄 in progress: Phase 1
-    (roster/patients) + Phase 2 (authentication) built — see "Stage 10 —
-    API Integration" below
+    (roster/patients) + Phase 2 (authentication) + Phase 3 (Labs/Imaging
+    results, first server-side RBAC) built — see "Stage 10 — API
+    Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
 ## Architecture Rules (binding for all future screens)
@@ -257,6 +258,42 @@ their own turns in later Stage 10 phases.
   JWT, generic 401s, roster 401/200, CORS — run it after any /server
   deploy.
 
+### Phase 3 — Laboratory & Imaging results (built)
+First DOMAIN migration after roster, and the first SERVER-SIDE RBAC
+enforcement. Orders, MAR, Consults, Notes, Nursing, Timeline, and AI
+remain mock until their own phases.
+- **Tables** (same SQLite DB): LabDraws + ImagingStudies, seeded at boot
+  from `server/Data/labs-seed.json` / `imaging-seed.json` — GENERATED
+  from `src/lib/api/data/results.ts` (verified byte-for-byte: zero field
+  diffs wire-vs-seed) — never hand-edit them. Result items are a JSON
+  column (same pattern as roster's nested objects).
+- **Endpoints** (all `.RequireAuthorization()`, wire contract = the mock
+  adapter's documented one): `GET /api/icu/results/labs?patientId`,
+  `GET /api/icu/results/imaging?patientId`, `GET /api/icu/results/inbox`
+  (unit-wide unacked, DERIVED server-side at read time — derived state is
+  never stored), `POST /api/icu/results/labs/{id}/acknowledge`,
+  `POST /api/icu/results/imaging/{id}/acknowledge`.
+- **Server-side RBAC** (`Rbac` in Program.cs): mirrors `src/lib/
+  session.ts` — JobTitle (from the JWT claim) → PermissionProfile →
+  Permissions, computed at read time, never stored/never in the token.
+  Acknowledge requires `results.acknowledge`: a NURSE token gets a
+  generic 403 even when the UI is bypassed; a doctor token succeeds. The
+  acknowledging actor is the TOKEN's name claim — never a request field.
+  Replayed acknowledge → 404. Client `hasPermission` checks remain as
+  defense in depth.
+- **Frontend adapters** (`apiGet`/`apiPost` helpers): reads fall back to
+  mock on unreachable/timeout/401 (console-logged) like the roster; the
+  acknowledge WRITE distinguishes outcomes — server 403/404 = real denial
+  (never applied locally), network failure or tokenless-session 401 =
+  offline mode (mock apply, keeping the Stage 9 experience coherent).
+- **Known display debts** (documented, deliberate): the MC lab-trend card
+  stays a client-side derived view (chart presentation metadata isn't
+  served); roster `alertCount`'s unacked-results component still derives
+  from the mock store until alert derivation gets its own pass.
+- **Deployed verification**: `.github/workflows/deployed-labs-e2e.yml`
+  (manual dispatch) — authenticated fetches return seeded data, 401s
+  without a token, nurse-403/doctor-200 acknowledge on the LIVE service.
+
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
 - Touch targets ≥ 44×44px
@@ -273,7 +310,9 @@ Screens 2, 4–8 await formal review. Stage 10 Phase 1 (roster/patients) and
 Phase 2 (auth: bcrypt users table, POST /api/auth/login, JWT middleware on
 the roster endpoint, Bearer-token frontend with Stage 9 local-session
 fallback) are built on the ASP.NET Core + SQLite + Docker service in
-/server, deployable via render.yaml. Next: later Stage 10 phases —
-remaining domains one at a time with server-side permission enforcement
-(Phase 3+), then Stage 11 device + AI integration per the locked rules
-above.
+/server, deployable via render.yaml. Phase 3 migrated the first clinical
+domain (Labs/Imaging results) with server-side RBAC on acknowledge —
+the pattern the remaining domains follow. Next: later Stage 10 phases —
+Orders/MAR, Consults/Notes/Nursing, Timeline, AI, one domain per PR,
+each adopting the same JWT + server-side permission enforcement — then
+Stage 11 device + AI integration per the locked rules above.

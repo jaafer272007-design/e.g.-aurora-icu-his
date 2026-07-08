@@ -1,0 +1,79 @@
+# Deployed Labs/Imaging E2E — verifies the LIVE Render service after a
+# /server deploy (Stage 10 Phase 3): authenticated lab/imaging/inbox
+# fetches return the real seeded data, unauthenticated calls are 401, and
+# the acknowledge action enforces RBAC SERVER-SIDE — a nurse token is
+# rejected with 403 while a doctor token succeeds (actor taken from the
+# token). Dispatch manually after merging /server changes to main.
+name: Deployed Labs E2E
+on: workflow_dispatch
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up (Render free tier cold start)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            echo "healthz attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "service never became healthy" && exit 1
+
+      - name: Login as doctor and nurse
+        run: |
+          for u in sara.rahman maya.chen; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+
+      - name: Unauthenticated labs/imaging/inbox → 401
+        run: |
+          for path in "results/labs?patientId=P-1001" "results/imaging?patientId=P-1001" "results/inbox"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/$path")
+            echo "$path -> HTTP $code"
+            [ "$code" = "401" ] || exit 1
+          done
+
+      - name: Authenticated lab fetch returns real seeded data (+ CORS)
+        run: |
+          curl -sf -D /tmp/h -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" \
+            "$API/api/icu/results/labs?patientId=P-1001" -o /tmp/labs.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c '
+          import json; d=json.load(open("/tmp/labs.json"))
+          assert len(d)==49, len(d)
+          assert d[0]["labId"]=="LAB-6001" and d[0]["panel"]=="CBC", d[0]
+          unacked=[x["labId"] for x in d if not x["acknowledged"]]
+          print("draws:", len(d), "| unacked:", unacked)'
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging?patientId=P-1012" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[0]["studyId"]=="IMG-7004", d; print("imaging OK:", d[0]["studyId"], d[0]["status"])'
+
+      - name: NURSE token rejected for acknowledge (server-side RBAC) → 403
+        run: |
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" \
+            "$API/api/icu/results/labs/LAB-6007/acknowledge")
+          echo "nurse acknowledge -> $out"
+          [ "$(echo "$out" | tail -1)" = "403" ] || exit 1
+          echo "$out" | head -1 | grep -q '"Insufficient permissions"' || exit 1
+
+      - name: DOCTOR token succeeds for acknowledge (actor from token), replay → 404
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" \
+            "$API/api/icu/results/labs/LAB-6007/acknowledge" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["acknowledged"] and d["acknowledgedBy"]=="Dr. Sara Rahman", d; print("acknowledged by:", d["acknowledgedBy"], "at:", d["acknowledgedAt"])'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" \
+            "$API/api/icu/results/labs/LAB-6007/acknowledge")
+          echo "replay -> HTTP $code"
+          [ "$code" = "404" ] || exit 1

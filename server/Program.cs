@@ -60,16 +60,22 @@ const string JwtAudience = "aurora-icu-client";
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(o => o.TokenValidationParameters = new TokenValidationParameters
+    .AddJwtBearer(o =>
     {
+        /* keep original claim names ("sub"/"name"/"jobTitle") — Phase 3's
+           server-side RBAC reads jobTitle straight off the principal */
+        o.MapInboundClaims = false;
+        o.TokenValidationParameters = new TokenValidationParameters
+        {
         ValidIssuer = JwtIssuer,
         ValidAudience = JwtAudience,
         IssuerSigningKey = jwtKey,
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateIssuerSigningKey = true,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.FromMinutes(1),
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromMinutes(1),
+        };
     });
 builder.Services.AddAuthorization();
 
@@ -120,10 +126,21 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
         app.Logger.LogInformation("Seeded {Count} user accounts", staff.Count);
     }
+    if (!db.LabDraws.Any())
+    {
+        var labs = JsonSerializer.Deserialize<List<LabDrawDto>>(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "labs-seed.json")), JsonOpts.Web)!;
+        var imaging = JsonSerializer.Deserialize<List<ImagingStudyDto>>(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "imaging-seed.json")), JsonOpts.Web)!;
+        db.LabDraws.AddRange(labs.Select(LabDrawRow.FromDto));
+        db.ImagingStudies.AddRange(imaging.Select(ImagingStudyRow.FromDto));
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded {Labs} lab draws + {Imaging} imaging studies", labs.Count, imaging.Count);
+    }
 }
 
 /* health/warmup probe (also Render's health check path) */
-app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-roster", phase = "stage10-phase1" }));
+app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3" }));
 
 /* POST /api/auth/login — Phase 2's authentication endpoint (anonymous).
    Accepts username OR full display name + password; verifies against the
@@ -171,11 +188,138 @@ app.MapGet("/api/icu/patients", (RosterDb db) =>
         .Select(p => p.ToDto()), JsonOpts.Web))
     .RequireAuthorization();
 
+/* ---------------- Laboratory & Imaging results (Stage 10 Phase 3) ----------------
+   The canonical results service — same wire contract the mock adapter
+   documents. All endpoints require a valid JWT; the acknowledge actions
+   ADDITIONALLY require the results.acknowledge permission, derived
+   server-side from the token's jobTitle claim via the same three-layer
+   RBAC lookup the frontend uses (User → JobTitle → Profile → Permissions,
+   computed at read time, never stored). A nurse token is rejected with a
+   403 here regardless of what the UI shows — the first real server-side
+   RBAC enforcement. The acknowledging actor is taken from the TOKEN's
+   name claim, never from the request body (server-verified identity). */
+
+/* GET /api/icu/results/labs?patientId — all lab draws for a patient, oldest first. */
+app.MapGet("/api/icu/results/labs", (string patientId, RosterDb db) =>
+    Results.Json(db.LabDraws.AsNoTracking()
+        .Where(d => d.PatientId == patientId)
+        .OrderBy(d => d.LabId)
+        .AsEnumerable()
+        .Select(d => d.ToDto()), JsonOpts.Web))
+    .RequireAuthorization();
+
+/* GET /api/icu/results/imaging?patientId — imaging studies incl. reports. */
+app.MapGet("/api/icu/results/imaging", (string patientId, RosterDb db) =>
+    Results.Json(db.ImagingStudies.AsNoTracking()
+        .Where(s => s.PatientId == patientId)
+        .OrderBy(s => s.StudyId)
+        .AsEnumerable()
+        .Select(s => s.ToDto()), JsonOpts.Web))
+    .RequireAuthorization();
+
+/* GET /api/icu/results/inbox — unit-wide unacknowledged results, DERIVED at
+   read time from the stored draws/studies (derived state is never stored). */
+app.MapGet("/api/icu/results/inbox", (RosterDb db) =>
+{
+    var labs = db.LabDraws.AsNoTracking().Where(d => !d.Acknowledged).AsEnumerable().Select(d =>
+    {
+        var items = JsonSerializer.Deserialize<List<LabItemDto>>(d.ItemsJson, JsonOpts.Web)!;
+        var h = items.FirstOrDefault(i => i.Flag == "critical")
+            ?? items.FirstOrDefault(i => i.Flag == "abnormal") ?? items[0];
+        var v = h.Value == Math.Floor(h.Value) ? ((long)h.Value).ToString() : h.Value.ToString("0.0");
+        return new InboxItemDto("lab", d.LabId, d.PatientId, d.BedId, d.PatientName,
+            $"{h.Analyte} {v} {h.Unit} — {d.BedId} {d.PatientName}".Replace("  ", " "),
+            d.Note ?? $"{d.Panel} panel resulted", d.ResultedAt, d.Flag);
+    });
+    var imaging = db.ImagingStudies.AsNoTracking().Where(s => !s.Acknowledged).AsEnumerable().Select(s =>
+        new InboxItemDto("imaging", s.StudyId, s.PatientId, s.BedId, s.PatientName,
+            $"{s.Description} {(s.Status == "preliminary" ? "prelim" : s.Status)} — {s.BedId} {s.PatientName}",
+            s.Note ?? s.Impression ?? "", s.ReportedAt ?? s.OrderedAt, s.Flag));
+    return Results.Json(labs.Concat(imaging)
+        .OrderByDescending(x => x.Time, StringComparer.Ordinal), JsonOpts.Web);
+}).RequireAuthorization();
+
+/* POST /api/icu/results/labs/{labId}/acknowledge — doctor RBAC (results.acknowledge). */
+app.MapPost("/api/icu/results/labs/{labId}/acknowledge", (string labId, ClaimsPrincipal user, RosterDb db) =>
+{
+    if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
+    var d = db.LabDraws.FirstOrDefault(x => x.LabId == labId && !x.Acknowledged);
+    if (d is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+    d.Acknowledged = true;
+    d.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";
+    d.AcknowledgedAt = DateTime.UtcNow.ToString("HH:mm");
+    db.SaveChanges();
+    return Results.Json(d.ToDto(), JsonOpts.Web);
+}).RequireAuthorization();
+
+/* POST /api/icu/results/imaging/{studyId}/acknowledge — doctor RBAC. */
+app.MapPost("/api/icu/results/imaging/{studyId}/acknowledge", (string studyId, ClaimsPrincipal user, RosterDb db) =>
+{
+    if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
+    var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId && !x.Acknowledged);
+    if (s is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+    s.Acknowledged = true;
+    s.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";
+    s.AcknowledgedAt = DateTime.UtcNow.ToString("HH:mm");
+    db.SaveChanges();
+    return Results.Json(s.ToDto(), JsonOpts.Web);
+}).RequireAuthorization();
+
 app.Run();
 
 static class JsonOpts
 {
-    public static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+    /* WhenWritingNull keeps optional fields ABSENT on the wire (not null) —
+       exactly how the mock adapter's objects serialize */
+    public static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+}
+
+/* ---------- three-layer RBAC, server side (Stage 10 Phase 3) ----------
+   Mirrors src/lib/session.ts: JobTitle → PermissionProfile → Permissions,
+   ALWAYS computed at read time from the token's jobTitle claim — profiles
+   and permissions are never stored, never carried in the token. */
+static class Rbac
+{
+    static readonly Dictionary<string, string> TitleProfile = new()
+    {
+        ["Consultant"] = "Doctor", ["Specialist"] = "Doctor", ["Senior Resident"] = "Doctor",
+        ["Resident"] = "Doctor", ["Intern"] = "Doctor",
+        ["Pharmacist"] = "Pharmacist", ["Clinical Pharmacist"] = "Pharmacist",
+        ["Staff Nurse"] = "Nurse", ["Charge Nurse"] = "Nurse", ["Head Nurse"] = "Nurse",
+        ["Laboratory Technician"] = "Ancillary", ["Radiology Technician"] = "Ancillary",
+        ["Respiratory Therapist"] = "RespiratoryTherapist",
+        ["Physiotherapist"] = "AlliedHealth", ["Dietitian"] = "AlliedHealth",
+        ["Receptionist"] = "Administrator", ["Billing Officer"] = "Administrator",
+        ["Medical Records Officer"] = "Administrator", ["Hospital Administrator"] = "Administrator",
+        ["IT Administrator"] = "Administrator",
+    };
+
+    static readonly Dictionary<string, string[]> ProfilePermissions = new()
+    {
+        ["Doctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
+            "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
+            "notes.document", "ai.view"],
+        ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
+            "notes.document", "results.view", "ai.view"],
+        ["Administrator"] = ["admin.view", "patients.view"],
+        ["Pharmacist"] = ["patients.view", "orders.view", "results.view"],
+        ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],
+        ["Ancillary"] = ["patients.view", "orders.view", "results.view"],
+        ["AlliedHealth"] = ["patients.view", "results.view"],
+    };
+
+    public static bool Has(ClaimsPrincipal user, string permission) =>
+        TitleProfile.TryGetValue(user.FindFirst("jobTitle")?.Value ?? "", out var profile)
+        && ProfilePermissions[profile].Contains(permission);
+
+    /** null when permitted; a generic 403 otherwise (never explains which
+        permission was missing) */
+    public static IResult? Deny(ClaimsPrincipal user, string permission) =>
+        Has(user, permission) ? null
+        : Results.Json(new { error = "Insufficient permissions" }, JsonOpts.Web, statusCode: 403);
 }
 
 /* ---------- persistence ---------- */
@@ -184,6 +328,8 @@ class RosterDb(DbContextOptions<RosterDb> options) : DbContext(options)
 {
     public DbSet<PatientRow> Patients => Set<PatientRow>();
     public DbSet<UserRow> Users => Set<UserRow>();
+    public DbSet<LabDrawRow> LabDraws => Set<LabDrawRow>();
+    public DbSet<ImagingStudyRow> ImagingStudies => Set<ImagingStudyRow>();
 }
 
 /* One row per staff account (Stage 10 Phase 2). Only the bcrypt hash is
@@ -202,6 +348,103 @@ class UserRow
 record UserSeedDto(string Username, string Name, string JobTitle);
 
 record LoginRequest(string? Username, string? Password);
+
+/* ---------- Laboratory & Imaging results (Stage 10 Phase 3) ----------
+   One row per lab draw / imaging study. Scalar fields are real columns;
+   the per-draw result items array is a JSON text column (same pattern as
+   the roster's nested value objects — portable to SQL Server later).
+   Data/labs-seed.json and Data/imaging-seed.json are GENERATED from
+   src/lib/api/data/results.ts — never hand-edit them. */
+
+class LabDrawRow
+{
+    [Key]
+    public string LabId { get; set; } = "";
+    public string PatientId { get; set; } = "";
+    public string BedId { get; set; } = "";
+    public string PatientName { get; set; } = "";
+    public string Panel { get; set; } = "";
+    public string Label { get; set; } = "";
+    public string CollectedAt { get; set; } = "";
+    public string ResultedAt { get; set; } = "";
+    public string ItemsJson { get; set; } = "[]";
+    public string Flag { get; set; } = "";
+    public string? Note { get; set; }
+    public bool Acknowledged { get; set; }
+    public string? AcknowledgedBy { get; set; }
+    public string? AcknowledgedAt { get; set; }
+
+    public static LabDrawRow FromDto(LabDrawDto d) => new()
+    {
+        LabId = d.LabId, PatientId = d.PatientId, BedId = d.BedId, PatientName = d.PatientName,
+        Panel = d.Panel, Label = d.Label, CollectedAt = d.CollectedAt, ResultedAt = d.ResultedAt,
+        ItemsJson = JsonSerializer.Serialize(d.Items, JsonOpts.Web),
+        Flag = d.Flag, Note = d.Note, Acknowledged = d.Acknowledged,
+        AcknowledgedBy = d.AcknowledgedBy, AcknowledgedAt = d.AcknowledgedAt,
+    };
+
+    public LabDrawDto ToDto() => new(
+        LabId, PatientId, BedId, PatientName, Panel, Label, CollectedAt, ResultedAt,
+        JsonSerializer.Deserialize<JsonElement>(ItemsJson, JsonOpts.Web),
+        Flag, Note, Acknowledged, AcknowledgedBy, AcknowledgedAt);
+}
+
+class ImagingStudyRow
+{
+    [Key]
+    public string StudyId { get; set; } = "";
+    public string PatientId { get; set; } = "";
+    public string BedId { get; set; } = "";
+    public string PatientName { get; set; } = "";
+    public string Modality { get; set; } = "";
+    public string Description { get; set; } = "";
+    public string OrderedAt { get; set; } = "";
+    public string? PerformedAt { get; set; }
+    public string? ReportedAt { get; set; }
+    public string Status { get; set; } = "";
+    public string? Report { get; set; }
+    public string? Impression { get; set; }
+    public string Flag { get; set; } = "";
+    public string? Note { get; set; }
+    public bool Acknowledged { get; set; }
+    public string? AcknowledgedBy { get; set; }
+    public string? AcknowledgedAt { get; set; }
+
+    public static ImagingStudyRow FromDto(ImagingStudyDto d) => new()
+    {
+        StudyId = d.StudyId, PatientId = d.PatientId, BedId = d.BedId, PatientName = d.PatientName,
+        Modality = d.Modality, Description = d.Description, OrderedAt = d.OrderedAt,
+        PerformedAt = d.PerformedAt, ReportedAt = d.ReportedAt, Status = d.Status,
+        Report = d.Report, Impression = d.Impression, Flag = d.Flag, Note = d.Note,
+        Acknowledged = d.Acknowledged, AcknowledgedBy = d.AcknowledgedBy, AcknowledgedAt = d.AcknowledgedAt,
+    };
+
+    public ImagingStudyDto ToDto() => new(
+        StudyId, PatientId, BedId, PatientName, Modality, Description, OrderedAt,
+        PerformedAt, ReportedAt, Status, Report, Impression, Flag, Note,
+        Acknowledged, AcknowledgedBy, AcknowledgedAt);
+}
+
+/* wire contracts — mirror LabDraw / ImagingStudy / ResultInboxItem in
+   src/lib/api/types.ts (camelCase over the wire; optional fields absent,
+   not null — see JsonOpts). Items pass through as-is (JsonElement). */
+record LabDrawDto(
+    string LabId, string PatientId, string BedId, string PatientName, string Panel,
+    string Label, string CollectedAt, string ResultedAt, JsonElement Items, string Flag,
+    string? Note, bool Acknowledged, string? AcknowledgedBy, string? AcknowledgedAt);
+
+record ImagingStudyDto(
+    string StudyId, string PatientId, string BedId, string PatientName, string Modality,
+    string Description, string OrderedAt, string? PerformedAt, string? ReportedAt,
+    string Status, string? Report, string? Impression, string Flag, string? Note,
+    bool Acknowledged, string? AcknowledgedBy, string? AcknowledgedAt);
+
+/* parse shape for deriving the inbox headline from ItemsJson */
+record LabItemDto(string Analyte, double Value, string Unit, string Flag);
+
+record InboxItemDto(
+    string Kind, string Id, string PatientId, string BedId, string PatientName,
+    string Title, string Detail, string Time, string Flag);
 
 /* One row per patient. Scalar roster fields are real columns; nested
    value objects (vitals, alert, trend, organs, flags) are stored as JSON

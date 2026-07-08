@@ -1,0 +1,3214 @@
+[
+  {
+    "labId": "LAB-6001",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "CBC",
+    "label": "D-6",
+    "collectedAt": "D-6 06:00",
+    "resultedAt": "D-6 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 9.8,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 11.2,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 210,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Neut%",
+        "value": 70,
+        "unit": "%",
+        "refRange": "40–75",
+        "refLow": 40,
+        "refHigh": 75,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6002",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "CBC",
+    "label": "D-5",
+    "collectedAt": "D-5 06:00",
+    "resultedAt": "D-5 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 12.4,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 10.8,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 180,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Neut%",
+        "value": 76,
+        "unit": "%",
+        "refRange": "40–75",
+        "refLow": 40,
+        "refHigh": 75,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6003",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "CBC",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 16.2,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 10.1,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 140,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Neut%",
+        "value": 82,
+        "unit": "%",
+        "refRange": "40–75",
+        "refLow": 40,
+        "refHigh": 75,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6004",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "CBC",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 18.9,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9.6,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 110,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Neut%",
+        "value": 88,
+        "unit": "%",
+        "refRange": "40–75",
+        "refLow": 40,
+        "refHigh": 75,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6005",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "CBC",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 17.4,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9.2,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 98,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "critical"
+      },
+      {
+        "analyte": "Neut%",
+        "value": 89,
+        "unit": "%",
+        "refRange": "40–75",
+        "refLow": 40,
+        "refHigh": 75,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6006",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "CBC",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 15.8,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 92,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "critical"
+      },
+      {
+        "analyte": "Neut%",
+        "value": 88,
+        "unit": "%",
+        "refRange": "40–75",
+        "refLow": 40,
+        "refHigh": 75,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6007",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "CBC",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:30",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 14.2,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 8.8,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 96,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "critical"
+      },
+      {
+        "analyte": "Neut%",
+        "value": 88,
+        "unit": "%",
+        "refRange": "40–75",
+        "refLow": 40,
+        "refHigh": 75,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "critical",
+    "note": "Down-trending 3rd consecutive draw",
+    "acknowledged": false
+  },
+  {
+    "labId": "LAB-6008",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "ABG",
+    "label": "D-6",
+    "collectedAt": "D-6 06:00",
+    "resultedAt": "D-6 07:05",
+    "items": [
+      {
+        "analyte": "pH",
+        "value": 7.41,
+        "unit": "",
+        "refRange": "7.35–7.45",
+        "refLow": 7.35,
+        "refHigh": 7.45,
+        "flag": "normal"
+      },
+      {
+        "analyte": "PaO₂",
+        "value": 98,
+        "unit": "mmHg",
+        "refRange": "80–100",
+        "refLow": 80,
+        "refHigh": 100,
+        "flag": "normal"
+      },
+      {
+        "analyte": "PaCO₂",
+        "value": 40,
+        "unit": "mmHg",
+        "refRange": "35–45",
+        "refLow": 35,
+        "refHigh": 45,
+        "flag": "normal"
+      },
+      {
+        "analyte": "HCO₃",
+        "value": 24,
+        "unit": "mmol/L",
+        "refRange": "22–26",
+        "refLow": 22,
+        "refHigh": 26,
+        "flag": "normal"
+      }
+    ],
+    "flag": "normal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6009",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "ABG",
+    "label": "D-5",
+    "collectedAt": "D-5 06:00",
+    "resultedAt": "D-5 07:05",
+    "items": [
+      {
+        "analyte": "pH",
+        "value": 7.36,
+        "unit": "",
+        "refRange": "7.35–7.45",
+        "refLow": 7.35,
+        "refHigh": 7.45,
+        "flag": "normal"
+      },
+      {
+        "analyte": "PaO₂",
+        "value": 88,
+        "unit": "mmHg",
+        "refRange": "80–100",
+        "refLow": 80,
+        "refHigh": 100,
+        "flag": "normal"
+      },
+      {
+        "analyte": "PaCO₂",
+        "value": 44,
+        "unit": "mmHg",
+        "refRange": "35–45",
+        "refLow": 35,
+        "refHigh": 45,
+        "flag": "normal"
+      },
+      {
+        "analyte": "HCO₃",
+        "value": 23,
+        "unit": "mmol/L",
+        "refRange": "22–26",
+        "refLow": 22,
+        "refHigh": 26,
+        "flag": "normal"
+      }
+    ],
+    "flag": "normal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6010",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "ABG",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "pH",
+        "value": 7.31,
+        "unit": "",
+        "refRange": "7.35–7.45",
+        "refLow": 7.35,
+        "refHigh": 7.45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "PaO₂",
+        "value": 74,
+        "unit": "mmHg",
+        "refRange": "80–100",
+        "refLow": 80,
+        "refHigh": 100,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "PaCO₂",
+        "value": 49,
+        "unit": "mmHg",
+        "refRange": "35–45",
+        "refLow": 35,
+        "refHigh": 45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "HCO₃",
+        "value": 21,
+        "unit": "mmol/L",
+        "refRange": "22–26",
+        "refLow": 22,
+        "refHigh": 26,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6011",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "ABG",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "pH",
+        "value": 7.28,
+        "unit": "",
+        "refRange": "7.35–7.45",
+        "refLow": 7.35,
+        "refHigh": 7.45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "PaO₂",
+        "value": 69,
+        "unit": "mmHg",
+        "refRange": "80–100",
+        "refLow": 80,
+        "refHigh": 100,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "PaCO₂",
+        "value": 52,
+        "unit": "mmHg",
+        "refRange": "35–45",
+        "refLow": 35,
+        "refHigh": 45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "HCO₃",
+        "value": 19,
+        "unit": "mmol/L",
+        "refRange": "22–26",
+        "refLow": 22,
+        "refHigh": 26,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6012",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "ABG",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "pH",
+        "value": 7.3,
+        "unit": "",
+        "refRange": "7.35–7.45",
+        "refLow": 7.35,
+        "refHigh": 7.45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "PaO₂",
+        "value": 76,
+        "unit": "mmHg",
+        "refRange": "80–100",
+        "refLow": 80,
+        "refHigh": 100,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "PaCO₂",
+        "value": 50,
+        "unit": "mmHg",
+        "refRange": "35–45",
+        "refLow": 35,
+        "refHigh": 45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "HCO₃",
+        "value": 19,
+        "unit": "mmol/L",
+        "refRange": "22–26",
+        "refLow": 22,
+        "refHigh": 26,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6013",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "ABG",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "pH",
+        "value": 7.32,
+        "unit": "",
+        "refRange": "7.35–7.45",
+        "refLow": 7.35,
+        "refHigh": 7.45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "PaO₂",
+        "value": 81,
+        "unit": "mmHg",
+        "refRange": "80–100",
+        "refLow": 80,
+        "refHigh": 100,
+        "flag": "normal"
+      },
+      {
+        "analyte": "PaCO₂",
+        "value": 47,
+        "unit": "mmHg",
+        "refRange": "35–45",
+        "refLow": 35,
+        "refHigh": 45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "HCO₃",
+        "value": 19,
+        "unit": "mmol/L",
+        "refRange": "22–26",
+        "refLow": 22,
+        "refHigh": 26,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6014",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "ABG",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "pH",
+        "value": 7.33,
+        "unit": "",
+        "refRange": "7.35–7.45",
+        "refLow": 7.35,
+        "refHigh": 7.45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "PaO₂",
+        "value": 82,
+        "unit": "mmHg",
+        "refRange": "80–100",
+        "refLow": 80,
+        "refHigh": 100,
+        "flag": "normal"
+      },
+      {
+        "analyte": "PaCO₂",
+        "value": 46,
+        "unit": "mmHg",
+        "refRange": "35–45",
+        "refLow": 35,
+        "refHigh": 45,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "HCO₃",
+        "value": 19,
+        "unit": "mmol/L",
+        "refRange": "22–26",
+        "refLow": 22,
+        "refHigh": 26,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6015",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Electrolytes",
+    "label": "D-6",
+    "collectedAt": "D-6 06:00",
+    "resultedAt": "D-6 07:05",
+    "items": [
+      {
+        "analyte": "Na⁺",
+        "value": 138,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "normal"
+      },
+      {
+        "analyte": "K⁺",
+        "value": 4.1,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 1.9,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Ca²⁺",
+        "value": 8.9,
+        "unit": "mg/dL",
+        "refRange": "8.5–10.5",
+        "refLow": 8.5,
+        "refHigh": 10.5,
+        "flag": "normal"
+      }
+    ],
+    "flag": "normal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6016",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Electrolytes",
+    "label": "D-5",
+    "collectedAt": "D-5 06:00",
+    "resultedAt": "D-5 07:05",
+    "items": [
+      {
+        "analyte": "Na⁺",
+        "value": 136,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "normal"
+      },
+      {
+        "analyte": "K⁺",
+        "value": 4.4,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 1.8,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Ca²⁺",
+        "value": 8.7,
+        "unit": "mg/dL",
+        "refRange": "8.5–10.5",
+        "refLow": 8.5,
+        "refHigh": 10.5,
+        "flag": "normal"
+      }
+    ],
+    "flag": "normal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6017",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Electrolytes",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "Na⁺",
+        "value": 134,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "K⁺",
+        "value": 4.9,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 1.7,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Ca²⁺",
+        "value": 8.5,
+        "unit": "mg/dL",
+        "refRange": "8.5–10.5",
+        "refLow": 8.5,
+        "refHigh": 10.5,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6018",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Electrolytes",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "Na⁺",
+        "value": 133,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "K⁺",
+        "value": 5.3,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 1.9,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Ca²⁺",
+        "value": 8.4,
+        "unit": "mg/dL",
+        "refRange": "8.5–10.5",
+        "refLow": 8.5,
+        "refHigh": 10.5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6019",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Electrolytes",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "Na⁺",
+        "value": 134,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "K⁺",
+        "value": 4.8,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 2,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Ca²⁺",
+        "value": 8.3,
+        "unit": "mg/dL",
+        "refRange": "8.5–10.5",
+        "refLow": 8.5,
+        "refHigh": 10.5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6020",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Electrolytes",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "Na⁺",
+        "value": 135,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "normal"
+      },
+      {
+        "analyte": "K⁺",
+        "value": 4.4,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 2.1,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Ca²⁺",
+        "value": 8.4,
+        "unit": "mg/dL",
+        "refRange": "8.5–10.5",
+        "refLow": 8.5,
+        "refHigh": 10.5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6021",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Electrolytes",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "Na⁺",
+        "value": 136,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "normal"
+      },
+      {
+        "analyte": "K⁺",
+        "value": 4.2,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 2,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Ca²⁺",
+        "value": 8.4,
+        "unit": "mg/dL",
+        "refRange": "8.5–10.5",
+        "refLow": 8.5,
+        "refHigh": 10.5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6022",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Renal",
+    "label": "D-6",
+    "collectedAt": "D-6 06:00",
+    "resultedAt": "D-6 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 0.9,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "normal"
+      },
+      {
+        "analyte": "BUN",
+        "value": 18,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "normal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 88,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "normal"
+      }
+    ],
+    "flag": "normal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6023",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Renal",
+    "label": "D-5",
+    "collectedAt": "D-5 06:00",
+    "resultedAt": "D-5 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 1.1,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "normal"
+      },
+      {
+        "analyte": "BUN",
+        "value": 22,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 75,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6024",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Renal",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 1.4,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "BUN",
+        "value": 30,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 58,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6025",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Renal",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 1.8,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "critical"
+      },
+      {
+        "analyte": "BUN",
+        "value": 39,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 44,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6026",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Renal",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 2.1,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "critical"
+      },
+      {
+        "analyte": "BUN",
+        "value": 46,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 36,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6027",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Renal",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 2,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "critical"
+      },
+      {
+        "analyte": "BUN",
+        "value": 44,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 37,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6028",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Renal",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 1.9,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "critical"
+      },
+      {
+        "analyte": "BUN",
+        "value": 42,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 36,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6029",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Liver",
+    "label": "D-6",
+    "collectedAt": "D-6 06:00",
+    "resultedAt": "D-6 07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 31,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "normal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 28,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "normal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 0.8,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Albumin",
+        "value": 3.4,
+        "unit": "g/dL",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6030",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Liver",
+    "label": "D-5",
+    "collectedAt": "D-5 06:00",
+    "resultedAt": "D-5 07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 34,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "normal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 30,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "normal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 0.9,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Albumin",
+        "value": 3.2,
+        "unit": "g/dL",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6031",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Liver",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 42,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 36,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "normal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 1.2,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Albumin",
+        "value": 3,
+        "unit": "g/dL",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6032",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Liver",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 58,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 49,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 1.6,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Albumin",
+        "value": 2.8,
+        "unit": "g/dL",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6033",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Liver",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 64,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 56,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 1.9,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Albumin",
+        "value": 2.7,
+        "unit": "g/dL",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6034",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Liver",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 59,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 54,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 1.8,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Albumin",
+        "value": 2.6,
+        "unit": "g/dL",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6035",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Liver",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 52,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 50,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 1.7,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Albumin",
+        "value": 2.6,
+        "unit": "g/dL",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6036",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Coagulation",
+    "label": "D-6",
+    "collectedAt": "D-6 06:00",
+    "resultedAt": "D-6 07:05",
+    "items": [
+      {
+        "analyte": "INR",
+        "value": 1.1,
+        "unit": "",
+        "refRange": "0.9–1.2",
+        "refLow": 0.9,
+        "refHigh": 1.2,
+        "flag": "normal"
+      },
+      {
+        "analyte": "aPTT",
+        "value": 30,
+        "unit": "s",
+        "refRange": "25–35",
+        "refLow": 25,
+        "refHigh": 35,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Fibrinogen",
+        "value": 380,
+        "unit": "mg/dL",
+        "refRange": "200–400",
+        "refLow": 200,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "D-dimer",
+        "value": 1.2,
+        "unit": "µg/mL",
+        "refRange": "< 0.5",
+        "refLow": 0,
+        "refHigh": 0.5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6037",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Coagulation",
+    "label": "D-5",
+    "collectedAt": "D-5 06:00",
+    "resultedAt": "D-5 07:05",
+    "items": [
+      {
+        "analyte": "INR",
+        "value": 1.2,
+        "unit": "",
+        "refRange": "0.9–1.2",
+        "refLow": 0.9,
+        "refHigh": 1.2,
+        "flag": "normal"
+      },
+      {
+        "analyte": "aPTT",
+        "value": 32,
+        "unit": "s",
+        "refRange": "25–35",
+        "refLow": 25,
+        "refHigh": 35,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Fibrinogen",
+        "value": 340,
+        "unit": "mg/dL",
+        "refRange": "200–400",
+        "refLow": 200,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "D-dimer",
+        "value": 1.8,
+        "unit": "µg/mL",
+        "refRange": "< 0.5",
+        "refLow": 0,
+        "refHigh": 0.5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6038",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Coagulation",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "INR",
+        "value": 1.3,
+        "unit": "",
+        "refRange": "0.9–1.2",
+        "refLow": 0.9,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "aPTT",
+        "value": 36,
+        "unit": "s",
+        "refRange": "25–35",
+        "refLow": 25,
+        "refHigh": 35,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Fibrinogen",
+        "value": 290,
+        "unit": "mg/dL",
+        "refRange": "200–400",
+        "refLow": 200,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "D-dimer",
+        "value": 2.6,
+        "unit": "µg/mL",
+        "refRange": "< 0.5",
+        "refLow": 0,
+        "refHigh": 0.5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6039",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Coagulation",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "INR",
+        "value": 1.5,
+        "unit": "",
+        "refRange": "0.9–1.2",
+        "refLow": 0.9,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "aPTT",
+        "value": 41,
+        "unit": "s",
+        "refRange": "25–35",
+        "refLow": 25,
+        "refHigh": 35,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Fibrinogen",
+        "value": 240,
+        "unit": "mg/dL",
+        "refRange": "200–400",
+        "refLow": 200,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "D-dimer",
+        "value": 3.8,
+        "unit": "µg/mL",
+        "refRange": "< 0.5",
+        "refLow": 0,
+        "refHigh": 0.5,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6040",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Coagulation",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "INR",
+        "value": 1.6,
+        "unit": "",
+        "refRange": "0.9–1.2",
+        "refLow": 0.9,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "aPTT",
+        "value": 44,
+        "unit": "s",
+        "refRange": "25–35",
+        "refLow": 25,
+        "refHigh": 35,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Fibrinogen",
+        "value": 220,
+        "unit": "mg/dL",
+        "refRange": "200–400",
+        "refLow": 200,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "D-dimer",
+        "value": 4.5,
+        "unit": "µg/mL",
+        "refRange": "< 0.5",
+        "refLow": 0,
+        "refHigh": 0.5,
+        "flag": "critical"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6041",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Coagulation",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "INR",
+        "value": 1.5,
+        "unit": "",
+        "refRange": "0.9–1.2",
+        "refLow": 0.9,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "aPTT",
+        "value": 42,
+        "unit": "s",
+        "refRange": "25–35",
+        "refLow": 25,
+        "refHigh": 35,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Fibrinogen",
+        "value": 230,
+        "unit": "mg/dL",
+        "refRange": "200–400",
+        "refLow": 200,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "D-dimer",
+        "value": 4.6,
+        "unit": "µg/mL",
+        "refRange": "< 0.5",
+        "refLow": 0,
+        "refHigh": 0.5,
+        "flag": "critical"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6042",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Coagulation",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "INR",
+        "value": 1.4,
+        "unit": "",
+        "refRange": "0.9–1.2",
+        "refLow": 0.9,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "aPTT",
+        "value": 40,
+        "unit": "s",
+        "refRange": "25–35",
+        "refLow": 25,
+        "refHigh": 35,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Fibrinogen",
+        "value": 250,
+        "unit": "mg/dL",
+        "refRange": "200–400",
+        "refLow": 200,
+        "refHigh": 400,
+        "flag": "normal"
+      },
+      {
+        "analyte": "D-dimer",
+        "value": 4.8,
+        "unit": "µg/mL",
+        "refRange": "< 0.5",
+        "refLow": 0,
+        "refHigh": 0.5,
+        "flag": "critical"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6043",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Lactate",
+    "label": "D-6",
+    "collectedAt": "D-6 06:00",
+    "resultedAt": "D-6 07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 1.4,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "normal"
+      }
+    ],
+    "flag": "normal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6044",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Lactate",
+    "label": "D-5",
+    "collectedAt": "D-5 06:00",
+    "resultedAt": "D-5 07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 1.9,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "normal"
+      }
+    ],
+    "flag": "normal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6045",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Lactate",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 2.8,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6046",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Lactate",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 4.6,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "critical"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6047",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Lactate",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 4.1,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "critical"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6048",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Lactate",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 3.9,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "critical"
+      }
+    ],
+    "flag": "critical",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6049",
+    "patientId": "P-1001",
+    "bedId": "B-01",
+    "patientName": "Ahmed Al-Saadi",
+    "panel": "Lactate",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "09:42",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 3.8,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "critical"
+      }
+    ],
+    "flag": "critical",
+    "note": "Repeat drawn 13:00, clearance <10% over 6 h",
+    "acknowledged": false
+  },
+  {
+    "labId": "LAB-6050",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Renal",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 3.4,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "BUN",
+        "value": 58,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 14,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6051",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Renal",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 3.1,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "BUN",
+        "value": 52,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 16,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6052",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Renal",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 2.8,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "BUN",
+        "value": 47,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 18,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6053",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Renal",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 2.4,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "BUN",
+        "value": 41,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 22,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6054",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Renal",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "Creatinine",
+        "value": 2.1,
+        "unit": "mg/dL",
+        "refRange": "0.6–1.2",
+        "refLow": 0.6,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "BUN",
+        "value": 36,
+        "unit": "mg/dL",
+        "refRange": "8–20",
+        "refLow": 8,
+        "refHigh": 20,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "eGFR",
+        "value": 26,
+        "unit": "mL/min",
+        "refRange": "> 60",
+        "refLow": 60,
+        "refHigh": 999,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6055",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Electrolytes",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "K⁺",
+        "value": 5.8,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Na⁺",
+        "value": 131,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 2.3,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6056",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Electrolytes",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "K⁺",
+        "value": 5.2,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Na⁺",
+        "value": 132,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 2.2,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6057",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Electrolytes",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "K⁺",
+        "value": 4.8,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Na⁺",
+        "value": 133,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 2.1,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6058",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Electrolytes",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "K⁺",
+        "value": 4.5,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Na⁺",
+        "value": 134,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 2,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6059",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "Electrolytes",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "K⁺",
+        "value": 4.4,
+        "unit": "mmol/L",
+        "refRange": "3.5–5.0",
+        "refLow": 3.5,
+        "refHigh": 5,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Na⁺",
+        "value": 135,
+        "unit": "mmol/L",
+        "refRange": "135–145",
+        "refLow": 135,
+        "refHigh": 145,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Mg²⁺",
+        "value": 2,
+        "unit": "mg/dL",
+        "refRange": "1.7–2.4",
+        "refLow": 1.7,
+        "refHigh": 2.4,
+        "flag": "normal"
+      }
+    ],
+    "flag": "normal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6060",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "CBC",
+    "label": "D-4",
+    "collectedAt": "D-4 06:00",
+    "resultedAt": "D-4 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 11.8,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9.9,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 195,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6061",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "CBC",
+    "label": "D-3",
+    "collectedAt": "D-3 06:00",
+    "resultedAt": "D-3 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 11.2,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9.7,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 188,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6062",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "CBC",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 10.6,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9.6,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 182,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6063",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "CBC",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 10.1,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9.5,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 180,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6064",
+    "patientId": "P-1004",
+    "bedId": "B-04",
+    "patientName": "Susan Wright",
+    "panel": "CBC",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 9.8,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "normal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9.5,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 178,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6065",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "Lactate",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 2.1,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6066",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "Lactate",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 2.9,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6067",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "Lactate",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "Lactate",
+        "value": 3.1,
+        "unit": "mmol/L",
+        "refRange": "0.5–2.0",
+        "refLow": 0.5,
+        "refHigh": 2,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6068",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "Liver",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 88,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 74,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 1.4,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6069",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "Liver",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 112,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 96,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 1.9,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6070",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "Liver",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "AST",
+        "value": 126,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "ALT",
+        "value": 104,
+        "unit": "U/L",
+        "refRange": "10–40",
+        "refLow": 10,
+        "refHigh": 40,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "T.Bili",
+        "value": 2.2,
+        "unit": "mg/dL",
+        "refRange": "0.2–1.2",
+        "refLow": 0.2,
+        "refHigh": 1.2,
+        "flag": "abnormal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  },
+  {
+    "labId": "LAB-6071",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "CBC",
+    "label": "D-2",
+    "collectedAt": "D-2 06:00",
+    "resultedAt": "D-2 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 15.2,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 10.8,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 240,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6072",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "CBC",
+    "label": "D-1",
+    "collectedAt": "D-1 06:00",
+    "resultedAt": "D-1 07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 17.6,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 10.2,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 210,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman"
+  },
+  {
+    "labId": "LAB-6073",
+    "patientId": "P-1012",
+    "bedId": "B-13",
+    "patientName": "Aisha Mahmoud",
+    "panel": "CBC",
+    "label": "Now",
+    "collectedAt": "06:00",
+    "resultedAt": "07:05",
+    "items": [
+      {
+        "analyte": "WBC",
+        "value": 18.4,
+        "unit": "×10⁹/L",
+        "refRange": "4.0–11.0",
+        "refLow": 4,
+        "refHigh": 11,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Hgb",
+        "value": 9.9,
+        "unit": "g/dL",
+        "refRange": "12–16",
+        "refLow": 12,
+        "refHigh": 16,
+        "flag": "abnormal"
+      },
+      {
+        "analyte": "Platelets",
+        "value": 190,
+        "unit": "×10⁹/L",
+        "refRange": "150–400",
+        "refLow": 150,
+        "refHigh": 400,
+        "flag": "normal"
+      }
+    ],
+    "flag": "abnormal",
+    "acknowledged": true,
+    "acknowledgedBy": "Dr. S. Rahman",
+    "acknowledgedAt": "08:15"
+  }
+]
