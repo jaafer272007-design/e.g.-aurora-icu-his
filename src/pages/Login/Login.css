@@ -1,0 +1,56 @@
+/* Login / Role-Switch — Stage 9. Local role simulation, not authentication. */
+.lg{min-height:100vh;overflow:auto}
+.lg .lgwrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;
+ background:
+  radial-gradient(900px 480px at 12% -8%,rgba(77,163,255,.14),transparent 60%),
+  radial-gradient(820px 460px at 95% 8%,rgba(53,224,208,.10),transparent 55%),
+  radial-gradient(700px 520px at 55% 115%,rgba(167,139,250,.12),transparent 60%)}
+.lg .lgcard{width:min(880px,100%);padding:26px 28px}
+.lg .lgbrand{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.lg .lgbrand .logo{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
+ background:linear-gradient(135deg,var(--blue),var(--cyan));box-shadow:0 6px 18px rgba(77,163,255,.35)}
+.lg .lgtitle{font-size:17px;font-weight:800;letter-spacing:1.2px}
+.lg .lgtitle small{display:block;font-size:10.5px;font-weight:500;letter-spacing:.6px;color:var(--dim)}
+.lg .lgcols{display:grid;grid-template-columns:1.05fr 1fr;gap:26px}
+
+.lg .lgleft h1{font-size:19px;font-weight:700;letter-spacing:.3px;margin-bottom:8px}
+.lg .lgintro{font-size:12.5px;color:var(--dim);line-height:1.55;margin-bottom:10px}
+.lg .lgchain{list-style:none;counter-reset:step;display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.lg .lgchain li{counter-increment:step;font-size:12px;color:var(--dim);display:flex;gap:9px;align-items:baseline}
+.lg .lgchain li b{color:var(--text)}
+.lg .lgchain li::before{content:counter(step);flex:none;width:18px;height:18px;border-radius:9px;display:grid;place-items:center;
+ font-size:10px;font-weight:700;color:var(--blue);background:rgba(77,163,255,.14);transform:translateY(2px)}
+.lg .lgdisclaimer{font-size:11.5px;line-height:1.55;color:var(--text);border:1px solid rgba(255,180,84,.4);
+ background:rgba(255,180,84,.08);border-radius:12px;padding:11px 13px}
+.lg .lgdisclaimer b{color:var(--amber)}
+
+.lg .lgform{display:flex;flex-direction:column;gap:12px;border-left:1px solid var(--stroke);padding-left:26px}
+.lg .lglabel{font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim)}
+.lg .lgselect{width:100%;min-height:44px;border:1px solid var(--stroke2);border-radius:11px;background:rgba(10,16,28,.9);
+ color:var(--text);font-size:13px;padding:10px 12px}
+.lg .lgselect:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.lg .lgderived{border:1px solid var(--stroke);border-radius:13px;background:rgba(255,255,255,.02);padding:12px 13px;
+ display:flex;flex-direction:column;gap:10px}
+.lg .lgwho{display:flex;align-items:center;gap:10px}
+.lg .lgav{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font-size:12px;font-weight:700;
+ color:#06121f;background:linear-gradient(135deg,var(--blue),var(--cyan))}
+.lg .lgwho b{display:block;font-size:13px}
+.lg .lgwho small{display:block;font-size:10.5px;color:var(--dim)}
+.lg .lgprofile{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--violet);
+ background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.4);padding:4px 10px;border-radius:9px}
+.lg .lgperms{display:flex;gap:5px;flex-wrap:wrap}
+.lg .lgperm{font-style:normal;font-family:var(--mono);font-size:9.5px;color:var(--cyan);background:rgba(53,224,208,.09);
+ border:1px solid rgba(53,224,208,.25);border-radius:7px;padding:2px 7px}
+.lg .lglanding{font-size:11px;color:var(--dim)}
+.lg .lglanding b{color:var(--blue)}
+.lg .lgsubmit{min-height:46px;border-radius:12px;font-size:13.5px;font-weight:700;color:#06121f;
+ background:linear-gradient(135deg,var(--blue),var(--cyan));transition:.15s;box-shadow:0 8px 22px rgba(77,163,255,.3)}
+.lg .lgsubmit:hover,.lg .lgsubmit:focus-visible{filter:brightness(1.1)}
+.lg .lgexisting{font-size:11px;color:var(--dim);line-height:1.5}
+.lg .lgcontinue{font-size:11px;font-weight:600;color:var(--blue);text-decoration:underline;padding:4px 2px;min-height:32px}
+.lg .lgfoot{font-size:10px;color:var(--faint)}
+
+@media(max-width:860px){
+ .lg .lgcols{grid-template-columns:1fr}
+ .lg .lgform{border-left:none;padding-left:0;border-top:1px solid var(--stroke);padding-top:20px}
+}

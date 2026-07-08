@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import './LabImaging.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
@@ -12,7 +12,7 @@ import {
   acknowledgeImaging, acknowledgeLab, getImagingStudies, getLabDraws, getPatientDetail,
   getPatients, getResultInbox,
 } from '../../lib/api'
-import { CURRENT_SESSION, canAcknowledgeResults, type SessionRole } from '../../lib/session'
+import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import type {
   ImagingStudy, LabDraw, Patient, PatientSummary, ResultInboxItem,
 } from '../../lib/api/types'
@@ -26,11 +26,11 @@ import { ResultInboxCard } from './ResultInboxCard'
 export function LabImaging() {
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
-  const location = useLocation()
   const { toast, showToast } = useToast()
-  /* dev preview of the nurse view until Stage 9 auth: /labs/P-1001?as=nurse */
-  const role: SessionRole =
-    new URLSearchParams(location.search).get('as') === 'nurse' ? 'nurse' : CURRENT_SESSION.role
+  /* Stage 9 session: acknowledge requires results.acknowledge — enforced in
+     the service layer, mirrored here for the UI */
+  const session = getSession()!
+  const canAck = hasPermission(session.jobTitle, 'results.acknowledge')
 
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [patient, setPatient] = useState<Patient | null>(null)
@@ -42,8 +42,8 @@ export function LabImaging() {
   useEffect(() => { getPatients().then(setPatients) }, [])
 
   useEffect(() => {
-    if (!patientId && patients?.length) navigate(`/labs/${patients[0].patientId}${location.search}`, { replace: true })
-  }, [patientId, patients, navigate, location.search])
+    if (!patientId && patients?.length) navigate(`/labs/${patients[0].patientId}`, { replace: true })
+  }, [patientId, patients, navigate])
 
   const refresh = useCallback(() => {
     if (patientId) {
@@ -74,7 +74,7 @@ export function LabImaging() {
   }, [patientId, refresh])
 
   const ackLab = (labId: string) => {
-    acknowledgeLab(labId, CURRENT_SESSION.actor, role).then(ok => {
+    acknowledgeLab(labId, session.name, session.jobTitle).then(ok => {
       if (!ok) { showToast('Not permitted', 'Acknowledgement requires physician role'); return }
       refresh()
       showToast('Result acknowledged', `${ok.panel} panel · ${ok.patientName}`)
@@ -82,7 +82,7 @@ export function LabImaging() {
   }
 
   const ackImaging = (studyId: string) => {
-    acknowledgeImaging(studyId, CURRENT_SESSION.actor, role).then(ok => {
+    acknowledgeImaging(studyId, session.name, session.jobTitle).then(ok => {
       if (!ok) { showToast('Not permitted', 'Acknowledgement requires physician role'); return }
       refresh()
       showToast('Study acknowledged', `${ok.description} · ${ok.patientName}`)
@@ -124,22 +124,19 @@ export function LabImaging() {
         kpis={kpis}
         bellCount={inbox.length}
         onBellClick={() => showToast('Results inbox', `${inbox.length} unacknowledged result(s) across the unit`)}
-        user={role === 'nurse'
-          ? { initials: 'MC', name: 'RN Maya Chen', role: 'ICU Nurse · view only' }
-          : { initials: 'SR', name: 'Dr. Sara Rahman', role: 'Intensivist · results sign-off' }}
+        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
         <NavSidebar
           active="labs"
           alertCount={5}
-          dashboardRoute={role === 'nurse' ? '/nurse' : '/workspace'}
-          footerLines={role === 'nurse' ? ['Role: Nurse', 'View results only'] : ['Role: Physician', 'Acknowledge results']}
+          footerLines={[`Role: ${profileOf(session.jobTitle)} profile`, canAck ? 'Acknowledge results' : 'View results only']}
         />
 
         <PatientRail
           patients={patients}
           selectedId={patientId}
-          onSelect={id => navigate(`/labs/${id}${location.search}`)}
+          onSelect={id => navigate(`/labs/${id}`)}
           badge={p => (inboxCountFor(p.patientId) > 0 ? <span className="prpend num">{inboxCountFor(p.patientId)}</span> : null)}
         />
 
@@ -149,7 +146,7 @@ export function LabImaging() {
           {patient && (
             <PatientBar patient={patient} links={[{ label: 'Open Mission Control →', to: `/patients/${patient.patientId}` }]}>
               <span className="ptbardx">{patient.diagnosis}</span>
-              {!canAcknowledgeResults(role) && <span className="ptbarviewonly">View only — nurse session</span>}
+              {!canAck && <span className="ptbarviewonly">View only — no acknowledge authority</span>}
             </PatientBar>
           )}
 
@@ -159,8 +156,8 @@ export function LabImaging() {
                 <LabTrendsCard draws={draws} />
               </div>
               <div className="licolR">
-                <ResultInboxCard items={patientInbox} role={role} onAcknowledge={ackInboxItem} />
-                <ImagingCard studies={studies} role={role} onAcknowledge={ackImaging} />
+                <ResultInboxCard items={patientInbox} canAcknowledge={canAck} onAcknowledge={ackInboxItem} />
+                <ImagingCard studies={studies} canAcknowledge={canAck} onAcknowledge={ackImaging} />
               </div>
             </div>
           )}

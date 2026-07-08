@@ -3,36 +3,51 @@ import './NavSidebar.css'
 import {
   IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPill, IconSettings, IconStats,
 } from './icons'
+import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 
 export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'alerts' | 'statistics' | 'settings'
+
+interface NavItem {
+  key: NavKey
+  label: string
+  icon: JSX.Element
+  to?: string
+  badge?: number
+  /** required permission — items the session's profile lacks are hidden */
+  perm?: Permission
+}
 
 interface NavSidebarProps {
   active: NavKey
   alertCount: number
   /** Lines shown under "AURORA HIS v4.2" in the sidebar footer. */
   footerLines: string[]
-  /** Role-personalized "Dashboard" target — /workspace for a physician
-   *  session (default until auth exists), /nurse for a nurse session. */
-  dashboardRoute?: string
 }
 
-/** Primary navigation rail. "Dashboard" is role-personalized — it routes to the
- *  role's own workspace (locked decision in CLAUDE.md). */
-export function NavSidebar({ active, alertCount, footerLines, dashboardRoute = '/workspace' }: NavSidebarProps) {
+/** Primary navigation rail. "Dashboard" resolves to the signed-in profile's
+ *  landing view, and items are filtered by the profile's permissions —
+ *  both derived from the session's JobTitle at render (Stage 9 RBAC). */
+export function NavSidebar({ active, alertCount, footerLines }: NavSidebarProps) {
   const navigate = useNavigate()
-  const items: { key: NavKey; label: string; icon: JSX.Element; to?: string; badge?: number }[] = [
-    { key: 'dashboard', label: 'Dashboard', icon: <IconGrid />, to: dashboardRoute },
-    { key: 'beds', label: 'ICU Beds', icon: <IconBed />, to: '/beds' },
-    { key: 'orders', label: 'Orders & Meds', icon: <IconPill />, to: '/orders' },
-    { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: '/labs' },
-    { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: '/timeline' },
-    { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: '/ai' },
+  const session = getSession()
+  const title = session?.jobTitle
+  const allowed = (p?: Permission) => !p || (!!title && hasPermission(title, p))
+
+  const all: NavItem[] = [
+    { key: 'dashboard', label: 'Dashboard', icon: <IconGrid />, to: title ? landingRouteOf(title) : '/login' },
+    { key: 'beds', label: 'ICU Beds', icon: <IconBed />, to: '/beds', perm: 'patients.view' },
+    { key: 'orders', label: 'Orders & Meds', icon: <IconPill />, to: '/orders', perm: 'orders.view' },
+    { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: '/labs', perm: 'results.view' },
+    { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: '/timeline', perm: 'patients.view' },
+    { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: '/ai', perm: 'ai.view' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit /> },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge /> },
     { key: 'alerts', label: 'Alerts', icon: <IconAlertTriangle />, badge: alertCount },
     { key: 'statistics', label: 'Statistics', icon: <IconStats /> },
     { key: 'settings', label: 'Settings', icon: <IconSettings /> },
   ]
+  const items = all.filter(it => allowed(it.perm))
+
   return (
     <nav className="nav-sidebar" aria-label="Primary">
       {items.map(it => (

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import './Timeline.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
@@ -9,7 +9,7 @@ import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconClock, IconNote, IconPill } from '../../components/icons'
 import { getPatientDetail, getPatients, getTimeline } from '../../lib/api'
-import { CURRENT_SESSION, type SessionRole } from '../../lib/session'
+import { getSession, initialsOf, profileOf } from '../../lib/session'
 import type { Patient, PatientSummary, TimelineCategory, TimelineEvent } from '../../lib/api/types'
 import { dayOffsetOf, hmOf, toMinutes } from '../../lib/time'
 
@@ -45,11 +45,9 @@ const linkLabel = (link: string) =>
 export function Timeline() {
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
-  const location = useLocation()
   const { toast, showToast } = useToast()
-  /* dev preview of the nurse view until Stage 9 auth: /timeline/P-1001?as=nurse */
-  const role: SessionRole =
-    new URLSearchParams(location.search).get('as') === 'nurse' ? 'nurse' : CURRENT_SESSION.role
+  /* Stage 9 session — the timeline is read-only for every profile */
+  const session = getSession()!
 
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [patient, setPatient] = useState<Patient | null>(null)
@@ -62,8 +60,8 @@ export function Timeline() {
   useEffect(() => { getPatients().then(setPatients) }, [])
 
   useEffect(() => {
-    if (!patientId && patients?.length) navigate(`/timeline/${patients[0].patientId}${location.search}`, { replace: true })
-  }, [patientId, patients, navigate, location.search])
+    if (!patientId && patients?.length) navigate(`/timeline/${patients[0].patientId}`, { replace: true })
+  }, [patientId, patients, navigate])
 
   useEffect(() => {
     if (!patientId) return
@@ -145,22 +143,19 @@ export function Timeline() {
         kpis={kpis}
         bellCount={5}
         onBellClick={() => showToast('Alerts', '5 active notifications across the unit')}
-        user={role === 'nurse'
-          ? { initials: 'MC', name: 'RN Maya Chen', role: 'ICU Nurse · read-only feed' }
-          : { initials: 'SR', name: 'Dr. Sara Rahman', role: 'Intensivist · read-only feed' }}
+        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
         <NavSidebar
           active="timeline"
           alertCount={5}
-          dashboardRoute={role === 'nurse' ? '/nurse' : '/workspace'}
-          footerLines={[role === 'nurse' ? 'Role: Nurse' : 'Role: Physician', 'Timeline is view-only']}
+          footerLines={[`Role: ${profileOf(session.jobTitle)} profile`, 'Timeline is view-only']}
         />
 
         <PatientRail
           patients={patients}
           selectedId={patientId}
-          onSelect={id => navigate(`/timeline/${id}${location.search}`)}
+          onSelect={id => navigate(`/timeline/${id}`)}
         />
 
         <main>

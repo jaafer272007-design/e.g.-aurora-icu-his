@@ -1,7 +1,9 @@
 import type { CSSProperties, ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import './AppHeader.css'
 import { IconBell, IconPulse } from './icons'
 import { useClock } from '../hooks/useClock'
+import { getSession, signOut } from '../lib/session'
 
 export interface KpiSpec {
   icon: ReactNode
@@ -31,9 +33,11 @@ interface AppHeaderProps {
   user: { initials: string; name: string; role: string }
 }
 
-/** Standard top bar: brand · clock · KPI pills · notifications · user. */
+/** Standard top bar: brand · clock · KPI pills · notifications · user ·
+ *  sign-out (Stage 9 local session). */
 export function AppHeader({ subtitle, kpis, bellCount, onBellClick, user }: AppHeaderProps) {
   const { time, date } = useClock()
+  const navigate = useNavigate()
   return (
     <header className="app-header">
       <div className="brand">
@@ -49,10 +53,20 @@ export function AppHeader({ subtitle, kpis, bellCount, onBellClick, user }: AppH
         <IconBell size={16} />
         <span className="bdg">{bellCount}</span>
       </button>
-      <button className="user" aria-label={`${user.name}, account menu`}>
+      <button className="user" title="Local session — not real authentication" aria-label={`${user.name}, account menu`}>
         <div className="uav">{user.initials}</div>
         <div><div className="un">{user.name}</div><div className="ur">{user.role}</div></div>
       </button>
+      {getSession() && (
+        <button
+          className="hsignout"
+          aria-label="Sign out and switch role"
+          title="Sign out / switch role"
+          onClick={() => { signOut(); navigate('/login') }}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><path d="M16 17l5-5-5-5M21 12H9" /></svg>
+        </button>
+      )}
     </header>
   )
 }

@@ -29,7 +29,7 @@ import {
   applyAcknowledgeImaging, applyAcknowledgeLab, deriveMissionControlLabs, deriveResultInbox,
   imagingFor, labDrawsFor,
 } from './data/results'
-import type { SessionRole } from '../session'
+import { hasPermission, type JobTitle } from '../session'
 import { dayOffsetOf, nowHm } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
@@ -127,13 +127,17 @@ export function getIoEntries(): Promise<IoEntry[]> {
 }
 
 /** POST /api/icu/nursing/tasks/:taskId/toggle — document (or undo) a task
- *  completion in the store, so derived views (Timeline) see it. */
-export function toggleNursingTask(taskId: string, actor: string): Promise<NursingTask | null> {
+ *  completion in the store, so derived views (Timeline) see it.
+ *  Requires notes.document (enforced here in the service layer). */
+export function toggleNursingTask(taskId: string, actor: string, jobTitle: JobTitle): Promise<NursingTask | null> {
+  if (!hasPermission(jobTitle, 'notes.document')) return respond(null, 120)
   return respond(applyTaskToggle(taskId, actor, nowHm()), 120)
 }
 
-/** POST /api/icu/nursing/io — record an intake/output entry in the store. */
-export function recordIoEntry(draft: NewIoEntry): Promise<IoEntry> {
+/** POST /api/icu/nursing/io — record an intake/output entry in the store.
+ *  Requires notes.document; null when the profile lacks it. */
+export function recordIoEntry(draft: NewIoEntry, jobTitle: JobTitle): Promise<IoEntry | null> {
+  if (!hasPermission(jobTitle, 'notes.document')) return respond(null, 120)
   return respond(insertIoEntry(draft, nowHm()), 120)
 }
 
@@ -189,7 +193,8 @@ export function getMarRows(patientIds: string[]): Promise<MarRow[]> {
 
 /** POST /api/icu/orders — create order(s); sign=true activates immediately (doctor RBAC).
  *  `note` (e.g. an acknowledged safety-warning override) is written to the audit history. */
-export function createOrders(drafts: NewOrderDraft[], actor: string, sign: boolean, note?: string): Promise<Order[]> {
+export function createOrders(drafts: NewOrderDraft[], actor: string, sign: boolean, jobTitle: JobTitle, note?: string): Promise<Order[]> {
+  if (!hasPermission(jobTitle, 'orders.create') || (sign && !hasPermission(jobTitle, 'orders.sign'))) return respond([], 120)
   const created = drafts.map(d => {
     const pt = allPatients().find(p => p.patientId === d.patientId)
     return insertOrder(d, actor, sign, pt?.name ?? d.patientId, pt?.bedId ?? '—', note)
@@ -198,31 +203,36 @@ export function createOrders(drafts: NewOrderDraft[], actor: string, sign: boole
 }
 
 /** POST /api/icu/orders/:orderId/sign (doctor RBAC). */
-export function signOrder(orderId: string, actor: string): Promise<Order | null> {
+export function signOrder(orderId: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
+  if (!hasPermission(jobTitle, 'orders.sign')) return respond(null, 120)
   return respond(applySign(orderId, actor), 120)
 }
 
 /** PUT /api/icu/orders/:orderId — modify medication fields; reason required (doctor RBAC). */
 export function modifyOrder(
-  orderId: string, changes: Partial<MedicationDetails>, reason: string, actor: string,
+  orderId: string, changes: Partial<MedicationDetails>, reason: string, actor: string, jobTitle: JobTitle,
 ): Promise<Order | null> {
+  if (!hasPermission(jobTitle, 'orders.modify')) return respond(null, 120)
   return respond(applyModify(orderId, changes, reason, actor), 120)
 }
 
 /** POST /api/icu/orders/:orderId/discontinue — reason required (doctor RBAC). */
-export function discontinueOrder(orderId: string, reason: string, actor: string): Promise<Order | null> {
+export function discontinueOrder(orderId: string, reason: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
+  if (!hasPermission(jobTitle, 'orders.discontinue')) return respond(null, 120)
   return respond(applyDiscontinue(orderId, reason, actor), 120)
 }
 
 /** POST /api/icu/orders/:orderId/implement (nurse RBAC — mark-done only). */
-export function completeImplementation(orderId: string, actor: string): Promise<Order | null> {
+export function completeImplementation(orderId: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
+  if (!hasPermission(jobTitle, 'orders.implement')) return respond(null, 120)
   return respond(applyImplementation(orderId, actor), 120)
 }
 
 /** POST /api/icu/orders/:orderId/administrations/:adminId (nurse RBAC — document only). */
 export function documentAdministration(
-  orderId: string, adminId: string, action: AdministrationAction, actor: string,
+  orderId: string, adminId: string, action: AdministrationAction, actor: string, jobTitle: JobTitle,
 ): Promise<Order | null> {
+  if (!hasPermission(jobTitle, 'meds.administer')) return respond(null, 120)
   return respond(applyAdministration(orderId, adminId, action, actor), 120)
 }
 
@@ -250,21 +260,23 @@ export function getResultInbox(): Promise<ResultInboxItem[]> {
   return respond(deriveResultInbox(), 120)
 }
 
-/** POST /api/icu/results/labs/:labId/acknowledge — doctor RBAC; null if not permitted. */
-export function acknowledgeLab(labId: string, actor: string, role: SessionRole): Promise<LabDraw | null> {
-  return respond(applyAcknowledgeLab(labId, actor, role, nowHm()), 120)
+/** POST /api/icu/results/labs/:labId/acknowledge — requires results.acknowledge; null if not permitted. */
+export function acknowledgeLab(labId: string, actor: string, jobTitle: JobTitle): Promise<LabDraw | null> {
+  if (!hasPermission(jobTitle, 'results.acknowledge')) return respond(null, 120)
+  return respond(applyAcknowledgeLab(labId, actor, nowHm()), 120)
 }
 
-/** POST /api/icu/results/imaging/:studyId/acknowledge — doctor RBAC; null if not permitted. */
-export function acknowledgeImaging(studyId: string, actor: string, role: SessionRole): Promise<ImagingStudy | null> {
-  return respond(applyAcknowledgeImaging(studyId, actor, role, nowHm()), 120)
+/** POST /api/icu/results/imaging/:studyId/acknowledge — requires results.acknowledge; null if not permitted. */
+export function acknowledgeImaging(studyId: string, actor: string, jobTitle: JobTitle): Promise<ImagingStudy | null> {
+  if (!hasPermission(jobTitle, 'results.acknowledge')) return respond(null, 120)
+  return respond(applyAcknowledgeImaging(studyId, actor, nowHm()), 120)
 }
 
 /** Convenience dispatcher for inbox items (lab or imaging). Resolves truthy on success. */
 export function acknowledgeResult(
-  kind: 'lab' | 'imaging', id: string, actor: string, role: SessionRole,
+  kind: 'lab' | 'imaging', id: string, actor: string, jobTitle: JobTitle,
 ): Promise<LabDraw | ImagingStudy | null> {
-  return kind === 'lab' ? acknowledgeLab(id, actor, role) : acknowledgeImaging(id, actor, role)
+  return kind === 'lab' ? acknowledgeLab(id, actor, jobTitle) : acknowledgeImaging(id, actor, jobTitle)
 }
 
 /* ---------------- Timeline domain (Screen 7) ----------------

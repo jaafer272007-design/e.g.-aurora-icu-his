@@ -1,8 +1,6 @@
 import type {
   ImagingStudy, LabDraw, LabPanelKey, LabResultItem, Labs, ResultFlag, ResultInboxItem,
 } from '../types'
-import type { SessionRole } from '../../session'
-import { canAcknowledgeResults } from '../../session'
 
 /* Canonical Laboratory & Imaging results store — THE single source of truth
    for results. Screen 5 places lab/imaging ORDERS; this store holds what
@@ -340,8 +338,9 @@ export const unackedResultCountFor = (patientId: string): number =>
   LAB_DRAWS.filter(d => d.patientId === patientId && !d.acknowledged).length +
   IMAGING.filter(x => x.patientId === patientId && !x.acknowledged).length
 
-export function applyAcknowledgeLab(labId: string, actor: string, role: SessionRole, time: string): LabDraw | null {
-  if (!canAcknowledgeResults(role)) return null
+/* permission is enforced in the service layer (api/index.ts) — the store
+   applies the state change only */
+export function applyAcknowledgeLab(labId: string, actor: string, time: string): LabDraw | null {
   const d = LAB_DRAWS.find(x => x.labId === labId && !x.acknowledged)
   if (!d) return null
   d.acknowledged = true
@@ -350,8 +349,7 @@ export function applyAcknowledgeLab(labId: string, actor: string, role: SessionR
   return d
 }
 
-export function applyAcknowledgeImaging(studyId: string, actor: string, role: SessionRole, time: string): ImagingStudy | null {
-  if (!canAcknowledgeResults(role)) return null
+export function applyAcknowledgeImaging(studyId: string, actor: string, time: string): ImagingStudy | null {
   const s = IMAGING.find(x => x.studyId === studyId && !x.acknowledged)
   if (!s) return null
   s.acknowledged = true

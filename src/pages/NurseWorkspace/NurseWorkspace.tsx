@@ -12,6 +12,7 @@ import {
 import type {
   AdministrationAction, IoEntry, IoKind, MarRow, NurseAssignmentResponse, NursingTask, Order,
 } from '../../lib/api/types'
+import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { AssignedPatientsCard } from './AssignedPatientsCard'
 import { MarCard } from './MarCard'
 import { OrdersCard } from './OrdersCard'
@@ -20,12 +21,13 @@ import { IoCard } from './IoCard'
 import { SbarCard, type SbarNote } from './SbarCard'
 
 
-const NURSE_ACTOR = 'RN M. Chen'
 
 /** Screen 4 — Nurse Workspace. RBAC (locked decision): administer + document
  *  only. No order origination anywhere on this screen. MAR and Orders to
  *  Implement are derived views over the canonical Order model (Screen 5). */
 export function NurseWorkspace() {
+  /* behind RequireSession(meds.administer) — session is present */
+  const session = getSession()!
   const { toast, showToast } = useToast()
   const [assignment, setAssignment] = useState<NurseAssignmentResponse | null>(null)
   const [mar, setMar] = useState<MarRow[] | null>(null)
@@ -52,7 +54,7 @@ export function NurseWorkspace() {
   /* MAR: documentation event on the canonical order (audit history) */
   const documentMar = (orderId: string, adminId: string, action: AdministrationAction) => {
     const row = mar?.find(r => r.adminId === adminId)
-    documentAdministration(orderId, adminId, action, NURSE_ACTOR).then(updated => {
+    documentAdministration(orderId, adminId, action, session.name, session.jobTitle).then(updated => {
       if (!updated) return
       const admin = updated.administrations?.find(a => a.adminId === adminId)
       setMar(prev => prev && prev.map(r =>
@@ -63,7 +65,7 @@ export function NurseWorkspace() {
 
   const completeOrder = (orderId: string) => {
     const order = orders?.find(o => o.orderId === orderId)
-    completeImplementation(orderId, NURSE_ACTOR).then(updated => {
+    completeImplementation(orderId, session.name, session.jobTitle).then(updated => {
       if (!updated) return
       setImplementedIds(prev => new Set(prev).add(orderId))
       if (order) showToast('Order implemented', `${order.priority} · ${patientName(order.patientId)} · ${nowHm()}`)
@@ -73,14 +75,15 @@ export function NurseWorkspace() {
   /* both write to the nursing store via the service layer (not page-local
      state) so derived views — e.g. the Timeline — see them */
   const toggleTask = (taskId: string) => {
-    toggleNursingTask(taskId, NURSE_ACTOR).then(updated => {
+    toggleNursingTask(taskId, session.name, session.jobTitle).then(updated => {
       if (!updated) return
       setTasks(prev => prev && prev.map(t => (t.taskId === taskId ? updated : t)))
     })
   }
 
   const recordIo = (patientId: string, kind: IoKind, category: string, volumeMl: number) => {
-    recordIoEntry({ patientId, kind, category, volumeMl }).then(entry => {
+    recordIoEntry({ patientId, kind, category, volumeMl }, session.jobTitle).then(entry => {
+      if (!entry) return
       setIo(prev => prev && [...prev, entry])
       showToast('I&O recorded', `${kind === 'intake' ? '+' : '−'}${volumeMl} mL ${category} · ${patientName(patientId)} · ${entry.time}`)
     })
@@ -116,18 +119,13 @@ export function NurseWorkspace() {
         kpis={kpis}
         bellCount={3}
         onBellClick={() => showToast('Alerts', '3 active notifications for your patients')}
-        user={{
-          initials: assignment?.nurse.initials ?? '—',
-          name: assignment?.nurse.name ?? '—',
-          role: assignment ? `${assignment.nurse.role} · ${assignment.nurse.shift}` : '—',
-        }}
+        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile${assignment ? ` · ${assignment.nurse.shift}` : ''}` }}
       />
       <div className="shell">
         <NavSidebar
           active="dashboard"
-          dashboardRoute="/nurse"
           alertCount={3}
-          footerLines={['Role: Nurse', 'Administer + document only']}
+          footerLines={['Role: Nurse profile', 'Administer + document only']}
         />
         <main>
           <div className="col">

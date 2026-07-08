@@ -27,7 +27,7 @@ real APIs and medical devices later.
 6. Laboratory & Imaging — ✅ built, formal review pending (`/labs/:patientId`, canonical results model — MC lab card + DW results queue read derived views)
 7. Timeline — ✅ built, formal review pending (`/timeline/:patientId`, read-only aggregated feed derived from the canonical stores — no store of its own; MC timeline card reads the same feed; minimal ClinicalNote model added for freeform notes)
 8. AI Clinical Assistant — ✅ built, formal review pending (`/ai` unit ranking + `/ai/:patientId`, canonical AI risk model — MC AI panel + alert-center risk alerts read derived views; all predictions simulated until Stage 11)
-9. Login / Role-Switch screen — build right before API Integration
+9. Login / Role-Switch screen — ✅ built (`/login`, local session simulation — three-layer RBAC below; real auth is Stage 10)
 10. API Integration (ASP.NET Core Web APIs)
 11. Medical device integration (ventilators, monitors, lab) + AI
 
@@ -36,6 +36,47 @@ See `docs/architecture.md` — production-grade HIS rules: stable PatientID for 
 routing/lookups (bed = location only), separated domain models, service-layer
 data access, independent reusable components, real-time-ready design, structured
 alert/device models. Apply incrementally; don't wholesale-refactor existing code.
+
+## RBAC (Stage 9) — three-layer permission model (PROVISIONAL)
+User → Role (JobTitle) → PermissionProfile → Permissions. Roles are NEVER
+bound to permissions directly. Profile and permissions are ALWAYS computed
+from the JobTitle at read time via lookup (`src/lib/session.ts`) — never
+stored redundantly (same rule as clock-computed states). The session stores
+ONLY `{ name, jobTitle }` in sessionStorage (survives refresh, tab-scoped).
+LOCAL SESSION ONLY — no passwords/JWT/user DB until Stage 10. Service-layer
+adapters re-enforce permissions (defense in depth); Stage 10 re-enforces
+server-side. Finer-grained permissions per profile come in a later stage —
+these tables are provisional.
+
+JobTitle → PermissionProfile:
+| PermissionProfile    | JobTitles |
+|---|---|
+| Doctor               | Consultant, Specialist, Senior Resident, Resident, Intern |
+| Nurse                | Staff Nurse, Charge Nurse, Head Nurse |
+| Pharmacist           | Pharmacist, Clinical Pharmacist |
+| RespiratoryTherapist | Respiratory Therapist |
+| Ancillary            | Laboratory Technician, Radiology Technician |
+| AlliedHealth         | Physiotherapist, Dietitian |
+| Administrator        | Hospital Administrator, IT Administrator, Receptionist, Billing Officer, Medical Records Officer |
+
+PermissionProfile → Permissions (and Dashboard landing view):
+| Profile | Permissions | Landing |
+|---|---|---|
+| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view | /workspace |
+| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view | /nurse |
+| Administrator        | admin.view, patients.view | /admin |
+| Pharmacist           | patients.view, orders.view, results.view (view-only) | /beds |
+| RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
+| Ancillary            | patients.view, orders.view, results.view (view-only) | /beds |
+| AlliedHealth         | patients.view, results.view (view-only) | /beds |
+
+Route guards: /workspace = orders.sign · /nurse = meds.administer ·
+/admin = admin.view · /beds & /patients & /timeline = patients.view ·
+/orders = orders.view (mutating UI additionally needs the prescriber
+permissions) · /labs = results.view · /ai = ai.view. A session lacking a
+route's permission gets an explicit Access Restricted state (never a
+silent redirect); no session → /login. The `?as=nurse` dev preview is
+retired — the login screen replaces it.
 
 ## Canonical Data Domains (mock stores in src/lib/api/data — each maps to a future ASP.NET Core service)
 - `roster.ts` — patient identity, location, and bedside state (ONE record per
@@ -110,9 +151,9 @@ Rules:
   document only, cannot originate orders.
 - Orders & Medication / Lab & Imaging / Timeline are standalone routed
   screens, not drill-down panels inside Patient Mission Control.
-- Nav: the sidebar "Dashboard" item is role-personalized — it renders
-  Doctor Workspace for a physician session, Nurse Workspace for a nurse
-  session, once auth exists. Until then, default to Doctor Workspace.
+- Nav: the sidebar "Dashboard" item is role-personalized — it resolves to
+  the signed-in profile's landing view (see the RBAC tables above);
+  implemented at Stage 9 via the local session.
 - Doctor Workspace's quick-order drawer stays lightweight (free text +
   quick-set bundle shortcuts, no drug formulary) — do not expand it. Full
   medication ordering (searchable formulary, dose/route/frequency,
@@ -152,7 +193,9 @@ pattern lives in ONE component).
 - Contrast ≥ 4.5:1 body text, ≥ 3:1 large text
 
 ## Current Status
-Screens 1–3 exist only as static HTML prototypes in /reference. No React
-project exists yet. First task: scaffold the project and port these three
-screens faithfully (pixel-accurate to /reference) into componentized,
-routed React pages before building anything new.
+Screens 1–8 are built as componentized, routed React pages backed by
+canonical mock stores (see Canonical Data Domains); Stage 9 login/RBAC is
+in place as a LOCAL session simulation. Screens 2, 4–8 await formal review.
+Next: Stage 10 — replace the mock adapters in src/lib/api with ASP.NET
+Core Web APIs and real authentication, then Stage 11 device + AI
+integration per the locked rules above.

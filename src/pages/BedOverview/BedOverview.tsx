@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import './BedOverview.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
+import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { AlertRow } from '../../components/AlertRow'
 import { VitalTile } from '../../components/VitalTile'
 import { Toast, useToast } from '../../components/Toast'
@@ -38,6 +39,8 @@ function visible(b: Bed, f: Filters): boolean {
 type JitterMap = Record<string, { hr: number; map: number; spo2: number }>
 
 export function BedOverview() {
+  /* behind RequireSession(patients.view) */
+  const session = getSession()!
   const navigate = useNavigate()
   const reduced = useReducedMotion()
   const { toast, showToast } = useToast()
@@ -124,7 +127,7 @@ export function BedOverview() {
         kpis={kpis}
         bellCount={bellCount}
         onBellClick={() => showToast('Alerts', `${bellCount} active notifications`)}
-        user={{ initials: 'SR', name: 'Dr. Sara Rahman', role: 'Intensivist · On call' }}
+        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
         <NavSidebar active="beds" alertCount={bellCount || 5} footerLines={['Unit 4B · 16 beds', 'Sync: live']} />

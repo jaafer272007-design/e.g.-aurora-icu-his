@@ -11,6 +11,7 @@ import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
 import { getPatientDetail, getPatients } from '../../lib/api'
+import { signOut } from '../../lib/session'
 import type { PatientAlert, PatientDetailResponse, PatientSummary } from '../../lib/api/types'
 import { MonitorCard } from './MonitorCard'
 import { DigitalTwin } from './DigitalTwin'
@@ -115,6 +116,7 @@ export function MissionControl() {
           </div>
           <div className="spacer" />
           <div className="clock"><b>{time}</b><span>{date}</span></div>
+          <button className="switchrole" onClick={() => { signOut(); navigate('/login') }}>Switch role</button>
         </div>
         <div className="banner">
           <div className="pt-id">
