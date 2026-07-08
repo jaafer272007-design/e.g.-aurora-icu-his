@@ -138,12 +138,19 @@ async function apiGet<T>(path: string, what: string): Promise<T | null> {
  *    are already coming from mock — the caller applies the mock mutation
  *    so the Stage 9 offline experience stays coherent */
 type ApiPostResult<T> = { kind: 'ok'; data: T } | { kind: 'denied' } | { kind: 'offline' }
-async function apiPost<T>(path: string, what: string): Promise<ApiPostResult<T>> {
+async function apiPost<T>(
+  path: string, what: string, body?: unknown, method: 'POST' | 'PUT' = 'POST',
+): Promise<ApiPostResult<T>> {
   if (!API_BASE) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
-    const res = await fetch(`${API_BASE}${path}`, { method: 'POST', signal: ctrl.signal, headers: authHeaders() })
+    const res = await fetch(`${API_BASE}${path}`, {
+      method,
+      signal: ctrl.signal,
+      headers: { ...authHeaders(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
     clearTimeout(timer)
     if (res.ok) return { kind: 'ok', data: (await res.json()) as T }
     if (res.status === 401) {
@@ -312,33 +319,55 @@ export function getOrderSetDefs(): Promise<OrderSetDef[]> {
   return respond(ORDER_SET_DEFS, 120)
 }
 
-/** GET /api/icu/patients/:patientId/orders — full order list incl. audit history. */
-export function getPatientOrders(patientId: string): Promise<Order[]> {
-  return respond(allOrders().filter(o => o.patientId === patientId), 120)
+/* The Orders domain is a REAL service since Stage 10 Phase 3 (Orders PR) —
+   full lifecycle behind JWT auth with server-side RBAC: create/sign/
+   modify/discontinue need the doctor permissions, implement needs the
+   nurse's orders.implement, all derived from the token's jobTitle claim
+   on the server; the acting/signing actor comes from the token's name
+   claim (the `actor` args below only feed the mock fallback path). The
+   client hasPermission checks remain as defense in depth. MAR
+   administrations (getMarRows/documentAdministration) stay MOCK until
+   their own phase — documented drift: doses documented in the mock MAR
+   don't reach the server store yet. */
+
+/** GET /api/icu/orders?patientId — full order list incl. audit history (REAL; mock fallback). */
+export async function getPatientOrders(patientId: string): Promise<Order[]> {
+  const real = await apiGet<Order[]>(`/api/icu/orders?patientId=${encodeURIComponent(patientId)}`, 'orders')
+  return real ?? respond(allOrders().filter(o => o.patientId === patientId), 120)
 }
 
-/** GET /api/icu/orders?status=pending — orders awaiting physician signature. */
-export function getPendingOrders(): Promise<Order[]> {
-  return respond(allOrders().filter(o => o.status === 'pending'), 120)
+/** GET /api/icu/orders?status=pending — signature queue (REAL; mock fallback). */
+export async function getPendingOrders(): Promise<Order[]> {
+  const real = await apiGet<Order[]>('/api/icu/orders?status=pending', 'orders')
+  return real ?? respond(allOrders().filter(o => o.status === 'pending'), 120)
 }
 
-/** GET /api/icu/orders?implement=true — active orders awaiting nursing implementation. */
-export function getImplementationQueue(patientIds?: string[]): Promise<Order[]> {
+/** GET /api/icu/orders?implement=true — nursing implementation queue (REAL;
+ *  mock fallback). The patientIds narrowing stays client-side — the same
+ *  derivation as before, repointed at the real store. */
+export async function getImplementationQueue(patientIds?: string[]): Promise<Order[]> {
+  const real = await apiGet<Order[]>('/api/icu/orders?implement=true', 'orders')
+  if (real) return real.filter(o => !patientIds || patientIds.includes(o.patientId))
   const q = allOrders().filter(
     o => o.status === 'active' && o.requiresImplementation && (!patientIds || patientIds.includes(o.patientId)),
   )
   return respond(q, 120)
 }
 
-/** GET /api/icu/nursing/mar — MAR rows derived from active medication orders. */
+/** GET /api/icu/nursing/mar — MAR rows derived from active medication orders.
+ *  STILL MOCK — migrates with the MAR/administrations phase. */
 export function getMarRows(patientIds: string[]): Promise<MarRow[]> {
   return respond(deriveMarRows(patientIds), 120)
 }
 
 /** POST /api/icu/orders — create order(s); sign=true activates immediately (doctor RBAC).
- *  `note` (e.g. an acknowledged safety-warning override) is written to the audit history. */
-export function createOrders(drafts: NewOrderDraft[], actor: string, sign: boolean, jobTitle: JobTitle, note?: string): Promise<Order[]> {
+ *  `note` (e.g. an acknowledged safety-warning override) is written to the audit history.
+ *  REAL endpoint; patient name/bed resolved server-side from the roster. */
+export async function createOrders(drafts: NewOrderDraft[], actor: string, sign: boolean, jobTitle: JobTitle, note?: string): Promise<Order[]> {
   if (!hasPermission(jobTitle, 'orders.create') || (sign && !hasPermission(jobTitle, 'orders.sign'))) return respond([], 120)
+  const r = await apiPost<Order[]>('/api/icu/orders', 'create order', { drafts, sign, note })
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return []
   const created = drafts.map(d => {
     const pt = allPatients().find(p => p.patientId === d.patientId)
     return insertOrder(d, actor, sign, pt?.name ?? d.patientId, pt?.bedId ?? '—', note)
@@ -346,29 +375,42 @@ export function createOrders(drafts: NewOrderDraft[], actor: string, sign: boole
   return respond(created, 150)
 }
 
-/** POST /api/icu/orders/:orderId/sign (doctor RBAC). */
-export function signOrder(orderId: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
+/** POST /api/icu/orders/:orderId/sign (doctor RBAC; REAL endpoint). */
+export async function signOrder(orderId: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
   if (!hasPermission(jobTitle, 'orders.sign')) return respond(null, 120)
+  const r = await apiPost<Order>(`/api/icu/orders/${encodeURIComponent(orderId)}/sign`, 'sign order')
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
   return respond(applySign(orderId, actor), 120)
 }
 
-/** PUT /api/icu/orders/:orderId — modify medication fields; reason required (doctor RBAC). */
-export function modifyOrder(
+/** PUT /api/icu/orders/:orderId — modify medication fields; reason required
+ *  (doctor RBAC; REAL endpoint). */
+export async function modifyOrder(
   orderId: string, changes: Partial<MedicationDetails>, reason: string, actor: string, jobTitle: JobTitle,
 ): Promise<Order | null> {
   if (!hasPermission(jobTitle, 'orders.modify')) return respond(null, 120)
+  const r = await apiPost<Order>(`/api/icu/orders/${encodeURIComponent(orderId)}`, 'modify order', { changes, reason }, 'PUT')
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
   return respond(applyModify(orderId, changes, reason, actor), 120)
 }
 
-/** POST /api/icu/orders/:orderId/discontinue — reason required (doctor RBAC). */
-export function discontinueOrder(orderId: string, reason: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
+/** POST /api/icu/orders/:orderId/discontinue — reason required (doctor RBAC; REAL endpoint). */
+export async function discontinueOrder(orderId: string, reason: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
   if (!hasPermission(jobTitle, 'orders.discontinue')) return respond(null, 120)
+  const r = await apiPost<Order>(`/api/icu/orders/${encodeURIComponent(orderId)}/discontinue`, 'discontinue order', { reason })
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
   return respond(applyDiscontinue(orderId, reason, actor), 120)
 }
 
-/** POST /api/icu/orders/:orderId/implement (nurse RBAC — mark-done only). */
-export function completeImplementation(orderId: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
+/** POST /api/icu/orders/:orderId/implement (nurse RBAC — mark-done only; REAL endpoint). */
+export async function completeImplementation(orderId: string, actor: string, jobTitle: JobTitle): Promise<Order | null> {
   if (!hasPermission(jobTitle, 'orders.implement')) return respond(null, 120)
+  const r = await apiPost<Order>(`/api/icu/orders/${encodeURIComponent(orderId)}/implement`, 'implement order')
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
   return respond(applyImplementation(orderId, actor), 120)
 }
 

@@ -30,8 +30,8 @@ real APIs and medical devices later.
 9. Login / Role-Switch screen — ✅ built (`/login`, three-layer RBAC below; real username+password auth added in Stage 10 Phase 2, Stage 9 local session kept as the offline fallback)
 10. API Integration (ASP.NET Core Web APIs) — 🔄 in progress: Phase 1
     (roster/patients) + Phase 2 (authentication) + Phase 3 (Labs/Imaging
-    results, first server-side RBAC) built — see "Stage 10 — API
-    Integration" below
+    results, then Orders & Medication — server-side RBAC on every
+    mutation) built — see "Stage 10 — API Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
 ## Architecture Rules (binding for all future screens)
@@ -294,6 +294,43 @@ remain mock until their own phases.
   (manual dispatch) — authenticated fetches return seeded data, 401s
   without a token, nurse-403/doctor-200 acknowledge on the LIVE service.
 
+### Phase 3 — Orders & Medication (built)
+Second clinical-domain migration; server-side RBAC on EVERY lifecycle
+mutation. MAR administrations, Timeline, and AI remain mock until their
+own phases.
+- **Table** (same SQLite DB): Orders, seeded at boot from
+  `server/Data/orders-seed.json` — GENERATED from
+  `src/lib/api/data/orders.ts` (verified byte-for-byte: 19 orders, zero
+  field diffs wire-vs-seed) — never hand-edit it. Medication /
+  administrations / history are JSON columns the mutations rewrite; a Seq
+  column preserves the mock's insertion order.
+- **Endpoints** (all `.RequireAuthorization()`):
+  `GET /api/icu/orders?patientId|status|implement` (per-patient list incl.
+  audit history, signature queue, implementation queue — the same derived
+  views, repointed at the real store; the NW patientIds narrowing stays a
+  client-side derivation), `POST /api/icu/orders` (create; sign=true
+  activates + generates the administration schedule server-side; patient
+  name/bed resolved from the roster), `POST .../{id}/sign`,
+  `PUT .../{id}` (modify; reason required, audit diff computed
+  server-side), `POST .../{id}/discontinue` (reason required; scheduled
+  administrations cancelled), `POST .../{id}/implement`.
+- **Server-side RBAC**: create/sign/modify/discontinue require the doctor
+  permissions; implement requires the NURSE's orders.implement (a doctor
+  token is correctly 403'd there). A nurse token gets a generic 403 on
+  every prescriber mutation even when the UI is bypassed. The
+  acting/signing actor is ALWAYS the token's name claim. CORS now allows
+  PUT (GET/POST/PUT) — modify's preflight needs it.
+- **Frontend adapters**: reads + all five mutations swapped with the
+  labs write semantics (server 403/404/400 = real denial, never applied
+  locally; network failure or tokenless-session 401 = offline mock
+  apply). `getMarRows`/`documentAdministration` STAY MOCK — documented
+  drift until the MAR phase: doses documented offline and Timeline/alert
+  derivations still read the mock store.
+- **Deployed verification**: `.github/workflows/deployed-orders-e2e.yml`
+  (manual dispatch) — 401s, seeded reads, nurse-403 on all four
+  prescriber mutations, doctor-200 with token actor, implement
+  doctor-403/nurse-200 on the LIVE service.
+
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
 - Touch targets ≥ 44×44px
@@ -310,9 +347,11 @@ Screens 2, 4–8 await formal review. Stage 10 Phase 1 (roster/patients) and
 Phase 2 (auth: bcrypt users table, POST /api/auth/login, JWT middleware on
 the roster endpoint, Bearer-token frontend with Stage 9 local-session
 fallback) are built on the ASP.NET Core + SQLite + Docker service in
-/server, deployable via render.yaml. Phase 3 migrated the first clinical
-domain (Labs/Imaging results) with server-side RBAC on acknowledge —
-the pattern the remaining domains follow. Next: later Stage 10 phases —
-Orders/MAR, Consults/Notes/Nursing, Timeline, AI, one domain per PR,
-each adopting the same JWT + server-side permission enforcement — then
+/server, deployable via render.yaml. Phase 3 has migrated Labs/Imaging
+results (server-side RBAC on acknowledge) and Orders & Medication
+(server-side RBAC on the full lifecycle — create/sign/modify/discontinue
+doctor-only, implement nurse-only, actor always from the token). Next:
+remaining Phase 3 domains — MAR administrations, Consults/Notes/Nursing,
+Timeline, AI — one domain per PR with the same pattern, then the
+Post-Phase-3 layers (ADT, user administration, master data), then
 Stage 11 device + AI integration per the locked rules above.

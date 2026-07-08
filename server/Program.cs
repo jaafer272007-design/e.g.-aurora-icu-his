@@ -43,7 +43,7 @@ var corsOrigins = (Environment.GetEnvironmentVariable("CORS_ORIGINS")
     ?? "https://jaafer272007-design.github.io;http://localhost:5173;http://localhost:4173")
     .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
-    p.WithOrigins(corsOrigins).AllowAnyHeader().WithMethods("GET", "POST")));
+    p.WithOrigins(corsOrigins).AllowAnyHeader().WithMethods("GET", "POST", "PUT")));
 
 /* ---- JWT (Stage 10 Phase 2) ----
    Signing key from JWT_SECRET (any length — hashed to 256 bits). When the
@@ -137,6 +137,14 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
         app.Logger.LogInformation("Seeded {Labs} lab draws + {Imaging} imaging studies", labs.Count, imaging.Count);
     }
+    if (!db.Orders.Any())
+    {
+        var orders = JsonSerializer.Deserialize<List<OrderDto>>(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "orders-seed.json")), JsonOpts.Web)!;
+        db.Orders.AddRange(orders.Select((o, i) => OrderRow.FromDto(o, i + 1)));
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded {Count} orders", orders.Count);
+    }
 }
 
 /* health/warmup probe (also Render's health check path) */
@@ -187,6 +195,142 @@ app.MapGet("/api/icu/patients", (RosterDb db) =>
         .AsEnumerable()
         .Select(p => p.ToDto()), JsonOpts.Web))
     .RequireAuthorization();
+
+/* ---------------- Orders & Medication (Stage 10 Phase 3, Orders PR) ----------------
+   The canonical orders service — full order lifecycle behind JWT auth with
+   the same server-side RBAC pattern as results: create/sign/modify/
+   discontinue require the doctor-level permissions, implement requires the
+   nurse's orders.implement — each derived from the token's jobTitle claim
+   at read time. A nurse token gets a generic 403 on every prescriber
+   mutation even when the UI is bypassed. The acting/signing actor is ALWAYS
+   the token's name claim, never a request field. MAR administrations stay
+   MOCK this phase (their own migration comes next). */
+
+/* GET /api/icu/orders?patientId&status&implement — filtered order list
+   (per-patient full list incl. audit history, pending signature queue,
+   nursing implementation queue — the same derived views the mock serves). */
+app.MapGet("/api/icu/orders", (string? patientId, string? status, bool? implement, RosterDb db) =>
+{
+    var q = db.Orders.AsNoTracking().AsQueryable();
+    if (patientId is not null) q = q.Where(o => o.PatientId == patientId);
+    if (status is not null) q = q.Where(o => o.Status == status);
+    if (implement == true) q = q.Where(o => o.Status == "active" && o.RequiresImplementation == true);
+    return Results.Json(q.OrderBy(o => o.Seq).AsEnumerable().Select(o => o.ToDto()), JsonOpts.Web);
+}).RequireAuthorization();
+
+/* POST /api/icu/orders — create order(s); sign=true activates immediately.
+   Body: { drafts: NewOrderDraft[], sign, note? }. Patient name/bed are
+   resolved server-side from the roster (denormalized display snapshot). */
+app.MapPost("/api/icu/orders", (CreateOrdersRequest req, ClaimsPrincipal user, RosterDb db) =>
+{
+    if (Rbac.Deny(user, "orders.create") is IResult d1) return d1;
+    if (req.Sign && Rbac.Deny(user, "orders.sign") is IResult d2) return d2;
+    var actor = user.FindFirst("name")?.Value ?? "Unknown";
+    var time = DateTime.UtcNow.ToString("HH:mm");
+    var created = new List<OrderDto>();
+    foreach (var draft in req.Drafts ?? [])
+    {
+        var pt = db.Patients.AsNoTracking().FirstOrDefault(p => p.PatientId == draft.PatientId);
+        var history = new List<OrderEventDto> { new(time, actor, "created", req.Note) };
+        List<AdminDto>? administrations = null;
+        if (req.Sign)
+        {
+            history.Add(new(time, actor, "signed", null));
+            if (draft.Medication is not null) administrations = OrderLogic.GenerateAdministrations(draft.Medication);
+        }
+        var dto = new OrderDto(
+            OrderLogic.NextOrderId(), draft.PatientId, pt?.BedId ?? "—", pt?.Name ?? draft.PatientId,
+            draft.Category, draft.Summary ?? (draft.Medication is not null ? OrderLogic.MedSummary(draft.Medication) : ""),
+            draft.Medication, draft.Priority, req.Sign ? "active" : "pending",
+            actor, time, draft.RequiresImplementation, administrations, history, null);
+        db.Orders.Add(OrderRow.FromDto(dto, OrderLogic.NextSeq()));
+        created.Add(dto);
+    }
+    db.SaveChanges();
+    return Results.Json(created, JsonOpts.Web);
+}).RequireAuthorization();
+
+/* POST /api/icu/orders/{orderId}/sign — doctor RBAC (orders.sign). */
+app.MapPost("/api/icu/orders/{orderId}/sign", (string orderId, ClaimsPrincipal user, RosterDb db) =>
+{
+    if (Rbac.Deny(user, "orders.sign") is IResult denied) return denied;
+    var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && x.Status == "pending");
+    if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+    var actor = user.FindFirst("name")?.Value ?? "Unknown";
+    var o = row.ToDto();
+    row.Status = "active";
+    row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
+        new(DateTime.UtcNow.ToString("HH:mm"), actor, "signed", null));
+    if (o.Medication is not null && o.Administrations is null)
+        row.AdministrationsJson = JsonSerializer.Serialize(OrderLogic.GenerateAdministrations(o.Medication), JsonOpts.Web);
+    db.SaveChanges();
+    return Results.Json(row.ToDto(), JsonOpts.Web);
+}).RequireAuthorization();
+
+/* PUT /api/icu/orders/{orderId} — modify medication fields; reason required
+   (doctor RBAC, orders.modify). Body: { changes, reason }. */
+app.MapPut("/api/icu/orders/{orderId}", (string orderId, ModifyOrderRequest req, ClaimsPrincipal user, RosterDb db) =>
+{
+    if (Rbac.Deny(user, "orders.modify") is IResult denied) return denied;
+    if (string.IsNullOrWhiteSpace(req.Reason))
+        return Results.Json(new { error = "Reason required" }, JsonOpts.Web, statusCode: 400);
+    var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && (x.Status == "active" || x.Status == "pending"));
+    if (row is null || row.MedicationJson is null)
+        return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+    var actor = user.FindFirst("name")?.Value ?? "Unknown";
+    var before = JsonSerializer.Deserialize<MedicationDto>(row.MedicationJson, JsonOpts.Web)!;
+    var (merged, diff) = OrderLogic.ApplyChanges(before, req.Changes ?? new(null, null, null, null, null, null, null, null));
+    row.MedicationJson = JsonSerializer.Serialize(merged, JsonOpts.Web);
+    row.Summary = OrderLogic.MedSummary(merged);
+    row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
+        new(DateTime.UtcNow.ToString("HH:mm"), actor, "modified",
+            $"{(diff.Length > 0 ? diff : "no field change")} — {req.Reason.Trim()}"));
+    db.SaveChanges();
+    return Results.Json(row.ToDto(), JsonOpts.Web);
+}).RequireAuthorization();
+
+/* POST /api/icu/orders/{orderId}/discontinue — reason required (doctor RBAC). */
+app.MapPost("/api/icu/orders/{orderId}/discontinue", (string orderId, DiscontinueRequest req, ClaimsPrincipal user, RosterDb db) =>
+{
+    if (Rbac.Deny(user, "orders.discontinue") is IResult denied) return denied;
+    if (string.IsNullOrWhiteSpace(req.Reason))
+        return Results.Json(new { error = "Reason required" }, JsonOpts.Web, statusCode: 400);
+    var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && (x.Status == "active" || x.Status == "pending"));
+    if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+    var actor = user.FindFirst("name")?.Value ?? "Unknown";
+    row.Status = "discontinued";
+    row.StatusReason = req.Reason.Trim();
+    if (row.AdministrationsJson is not null)
+    {
+        /* remaining scheduled administrations are cancelled with the order */
+        var admins = JsonSerializer.Deserialize<List<AdminDto>>(row.AdministrationsJson, JsonOpts.Web)!
+            .Where(a => a.Status != "scheduled").ToList();
+        row.AdministrationsJson = JsonSerializer.Serialize(admins, JsonOpts.Web);
+    }
+    row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
+        new(DateTime.UtcNow.ToString("HH:mm"), actor, "discontinued", req.Reason.Trim()));
+    db.SaveChanges();
+    return Results.Json(row.ToDto(), JsonOpts.Web);
+}).RequireAuthorization();
+
+/* POST /api/icu/orders/{orderId}/implement — nurse RBAC (orders.implement):
+   one-shot completion of a non-med order from "Orders to Implement".
+   Note a DOCTOR token is correctly rejected here — implementation is a
+   nursing permission in the locked RBAC model. */
+app.MapPost("/api/icu/orders/{orderId}/implement", (string orderId, ClaimsPrincipal user, RosterDb db) =>
+{
+    if (Rbac.Deny(user, "orders.implement") is IResult denied) return denied;
+    var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && x.Status == "active" && x.RequiresImplementation == true);
+    if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+    var actor = user.FindFirst("name")?.Value ?? "Unknown";
+    var time = DateTime.UtcNow.ToString("HH:mm");
+    row.Status = "completed";
+    row.HistoryJson = OrderLogic.AppendHistory(
+        OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, "implemented", null)),
+        new(time, actor, "completed", null));
+    db.SaveChanges();
+    return Results.Json(row.ToDto(), JsonOpts.Web);
+}).RequireAuthorization();
 
 /* ---------------- Laboratory & Imaging results (Stage 10 Phase 3) ----------------
    The canonical results service — same wire contract the mock adapter
@@ -330,6 +474,7 @@ class RosterDb(DbContextOptions<RosterDb> options) : DbContext(options)
     public DbSet<UserRow> Users => Set<UserRow>();
     public DbSet<LabDrawRow> LabDraws => Set<LabDrawRow>();
     public DbSet<ImagingStudyRow> ImagingStudies => Set<ImagingStudyRow>();
+    public DbSet<OrderRow> Orders => Set<OrderRow>();
 }
 
 /* One row per staff account (Stage 10 Phase 2). Only the bcrypt hash is
@@ -445,6 +590,145 @@ record LabItemDto(string Analyte, double Value, string Unit, string Flag);
 record InboxItemDto(
     string Kind, string Id, string PatientId, string BedId, string PatientName,
     string Title, string Detail, string Time, string Flag);
+
+/* ---------- Orders & Medication (Stage 10 Phase 3, Orders PR) ----------
+   One row per order; medication/administrations/history are JSON columns
+   the lifecycle mutations rewrite. Seq preserves insertion order (seed
+   order, then append — same as the mock store). Data/orders-seed.json is
+   GENERATED from src/lib/api/data/orders.ts — never hand-edit it. */
+
+class OrderRow
+{
+    [Key]
+    public string OrderId { get; set; } = "";
+    public int Seq { get; set; }
+    public string PatientId { get; set; } = "";
+    public string BedId { get; set; } = "";
+    public string PatientName { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Summary { get; set; } = "";
+    public string? MedicationJson { get; set; }
+    public string Priority { get; set; } = "";
+    public string Status { get; set; } = "";
+    public string OrderedBy { get; set; } = "";
+    public string OrderedTime { get; set; } = "";
+    public bool? RequiresImplementation { get; set; }
+    public string? AdministrationsJson { get; set; }
+    public string HistoryJson { get; set; } = "[]";
+    public string? StatusReason { get; set; }
+
+    public static OrderRow FromDto(OrderDto d, int seq) => new()
+    {
+        OrderId = d.OrderId, Seq = seq, PatientId = d.PatientId, BedId = d.BedId,
+        PatientName = d.PatientName, Category = d.Category, Summary = d.Summary,
+        MedicationJson = d.Medication is null ? null : JsonSerializer.Serialize(d.Medication, JsonOpts.Web),
+        Priority = d.Priority, Status = d.Status, OrderedBy = d.OrderedBy, OrderedTime = d.OrderedTime,
+        RequiresImplementation = d.RequiresImplementation,
+        AdministrationsJson = d.Administrations is null ? null : JsonSerializer.Serialize(d.Administrations, JsonOpts.Web),
+        HistoryJson = JsonSerializer.Serialize(d.History, JsonOpts.Web),
+        StatusReason = d.StatusReason,
+    };
+
+    public OrderDto ToDto() => new(
+        OrderId, PatientId, BedId, PatientName, Category, Summary,
+        MedicationJson is null ? null : JsonSerializer.Deserialize<MedicationDto>(MedicationJson, JsonOpts.Web),
+        Priority, Status, OrderedBy, OrderedTime, RequiresImplementation,
+        AdministrationsJson is null ? null : JsonSerializer.Deserialize<List<AdminDto>>(AdministrationsJson, JsonOpts.Web),
+        JsonSerializer.Deserialize<List<OrderEventDto>>(HistoryJson, JsonOpts.Web)!,
+        StatusReason);
+}
+
+/* wire contracts — mirror Order / MedicationDetails / MedAdministration /
+   OrderEvent / NewOrderDraft in src/lib/api/types.ts */
+record OrderDto(
+    string OrderId, string PatientId, string BedId, string PatientName, string Category,
+    string Summary, MedicationDto? Medication, string Priority, string Status,
+    string OrderedBy, string OrderedTime, bool? RequiresImplementation,
+    List<AdminDto>? Administrations, List<OrderEventDto> History, string? StatusReason);
+
+record MedicationDto(
+    string DrugId, string Drug, string Dose, string Route, string Frequency,
+    string Duration, bool Prn, string? PrnIndication);
+
+record AdminDto(string AdminId, string ScheduledTime, string Status,
+    string? DocumentedTime, string? DocumentedBy);
+
+record OrderEventDto(string Time, string Actor, string Action, string? Detail);
+
+record NewOrderDraftDto(
+    string PatientId, string Category, string? Summary, MedicationDto? Medication,
+    string Priority, bool? RequiresImplementation);
+
+record CreateOrdersRequest(List<NewOrderDraftDto>? Drafts, bool Sign, string? Note);
+
+/* partial medication update — only provided fields are applied */
+record MedicationChanges(
+    string? DrugId, string? Drug, string? Dose, string? Route, string? Frequency,
+    string? Duration, bool? Prn, string? PrnIndication);
+
+record ModifyOrderRequest(MedicationChanges? Changes, string? Reason);
+
+record DiscontinueRequest(string? Reason);
+
+/* ports of the mock store's helpers (src/lib/api/data/orders.ts) so the
+   wire behavior matches the adapter contract exactly */
+static class OrderLogic
+{
+    static int _orderSeq = 100;  // new orders: ORD-101… (seeded ones are ORD-2001…)
+    static int _adminSeq = 500;  // new administrations: ADM-501…
+    static int _rowSeq = 1000;   // insertion order for new rows (seeds are 1…n)
+
+    public static string NextOrderId() => $"ORD-{Interlocked.Increment(ref _orderSeq)}";
+    public static string NextAdminId() => $"ADM-{Interlocked.Increment(ref _adminSeq)}";
+    public static int NextSeq() => Interlocked.Increment(ref _rowSeq);
+
+    public static string MedSummary(MedicationDto m) =>
+        $"{m.Drug} {m.Dose} · {m.Route} · {(m.Prn ? $"PRN ({m.PrnIndication ?? "as required"})" : m.Frequency)}";
+
+    /* mock schedule generation for newly signed med orders: next full hour,
+       plus one interval for q\dh frequencies; PRN gets one availability row */
+    public static List<AdminDto> GenerateAdministrations(MedicationDto m)
+    {
+        if (m.Prn) return [new AdminDto(NextAdminId(), "", "scheduled", null, null)];
+        var now = DateTime.UtcNow;
+        var first = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
+        var times = new List<DateTime> { first };
+        var interval = System.Text.RegularExpressions.Regex.Match(m.Frequency, @"q(\d+)h");
+        if (interval.Success) times.Add(first.AddHours(int.Parse(interval.Groups[1].Value)));
+        return times.Select(t => new AdminDto(NextAdminId(), t.ToString("HH:mm"), "scheduled", null, null)).ToList();
+    }
+
+    public static string AppendHistory(string historyJson, OrderEventDto evt)
+    {
+        var history = JsonSerializer.Deserialize<List<OrderEventDto>>(historyJson, JsonOpts.Web)!;
+        history.Add(evt);
+        return JsonSerializer.Serialize(history, JsonOpts.Web);
+    }
+
+    /* merge non-null change fields; diff string matches the mock's
+       ("field: old → new" with lowercase booleans, comma-joined) */
+    public static (MedicationDto merged, string diff) ApplyChanges(MedicationDto before, MedicationChanges c)
+    {
+        var merged = new MedicationDto(
+            c.DrugId ?? before.DrugId, c.Drug ?? before.Drug, c.Dose ?? before.Dose,
+            c.Route ?? before.Route, c.Frequency ?? before.Frequency, c.Duration ?? before.Duration,
+            c.Prn ?? before.Prn, c.PrnIndication ?? before.PrnIndication);
+        var parts = new List<string>();
+        void Diff(string name, string? oldV, string? newV)
+        {
+            if (newV is not null && newV != oldV) parts.Add($"{name}: {oldV} → {newV}");
+        }
+        Diff("drugId", before.DrugId, c.DrugId);
+        Diff("drug", before.Drug, c.Drug);
+        Diff("dose", before.Dose, c.Dose);
+        Diff("route", before.Route, c.Route);
+        Diff("frequency", before.Frequency, c.Frequency);
+        Diff("duration", before.Duration, c.Duration);
+        Diff("prn", before.Prn ? "true" : "false", c.Prn is null ? null : (c.Prn.Value ? "true" : "false"));
+        Diff("prnIndication", before.PrnIndication, c.PrnIndication);
+        return (merged, string.Join(", ", parts));
+    }
+}
 
 /* One row per patient. Scalar roster fields are real columns; nested
    value objects (vitals, alert, trend, organs, flags) are stored as JSON
