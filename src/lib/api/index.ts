@@ -30,7 +30,7 @@ import {
   imagingFor, labDrawsFor,
 } from './data/results'
 import { getToken, hasPermission, type JobTitle } from '../session'
-import { dayOffsetOf, nowHm } from '../time'
+import { dayOffsetOf, nowHm, timestampMinutes } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 const respond = <T>(payload: T, latencyMs: number): Promise<T> =>
@@ -496,12 +496,33 @@ export function acknowledgeResult(
 }
 
 /* ---------------- Timeline domain (Screen 7) ----------------
-   Read-only aggregation over the canonical stores — no store of its own.
-   Mission Control's timeline card reads the same derivation. */
+   Read-only aggregation with NO store of its own — the same rule holds on
+   the server (`GET /api/icu/timeline?patientId` derives, never stores).
 
-/** GET /api/icu/patients/:patientId/timeline — aggregated feed, newest first. */
-export function getTimeline(patientId: string): Promise<TimelineEvent[]> {
-  return respond(deriveTimeline(patientId), 150)
+   THE SEAM (Stage 10 Phase 3 Timeline): the server derives the four
+   categories it can reach from real domains — order/med (order audit
+   history incl. MAR administrations), lab, imaging. The four remaining
+   sources are still mock this phase, so this adapter is a HYBRID: it
+   fetches the real events and merges them client-side with the mock
+   categories below, then sorts into one chronological feed. When those
+   domains migrate they move server-side and simply drop out of
+   MOCK_TIMELINE_CATEGORIES — the merge/sort code does NOT change. The
+   split guarantees no event appears twice (the two sets are disjoint).
+   Server-derived (do NOT also take from mock): order, med, lab, imaging. */
+const MOCK_TIMELINE_CATEGORIES = ['task', 'io', 'consult', 'note'] as const
+const isMockTimelineCategory = (c: TimelineEvent['category']): boolean =>
+  (MOCK_TIMELINE_CATEGORIES as readonly string[]).includes(c)
+
+/** GET /api/icu/timeline?patientId — server-derived events merged with the
+ *  still-mock sources; newest first. Full mock feed on fallback. */
+export async function getTimeline(patientId: string): Promise<TimelineEvent[]> {
+  const real = await apiGet<TimelineEvent[]>(`/api/icu/timeline?patientId=${encodeURIComponent(patientId)}`, 'timeline')
+  if (!real) return respond(deriveTimeline(patientId), 150)
+  /* merge: real server events (order/med/lab/imaging) + ONLY the still-mock
+     categories from the mock derivation — no overlap, so no duplication */
+  const mockPart = deriveTimeline(patientId).filter(e => isMockTimelineCategory(e.category))
+  const merged = [...real, ...mockPart].sort((a, b) => timestampMinutes(b.time) - timestampMinutes(a.time))
+  return respond(merged, 0)
 }
 
 /** GET /api/icu/patients/:patientId/notes — freeform clinical notes. */
