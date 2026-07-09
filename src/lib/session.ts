@@ -73,6 +73,9 @@ export type Permission =
   | 'notes.document'       // nursing tasks, I&O, SBAR handoff
   | 'ai.view'
   | 'admin.view'           // administrative landing view
+  | 'adt.admit'            // Layer 2 ADT: open an encounter (doctor authority)
+  | 'adt.discharge'        // Layer 2 ADT: close an encounter (doctor authority)
+  | 'adt.transfer'         // Layer 2 ADT: move within the unit (nursing action)
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -83,11 +86,12 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'notes.document', 'ai.view',
+    'adt.admit', 'adt.discharge',
   ],
   /* administer + document only — cannot originate orders (locked decision) */
   Nurse: [
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
-    'notes.document', 'results.view', 'ai.view',
+    'notes.document', 'results.view', 'ai.view', 'adt.transfer',
   ],
   /* administrative landing view + census-level board */
   Administrator: ['admin.view', 'patients.view'],

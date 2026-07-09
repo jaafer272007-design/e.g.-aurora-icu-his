@@ -720,3 +720,64 @@ export interface RiskRankingRow {
   alsoElevated: RankedRisk[]
   updatedAt: string
 }
+
+/* ================= Layer 2 — ADT (Aurora Core) =================
+   Patient / Encounter are CORE entities: a Patient is a person and
+   persists across visits; an Encounter is one admission (bed, attending,
+   admission time, status, discharge/transfer events). Bed occupancy is
+   DERIVED from open encounters — never stored. */
+
+/* ---------- GET /api/icu/adt/beds ---------- */
+
+export interface AdtBed {
+  bedId: string
+  area: string
+  /** occupancy — absent = bed free (derived from open encounters) */
+  patientId?: string
+  patientName?: string
+  encounterId?: string
+}
+
+/* ---------- GET /api/icu/adt/encounters?patientId&status ---------- */
+
+export interface AdtEvent {
+  time: string
+  actor: string
+  action: string // admitted | transferred | discharged
+  detail?: string
+}
+
+export interface Encounter {
+  encounterId: string
+  patientId: string
+  /** denormalized display snapshot (same precedent as orders) */
+  patientName: string
+  bedId: string
+  diagnosis: string
+  attending: string
+  status: 'open' | 'discharged'
+  /** "" on historical seeds (no admission time recorded) */
+  admittedAt: string
+  admittedBy: string
+  dischargedAt?: string
+  dischargedBy?: string
+  events: AdtEvent[]
+}
+
+/* ---------- POST /api/icu/adt/admissions ---------- */
+
+export interface AdmitDraft {
+  mrn: string
+  name: string
+  age: number
+  sex: Sex
+  allergies: string
+  diagnosis: string
+  attending: string
+  bedId: string
+}
+
+export interface AdmitResponse {
+  patient: { patientId: string; mrn: string; name: string; age: number; sex: Sex; allergies: string }
+  encounter: Encounter
+}

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Aurora.Core.Adt;
 using Aurora.Core.Persistence;
 using Aurora.Core.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -54,14 +55,19 @@ static class OrderLogic
 
     /** null when the draft is valid; otherwise the validation error to 400.
         Runs BEFORE any insert so an invalid batch creates zero orders.
-        (The roster lookup is part of the sanctioned Core→Module seam.) */
+        Layer 2: the patient lookup now reads Core ADT (Patient + open
+        Encounter) — the former roster-table seam site is dissolved. The
+        unknown-patient error text is kept byte-identical (accepted
+        historical cosmetics, like the /api/icu/ prefix). */
     public static string? ValidateDraft(NewOrderDraftDto? d, int index, AuroraDb db)
     {
         var at = $"drafts[{index}]";
         if (d is null) return $"{at} is null";
         if (CheckText($"{at}.patientId", d.PatientId, required: true) is string p) return p;
-        if (!db.Patients.AsNoTracking().Any(x => x.PatientId == d.PatientId))
+        if (!db.AdtPatients.AsNoTracking().Any(x => x.PatientId == d.PatientId))
             return $"{at}.patientId '{d.PatientId}' does not match any roster patient";
+        if (!db.Encounters.AsNoTracking().Any(e => e.PatientId == d.PatientId && e.Status == "open"))
+            return $"{at}.patientId '{d.PatientId}' has no open encounter — orders require an admitted patient";
         if (d.Category is null || !Categories.Contains(d.Category))
             return $"{at}.category must be one of: {string.Join(", ", Categories)}";
         if (d.Priority is null || !Priorities.Contains(d.Priority))

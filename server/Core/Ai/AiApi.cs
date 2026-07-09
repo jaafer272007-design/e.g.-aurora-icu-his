@@ -1,3 +1,4 @@
+using Aurora.Core.Adt;
 using Aurora.Core.Persistence;
 using Aurora.Core.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -40,7 +41,7 @@ static class AiApi
             {
                 /* distinguish "not an ICU patient" (400, like other domains) from
                    "a real patient with no AI profile yet" (200 null) */
-                if (!db.Patients.AsNoTracking().Any(p => p.PatientId == patientId))
+                if (!db.AdtPatients.AsNoTracking().Any(p => p.PatientId == patientId))
                     return ApiError.BadRequest($"patientId '{patientId}' does not match any roster patient");
                 return Results.Json<AiProfileDto?>(null, JsonOpts.Web);
             }
@@ -74,10 +75,12 @@ static class AiLogic
     /* Unit-wide ranking by highest current risk across any category —
        mirrors deriveRiskRanking() byte-for-byte (roster join for diagnosis,
        sort by top.probability desc, alsoElevated = the rest that are elevated).
-       The db.Patients read is part of the sanctioned Core→Module seam. */
+       Layer 2: the diagnosis join reads Core ADT (open Encounters) — the
+       former roster-table seam site is dissolved. */
     public static List<RiskRankingRowDto> Ranking(AuroraDb db)
     {
-        var patients = db.Patients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.Diagnosis);
+        var patients = db.Encounters.AsNoTracking().Where(e => e.Status == "open")
+            .ToDictionary(e => e.PatientId, e => e.Diagnosis);
         return db.AiRisks.AsNoTracking().OrderBy(a => a.Seq).AsEnumerable()
             .Select(row =>
             {

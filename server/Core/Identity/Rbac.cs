@@ -27,9 +27,9 @@ static class Rbac
     {
         ["Doctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "notes.document", "ai.view"],
+            "notes.document", "ai.view", "adt.admit", "adt.discharge"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
-            "notes.document", "results.view", "ai.view"],
+            "notes.document", "results.view", "ai.view", "adt.transfer"],
         ["Administrator"] = ["admin.view", "patients.view"],
         ["Pharmacist"] = ["patients.view", "orders.view", "results.view"],
         ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],

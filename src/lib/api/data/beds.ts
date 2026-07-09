@@ -1,4 +1,4 @@
-import type { Bed, BedPatient, BedsResponse, UnitAlert, UnitSummaryResponse } from '../types'
+import type { AdtBed, Bed, BedPatient, BedsResponse, RosterRecordDto, UnitAlert, UnitSummaryResponse } from '../types'
 import { ROSTER, type UnitPatientRecord } from './roster'
 
 /* Bed board — Unit 4B, 16 beds. The bed LAYOUT (bed ↔ location ↔ occupant
@@ -33,7 +33,10 @@ const BED_LAYOUT: BedSlot[] = [
   { bedId: 'B-16', area: 'Pod B', patientId: null },
 ]
 
-const toBedPatient = (r: UnitPatientRecord): BedPatient => ({
+/* RosterRecordDto (the real wire shape) and UnitPatientRecord (the mock
+   record) are structurally identical for these fields — one mapper serves
+   both the mock board and the Layer 2 real composition. */
+const toBedPatient = (r: UnitPatientRecord | RosterRecordDto): BedPatient => ({
   patientId: r.patientId,
   name: r.name,
   age: r.age,
@@ -93,4 +96,38 @@ export const UNIT_SUMMARY: UnitSummaryResponse = {
     { label: 'Vent Utilization', value: '5 / 16', delta: '31%', trend: 'fl' },
     { label: 'Avg ICU Stay', value: '3.6 d', delta: '−0.4 d', trend: 'up' },
   ],
+}
+
+
+/* ---------------- Layer 2 — real bed-board composition ----------------
+   The REAL board = the ADT bed registry (layout + derived occupancy) joined
+   with the REAL roster (per-patient bedside snapshot). Admissions appear,
+   discharges drop off, and transfers move beds because both inputs derive
+   from Core encounters. The mock BEDS_RESPONSE above remains the offline
+   fallback. */
+export function composeBedsResponse(adtBeds: AdtBed[], roster: RosterRecordDto[]): BedsResponse {
+  const byId = new Map(roster.map(r => [r.patientId, r]))
+  return {
+    unitId: '4B',
+    capacity: adtBeds.length,
+    physicians: DOCS,
+    areas: [...new Set(adtBeds.map(b => b.area))],
+    beds: adtBeds.map(({ bedId, area, patientId }): Bed => {
+      const record = patientId ? byId.get(patientId) : undefined
+      return { bedId, area, patient: record ? toBedPatient(record) : null }
+    }),
+  }
+}
+
+/* offline fallback for the ADT bed registry — derived from the mock layout
+   and roster with the SAME encounter-id convention the server seeds use
+   (P-1001 → ENC-1001), display-only */
+export function mockAdtBeds(): AdtBed[] {
+  return BED_LAYOUT.map(({ bedId, area, patientId }) => {
+    const r = patientId ? ROSTER.find(x => x.patientId === patientId) : undefined
+    return {
+      bedId, area,
+      ...(r ? { patientId: r.patientId, patientName: r.name, encounterId: `ENC-${r.patientId.slice(2)}` } : {}),
+    }
+  })
 }

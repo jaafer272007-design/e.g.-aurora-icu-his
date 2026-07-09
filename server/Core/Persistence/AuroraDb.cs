@@ -1,3 +1,4 @@
+using Aurora.Core.Adt;
 using Aurora.Core.Ai;
 using Aurora.Core.Identity;
 using Aurora.Core.Orders;
@@ -26,6 +27,11 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
     public DbSet<ImagingStudyRow> ImagingStudies => Set<ImagingStudyRow>();
     public DbSet<OrderRow> Orders => Set<OrderRow>();
     public DbSet<AiRiskRow> AiRisks => Set<AiRiskRow>();
+    /* Layer 2 ADT (Aurora Core): Patient persists across visits; Encounter
+       is one admission; Bed is a place (occupancy derived, never stored) */
+    public DbSet<Patient> AdtPatients => Set<Patient>();
+    public DbSet<Encounter> Encounters => Set<Encounter>();
+    public DbSet<BedRow> Beds => Set<BedRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -44,6 +50,11 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
             b.Entity<PatientRow>().Property(p => p.PatientId).UseCollation("C");
             b.Entity<LabDrawRow>().Property(p => p.LabId).UseCollation("C");
             b.Entity<ImagingStudyRow>().Property(p => p.StudyId).UseCollation("C");
+            /* ADT's DB-side ordered/joined string keys get the same pin */
+            b.Entity<Patient>().Property(p => p.PatientId).UseCollation("C");
+            b.Entity<Encounter>().Property(e => e.EncounterId).UseCollation("C");
+            b.Entity<Encounter>().Property(e => e.PatientId).UseCollation("C");
+            b.Entity<BedRow>().Property(x => x.BedId).UseCollation("C");
         }
     }
 }

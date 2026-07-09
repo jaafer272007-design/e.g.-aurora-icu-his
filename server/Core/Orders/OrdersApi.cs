@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Aurora.Core.Adt;
 using Aurora.Core.Identity;
 using Aurora.Core.Persistence;
 using Aurora.Core.Shared;
@@ -60,7 +61,10 @@ static class OrdersApi
             var created = new List<OrderDto>();
             foreach (var draft in req.Drafts)
             {
-                var pt = db.Patients.AsNoTracking().First(p => p.PatientId == draft.PatientId);
+                /* Layer 2: name/bed resolution reads Core ADT (Patient +
+                   open Encounter) — the former roster-table seam site */
+                var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == draft.PatientId);
+                var enc = db.Encounters.AsNoTracking().First(e => e.PatientId == draft.PatientId && e.Status == "open");
                 var history = new List<OrderEventDto> { new(time, actor, "created", req.Note) };
                 List<AdminDto>? administrations = null;
                 if (req.Sign)
@@ -69,7 +73,7 @@ static class OrdersApi
                     if (draft.Medication is not null) administrations = OrderLogic.GenerateAdministrations(draft.Medication);
                 }
                 var dto = new OrderDto(
-                    OrderLogic.NextOrderId(), draft.PatientId!, pt.BedId, pt.Name,
+                    OrderLogic.NextOrderId(), draft.PatientId!, enc.BedId, pt.Name,
                     draft.Category!, draft.Summary ?? OrderLogic.MedSummary(draft.Medication!),
                     draft.Medication, draft.Priority!, req.Sign ? "active" : "pending",
                     actor, time, draft.RequiresImplementation, administrations, history, null);
