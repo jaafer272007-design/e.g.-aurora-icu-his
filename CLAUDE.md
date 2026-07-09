@@ -3,7 +3,9 @@
 ## Goal
 Best-in-class Adult ICU UI + workflow inside a Hospital Information System:
 fast decisions, low cognitive load, easy for doctors/nurses, ready to wire to
-real APIs and medical devices later.
+real APIs and medical devices later. AURORA ICU is the FIRST MODULE of the
+broader Aurora HIS platform — see "Platform Direction — Aurora Core +
+Modules" below.
 
 ## Build Methodology (follow in order, do not skip)
 1. UI only, dummy data, HTML/CSS/JS first (already done for screens 1–3 —
@@ -465,10 +467,45 @@ just serves the same predictions from SQLite now.
   computed and NOT stored), malformed/unknown-param 400s on the LIVE
   service.
 
+## Platform Direction — Aurora Core + Modules (agreed)
+AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
+Rather than a single large Core-extraction refactor later, the Core grows
+INCREMENTALLY: every new layer from now on (ADT, user administration,
+master data, printing, …) is built inside Aurora Core from the start —
+never ICU-shaped first and extracted afterwards.
+
+Target structure:
+- **Aurora Core** — Identity, ADT/Encounter, Master Data, Orders,
+  Medication, MAR, Labs, Imaging, Timeline, Observations, Notes,
+  Documents, Printing, Notifications, AI framework, API services.
+- **Modules/** — ICU (everything built so far) plus future ER, OR, OPD,
+  Wards, Oncology, NICU.
+- **ICU-exclusive (stays in the ICU module)** — Ventilator, Hemodynamics,
+  Intake & Output, ICU flowsheet, ICU daily goals, APACHE II, SOFA,
+  sedation workflow, ICU dashboards.
+
+**Open question — recorded, NOT resolved (do not act on it without the
+architectural analysis):** Orders, Medication, MAR, Labs, Imaging,
+Timeline and AI already exist as REAL server-side domains inside ICU,
+but they belong in Core. Two options:
+- (a) Relocate them to Core in a dedicated BEHAVIOR-NEUTRAL PR
+  immediately after the persistence fix and before ADT — ADT/Encounter
+  will depend on them, and a Core→Module dependency would be inverted.
+- (b) Leave them in place and accept a TEMPORARY inverted dependency,
+  relocating later.
+Option (a) is currently PREFERRED, pending the architectural analysis
+below.
+
+**Planned before ADT begins:** a full architectural review and
+Core-extraction inventory, run after this platform-direction docs PR
+merges and before any Layer 2 (ADT) work starts. The relocation open
+question above is decided by that analysis.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
-onto a still-mock store.
+onto a still-mock store. Per "Platform Direction" above, Layers 2–4 are
+built directly in Aurora Core, not in the ICU module.
 
 1. **Layer 1 — Transactional data** (orders, results, medication
    administrations): COMPLETE for Stage 10 Phase 3. Labs/Imaging, Orders,
@@ -481,19 +518,21 @@ onto a still-mock store.
 2. **Layer 2 — Entity/ADT data** (patient Admission / Discharge /
    Transfer): the most clinically central WRITE feature — activates the
    existing placeholder "Admissions"/"Discharges" nav items
-   (`NavSidebar.tsx`). Build only after Phase 3 completes (ADT writes
-   must land on the real roster/orders/results foundation) AND after the
-   database-persistence prerequisite below is resolved.
+   (`NavSidebar.tsx`). Built directly in AURORA CORE (see "Platform
+   Direction"). Build only after Phase 3 completes (ADT writes must land
+   on the real roster/orders/results foundation), after the
+   database-persistence prerequisite below is resolved, AND after the
+   planned architectural review / Core-extraction inventory.
 3. **Layer 3 — Identity/access** (user administration: create / manage /
-   deactivate accounts, password reset): ties to the existing
-   Administrator profile and its `/admin` landing screen; supersedes the
-   Phase 2 "no registration/reset flow yet" note.
+   deactivate accounts, password reset): built in AURORA CORE; ties to
+   the existing Administrator profile and its `/admin` landing screen;
+   supersedes the Phase 2 "no registration/reset flow yet" note.
 4. **Layer 4 — Master/reference data** (drug formulary, lab test catalog,
    order sets as maintained DATABASE tables with a manual data-entry UI —
-   not hardcoded frontend lists): the reference layer Pharmacy/Lab
-   admins maintain. Orders & Medication then reads the formulary from
-   here instead of the current hardcoded 19-drug list in
-   `src/lib/api/data/formulary.ts`.
+   not hardcoded frontend lists): built in AURORA CORE — the reference
+   layer Pharmacy/Lab admins maintain. Orders & Medication then reads
+   the formulary from here instead of the current hardcoded 19-drug list
+   in `src/lib/api/data/formulary.ts`.
 
 **Database persistence — BLOCKING prerequisite for Layer 2 (ADT).**
 SQLite currently lives inside the Render container's ephemeral
@@ -509,11 +548,15 @@ connection string), replacing the boot-time `EnsureDeleted`/seed with
 migrations — a data-layer change, not a rewrite.
 
 Build order (locked): Phase 3 (Labs/Imaging → Orders → MAR → Timeline →
-AI) is now COMPLETE. **The next step is database persistence** (the
-Postgres/SQL Server provider swap, the BLOCKING prerequisite above) →
-Layer 2 (ADT) → Layer 3 (user administration) → Layer 4 (master data /
-formulary) → the deferred Print Center → Stage 11 (device integration +
-the Observation model per the locked rule above).
+AI) is now COMPLETE — all five domains real. **The next step is database
+persistence** (the Postgres provider swap, the BLOCKING prerequisite
+above) → Layer 2 (ADT) built directly in AURORA CORE → Layer 3 (user
+administration) in Core → Layer 4 (master data / formulary) in Core →
+the deferred Print Center → Stage 11 (device integration + the
+Observation model per the locked rule above). The full architectural
+review + Core-extraction inventory (see "Platform Direction") runs
+after the platform-direction docs merge and BEFORE ADT begins; the
+domain-relocation open question is decided there.
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
@@ -542,9 +585,15 @@ the four still-mock sources across a documented seam), and AI (the FINAL
 domain — read-only ranking + per-patient risk endpoints, both roles read,
 trend/delta computed at read never stored, alert-center integration
 preserved from the same store). **Stage 10 Phase 3 is now complete.** The
-next step is the database-persistence provider swap (SQLite → Postgres/SQL
-Server — the blocking prerequisite for Layer 2 ADT), then the Post-Phase-3
-layers (ADT, user administration, master data), then Stage 11 device + AI
+agreed platform direction (see "Platform Direction — Aurora Core +
+Modules") makes AURORA ICU one module of the broader Aurora HIS: every
+new layer from here is built inside Aurora Core from the start. The next
+step is the database-persistence provider swap (SQLite → Postgres —
+the blocking prerequisite for Layer 2 ADT), then the full architectural
+review + Core-extraction inventory (before ADT; it also decides the
+recorded open question on relocating the existing real domains to Core),
+then the Post-Phase-3 layers built in Core (ADT, user administration,
+master data), then the Print Center, then Stage 11 device + AI
 integration per the locked rules above. The Timeline's four still-mock
 sources (Consults/Notes/Nursing/I&O) migrate with that later work, not
 Phase 3.
