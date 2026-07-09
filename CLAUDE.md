@@ -26,12 +26,14 @@ real APIs and medical devices later.
 5. Orders & Medication — ✅ built, formal review pending (`/orders/:patientId`, canonical orders model — DW/NW read derived views)
 6. Laboratory & Imaging — ✅ built, formal review pending (`/labs/:patientId`, canonical results model — MC lab card + DW results queue read derived views)
 7. Timeline — ✅ built, formal review pending (`/timeline/:patientId`, read-only aggregated feed derived from the canonical stores — no store of its own; MC timeline card reads the same feed; minimal ClinicalNote model added for freeform notes). Stage 10 Phase 3: the order/med/lab/imaging events are server-derived; the frontend hybrid-merges the four still-mock sources (see "Stage 10 — API Integration")
-8. AI Clinical Assistant — ✅ built, formal review pending (`/ai` unit ranking + `/ai/:patientId`, canonical AI risk model — MC AI panel + alert-center risk alerts read derived views; all predictions simulated until Stage 11)
+8. AI Clinical Assistant — ✅ built, formal review pending (`/ai` unit ranking + `/ai/:patientId`, canonical AI risk model — MC AI panel + alert-center risk alerts read derived views; all predictions simulated until Stage 11). Stage 10 Phase 3 (FINAL domain): ranking + per-patient risk endpoints are real/authenticated, read-only for all roles, trend/delta computed at read (see "Stage 10 — API Integration")
 9. Login / Role-Switch screen — ✅ built (`/login`, three-layer RBAC below; real username+password auth added in Stage 10 Phase 2, Stage 9 local session kept as the offline fallback)
 10. API Integration (ASP.NET Core Web APIs) — 🔄 in progress: Phase 1
     (roster/patients) + Phase 2 (authentication) + Phase 3 (Labs/Imaging
-    results, Orders & Medication, the MAR, then the Timeline — server-side
-    RBAC on every mutation) built — see "Stage 10 — API Integration" below
+    results, Orders & Medication, the MAR, the Timeline, then AI — the
+    FINAL Phase 3 domain; server-side RBAC on every mutation, read-only
+    for the aggregation/AI domains) built; Phase 3 COMPLETE — next is the
+    database-persistence provider swap — see "Stage 10 — API Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
 ## Architecture Rules (binding for all future screens)
@@ -419,17 +421,63 @@ still-mock sources. AI stays mock.
   order signed via the real API appearing once as Timeline events
   (derivation, not duplication) on the LIVE service.
 
+### Phase 3 — AI Clinical Assistant (built — FINAL Phase 3 domain)
+Completes the Layer 1 transactional migration. Everything is SIMULATED
+mock model output until Stage 11 — no real inference is added; the server
+just serves the same predictions from SQLite now.
+- **Table** (same SQLite DB): AiRisks, one row per patient risk profile,
+  seeded at boot from `server/Data/ai-seed.json` — GENERATED from
+  `src/lib/api/data/ai.ts` (verified byte-for-byte: 14 profiles / 70 risks,
+  zero field diffs wire-vs-mock) — never hand-edit it. Each row stores ONLY
+  the per-risk `history[]` + `probability` (as a JSON column) plus scalar
+  display fields; a Seq column preserves the mock's profile order.
+- **Trend/delta COMPUTED at read, never stored** (locked clock-computed-
+  state rule): `AiLogic` ports `riskTrendOf` (delta of last vs first
+  history sample: ≥4 rising, ≤−4 falling, else stable), `isElevated`, and
+  `deriveRiskRanking` from the mock exactly. The stored rows carry no
+  `trend`/`delta` field — the ranking endpoint derives both at read.
+- **Endpoints** (both `.RequireAuthorization()`, wire contract = the mock
+  adapter's): `GET /api/icu/ai/ranking` (unit-wide, sorted by highest
+  current risk; top.trend/top.delta + alsoElevated all derived server-side),
+  `GET /api/icu/ai/risks?patientId` (one patient's simulated profile —
+  categories, probabilities, q15min history, factors, suggestions).
+- **Read-only for EVERY role — no mutations, no new RBAC surface** (like
+  Timeline): behind auth, both doctor and nurse read 200, unauth 401.
+- **Validation** (codified rule): unknown query params → 400, missing/empty
+  patientId → 400, unknown patientId → 400 naming the field; a real patient
+  with no AI profile → 200 null (distinct from unresolved) — never a silent
+  200, never a 500.
+- **Alert Center integration preserved**: risks ≥65% surface as patient
+  alerts (≥80% critical) via `deriveRiskAlerts`, still derived from the
+  SAME mock store (through `getPatientDetail`, unchanged) — the exact data
+  the AI table seeds from, so no parallel copy. MC's AI panel likewise
+  derives its single-patient view from that store. Both move to the real
+  endpoint when `getPatientDetail` migrates (documented drift, like the MC
+  lab-trend and timeline cards).
+- **Frontend**: only the AI read adapters swapped (`getRiskRanking`,
+  `getRiskProfile`) to the real endpoints with Bearer token + graceful
+  mock fallback (the proven read semantics — unreachable/timeout/401 →
+  console-logged mock). `getRiskProfiles` (all-profiles) has no server
+  endpoint and stays a mock accessor. No mutations exist to migrate.
+- **Deployed verification**: `.github/workflows/deployed-ai-e2e.yml`
+  (manual dispatch, idempotent — the domain is read-only) — 401, both-role
+  ranking + per-patient reads (seeded present, sorted desc, trend/delta
+  computed and NOT stored), malformed/unknown-param 400s on the LIVE
+  service.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
 onto a still-mock store.
 
 1. **Layer 1 — Transactional data** (orders, results, medication
-   administrations): mid-migration in Stage 10 Phase 3. Labs/Imaging
-   (PR #12), Orders (PR #14), the MAR (PR #17), and the Timeline
-   aggregation done; the Timeline's four still-mock sources
-   (Consults/Notes/Nursing/I&O) and AI still to migrate — one domain per
-   PR, each with the proven JWT + server-side RBAC pattern.
+   administrations): COMPLETE for Stage 10 Phase 3. Labs/Imaging, Orders,
+   the MAR, the Timeline aggregation, and AI (the final domain) are all
+   migrated behind the proven JWT + server-side RBAC pattern. The only
+   remaining still-mock sources are the Timeline's four hybrid feeds
+   (Consults/Notes/Nursing/I&O) — deferred with the ADT/Nursing work, not
+   part of Phase 3 — and the alert/MC derived views that ride on
+   `getPatientDetail` (documented drift, migrate when it does).
 2. **Layer 2 — Entity/ADT data** (patient Admission / Discharge /
    Transfer): the most clinically central WRITE feature — activates the
    existing placeholder "Admissions"/"Discharges" nav items
@@ -460,11 +508,12 @@ is the EF Core provider swap the architecture was built for (`UseSqlite`
 connection string), replacing the boot-time `EnsureDeleted`/seed with
 migrations — a data-layer change, not a rewrite.
 
-Build order (locked): finish Phase 3 (Orders → MAR → Timeline → AI) →
-database persistence (Postgres/SQL Server provider swap, prerequisite
-above) → Layer 2 (ADT) → Layer 3 (user administration) → Layer 4
-(master data / formulary) → the deferred Print Center → Stage 11 (device
-integration + the Observation model per the locked rule above).
+Build order (locked): Phase 3 (Labs/Imaging → Orders → MAR → Timeline →
+AI) is now COMPLETE. **The next step is database persistence** (the
+Postgres/SQL Server provider swap, the BLOCKING prerequisite above) →
+Layer 2 (ADT) → Layer 3 (user administration) → Layer 4 (master data /
+formulary) → the deferred Print Center → Stage 11 (device integration +
+the Observation model per the locked rule above).
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
@@ -487,11 +536,15 @@ results (server-side RBAC on acknowledge) and Orders & Medication
 (server-side RBAC on the full lifecycle — create/sign/modify/discontinue
 doctor-only, implement nurse-only, actor always from the token) and the
 MAR (dose documentation derived from the real Orders data — nurse-only
-administer with doctor-403, held/refused reason-validated), and the
-Timeline (server-derived order/med/lab/imaging events, frontend
-hybrid-merged with the four still-mock sources across a documented seam).
-Next: the Timeline's remaining sources (Consults/Notes/Nursing/I&O) and
-AI — one domain per PR with the same pattern, then the database-persistence
-provider swap, then the Post-Phase-3 layers (ADT, user administration,
-master data), then Stage 11 device + AI integration per the locked
-rules above.
+administer with doctor-403, held/refused reason-validated), the Timeline
+(server-derived order/med/lab/imaging events, frontend hybrid-merged with
+the four still-mock sources across a documented seam), and AI (the FINAL
+domain — read-only ranking + per-patient risk endpoints, both roles read,
+trend/delta computed at read never stored, alert-center integration
+preserved from the same store). **Stage 10 Phase 3 is now complete.** The
+next step is the database-persistence provider swap (SQLite → Postgres/SQL
+Server — the blocking prerequisite for Layer 2 ADT), then the Post-Phase-3
+layers (ADT, user administration, master data), then Stage 11 device + AI
+integration per the locked rules above. The Timeline's four still-mock
+sources (Consults/Notes/Nursing/I&O) migrate with that later work, not
+Phase 3.

@@ -1,0 +1,102 @@
+# Deployed AI E2E — verifies the LIVE Render service (Stage 10 Phase 3, the
+# FINAL domain: AI Clinical Assistant). Authenticated reads return the real
+# ranking + per-patient risk profiles, unauthenticated is 401, the domain is
+# read-only for EVERY role (both doctor and nurse read 200 — no mutations, no
+# RBAC surface), malformed/unknown query params are 400 (never a silent 200,
+# never a 500), and risk trend/delta are COMPUTED at read (present on the wire,
+# absent from what is stored). Dispatch manually after merging /server to main.
+#
+# IDEMPOTENT BY DESIGN: the AI domain is entirely read-only — there are no
+# mutations, so every assertion is a stable read against the seeded data and
+# the workflow can be re-dispatched any number of times against the ephemeral
+# DB with identical results.
+name: Deployed AI E2E
+on: workflow_dispatch
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up (Render free tier cold start)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            echo "healthz attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "service never became healthy" && exit 1
+
+      - name: Login as doctor and nurse
+        run: |
+          for u in sara.rahman maya.chen; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+
+      - name: Unauthenticated AI reads → 401
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/ai/ranking")
+          echo "GET /ai/ranking (no token) -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/ai/risks?patientId=P-1001")
+          echo "GET /ai/risks (no token) -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+
+      - name: Both roles READ the unit ranking; seeded patients present + trend computed (+ CORS)
+        run: |
+          curl -sf -D /tmp/h -H "Authorization: Bearer $NUR" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/ai/ranking" -o /tmp/rank.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c '
+          import json; d=json.load(open("/tmp/rank.json"))
+          ids={r["patientId"] for r in d}
+          seeded={"P-1001","P-1004","P-1007","P-1012"}
+          assert seeded<=ids, f"seeded scored patients missing: {seeded-ids}"
+          # ranking is sorted by highest current risk, descending
+          pcts=[r["top"]["probability"] for r in d]
+          assert pcts==sorted(pcts, reverse=True), f"ranking not sorted desc: {pcts}"
+          # trend + delta are DERIVED at read — present on every ranked risk
+          for r in d:
+            assert r["top"]["trend"] in ("rising","falling","stable"), r
+            assert isinstance(r["top"]["delta"], int), r
+          print(f"ranking rows: {len(d)} (seeded present, sorted desc, trend/delta computed)")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/ranking")
+          echo "doctor ranking read -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+
+      - name: Both roles READ a per-patient profile (trend history + factors)
+        run: |
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-1001" -o /tmp/prof.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/prof.json"))
+          assert d["patientId"]=="P-1001", d
+          assert len(d["risks"])>=1, d
+          r=d["risks"][0]
+          assert len(r["history"])>=2 and r["factors"], r
+          # the store keeps only history + probability — never a trend/delta field
+          assert "trend" not in r and "delta" not in r, "trend/delta must NOT be stored on a risk"
+          print(f"P-1001 profile: {len(d[\"risks\"])} risks, history len {len(r[\"history\"])}, {len(r[\"factors\"])} factors")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR" "$API/api/icu/ai/risks?patientId=P-1001")
+          echo "nurse profile read (read-only for all roles) -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+
+      - name: Malformed / unknown query params → 400 (never a silent 200, never a 500)
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/ranking?foo=1")
+          echo "ranking unknown param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-1001&foo=1")
+          echo "risks unknown param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks")
+          echo "risks missing patientId -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # unknown patientId → 400 naming the field (never a silent 200)
+          body=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-9999")
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-9999")
+          echo "risks bad patientId -> HTTP $rc body=$body"
+          [ "$rc" = "400" ] || exit 1
+          echo "$body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "patientId" in d["error"], d; print("400 names the field:", d["error"])'

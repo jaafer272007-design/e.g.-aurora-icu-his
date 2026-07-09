@@ -531,23 +531,41 @@ export function getClinicalNotes(patientId: string): Promise<ClinicalNote[]> {
 }
 
 /* ---------------- AI Clinical Assistant domain (Screen 8) ----------------
-   The canonical AI risk service. All predictions are SIMULATED mock data
-   until Stage 11 (real model + device integration). Advisory only — no
-   endpoint here mutates anything or places orders. */
+   The canonical AI risk service — REAL authenticated endpoints since Stage
+   10 Phase 3 (the FINAL domain migration), with graceful mock fallback.
+   All predictions remain SIMULATED mock model output until Stage 11 (real
+   model + device integration); the server just serves them from SQLite now.
+   Read-only for every role (both doctor and nurse read) — no endpoint here
+   mutates anything or places orders. Risk trend/delta are computed
+   server-side at read from each risk's history — never stored (locked rule).
 
-/** GET /api/icu/ai/risks — every patient's simulated risk profile. */
+   Mission Control's AI panel and the alert-center integration still derive
+   their single-patient views from the SAME mock store (via getPatientDetail
+   — deriveMissionControlRisks / deriveRiskAlerts), which reads ai.ts — the
+   exact data the AI table seeds from, so there is no parallel copy. Those
+   move to the real endpoint when getPatientDetail migrates (documented drift,
+   like the MC lab-trend and timeline cards). */
+
+/** GET /api/icu/ai/risks — every patient's simulated risk profile. No server
+ *  endpoint serves the full set (ranking + per-patient cover the pages);
+ *  kept as a mock convenience accessor. */
 export function getRiskProfiles(): Promise<PatientRiskProfile[]> {
   return respond(allRiskProfiles(), 150)
 }
 
-/** GET /api/icu/ai/risks/:patientId — one patient's profile; null if unknown. */
-export function getRiskProfile(patientId: string): Promise<PatientRiskProfile | null> {
-  return respond(riskProfileFor(patientId), 120)
+/** GET /api/icu/ai/risks?patientId — one patient's profile (REAL endpoint;
+ *  mock fallback). Null when the patient has no profile / is unresolved. */
+export async function getRiskProfile(patientId: string): Promise<PatientRiskProfile | null> {
+  const real = await apiGet<PatientRiskProfile | null>(
+    `/api/icu/ai/risks?patientId=${encodeURIComponent(patientId)}`, 'AI risks')
+  return real ?? respond(riskProfileFor(patientId), 120)
 }
 
-/** GET /api/icu/ai/ranking — unit-wide ranking by highest current risk. */
-export function getRiskRanking(): Promise<RiskRankingRow[]> {
-  return respond(deriveRiskRanking(), 150)
+/** GET /api/icu/ai/ranking — unit-wide ranking by highest current risk,
+ *  derived server-side at read (REAL endpoint; mock fallback). */
+export async function getRiskRanking(): Promise<RiskRankingRow[]> {
+  const real = await apiGet<RiskRankingRow[]>('/api/icu/ai/ranking', 'AI ranking')
+  return real ?? respond(deriveRiskRanking(), 150)
 }
 
 /* pure client-side helpers for the AI domain (trend from history, elevation
