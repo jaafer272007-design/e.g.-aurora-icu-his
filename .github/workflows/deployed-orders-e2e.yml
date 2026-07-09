@@ -89,6 +89,16 @@ jobs:
             -d '{"reason":"deployed E2E"}' "$API/api/icu/orders/ORD-2004/discontinue" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="discontinued" and d["history"][-1]["actor"]=="Dr. Sara Rahman", d; print("discontinue ORD-2004:", d["status"], "| reason:", d["statusReason"])'
 
+      - name: Unparseable frequency rejected with 400 (never persisted)
+        run: |
+          for f in "q99999999999h" "q0h" "whenever"; do
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+              -d "{\"drafts\":[{\"patientId\":\"P-1001\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"x\",\"drug\":\"X\",\"dose\":\"1 g\",\"route\":\"IV\",\"frequency\":\"$f\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":true}" \
+              "$API/api/icu/orders")
+            echo "frequency '$f' -> $out" | head -2
+            [ "$(echo "$out" | tail -1)" = "400" ] || exit 1
+          done
+
       - name: Implement is nurse-only (doctor 403, nurse 200)
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/orders/ORD-2008/implement")

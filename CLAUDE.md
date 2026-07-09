@@ -329,6 +329,12 @@ own phases.
   fields, summary-or-medication) BEFORE inserting any so an invalid
   batch creates zero orders; modify rejects a `changes` object with no
   recognized field instead of recording a "no field change" audit entry.
+  Fields the server INTERPRETS must parse: frequency (drives schedule
+  generation) is validated against the vocabulary the formulary/order
+  sets/seeds use — named values (continuous, daily, bid, tid, qid, once,
+  sliding scale, per level, per CRRT protocol) or q<1-48>h — anything
+  else is 400, never saved. Display-only free text (dose/route/duration)
+  stays bounded free text until Layer 4 makes it formulary-driven.
   This rule applies to every future mutating endpoint.
 - **Frontend adapters**: reads + all five mutations swapped with the
   labs write semantics (server 403/404/400 = real denial, never applied

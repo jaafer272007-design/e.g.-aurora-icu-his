@@ -732,6 +732,24 @@ static class OrderLogic
     static readonly string[] Categories = ["Medication", "Lab", "Imaging", "Nursing"];
     static readonly string[] Priorities = ["Routine", "Urgent", "STAT"];
 
+    /* Frequency is the one medication field the server INTERPRETS (it
+       drives administration-schedule generation), so unlike the
+       display-only free-text fields (dose/route/duration — Layer 4
+       formulary scope) it must parse: either a named frequency from the
+       vocabulary the formulary/order sets/seeds actually use, or qNh with
+       a physically sane interval. Anything else is a 400, never saved. */
+    static readonly string[] NamedFrequencies =
+        ["continuous", "daily", "bid", "tid", "qid", "once",
+         "sliding scale", "per level", "per CRRT protocol"];
+
+    public static bool IsValidFrequency(string f) =>
+        NamedFrequencies.Contains(f)
+        || (System.Text.RegularExpressions.Regex.Match(f, @"^q(\d{1,2})h$") is { Success: true } m
+            && int.TryParse(m.Groups[1].Value, out var h) && h is >= 1 and <= 48);
+
+    public const string FrequencyRule =
+        "must be one of: continuous, daily, bid, tid, qid, once, sliding scale, per level, per CRRT protocol, or q<1-48>h";
+
     /* upper bound on any free-text request field — Kestrel's ~28 MB body
        limit is the only bound otherwise, and multi-megabyte strings would
        be persisted and re-served to every client */
@@ -783,6 +801,8 @@ static class OrderLogic
             {
                 if (CheckText($"{at}.medication.{name}", value, required) is string e) return e;
             }
+            if (!IsValidFrequency(m.Frequency))
+                return $"{at}.medication.frequency '{m.Frequency}' is not a valid frequency — {FrequencyRule}";
         }
         return null;
     }
@@ -799,6 +819,8 @@ static class OrderLogic
             if (string.IsNullOrWhiteSpace(value)) return $"changes.{name} must be a non-empty string";
             if (value.Length > MaxTextLength) return $"changes.{name} exceeds {MaxTextLength} characters";
         }
+        if (c.Frequency is not null && !IsValidFrequency(c.Frequency))
+            return $"changes.frequency '{c.Frequency}' is not a valid frequency — {FrequencyRule}";
         return null;
     }
 
