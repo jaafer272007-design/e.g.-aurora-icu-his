@@ -21,15 +21,26 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - name: Warm up (Render free tier cold start)
+      - name: Warm up + wait for the AI code to be LIVE (cold start + redeploy)
         run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
-            echo "healthz attempt $i: HTTP $code"
-            [ "$code" = "200" ] && exit 0
+          # Two gates, one retry budget. /healthz alone is not enough: the
+          # PREVIOUS deployment also serves it 200 while Render is still
+          # rebuilding the new commit, so an early run would assert against
+          # stale code (unauth /ai/ranking would 404, not 401 — a deploy-
+          # timing false-negative). Gate additionally on the AI surface
+          # actually being present: unauth /ai/ranking must return 401
+          # (endpoint exists, auth required) rather than 404 (old build with
+          # no AI endpoints). This makes the workflow deterministic to
+          # re-dispatch at any moment after a merge, regardless of how far
+          # along Render's redeploy is.
+          for i in $(seq 1 40); do
+            health=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            ai=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/api/icu/ai/ranking" || true)
+            echo "attempt $i: healthz HTTP $health · unauth /ai/ranking HTTP $ai"
+            [ "$health" = "200" ] && [ "$ai" = "401" ] && exit 0
             sleep 10
           done
-          echo "service never became healthy" && exit 1
+          echo "AI endpoints never went live (healthz $health, /ai/ranking $ai) — Render redeploy incomplete?" && exit 1
 
       - name: Login as doctor and nurse
         run: |
