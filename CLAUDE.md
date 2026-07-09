@@ -320,6 +320,16 @@ own phases.
   every prescriber mutation even when the UI is bypassed. The
   acting/signing actor is ALWAYS the token's name claim. CORS now allows
   PUT (GET/POST/PUT) — modify's preflight needs it.
+- **Request validation — no silent no-ops (patient-safety rule)**: a
+  mutation payload that doesn't match the contract is ALWAYS a 400 with
+  an `{error}` body, never a 200 that does nothing and never a 500.
+  Unrecognized JSON fields fail binding (request DTOs carry
+  `JsonUnmappedMemberHandling.Disallow`); create validates every draft
+  (known patientId, category/priority whitelists, complete medication
+  fields, summary-or-medication) BEFORE inserting any so an invalid
+  batch creates zero orders; modify rejects a `changes` object with no
+  recognized field instead of recording a "no field change" audit entry.
+  This rule applies to every future mutating endpoint.
 - **Frontend adapters**: reads + all five mutations swapped with the
   labs write semantics (server 403/404/400 = real denial, never applied
   locally; network failure or tokenless-session 401 = offline mock
