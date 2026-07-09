@@ -1,11 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import './NavSidebar.css'
 import {
-  IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPill, IconSettings, IconStats,
+  IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPill, IconSettings, IconStats, IconUsers,
 } from './icons'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 
-export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'users' | 'alerts' | 'statistics' | 'settings'
 
 interface NavItem {
   key: NavKey
@@ -19,7 +19,7 @@ interface NavItem {
 
 interface NavSidebarProps {
   active: NavKey
-  alertCount: number
+  alertCount?: number
   /** Lines shown under "AURORA HIS v4.2" in the sidebar footer. */
   footerLines: string[]
 }
@@ -27,7 +27,7 @@ interface NavSidebarProps {
 /** Primary navigation rail. "Dashboard" resolves to the signed-in profile's
  *  landing view, and items are filtered by the profile's permissions —
  *  both derived from the session's JobTitle at render (Stage 9 RBAC). */
-export function NavSidebar({ active, alertCount, footerLines }: NavSidebarProps) {
+export function NavSidebar({ active, alertCount = 0, footerLines }: NavSidebarProps) {
   const navigate = useNavigate()
   const session = getSession()
   const title = session?.jobTitle
@@ -42,6 +42,7 @@ export function NavSidebar({ active, alertCount, footerLines }: NavSidebarProps)
     { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: '/ai', perm: 'ai.view' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge />, to: '/discharges', perm: 'patients.view' },
+    { key: 'users', label: 'User Accounts', icon: <IconUsers size={16} />, to: '/admin/users', perm: 'users.manage' },
     { key: 'alerts', label: 'Alerts', icon: <IconAlertTriangle />, badge: alertCount },
     { key: 'statistics', label: 'Statistics', icon: <IconStats /> },
     { key: 'settings', label: 'Settings', icon: <IconSettings /> },

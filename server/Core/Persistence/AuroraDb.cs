@@ -50,6 +50,8 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
             b.Entity<PatientRow>().Property(p => p.PatientId).UseCollation("C");
             b.Entity<LabDrawRow>().Property(p => p.LabId).UseCollation("C");
             b.Entity<ImagingStudyRow>().Property(p => p.StudyId).UseCollation("C");
+            /* Layer 3: the user list is ordered by Username in SQL */
+            b.Entity<UserRow>().Property(u => u.Username).UseCollation("C");
             /* ADT's DB-side ordered/joined string keys get the same pin */
             b.Entity<Patient>().Property(p => p.PatientId).UseCollation("C");
             b.Entity<Encounter>().Property(e => e.EncounterId).UseCollation("C");

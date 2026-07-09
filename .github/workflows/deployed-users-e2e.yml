@@ -1,0 +1,189 @@
+# Deployed Users E2E — verifies the LIVE Render service (Layer 3, Aurora
+# Core: user administration). The privilege-escalation safeguards are the
+# suite's core assertions: Administrator-only RBAC in BOTH directions
+# (doctor/nurse/pharmacist → 403 on EVERY user-management endpoint, and a
+# CREATED Doctor-titled account can genuinely sign an order while a
+# CREATED Nurse-titled one cannot), every validation rejection (unknown
+# field, unknown job title, weak password, clinical title without
+# justification, duplicate username), the self-deactivation and
+# self-demotion guards, audited actions with the actor ALWAYS from the
+# token, deactivation blocking login with the SAME generic 401, and
+# password reset never leaking password material. Dispatch manually after
+# merging /server changes to main — SEQUENTIALLY with the other suites.
+#
+# SELF-SUFFICIENT AND IDEMPOTENT (per the finite-seeded-resources rule in
+# CLAUDE.md): the run CREATES every user it touches (run-id-unique
+# usernames) and never mutates the 20 seeded accounts — the only seeded
+# dependency is the read-only admin bootstrap login. The clinical-
+# authority proof likewise ADMITS ITS OWN PATIENT (unique MRN, dynamic
+# free bed) and discharges it at the end, so the run never depends on
+# P-1001/P-1007 remaining admitted (the recorded WARNING). Cleanup
+# deactivates all created accounts — no live credentials left active;
+# deactivated rows accumulate across runs by design (never a delete —
+# that accumulation is the live durability evidence; container-restart
+# survival is asserted in local verification).
+#
+# The LAST-ACTIVE-ADMIN guard is asserted in LOCAL verification only:
+# exercising it live would require deactivating seeded admin accounts.
+name: Deployed Users E2E
+on: workflow_dispatch
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up + wait for the Layer 3 code to be LIVE (cold start + redeploy)
+        run: |
+          for i in $(seq 1 40); do
+            health=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            users=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/api/icu/users" || true)
+            echo "attempt $i: healthz HTTP $health · unauth /users HTTP $users"
+            [ "$health" = "200" ] && [ "$users" = "401" ] && exit 0
+            sleep 10
+          done
+          echo "users endpoints never went live (healthz $health, /users $users)" && exit 1
+
+      - name: Bootstrap — seeded ADMIN login (read-only dependency) + run-unique names
+        run: |
+          t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+            -d '{"username":"yusuf.karim","password":"Aurora2026!"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          echo "ADM=$t" >> "$GITHUB_ENV"
+          { echo "UDOC=e2e.doc.${GITHUB_RUN_ID}"; echo "UNUR=e2e.nur.${GITHUB_RUN_ID}";
+            echo "UPHA=e2e.pha.${GITHUB_RUN_ID}"; echo "UADM=e2e.adm.${GITHUB_RUN_ID}";
+            echo "MRN=MRN-L3E2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+          echo "admin token issued; run users e2e.*.${GITHUB_RUN_ID}"
+
+      - name: Admin list works (+ CORS); doctor-permission surface untouched
+        run: |
+          curl -sf -D /tmp/h -H "Authorization: Bearer $ADM" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/users" -o /tmp/users.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c '
+          import json; d=json.load(open("/tmp/users.json"))
+          assert [u["username"] for u in d]==sorted(u["username"] for u in d), "not sorted"
+          assert "passwordHash" not in json.dumps(d), "hash on the wire!"
+          seeded=[u for u in d if u["username"]=="yusuf.karim"][0]
+          assert seeded["active"] is True, seeded
+          print(f"accounts: {len(d)} (seeded present; prior-run e2e accounts accumulate deactivated)")'
+
+      - name: Validation — unknown field / unknown title / weak password / clinical w/o justification → 400
+        run: |
+          post() { curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' -d "$1" "$API/api/icu/users"; }
+          out=$(post '{"username":"'$UADM'","bogus":1}'); echo "unknown field -> $(echo "$out"|tail -1)"; [ "$(echo "$out"|tail -1)" = "400" ] || exit 1
+          out=$(post '{"username":"'$UADM'","name":"X","jobTitle":"Wizard","initialPassword":"Password1!"}')
+          echo "$out" | head -1 | grep -q "not a recognized job title" || exit 1; echo "unknown title -> 400 naming it"
+          out=$(post '{"username":"'$UADM'","name":"X","jobTitle":"IT Administrator","initialPassword":"short"}')
+          echo "$out" | head -1 | grep -q "too weak" || exit 1; echo "weak password -> 400 naming the minimum"
+          out=$(post '{"username":"'$UDOC'","name":"X","jobTitle":"Consultant","initialPassword":"Password1!"}')
+          echo "$out" | head -1 | grep -q "requires a justification" || exit 1; echo "clinical grant w/o justification -> 400"
+
+      - name: Create the run's accounts (actor from token; justification audited; admin title needs none)
+        run: |
+          mk() { curl -sf -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' -d "$1" "$API/api/icu/users"; }
+          mk '{"username":"'$UADM'","name":"E2E Admin","jobTitle":"IT Administrator","initialPassword":"E2eAdmin99!"}' \
+            | python3 -c 'import json,sys,re; d=json.load(sys.stdin); e=d["events"][0]; assert e["actor"]=="Yusuf Karim" and e["action"]=="created", e; assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", e["time"]), e; print("admin-title account created — no justification required, audit actor from token")'
+          mk '{"username":"'$UDOC'","name":"Dr. E2E Doctor","jobTitle":"Consultant","initialPassword":"E2eDoctor99!","justification":"deployed users E2E — clinical authority proof"}' \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["events"][0]; assert "justification: deployed users E2E" in e["detail"], e; print("doctor account created — justification recorded in the audit")'
+          mk '{"username":"'$UNUR'","name":"RN E2E Nurse","jobTitle":"Staff Nurse","initialPassword":"E2eNurse99!","justification":"deployed users E2E — nurse polarity proof"}' >/dev/null && echo "nurse account created"
+          mk '{"username":"'$UPHA'","name":"E2E Pharm","jobTitle":"Pharmacist","initialPassword":"E2ePharm99!"}' >/dev/null && echo "pharmacist account created"
+          # duplicate username → 400
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"username":"'$UADM'","name":"Dup","jobTitle":"IT Administrator","initialPassword":"Password1!"}' "$API/api/icu/users")
+          echo "duplicate username -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
+      - name: RBAC matrix — created doctor/nurse/pharmacist → 403 on EVERY management endpoint; created admin → 200
+        run: |
+          tok() { curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d "{\"username\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])'; }
+          DOC=$(tok $UDOC 'E2eDoctor99!'); NUR=$(tok $UNUR 'E2eNurse99!'); PHA=$(tok $UPHA 'E2ePharm99!'); ADM2=$(tok $UADM 'E2eAdmin99!')
+          { echo "DOC=$DOC"; echo "NUR=$NUR"; echo "PHA=$PHA"; echo "ADM2=$ADM2"; } >> "$GITHUB_ENV"
+          for role in DOC NUR PHA; do
+            t=$(eval echo \$$role)
+            for probe in "GET|/api/icu/users|" \
+              "POST|/api/icu/users|{\"username\":\"x.y.z\",\"name\":\"X\",\"jobTitle\":\"Intern\",\"initialPassword\":\"Password1!\",\"justification\":\"j\"}" \
+              "PUT|/api/icu/users/$UPHA|{\"name\":\"X\"}" \
+              "POST|/api/icu/users/$UPHA/deactivate|" \
+              "POST|/api/icu/users/$UPHA/reactivate|" \
+              "POST|/api/icu/users/$UPHA/reset-password|{\"newPassword\":\"Password1!\"}"; do
+              m=${probe%%|*}; rest=${probe#*|}; path=${rest%%|*}; body=${rest#*|}
+              if [ -n "$body" ]; then
+                rc=$(curl -s -o /dev/null -w '%{http_code}' -X "$m" -H "Authorization: Bearer $t" -H 'Content-Type: application/json' -d "$body" "$API$path")
+              else
+                rc=$(curl -s -o /dev/null -w '%{http_code}' -X "$m" -H "Authorization: Bearer $t" "$API$path")
+              fi
+              echo "$role $m $path -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+            done
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $ADM2" "$API/api/icu/users")
+          echo "created ADMIN list -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+
+      - name: Clinical authority is REAL — created doctor admits + signs; created nurse cannot originate
+        run: |
+          FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free bed"; print(f[0])')
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"L3 E2E Patient","age":50,"sex":"M","allergies":"None documented","diagnosis":"users E2E authority proof","attending":"Dr. E2E Doctor","bedId":"'$FREE'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/adm.json
+          read PID EID <<<"$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. E2E Doctor", d; print(d["patient"]["patientId"], d["encounter"]["encounterId"])')"
+          echo "created doctor admitted $PID ($EID) to $FREE"; { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"Layer 3 authority proof","priority":"Routine"}],"sign":true}' \
+            "$API/api/icu/orders" | python3 -c 'import json,sys; d=json.load(sys.stdin)[0]; assert d["status"]=="active" and d["orderedBy"]=="Dr. E2E Doctor", d; print("created doctor GENUINELY signed", d["orderId"])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"x","priority":"Routine"}],"sign":true}' "$API/api/icu/orders")
+          echo "created nurse create+sign -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+
+      - name: Escalation via edit — audited old → new; justification enforced
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"jobTitle":"Consultant"}' "$API/api/icu/users/$UPHA")
+          echo "escalate w/o justification -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          curl -sf -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"jobTitle":"Consultant","justification":"deployed users E2E — escalation audit proof"}' "$API/api/icu/users/$UPHA" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); e=[x for x in d["events"] if x["action"]=="job title changed"][0]; assert "Pharmacist → Consultant" in e["detail"] and e["actor"]=="Yusuf Karim", e; print("escalation audited:", e["detail"][:80])'
+
+      - name: Self-guards — created admin cannot deactivate or demote ITSELF
+        run: |
+          body=$(curl -s -X POST -H "Authorization: Bearer $ADM2" "$API/api/icu/users/$UADM/deactivate")
+          echo "$body" | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "cannot deactivate your own account" in e, e; print("self-deactivation blocked:", e)'
+          body=$(curl -s -X PUT -H "Authorization: Bearer $ADM2" -H 'Content-Type: application/json' -d '{"jobTitle":"Staff Nurse","justification":"x"}' "$API/api/icu/users/$UADM")
+          echo "$body" | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "cannot demote your own account" in e, e; print("self-demotion blocked:", e)'
+
+      - name: Deactivation blocks login with the SAME generic 401; reactivation restores
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$UPHA/deactivate" >/dev/null
+          out=$(curl -s -w '\n%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UPHA'","password":"E2ePharm99!"}')
+          echo "deactivated login -> $(echo "$out"|tail -1)"; [ "$(echo "$out"|tail -1)" = "401" ] || exit 1
+          echo "$out" | head -1 | grep -q '"Invalid credentials"' || exit 1
+          echo "generic body — no account-state oracle"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$UPHA/deactivate")
+          echo "re-deactivate -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$UPHA/reactivate" >/dev/null
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UPHA'","password":"E2ePharm99!"}')
+          echo "reactivated login -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+
+      - name: Password reset — old rejected, new works, audit clean of password material
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"newPassword":"E2eRotated77!"}' "$API/api/icu/users/$UNUR/reset-password" >/dev/null
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UNUR'","password":"E2eNurse99!"}')
+          echo "old password -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UNUR'","password":"E2eRotated77!"}')
+          echo "new password -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          curl -sf -H "Authorization: Bearer $ADM" "$API/api/icu/users" | python3 -c "
+          import json,sys; d=json.load(sys.stdin)
+          n=[u for u in d if u['username']=='$UNUR'][0]
+          assert any(e['action']=='password reset' and e['actor']=='Yusuf Karim' for e in n['events']), n['events']
+          raw=json.dumps(d)
+          assert 'E2eRotated77' not in raw and 'E2eNurse99' not in raw, 'password material on the wire!'
+          print('reset audited; no password material anywhere in the account list')"
+
+      - name: Cleanup — discharge the run's patient; deactivate every created account (idempotent forever)
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null && echo "discharged $EID (bed freed)"
+          for u in $UDOC $UNUR $UPHA $UADM; do
+            curl -sf -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$u/deactivate" >/dev/null && echo "deactivated $u"
+          done
+          echo "no active e2e credentials remain; deactivated rows accumulate = live durability evidence"

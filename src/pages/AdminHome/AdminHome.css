@@ -27,3 +27,7 @@
 .ad .adalerthead{font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
 @media(max-width:1500px){.ad .shell{grid-template-columns:64px 1fr}}
 @media(max-width:1180px){.ad.app-frame{height:auto;overflow:visible}.ad main{overflow:visible}}
+
+/* Layer 3 — link to /admin/users, inline with the admin note */
+.ad .adnote{display:flex;align-items:center;gap:14px;justify-content:space-between;flex-wrap:wrap}
+.ad .adusers{margin:0}

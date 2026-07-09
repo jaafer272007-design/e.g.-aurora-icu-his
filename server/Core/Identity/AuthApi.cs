@@ -26,7 +26,11 @@ static class AuthApi
                 .AsEnumerable()
                 .FirstOrDefault(u => u.Username == input || u.Name.ToLowerInvariant() == input);
             var verified = BCrypt.Net.BCrypt.Verify(req.Password ?? "", user?.PasswordHash ?? decoyHash);
-            if (user is null || !verified)
+            /* a DEACTIVATED account (Layer 3) fails with the SAME generic
+               401 — login must not be an account-state oracle. The bcrypt
+               verify above already ran against the real hash, so the
+               timing profile matches a wrong-password attempt too. */
+            if (user is null || !verified || !user.Active)
                 return Results.Json(new { error = "Invalid credentials" }, JsonOpts.Web, statusCode: 401);
 
             var now = DateTime.UtcNow;
@@ -48,10 +52,15 @@ static class AuthApi
     }
 }
 
-/* One row per staff account (Stage 10 Phase 2). Only the bcrypt hash is
-   stored — never a plaintext password. PermissionProfile/permissions are
-   deliberately NOT columns: they are derived from JobTitle at read time
-   (locked RBAC rule), on the client today and server-side from Phase 3. */
+/* One row per staff account (Stage 10 Phase 2; extended — not duplicated —
+   by Layer 3 user administration). Only the bcrypt hash is stored — never
+   a plaintext password. PermissionProfile/permissions are deliberately NOT
+   columns: they are derived from JobTitle at read time (locked RBAC rule),
+   on the client today and server-side from Phase 3. Layer 3 adds:
+   - Active: deactivation is a STATUS CHANGE, never a delete — an account
+     that signed an order must stay resolvable forever (audit rule).
+   - EventsJson: the account's immutable, append-only audit history (who
+     changed what, when — see UsersApi). */
 class UserRow
 {
     [Key]
@@ -59,6 +68,8 @@ class UserRow
     public string Name { get; set; } = "";
     public string JobTitle { get; set; } = "";
     public string PasswordHash { get; set; } = "";
+    public bool Active { get; set; } = true;
+    public string EventsJson { get; set; } = "[]";
 }
 
 record UserSeedDto(string Username, string Name, string JobTitle);

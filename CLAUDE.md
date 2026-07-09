@@ -36,10 +36,12 @@ Modules" below.
     FINAL Phase 3 domain; server-side RBAC on every mutation, read-only
     for the aggregation/AI domains) built; Phase 3 COMPLETE, database
     persistence DONE (Postgres + migrations — writes survive restarts;
-    30-day free-DB expiry documented), and Layer 2 ADT DONE in Aurora
+    30-day free-DB expiry documented), Layer 2 ADT DONE in Aurora
     Core (/admissions + /discharges screens live; roster = derived view
-    over open encounters) — next is Layer 3 user administration in Core
-    — see "Stage 10 — API Integration" below
+    over open encounters), and Layer 3 user administration DONE in Core
+    Identity (/admin/users; escalation safeguards + immutable audit) —
+    next is Layer 4 master data in Core — see "Stage 10 — API
+    Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
 ## Architecture Rules (binding for all future screens)
@@ -79,14 +81,15 @@ PermissionProfile → Permissions (and Dashboard landing view):
 |---|---|---|
 | Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge | /workspace |
 | Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer | /nurse |
-| Administrator        | admin.view, patients.view | /admin |
+| Administrator        | admin.view, patients.view, users.manage | /admin |
 | Pharmacist           | patients.view, orders.view, results.view (view-only) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
 | Ancillary            | patients.view, orders.view, results.view (view-only) | /beds |
 | AlliedHealth         | patients.view, results.view (view-only) | /beds |
 
 Route guards: /workspace = orders.sign · /nurse = meds.administer ·
-/admin = admin.view · /beds & /patients & /timeline = patients.view ·
+/admin = admin.view · /admin/users = users.manage (Layer 3) ·
+/beds & /patients & /timeline = patients.view ·
 /orders = orders.view (mutating UI additionally needs the prescriber
 permissions) · /labs = results.view · /ai = ai.view · /admissions &
 /discharges = patients.view (the admit action additionally needs
@@ -241,10 +244,12 @@ their own turns in later Stage 10 phases.
   `src/lib/session.ts` (`SAMPLE_STAFF` + `usernameOf`, e.g.
   "Dr. Sara Rahman" → `sara.rahman`) — never hand-edit it. Only bcrypt
   hashes are stored (work factor 10, one salt per user), never plaintext.
-- **Demo credential — NON-PRODUCTION**: all 20 accounts share the password
-  `Aurora2026!` (override via `DEMO_PASSWORD` env). No registration or
-  password-reset flow exists yet. This is a documented prototype
-  simplification only.
+- **Demo credential — NON-PRODUCTION**: all 20 SEEDED accounts share the
+  password `Aurora2026!` (override via `DEMO_PASSWORD` env). Layer 3 user
+  administration now exists (admins create accounts with admin-set initial
+  passwords and can reset passwords — see "Layer 3 — User Administration"
+  below); SELF-SERVICE registration and SELF-SERVICE password reset still
+  do not, by scope. This is a documented prototype simplification only.
 - **`POST /api/auth/login`** (anonymous): username OR full display name +
   password → `{ token, name, jobTitle }`. Any failure returns the SAME
   generic 401 `{"error":"Invalid credentials"}` — never reveals whether
@@ -638,6 +643,76 @@ the point where the roster seam's identity/location half DISSOLVES.
   exact-14 roster count became a seeded-SUBSET assertion (the census
   legitimately changes under ADT — same lesson class as the labs fix).
 
+### Layer 3 — User Administration (built) — Aurora Core Identity
+Administrators create, view, edit, deactivate/reactivate accounts and
+reset passwords (`server/Core/Identity/UsersApi.cs`; `/admin/users`
+screen). The Phase 2 Users entity was EXTENDED, never duplicated —
+JobTitle remains the SINGLE stored role field; PermissionProfile and
+Permissions stay derived at read time (locked rule). Usernames are
+natural keys — no id counters to resume.
+- **THE PRIVILEGE-ESCALATION SURFACE IS THE CENTRAL CONCERN** — creating
+  or editing a JobTitle changes who can sign orders. Safeguards, all
+  server-enforced and all locally verified in both directions:
+  (1) every endpoint requires the Administrator profile's `users.manage`
+  — doctor/nurse/pharmacist tokens get the generic 403 on ALL six
+  endpoints; (2) every action is AUDITED on the account's immutable
+  append-only event history (JSON column, same pattern as Orders
+  history/ADT events): who (ALWAYS the token's name claim, never a
+  request field), when (UTC **date**+time — account changes span months,
+  unlike HH:mm bedside events), what changed ("Consultant → Staff
+  Nurse"); (3) an administrator cannot deactivate or demote THEIR OWN
+  account (400 — lockout prevention + no quiet track-covering; a LATERAL
+  admin→admin self title change stays allowed and audited); (4) the LAST
+  ACTIVE Administrator-profile account can be neither deactivated nor
+  demoted (400); (5) granting a CLINICAL JobTitle (any title deriving
+  the Doctor or Nurse profile) requires an explicit `justification`
+  recorded in the audit — the acknowledged-override pattern from
+  medication safety; administrative titles need none.
+- **Deactivation is a STATUS CHANGE, never a delete** — an account that
+  signed an order must stay resolvable forever or the audit trail
+  breaks. A deactivated account gets the SAME generic 401 on login as
+  bad credentials (no account-state oracle; the bcrypt verify still
+  runs, so timing matches too). Outstanding JWTs live out their 12 h
+  expiry — token revocation is a documented prototype limitation.
+- **Passwords**: bcrypt work factor 10, distinct salt per account;
+  admin-set initial password on create; reset SETS a new hash and never
+  reveals/transmits the old one; the audit records THAT a reset
+  happened, never any password material (asserted: no password string
+  anywhere on the wire). Stated minimum 8 chars — below it is a 400
+  "too weak" per the codified validation rule (unknown fields fail
+  binding; duplicate username, unknown JobTitle — must be one of the
+  20 — blank/weak password, clinical-without-justification, and the
+  self/last-admin guards are each a precise 400; unknown account 404).
+- **Migration `AddUserAdmin`** (Users += Active, EventsJson; Username
+  collation-"C" pin for the DB-side ORDER BY): backfill defaults
+  HAND-SET to true/"[]" so the 20 pre-Layer-3 accounts on the durable
+  database come through ACTIVE with valid empty histories — verified by
+  running the new binary against a pre-Layer-3 database (all 20 active,
+  loginable, clinical data untouched).
+- **Frontend** (`/admin/users`, users.manage guard — non-Administrator
+  profiles get the explicit Access Restricted state naming the missing
+  permission, and no User Accounts nav item): account list shows the
+  DERIVED profile per row (never stored); the DERIVATION CHAIN
+  (JobTitle → Profile → Permissions) renders live while assigning a
+  title in create AND edit, so an admin sees exactly what authority
+  they are granting before they grant it; clinical titles surface the
+  required justification field; self row hides Deactivate. Writes are
+  REAL-ONLY (identity is the durable system of record); the list read
+  falls back to a display-only derivation of the Stage 9 preset staff.
+- **Deployed verification**: `.github/workflows/deployed-users-e2e.yml`
+  (manual dispatch, SEQUENTIAL) — SELF-SUFFICIENT per the codified
+  finite-seeded-resources rule: creates every user it touches
+  (run-id-unique), never mutates seeded accounts (the admin bootstrap
+  login is the only, read-only, seeded dependency), admits ITS OWN
+  patient for the clinical-authority proof (a created Doctor-titled
+  account genuinely signs an order; a created Nurse-titled one is
+  403'd) and discharges it, then deactivates all created accounts — no
+  live credentials left behind; deactivated rows accumulate across runs
+  by design (live durability evidence). The LAST-ADMIN guard is
+  asserted in LOCAL verification only (live would require mutating
+  seeded admins). Container-restart survival (accounts, statuses, reset
+  password, full audit chains) is asserted locally.
+
 ## Platform Direction — Aurora Core + Modules (agreed)
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
@@ -719,9 +794,12 @@ built directly in Aurora Core, not in the ICU module.
    authority, transfer is a nursing action; the roster is now a derived
    view over open encounters.
 3. **Layer 3 — Identity/access** (user administration: create / manage /
-   deactivate accounts, password reset): built in AURORA CORE; ties to
-   the existing Administrator profile and its `/admin` landing screen;
-   supersedes the Phase 2 "no registration/reset flow yet" note.
+   deactivate accounts, password reset): DONE — built in AURORA CORE
+   (`server/Core/Identity/UsersApi.cs` + `/admin/users`; see "Layer 3 —
+   User Administration (built)" above); ties to the Administrator
+   profile via the new `users.manage` permission and its `/admin`
+   landing screen; supersedes the Phase 2 "no registration/reset flow
+   yet" note (admin-managed exists; SELF-SERVICE still does not).
 4. **Layer 4 — Master/reference data** (drug formulary, lab test catalog,
    order sets as maintained DATABASE tables with a manual data-entry UI —
    not hardcoded frontend lists): built in AURORA CORE — the reference
@@ -740,15 +818,16 @@ required.
 
 Build order (locked, amended by the architectural review): Phase 3
 (all five domains), the Core relocation (option (a)), database
-persistence (Postgres + migrations), and **Layer 2 ADT (Aurora
+persistence (Postgres + migrations), **Layer 2 ADT (Aurora
 Core-native Patient/Encounter/Bed with the roster seam's
-identity/location half dissolved)** are DONE. **The next step is Layer 3
-(user administration) in Core** → Layer 4 (master data / formulary) in
-Core → the deferred Print Center → Stage 11 (device integration + the
-Observation model per the locked rule above; Stage 11 also absorbs the
-remaining bedside-snapshot half of the roster). The full architectural
-review + Core-extraction inventory ran before the relocation and
-resolved the domain-relocation open question as (a).
+identity/location half dissolved)**, and **Layer 3 (user
+administration in Core Identity, escalation safeguards + immutable
+audit)** are DONE. **The next step is Layer 4 (master data /
+formulary) in Core** → the deferred Print Center → Stage 11 (device
+integration + the Observation model per the locked rule above; Stage
+11 also absorbs the remaining bedside-snapshot half of the roster).
+The full architectural review + Core-extraction inventory ran before
+the relocation and resolved the domain-relocation open question as (a).
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
@@ -797,9 +876,16 @@ endpoints (doctor-authority admit/discharge, nursing transfer, full
 validation with precise conflict errors), live /admissions and
 /discharges screens, Bed Overview composed from the real bed registry +
 roster, and the roster endpoint re-founded as a derived view over open
-encounters. **The next step is Layer 3 (user administration) in Core**,
-then master data (Layer 4) in Core, then the Print Center, then Stage 11
-device + AI integration per the locked rules above (Stage 11 also
-absorbs the roster's remaining bedside-snapshot columns). The Timeline's
-four still-mock sources (Consults/Notes/Nursing/I&O) migrate with that
-later work, not Phase 3.
+encounters. **Layer 3 user administration is DONE in Core Identity**:
+the Phase 2 Users entity extended (Active + immutable audit history),
+six admin-only endpoints behind the new `users.manage` permission with
+the escalation safeguards verified in both directions (self-demotion/
+self-deactivation guards, last-active-admin guard, clinical-title
+justification, actor always from the token, deactivation = status
+change never a delete, generic 401 for deactivated logins), and the
+`/admin/users` screen showing the live derivation chain before any
+title is granted. **The next step is master data (Layer 4) in Core**,
+then the Print Center, then Stage 11 device + AI integration per the
+locked rules above (Stage 11 also absorbs the roster's remaining
+bedside-snapshot columns). The Timeline's four still-mock sources
+(Consults/Notes/Nursing/I&O) migrate with that later work, not Phase 3.

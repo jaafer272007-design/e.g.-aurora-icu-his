@@ -30,12 +30,17 @@ static class Rbac
             "notes.document", "ai.view", "adt.admit", "adt.discharge"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "results.view", "ai.view", "adt.transfer"],
-        ["Administrator"] = ["admin.view", "patients.view"],
+        ["Administrator"] = ["admin.view", "patients.view", "users.manage"],
         ["Pharmacist"] = ["patients.view", "orders.view", "results.view"],
         ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],
         ["Ancillary"] = ["patients.view", "orders.view", "results.view"],
         ["AlliedHealth"] = ["patients.view", "results.view"],
     };
+
+    /** the derived profile for a JobTitle, or null when the title is not
+        one of the 20 recognized titles (Layer 3 uses this to validate
+        titles and to classify clinical vs administrative grants) */
+    public static string? ProfileOf(string jobTitle) => TitleProfile.GetValueOrDefault(jobTitle);
 
     public static bool Has(ClaimsPrincipal user, string permission) =>
         TitleProfile.TryGetValue(user.FindFirst("jobTitle")?.Value ?? "", out var profile)

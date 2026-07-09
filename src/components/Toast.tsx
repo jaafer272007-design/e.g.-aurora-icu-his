@@ -9,7 +9,7 @@ interface ToastState {
 
 /** Bottom-center toast. `accent` matches the reference per screen:
  *  blue on Bed Overview, green on Doctor Workspace. */
-export function Toast({ state, accent }: { state: ToastState; accent: 'blue' | 'green' }) {
+export function Toast({ state, accent }: { state: ToastState; accent: 'blue' | 'green' | 'amber' | 'cyan' }) {
   return (
     <div className={`toast toast-${accent}${state.show ? ' show' : ''}`} role="status" aria-live="polite">
       <b>{state.title}</b> <span>{state.text}</span>

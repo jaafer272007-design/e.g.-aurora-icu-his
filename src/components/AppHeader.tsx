@@ -28,14 +28,15 @@ export function KpiPill({ icon, iconBg, value, label, valueStyle }: KpiSpec) {
 interface AppHeaderProps {
   subtitle: string
   kpis: KpiSpec[]
-  bellCount: number
+  /** omit on screens with no notification context — renders a 0 badge */
+  bellCount?: number
   onBellClick?: () => void
   user: { initials: string; name: string; role: string }
 }
 
 /** Standard top bar: brand · clock · KPI pills · notifications · user ·
  *  sign-out (Stage 9 local session). */
-export function AppHeader({ subtitle, kpis, bellCount, onBellClick, user }: AppHeaderProps) {
+export function AppHeader({ subtitle, kpis, bellCount = 0, onBellClick, user }: AppHeaderProps) {
   const { time, date } = useClock()
   const navigate = useNavigate()
   return (

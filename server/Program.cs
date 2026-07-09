@@ -114,6 +114,7 @@ app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora
    domains is accepted historical cosmetics — renaming it would break the
    deployed frontend and the E2E suite). */
 AuthApi.Map(app, jwtKey, decoyHash);
+UsersApi.Map(app);
 RosterApi.Map(app);
 AdtApi.Map(app);
 OrdersApi.Map(app);
