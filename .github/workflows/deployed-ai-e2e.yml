@@ -93,7 +93,8 @@ jobs:
           assert len(r["history"])>=2 and r["factors"], r
           # the store keeps only history + probability — never a trend/delta field
           assert "trend" not in r and "delta" not in r, "trend/delta must NOT be stored on a risk"
-          print(f"P-1001 profile: {len(d[\"risks\"])} risks, history len {len(r[\"history\"])}, {len(r[\"factors\"])} factors")'
+          nr=len(d["risks"]); nh=len(r["history"]); nf=len(r["factors"])
+          print(f"P-1001 profile: {nr} risks, history len {nh}, {nf} factors")'
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR" "$API/api/icu/ai/risks?patientId=P-1001")
           echo "nurse profile read (read-only for all roles) -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
 
