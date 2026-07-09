@@ -538,14 +538,16 @@ and redeploys on Render.
   they consume (MAR/Timeline/Orders create their own orders; ADT admits
   and discharges its own patient) or assert READ-SIDE ONLY (auth, AI).
   Audit of the other six suites (2026-07-09): none consumes a finite
-  seed. One related latent exposure, documented and accepted: the
-  MAR/Timeline/Orders suites create orders against SEEDED patients
-  (P-1001, P-1007) and therefore assume those patients remain ADMITTED —
-  since Layer 2, a live ADT discharge of either would 400 the order
-  create ("orders require an admitted patient") and break those three
-  suites. The full self-sufficiency fix (each suite admits its own
-  patient first, like the ADT suite) rides with a future suite touch,
-  not now.
+  seed. One related latent exposure — see the WARNING below.
+- **WARNING — discharging P-1001 or P-1007 breaks three E2E suites**:
+  the MAR, Timeline, and Orders deployed suites create orders against
+  the SEEDED patients P-1001 and P-1007 and therefore depend on those
+  patients having an OPEN ENCOUNTER. Since Layer 2, discharging either
+  patient through the live Discharges screen — a LEGITIMATE user
+  action, not misuse — makes the order create return 400 ("orders
+  require an admitted patient") and all three suites fail from then
+  on. The fix is for each suite to admit its own patient first, as the
+  ADT suite already does; it rides with the next touch of each suite.
 - **OPERATIONAL CONSTRAINT — Render free Postgres EXPIRES: 30 days**
   (verified against the Render changelog — the policy changed 2024-05-20
   from the previous 90 days), then a 14-day grace period to upgrade
