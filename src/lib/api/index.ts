@@ -5,13 +5,13 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, BedsResponse, ClinicalNote, Consult, FormularyDrug,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, Encounter, FormularyDrug,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
   OrderSetsResponse, PatientDetailResponse, PatientRiskProfile, PatientSummary, ResultInboxItem,
   RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse,
 } from './types'
-import { BEDS_RESPONSE, UNIT_SUMMARY } from './data/beds'
+import { BEDS_RESPONSE, UNIT_SUMMARY, composeBedsResponse, mockAdtBeds } from './data/beds'
 import { allPatients, derivedAlertCount } from './data/patients'
 import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, VENTILATOR } from './data/panels'
 import { ACTION_QUEUES, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
@@ -36,8 +36,16 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 const respond = <T>(payload: T, latencyMs: number): Promise<T> =>
   new Promise(resolve => setTimeout(() => resolve(clone(payload)), latencyMs))
 
-/** GET /api/icu/units/4B/beds — full bed board for the unit. */
-export function getBeds(): Promise<BedsResponse> {
+/** GET /api/icu/units/4B/beds — full bed board for the unit.
+ *  Layer 2: composed from the REAL ADT bed registry (layout + derived
+ *  occupancy) joined with the REAL roster, so admissions, discharges and
+ *  transfers reflect immediately; mock fallback when offline. */
+export async function getBeds(): Promise<BedsResponse> {
+  const [adtBeds, roster] = await Promise.all([
+    apiGet<AdtBed[]>('/api/icu/adt/beds', 'ADT beds'),
+    fetchRosterRecords(),
+  ])
+  if (adtBeds && roster) return composeBedsResponse(adtBeds, roster)
   return respond(BEDS_RESPONSE, 850)
 }
 
@@ -177,26 +185,33 @@ const toSummary = (r: RosterRecordDto): PatientSummary => ({
   alertCount: derivedAlertCount(r.patientId, r.bedAlert.severity),
 })
 
+/** shared real-roster fetch — getPatients' summaries and the Layer 2 bed
+ *  board composition both read it; null = fall back to mock */
+async function fetchRosterRecords(): Promise<RosterRecordDto[] | null> {
+  if (!API_BASE) return null
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}/api/icu/patients`, { signal: ctrl.signal, headers: authHeaders() })
+    clearTimeout(timer)
+    if (res.ok) {
+      const roster = (await res.json()) as RosterRecordDto[]
+      if (Array.isArray(roster) && roster.length > 0) return roster
+    }
+    console.info(`[aurora] roster API responded ${res.status} — using mock roster`)
+  } catch {
+    console.info('[aurora] roster API unreachable (cold start?) — using mock roster')
+  }
+  return null
+}
+
 /** GET /api/icu/patients — sidebar roster for Mission Control.
  *  REAL endpoint (Stage 10 Phase 1); mock fallback documented above. */
 export async function getPatients(): Promise<PatientSummary[]> {
-  if (API_BASE) {
-    try {
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
-      const res = await fetch(`${API_BASE}/api/icu/patients`, { signal: ctrl.signal, headers: authHeaders() })
-      clearTimeout(timer)
-      if (res.ok) {
-        const roster = (await res.json()) as RosterRecordDto[]
-        if (Array.isArray(roster) && roster.length > 0) {
-          patientsSource = 'api'
-          return roster.map(toSummary)
-        }
-      }
-      console.info(`[aurora] roster API responded ${res.status} — using mock roster`)
-    } catch {
-      console.info('[aurora] roster API unreachable (cold start?) — using mock roster')
-    }
+  const roster = await fetchRosterRecords()
+  if (roster) {
+    patientsSource = 'api'
+    return roster.map(toSummary)
   }
   patientsSource = 'mock'
   const summaries: PatientSummary[] = allPatients().map(
@@ -575,3 +590,86 @@ export async function getRiskRanking(): Promise<RiskRankingRow[]> {
 /* pure client-side helpers for the AI domain (trend from history, elevation
    rule) — computed at render, never stored (locked pattern) */
 export { AI_ALERT_THRESHOLD, isElevated, riskTrendOf } from './data/ai'
+
+/* ---------------- Layer 2 — ADT (Aurora Core) ----------------
+   The first Core-native domain and the first write feature on the durable
+   database. READS fall back to display-only mock derivations offline;
+   WRITES are REAL-ONLY — ADT is the system of record, so an admission/
+   discharge/transfer is never applied to local mock state (unlike the
+   Stage 9-era offline apply of the transactional domains). A rejected
+   write surfaces the server's precise {error}. */
+
+export type AdtWriteResult<T> =
+  | { kind: 'ok'; data: T }
+  | { kind: 'rejected'; error: string }
+  | { kind: 'offline' }
+
+async function adtPost<T>(path: string, what: string, body?: unknown): Promise<AdtWriteResult<T>> {
+  if (!API_BASE) return { kind: 'offline' }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { ...authHeaders(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+    clearTimeout(timer)
+    if (res.ok) return { kind: 'ok', data: (await res.json()) as T }
+    if (res.status === 401) {
+      console.info(`[aurora] ${what} API responded 401 — ADT writes require the live server`)
+      return { kind: 'offline' }
+    }
+    const err = (await res.json().catch(() => null)) as { error?: string } | null
+    console.info(`[aurora] ${what} API rejected the action (${res.status})`)
+    return { kind: 'rejected', error: err?.error ?? `Rejected (${res.status})` }
+  } catch {
+    console.info(`[aurora] ${what} API unreachable — ADT writes require the live server`)
+    return { kind: 'offline' }
+  }
+}
+
+/** GET /api/icu/adt/beds — bed registry with DERIVED occupancy (REAL
+ *  endpoint; display-only mock fallback). */
+export async function getAdtBeds(): Promise<AdtBed[]> {
+  const real = await apiGet<AdtBed[]>('/api/icu/adt/beds', 'ADT beds')
+  return real ?? respond(mockAdtBeds(), 120)
+}
+
+/** GET /api/icu/adt/encounters?patientId&status — encounter list (REAL
+ *  endpoint; display-only mock fallback derives OPEN encounters from the
+ *  mock roster — historical/discharged encounters exist only server-side). */
+export async function getEncounters(filter?: { patientId?: string; status?: 'open' | 'discharged' }): Promise<Encounter[]> {
+  const params = new URLSearchParams()
+  if (filter?.patientId) params.set('patientId', filter.patientId)
+  if (filter?.status) params.set('status', filter.status)
+  const qs = params.toString()
+  const real = await apiGet<Encounter[]>(`/api/icu/adt/encounters${qs ? `?${qs}` : ''}`, 'ADT encounters')
+  if (real) return real
+  if (filter?.status === 'discharged') return respond([], 120)
+  const open = allPatients()
+    .filter(p => !filter?.patientId || p.patientId === filter.patientId)
+    .map((p): Encounter => ({
+      encounterId: `ENC-${p.patientId.slice(2)}`,
+      patientId: p.patientId, patientName: p.name, bedId: p.bedId,
+      diagnosis: p.diagnosis, attending: p.attending, status: 'open',
+      admittedAt: '', admittedBy: '', events: [],
+    }))
+  return respond(open, 120)
+}
+
+/** POST /api/icu/adt/admissions — doctor RBAC (adt.admit). REAL-ONLY write. */
+export function admitPatient(draft: AdmitDraft): Promise<AdtWriteResult<AdmitResponse>> {
+  return adtPost<AdmitResponse>('/api/icu/adt/admissions', 'ADT admission', draft)
+}
+
+/** POST /api/icu/adt/encounters/:id/discharge — doctor RBAC (adt.discharge). REAL-ONLY write. */
+export function dischargeEncounter(encounterId: string): Promise<AdtWriteResult<Encounter>> {
+  return adtPost<Encounter>(`/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/discharge`, 'ADT discharge')
+}
+
+/** POST /api/icu/adt/encounters/:id/transfer — NURSE RBAC (adt.transfer). REAL-ONLY write. */
+export function transferEncounter(encounterId: string, bedId: string): Promise<AdtWriteResult<Encounter>> {
+  return adtPost<Encounter>(`/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/transfer`, 'ADT transfer', { bedId })
+}

@@ -1,0 +1,66 @@
+[
+  {
+    "bedId": "B-01",
+    "area": "Pod A"
+  },
+  {
+    "bedId": "B-02",
+    "area": "Pod A"
+  },
+  {
+    "bedId": "B-03",
+    "area": "Pod A"
+  },
+  {
+    "bedId": "B-04",
+    "area": "Pod A"
+  },
+  {
+    "bedId": "B-05",
+    "area": "Pod A"
+  },
+  {
+    "bedId": "B-06",
+    "area": "Pod A"
+  },
+  {
+    "bedId": "B-07",
+    "area": "Pod A"
+  },
+  {
+    "bedId": "B-08",
+    "area": "Pod A"
+  },
+  {
+    "bedId": "B-09",
+    "area": "Pod B"
+  },
+  {
+    "bedId": "B-10",
+    "area": "Pod B"
+  },
+  {
+    "bedId": "B-11",
+    "area": "Pod B"
+  },
+  {
+    "bedId": "B-12",
+    "area": "Pod B"
+  },
+  {
+    "bedId": "B-13",
+    "area": "Pod B"
+  },
+  {
+    "bedId": "B-14",
+    "area": "Pod B"
+  },
+  {
+    "bedId": "B-15",
+    "area": "Pod B"
+  },
+  {
+    "bedId": "B-16",
+    "area": "Pod B"
+  }
+]

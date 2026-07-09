@@ -1,0 +1,134 @@
+# Deployed ADT E2E — verifies the LIVE Render service (Layer 2, Aurora
+# Core): the full admit → transfer → discharge lifecycle on the durable
+# database, the RBAC matrix in BOTH directions (nurse-403 on admit and
+# discharge, doctor-403 on transfer, actor always from the token), every
+# validation rejection (occupied bed, duplicate open encounter,
+# nonexistent bed, re-discharge, unknown fields → 400 with a precise
+# {error}; never a silent 200, never a 500), and Bed-Overview reflection
+# (the roster endpoint gains the admission at its bed, moves it on
+# transfer, and drops it on discharge). Dispatch manually after merging
+# /server changes to main — SEQUENTIALLY with the other suites, never
+# concurrently (recorded lesson).
+#
+# IDEMPOTENT UNDER PERSISTENCE BY DESIGN: every run admits a patient with
+# a UNIQUE MRN (run id), picks FREE beds dynamically, and discharges its
+# own encounter at the end — so the run leaves only closed encounters
+# behind and can be re-dispatched forever against the durable DB. The
+# run's closed encounter remains queryable afterwards: cross-run
+# accumulation under status=discharged is the LIVE durability evidence
+# (container-restart survival is asserted in local verification, where
+# the container can actually be restarted).
+name: Deployed ADT E2E
+on: workflow_dispatch
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up + wait for the ADT code to be LIVE (cold start + redeploy)
+        run: |
+          # gate on the ADT surface being present (401 = endpoint exists,
+          # auth required; 404 = old build) — same pattern as the AI suite
+          for i in $(seq 1 40); do
+            health=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            adt=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/api/icu/adt/beds" || true)
+            echo "attempt $i: healthz HTTP $health · unauth /adt/beds HTTP $adt"
+            [ "$health" = "200" ] && [ "$adt" = "401" ] && exit 0
+            sleep 10
+          done
+          echo "ADT endpoints never went live (healthz $health, /adt/beds $adt)" && exit 1
+
+      - name: Login as doctor and nurse
+        run: |
+          for u in sara.rahman maya.chen; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+          echo "MRN=MRN-E2E-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+
+      - name: Pick two FREE beds for THIS RUN (+ CORS)
+        run: |
+          curl -sf -D /tmp/h -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/adt/beds" -o /tmp/beds.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          read B1 B2 <<<"$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert len(free)>=2, f"need 2 free beds, have {free} — discharge stale encounters"; print(free[0], free[1])')"
+          echo "using free beds $B1, $B2"
+          { echo "B1=$B1"; echo "B2=$B2"; } >> "$GITHUB_ENV"
+
+      - name: RBAC — NURSE admit → 403; unauth → 401; unknown field → 400
+        run: |
+          body='{"mrn":"'$MRN'","name":"E2E ADT Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/adt/admissions" -H 'Content-Type: application/json' -d "$body")
+          echo "unauth admit -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/adt/admissions")
+          echo "nurse admit -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"x","bogus":1}' "$API/api/icu/adt/admissions")
+          echo "unknown field -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
+      - name: DOCTOR admits (actor from token) → patient on Bed Overview at the bed
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"E2E ADT Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/adm.json
+          read PID EID <<<"$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. Sara Rahman", d; print(d["patient"]["patientId"], d["encounter"]["encounterId"])')"
+          echo "admitted $PID encounter $EID by token actor"
+          { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/patients" \
+            | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin) if x['patientId']=='$PID']; assert r and r[0]['bedId']=='$B1', r; print('roster shows', r[0]['patientId'], 'at', r[0]['bedId'])"
+
+      - name: Validation — occupied bed / duplicate open encounter → 400 naming the conflict
+        run: |
+          body=$(curl -s -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'-B","name":"Second","age":30,"sex":"M","allergies":"None","diagnosis":"x","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+          echo "$body" | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already occupied by $PID' in e, e; print('occupied bed:', e)"
+          body=$(curl -s -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"E2E ADT Patient","age":49,"sex":"F","allergies":"None","diagnosis":"x","attending":"a","bedId":"'$B2'"}' "$API/api/icu/adt/admissions")
+          echo "$body" | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already has an open encounter' in e, e; print('duplicate admission:', e)"
+
+      - name: Transfer — DOCTOR → 403; NURSE → 200 (bed moves on Bed Overview); bad targets → 400
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"bedId":"'$B2'"}' "$API/api/icu/adt/encounters/$EID/transfer")
+          echo "doctor transfer -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"bedId":"'$B2'"}' "$API/api/icu/adt/encounters/$EID/transfer" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['bedId']=='$B2', d; print('transferred to', d['bedId'])"
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/patients" \
+            | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin) if x['patientId']=='$PID'][0]; assert r['bedId']=='$B2', r; print('roster follows the transfer:', r['bedId'])"
+          body=$(curl -s -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"bedId":"B-99"}' "$API/api/icu/adt/encounters/$EID/transfer")
+          echo "$body" | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'does not match any bed' in e, e; print('nonexistent bed:', e)"
+          occ=$(python3 -c 'import json; print([b["bedId"] for b in json.load(open("/tmp/beds.json")) if b.get("patientId")][0])')
+          body=$(curl -s -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"bedId":"'$occ'"}' "$API/api/icu/adt/encounters/$EID/transfer")
+          echo "$body" | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already occupied' in e, e; print('occupied target:', e)"
+
+      - name: Discharge — NURSE → 403; DOCTOR → 200; bed freed; re-discharge → 400; roster drops the patient
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/adt/encounters/$EID/discharge")
+          echo "nurse discharge -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="discharged" and d["dischargedBy"]=="Dr. Sara Rahman", d; print("discharged by", d["dischargedBy"], "at", d["dischargedAt"])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+          echo "re-discharge -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/patients" \
+            | python3 -c "import json,sys; assert not [x for x in json.load(sys.stdin) if x['patientId']=='$PID']; print('roster no longer lists $PID')"
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
+            | python3 -c "import json,sys; b=[x for x in json.load(sys.stdin) if x['bedId']=='$B2'][0]; assert not b.get('patientId'), b; print('$B2 freed')"
+
+      - name: Durable record — THIS run's closed encounter is queryable (cross-run accumulation = live durability)
+        run: |
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID&status=discharged" \
+            | python3 -c "
+          import json,sys; d=json.load(sys.stdin)
+          assert d and d[0]['encounterId']=='$EID', d
+          ev=[e['action'] for e in d[0]['events']]
+          assert ev==['admitted','transferred','discharged'], ev
+          print('closed encounter durable with full event history:', ' → '.join(ev))"
+          total=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?status=discharged" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          echo "discharged encounters on the durable DB (accumulates across runs): $total"

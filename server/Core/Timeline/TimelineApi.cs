@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Aurora.Core.Adt;
 using Aurora.Core.Orders;
 using Aurora.Core.Persistence;
 using Aurora.Core.LabImaging;
@@ -35,7 +36,7 @@ static class TimelineApi
                 if (key != "patientId") return ApiError.BadRequest($"unknown query parameter '{key}'");
             var patientId = ctx.Request.Query["patientId"].ToString();
             if (string.IsNullOrWhiteSpace(patientId)) return ApiError.BadRequest("patientId is required");
-            if (!db.Patients.AsNoTracking().Any(p => p.PatientId == patientId))
+            if (!db.AdtPatients.AsNoTracking().Any(p => p.PatientId == patientId))
                 return ApiError.BadRequest($"patientId '{patientId}' does not match any roster patient");
             return Results.Json(TimelineLogic.Derive(patientId, db), JsonOpts.Web);
         }).RequireAuthorization();

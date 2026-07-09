@@ -1,8 +1,11 @@
 # Deployed API smoke test — verifies the LIVE Render service end-to-end:
 # health, login issuing a real JWT, generic 401s on bad credentials, the
-# roster endpoint rejecting missing/invalid tokens and serving 14 records
-# with a valid one, and CORS headers for the GitHub Pages origin.
+# roster endpoint rejecting missing/invalid tokens and serving the seeded
+# records with a valid one, and CORS headers for the GitHub Pages origin.
 # Dispatch manually after a merge deploys /server changes to Render.
+# IDEMPOTENT UNDER ADT (Layer 2): the census legitimately changes as
+# encounters open/close, so the seeded 14 patients are asserted as a
+# SUBSET — never an exact count.
 name: Deployed API E2E
 on: workflow_dispatch
 
@@ -58,9 +61,15 @@ jobs:
             [ "$code" = "401" ] || exit 1
           done
 
-      - name: Roster serves 14 records with a valid token (+ CORS header)
+      - name: Roster serves the seeded records with a valid token (+ CORS header)
         run: |
           curl -sf -D /tmp/headers -H "Authorization: Bearer $TOKEN" -H "Origin: $PAGES_ORIGIN" \
             "$API/api/icu/patients" -o /tmp/body.json
           grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/headers
-          python3 -c 'import json; d=json.load(open("/tmp/body.json")); assert len(d)==14, len(d); print("records:", len(d), "| first:", d[0]["name"], "| last:", d[-1]["name"])'
+          python3 -c '
+          import json; d=json.load(open("/tmp/body.json"))
+          ids={r["patientId"] for r in d}
+          seeded={f"P-10{n:02d}" for n in range(1,15)}
+          missing=seeded-ids
+          assert not missing, f"seeded patients missing (unless discharged by ADT): {missing}"
+          print(f"records: {len(d)} (seeded 14 present; ADT-admitted extras expected)")'

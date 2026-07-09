@@ -8,6 +8,8 @@ import { LabImaging } from './pages/LabImaging/LabImaging'
 import { Timeline } from './pages/Timeline/Timeline'
 import { AiAssistant } from './pages/AiAssistant/AiAssistant'
 import { AdminHome } from './pages/AdminHome/AdminHome'
+import { Admissions } from './pages/Admissions/Admissions'
+import { Discharges } from './pages/Discharges/Discharges'
 import { Login } from './pages/Login/Login'
 import { RequireSession } from './components/RequireSession'
 import { getSession, landingRouteOf } from './lib/session'
@@ -24,7 +26,9 @@ import { getSession, landingRouteOf } from './lib/session'
    /orders(/:patientId)    Orders & Medication        orders.view (mutations need more)
    /labs(/:patientId)      Laboratory & Imaging       results.view
    /timeline(/:patientId)  Clinical Timeline          patients.view
-   /ai(/:patientId)        AI Clinical Assistant      ai.view */
+   /ai(/:patientId)        AI Clinical Assistant      ai.view
+   /admissions             ADT — admit                patients.view (admit button needs adt.admit)
+   /discharges             ADT — discharge/transfer   patients.view (actions need adt.discharge / adt.transfer) */
 /* Vite injects BASE_URL from the build's --base flag ('/' locally,
    '/e.g.-aurora-icu-his/' on GitHub Pages) — the router must match it. */
 const BASENAME = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/'
@@ -44,6 +48,8 @@ export default function App() {
         <Route path="/nurse" element={<RequireSession permission="meds.administer"><NurseWorkspace /></RequireSession>} />
         <Route path="/admin" element={<RequireSession permission="admin.view"><AdminHome /></RequireSession>} />
         <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
+        <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
+        <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />
         <Route path="/patients/:patientId" element={<RequireSession permission="patients.view"><MissionControl /></RequireSession>} />
         <Route path="/orders" element={<RequireSession permission="orders.view"><OrdersMedication /></RequireSession>} />
         <Route path="/orders/:patientId" element={<RequireSession permission="orders.view"><OrdersMedication /></RequireSession>} />

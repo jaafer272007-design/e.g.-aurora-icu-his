@@ -34,10 +34,12 @@ Modules" below.
     (roster/patients) + Phase 2 (authentication) + Phase 3 (Labs/Imaging
     results, Orders & Medication, the MAR, the Timeline, then AI — the
     FINAL Phase 3 domain; server-side RBAC on every mutation, read-only
-    for the aggregation/AI domains) built; Phase 3 COMPLETE and database
+    for the aggregation/AI domains) built; Phase 3 COMPLETE, database
     persistence DONE (Postgres + migrations — writes survive restarts;
-    30-day free-DB expiry documented) — next is Layer 2 ADT in Aurora
-    Core — see "Stage 10 — API Integration" below
+    30-day free-DB expiry documented), and Layer 2 ADT DONE in Aurora
+    Core (/admissions + /discharges screens live; roster = derived view
+    over open encounters) — next is Layer 3 user administration in Core
+    — see "Stage 10 — API Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
 ## Architecture Rules (binding for all future screens)
@@ -75,8 +77,8 @@ JobTitle → PermissionProfile:
 PermissionProfile → Permissions (and Dashboard landing view):
 | Profile | Permissions | Landing |
 |---|---|---|
-| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view | /workspace |
-| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view | /nurse |
+| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge | /workspace |
+| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer | /nurse |
 | Administrator        | admin.view, patients.view | /admin |
 | Pharmacist           | patients.view, orders.view, results.view (view-only) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
@@ -86,7 +88,10 @@ PermissionProfile → Permissions (and Dashboard landing view):
 Route guards: /workspace = orders.sign · /nurse = meds.administer ·
 /admin = admin.view · /beds & /patients & /timeline = patients.view ·
 /orders = orders.view (mutating UI additionally needs the prescriber
-permissions) · /labs = results.view · /ai = ai.view. A session lacking a
+permissions) · /labs = results.view · /ai = ai.view · /admissions &
+/discharges = patients.view (the admit action additionally needs
+adt.admit; discharge needs adt.discharge; transfer needs adt.transfer —
+profiles never see buttons they cannot use). A session lacking a
 route's permission gets an explicit Access Restricted state (never a
 silent redirect); no session → /login. The `?as=nurse` dev preview is
 retired — the login screen replaces it.
@@ -528,6 +533,78 @@ and redeploys on Render.
   suites run sequentially TWICE against the same persistent DB — 12/12;
   SQLite demo fallback boots with the warning.
 
+### Layer 2 — ADT (built) — the first Aurora Core-native domain
+Patient / Encounter / Bed live in `server/Core/Adt/` from day one — never
+ICU-shaped first. The first WRITE feature on the durable database, and
+the point where the roster seam's identity/location half DISSOLVES.
+- **Entities** (AddAdt migration; collation-"C" pins on the ordered/joined
+  string keys): `Patient` (table AdtPatients — a person, persists across
+  visits: PatientId, MRN, name, age, sex, allergies), `Encounter` (one
+  admission: bed, diagnosis, attending, status open|discharged, admitted/
+  discharged time+actor, event history JSON), `Bed` (a PLACE: id, area,
+  display order — occupancy is DERIVED from open encounters at read time,
+  never stored). Seeds: AdtPatients + open Encounters derive at boot from
+  the SAME roster-seed.json as the bedside table (P-1001→ENC-1001, no
+  drift); Beds from `Data/beds-seed.json` (GENERATED from beds.ts
+  BED_LAYOUT — never hand-edit). ADT id counters follow the
+  OrderLogic.InitializeCounters persistence rule (resume from persisted
+  max — new ids CONTINUE the seed sequence: P-1015+/ENC-1015+).
+- **Endpoints** (`/api/icu/adt/*` — the prefix is accepted historical
+  cosmetics): `GET beds` (registry + derived occupancy), `GET
+  encounters?patientId&status`, `POST admissions` (create Patient if the
+  MRN is new, open Encounter, assign a FREE bed), `POST
+  encounters/{id}/discharge` (close; bed frees by derivation), `POST
+  encounters/{id}/transfer` (move to a FREE bed). All behind JWT auth.
+- **RBAC — transfer polarity FLIPS**: admit + discharge are DOCTOR
+  authority (adt.admit/adt.discharge → nurse 403); transfer within the
+  unit is a NURSING action (adt.transfer → doctor 403, mirroring
+  implement/MAR). Actor always from the token's name claim. Permissions
+  added to BOTH `Rbac` and `src/lib/session.ts` (provisional tables
+  extended, not re-litigated).
+- **Validation** (codified rule): unknown fields fail binding → 400;
+  occupied bed, duplicate open encounter, nonexistent bed, transfer to
+  occupied/same bed, re-discharge → 400 each naming the precise conflict
+  (occupant id, encounter id); unknown encounter → 404. Never a silent
+  200, never a 500.
+- **The roster is now a DERIVED view** (`Modules/Icu/Roster`): open
+  Encounters ⋈ Core Patient identity ⋈ the module's bedside snapshot —
+  the module reads CORE (correct direction); Core no longer reads the
+  roster table anywhere. Admissions appear on the bed board immediately,
+  discharges drop off, transfers move beds. A fresh admission has no
+  bedside row: a neutral default snapshot is synthesized at read (stable,
+  zeroed scores/vitals, all organs ok, an INFO bed note — excluded from
+  high-priority alert derivation) until Stage 11 Observations. WHAT
+  REMAINS of the old seam: only the bedside columns of the roster table,
+  Stage 11 scope; its identity/location columns are dead weight kept for
+  schema stability.
+- **Seam sites dissolved**: OrderLogic draft validation + order-create
+  name/bed resolution, AI ranking's diagnosis join, and timeline/AI
+  patientId validation all read Core ADT now. New rule enforced: an
+  order for a patient with NO OPEN ENCOUNTER is 400 ("orders require an
+  admitted patient"); unknown-patient error text kept byte-identical.
+- **Frontend**: the Admissions and Discharges nav placeholders are LIVE
+  (`/admissions` admission form with free-bed picker + census;
+  `/discharges` open-encounter list with role-gated Discharge/Transfer
+  actions + durable discharged history). Route guard patients.view;
+  action buttons appear only with the matching adt.* permission. ADT
+  WRITES ARE REAL-ONLY — the durable system of record is never applied
+  to local mock state (unlike the Stage 9-era offline apply); a rejected
+  write surfaces the server's precise {error}. Reads fall back to
+  display-only mock derivations offline. `getBeds()` now composes the
+  REAL bed registry + REAL roster, so Bed Overview reflects ADT
+  immediately (mock fallback offline; getUnitSummary KPIs stay mock —
+  documented drift).
+- **Deployed verification**: `.github/workflows/deployed-adt-e2e.yml`
+  (manual dispatch, SEQUENTIAL with the other suites; idempotent under
+  persistence by design — unique MRN per run, dynamic free-bed picks,
+  discharges its own encounter). Container-restart durability (admit +
+  transfer + discharge + event history survive; counters resume) is
+  asserted in local verification where the container can be restarted;
+  the live suite asserts the closed encounter remains queryable
+  (cross-run accumulation = live durability evidence). The auth E2E's
+  exact-14 roster count became a seeded-SUBSET assertion (the census
+  legitimately changes under ADT — same lesson class as the labs fix).
+
 ## Platform Direction — Aurora Core + Modules (agreed)
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
@@ -575,18 +652,18 @@ Every `/api/icu/*` route string is byte-identical — the URL prefix on
 Core domains is accepted historical cosmetics; renaming it would break
 the deployed frontend and the E2E suite.
 
-**The roster is deliberately NOT relocated (sanctioned, temporary seam):**
-`PatientRow`/`UnitPatientRecord` fuses Patient identity + Encounter/
-location (both Core) with the ICU bedside snapshot (rhythm, SOFA, EWS,
-support flags, bedside/monitor vitals, MAP trend, organs — module scope,
-future Observations). Splitting it now would mean designing ADT
-prematurely. It stays in `Modules/Icu/Roster/`, and Core logic reads it
-across the boundary at exactly these places: `AuroraDb.Patients`, order
-create's name/bed resolution + patientId validation (`OrderLogic`),
-timeline/AI patientId validation, the AI ranking's diagnosis join
-(`AiLogic.Ranking`), and the Seeder's roster block. The seam dissolves at
-Layer 2 (ADT re-founds Patient/Encounter in Core) and Stage 11
-(Observations absorb the bedside columns).
+**The roster seam — identity/location half DISSOLVED at Layer 2:** ADT
+re-founded Patient/Encounter in Core, and every former Core→roster read
+site (order create's name/bed resolution + patientId validation, the AI
+ranking's diagnosis join, timeline/AI patientId validation) now reads
+Core ADT. The roster endpoint became a DERIVED view — open Encounters ⋈
+Core Patient ⋈ the module's bedside snapshot — so the MODULE reads CORE
+(the correct direction). WHAT REMAINS in `Modules/Icu/Roster/`: only the
+ICU bedside snapshot columns (rhythm, SOFA, EWS, support flags,
+bedside/monitor vitals, MAP trend, organs, LOS, code status), read by
+the module alone; Stage 11 Observations absorb them and remove the
+table. The Seeder still populates the bedside table from
+roster-seed.json (the module's own data, not a Core read).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
@@ -603,13 +680,11 @@ built directly in Aurora Core, not in the ICU module.
    part of Phase 3 — and the alert/MC derived views that ride on
    `getPatientDetail` (documented drift, migrate when it does).
 2. **Layer 2 — Entity/ADT data** (patient Admission / Discharge /
-   Transfer): the most clinically central WRITE feature — activates the
-   existing placeholder "Admissions"/"Discharges" nav items
-   (`NavSidebar.tsx`). Built directly in AURORA CORE (see "Platform
-   Direction"). Build only after Phase 3 completes (ADT writes must land
-   on the real roster/orders/results foundation), after the
-   database-persistence prerequisite below is resolved, AND after the
-   planned architectural review / Core-extraction inventory.
+   Transfer): DONE — built directly in AURORA CORE (`server/Core/Adt/`;
+   see "Layer 2 — ADT (built)" above). The Admissions/Discharges nav
+   placeholders are live screens; admission/discharge are doctor
+   authority, transfer is a nursing action; the roster is now a derived
+   view over open encounters.
 3. **Layer 3 — Identity/access** (user administration: create / manage /
    deactivate accounts, password reset): built in AURORA CORE; ties to
    the existing Administrator profile and its `/admin` landing screen;
@@ -631,16 +706,16 @@ database), and ADT can now be built on a durable system of record as
 required.
 
 Build order (locked, amended by the architectural review): Phase 3
-(Labs/Imaging → Orders → MAR → Timeline → AI) is COMPLETE — all five
-domains real. The Core relocation (option (a) — see "Platform Direction")
-is DONE, and database persistence (Postgres + migrations, generated once
-in the final relocated namespaces) is DONE. **The next step is Layer 2
-(ADT), built directly in AURORA CORE** → Layer 3 (user administration) in
-Core → Layer 4 (master data / formulary) in Core → the deferred Print
-Center → Stage 11 (device integration + the Observation model per the
-locked rule above). The full architectural review + Core-extraction
-inventory ran before the relocation and resolved the domain-relocation
-open question as (a).
+(all five domains), the Core relocation (option (a)), database
+persistence (Postgres + migrations), and **Layer 2 ADT (Aurora
+Core-native Patient/Encounter/Bed with the roster seam's
+identity/location half dissolved)** are DONE. **The next step is Layer 3
+(user administration) in Core** → Layer 4 (master data / formulary) in
+Core → the deferred Print Center → Stage 11 (device integration + the
+Observation model per the locked rule above; Stage 11 also absorbs the
+remaining bedside-snapshot half of the roster). The full architectural
+review + Core-extraction inventory ran before the relocation and
+resolved the domain-relocation open question as (a).
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
@@ -678,14 +753,20 @@ Medication, MAR, Labs, Imaging, Timeline, AI) plus Identity/auth now live
 under `server/Core/` (same assembly, behavior-neutral — routes/DTOs/wire
 shapes byte-identical, verified by full-surface old-vs-new diff + all six
 E2E suites); the roster deliberately stays in `server/Modules/Icu/Roster/`
-(the sanctioned temporary seam — see "Platform Direction"). Database
-persistence is DONE: Render Postgres via DATABASE_URL + EF Core
-migrations (generated once, in the final namespaces); writes survive
-restarts, collation parity is pinned and byte-verified, the id counters
-are persistence-aware, and the labs E2E is idempotent under persistence
-— with the 30-day free-database expiry documented as the operational
-constraint. **The next step is Layer 2 (ADT), built directly in Aurora
-Core**, then user administration (Layer 3) and master data (Layer 4) in
-Core, then the Print Center, then Stage 11 device + AI integration per
-the locked rules above. The Timeline's four still-mock sources
-(Consults/Notes/Nursing/I&O) migrate with that later work, not Phase 3.
+(the roster's identity/location half is now DISSOLVED — see "Platform
+Direction"). Database persistence is DONE: Render Postgres via
+DATABASE_URL + EF Core migrations; writes survive restarts, collation
+parity is pinned and byte-verified, the id counters are
+persistence-aware — with the 30-day free-database expiry documented as
+the operational constraint. **Layer 2 ADT is DONE, built directly in
+Aurora Core**: Patient/Encounter/Bed entities, admit/discharge/transfer
+endpoints (doctor-authority admit/discharge, nursing transfer, full
+validation with precise conflict errors), live /admissions and
+/discharges screens, Bed Overview composed from the real bed registry +
+roster, and the roster endpoint re-founded as a derived view over open
+encounters. **The next step is Layer 3 (user administration) in Core**,
+then master data (Layer 4) in Core, then the Print Center, then Stage 11
+device + AI integration per the locked rules above (Stage 11 also
+absorbs the roster's remaining bedside-snapshot columns). The Timeline's
+four still-mock sources (Consults/Notes/Nursing/I&O) migrate with that
+later work, not Phase 3.

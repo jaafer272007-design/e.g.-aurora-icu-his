@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Aurora.Core.Adt;
 using Aurora.Core.Ai;
 using Aurora.Core.Identity;
 using Aurora.Core.Orders;
@@ -97,9 +98,45 @@ static class Seeder
             app.Logger.LogInformation("Seeded {Count} AI risk profiles", profiles.Count);
         }
 
+        /* Layer 2 ADT (Aurora Core): Patients + open Encounters are derived
+           at boot from the SAME roster-seed.json the bedside table uses —
+           one source, zero drift between the module snapshot and the Core
+           identity/encounter records. Seed encounter ids map 1:1 to seed
+           patients (P-1001 → ENC-1001); historical seeds carry no admission
+           time. Beds come from Data/beds-seed.json (GENERATED from
+           src/lib/api/data/beds.ts BED_LAYOUT — never hand-edit). */
+        if (!db.AdtPatients.Any())
+        {
+            var records = JsonSerializer.Deserialize<List<RosterRecordDto>>(
+                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "roster-seed.json")), JsonOpts.Web)!;
+            db.AdtPatients.AddRange(records.Select(r => new Patient
+            {
+                PatientId = r.PatientId, Mrn = r.Mrn, Name = r.Name,
+                Age = r.Age, Sex = r.Sex, Allergies = r.Allergies,
+            }));
+            db.Encounters.AddRange(records.Select(r => new Encounter
+            {
+                EncounterId = $"ENC-{r.PatientId[(r.PatientId.IndexOf('-') + 1)..]}",
+                PatientId = r.PatientId, BedId = r.BedId, Diagnosis = r.Diagnosis,
+                Attending = r.Attending, Status = "open",
+                AdmittedAt = "", AdmittedBy = "", EventsJson = "[]",
+            }));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} ADT patients + open encounters", records.Count);
+        }
+        if (!db.Beds.Any())
+        {
+            var beds = JsonSerializer.Deserialize<List<BedSeedDto>>(
+                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "beds-seed.json")), JsonOpts.Web)!;
+            db.Beds.AddRange(beds.Select((b, i) => new BedRow { BedId = b.BedId, Area = b.Area, Seq = i + 1 }));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} beds", beds.Count);
+        }
+
         /* resume the generated-id counters from the persisted data — on a
            fresh database this resolves to the historical floors, so
            first-boot behavior is unchanged (see OrderLogic notes) */
         OrderLogic.InitializeCounters(db);
+        AdtLogic.InitializeCounters(db);
     }
 }

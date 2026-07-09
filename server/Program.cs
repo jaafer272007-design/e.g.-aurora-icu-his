@@ -1,3 +1,4 @@
+using Aurora.Core.Adt;
 using Aurora.Core.Ai;
 using Aurora.Core.Identity;
 using Aurora.Core.Mar;
@@ -114,6 +115,7 @@ app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora
    deployed frontend and the E2E suite). */
 AuthApi.Map(app, jwtKey, decoyHash);
 RosterApi.Map(app);
+AdtApi.Map(app);
 OrdersApi.Map(app);
 MarApi.Map(app);
 TimelineApi.Map(app);
