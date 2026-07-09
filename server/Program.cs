@@ -220,17 +220,34 @@ app.MapGet("/api/icu/orders", (string? patientId, string? status, bool? implemen
 
 /* POST /api/icu/orders — create order(s); sign=true activates immediately.
    Body: { drafts: NewOrderDraft[], sign, note? }. Patient name/bed are
-   resolved server-side from the roster (denormalized display snapshot). */
+   resolved server-side from the roster (denormalized display snapshot).
+   A payload that doesn't match the contract is REJECTED with 400 — never
+   a 200 that silently creates nothing (a client believing an order was
+   placed when it wasn't is a patient-safety failure). Unrecognized JSON
+   fields are rejected at binding time (see the request DTOs' Disallow
+   attributes), and every draft is validated BEFORE any is inserted so a
+   bad batch creates zero orders, never a partial one. */
 app.MapPost("/api/icu/orders", (CreateOrdersRequest req, ClaimsPrincipal user, RosterDb db) =>
 {
     if (Rbac.Deny(user, "orders.create") is IResult d1) return d1;
     if (req.Sign && Rbac.Deny(user, "orders.sign") is IResult d2) return d2;
+
+    if (req.Drafts is null || req.Drafts.Count == 0)
+        return OrderLogic.BadRequest("At least one order draft is required (drafts[])");
+    if (req.Note?.Length > OrderLogic.MaxTextLength)
+        return OrderLogic.BadRequest($"note exceeds {OrderLogic.MaxTextLength} characters");
+    for (var i = 0; i < req.Drafts.Count; i++)
+    {
+        if (OrderLogic.ValidateDraft(req.Drafts[i], i, db) is string problem)
+            return OrderLogic.BadRequest(problem);
+    }
+
     var actor = user.FindFirst("name")?.Value ?? "Unknown";
     var time = DateTime.UtcNow.ToString("HH:mm");
     var created = new List<OrderDto>();
-    foreach (var draft in req.Drafts ?? [])
+    foreach (var draft in req.Drafts)
     {
-        var pt = db.Patients.AsNoTracking().FirstOrDefault(p => p.PatientId == draft.PatientId);
+        var pt = db.Patients.AsNoTracking().First(p => p.PatientId == draft.PatientId);
         var history = new List<OrderEventDto> { new(time, actor, "created", req.Note) };
         List<AdminDto>? administrations = null;
         if (req.Sign)
@@ -239,9 +256,9 @@ app.MapPost("/api/icu/orders", (CreateOrdersRequest req, ClaimsPrincipal user, R
             if (draft.Medication is not null) administrations = OrderLogic.GenerateAdministrations(draft.Medication);
         }
         var dto = new OrderDto(
-            OrderLogic.NextOrderId(), draft.PatientId, pt?.BedId ?? "—", pt?.Name ?? draft.PatientId,
-            draft.Category, draft.Summary ?? (draft.Medication is not null ? OrderLogic.MedSummary(draft.Medication) : ""),
-            draft.Medication, draft.Priority, req.Sign ? "active" : "pending",
+            OrderLogic.NextOrderId(), draft.PatientId!, pt.BedId, pt.Name,
+            draft.Category!, draft.Summary ?? OrderLogic.MedSummary(draft.Medication!),
+            draft.Medication, draft.Priority!, req.Sign ? "active" : "pending",
             actor, time, draft.RequiresImplementation, administrations, history, null);
         db.Orders.Add(OrderRow.FromDto(dto, OrderLogic.NextSeq()));
         created.Add(dto);
@@ -273,13 +290,23 @@ app.MapPut("/api/icu/orders/{orderId}", (string orderId, ModifyOrderRequest req,
 {
     if (Rbac.Deny(user, "orders.modify") is IResult denied) return denied;
     if (string.IsNullOrWhiteSpace(req.Reason))
-        return Results.Json(new { error = "Reason required" }, JsonOpts.Web, statusCode: 400);
+        return OrderLogic.BadRequest("Reason required");
+    if (req.Reason.Length > OrderLogic.MaxTextLength)
+        return OrderLogic.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
+    /* a modify that carries no recognized change field is a malformed
+       request (typo'd payload), not a no-op to record — reject it */
+    if (req.Changes is null || !req.Changes.HasAnyField)
+        return OrderLogic.BadRequest("changes must include at least one medication field (drug, dose, route, frequency, duration, prn, prnIndication)");
+    /* provided change values must be usable — a whitespace dose blanking an
+       ACTIVE medication order is exactly the silent hazard this guards */
+    if (OrderLogic.ValidateChanges(req.Changes) is string invalid)
+        return OrderLogic.BadRequest(invalid);
     var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && (x.Status == "active" || x.Status == "pending"));
     if (row is null || row.MedicationJson is null)
         return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
     var actor = user.FindFirst("name")?.Value ?? "Unknown";
     var before = JsonSerializer.Deserialize<MedicationDto>(row.MedicationJson, JsonOpts.Web)!;
-    var (merged, diff) = OrderLogic.ApplyChanges(before, req.Changes ?? new(null, null, null, null, null, null, null, null));
+    var (merged, diff) = OrderLogic.ApplyChanges(before, req.Changes);
     row.MedicationJson = JsonSerializer.Serialize(merged, JsonOpts.Web);
     row.Summary = OrderLogic.MedSummary(merged);
     row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
@@ -294,7 +321,9 @@ app.MapPost("/api/icu/orders/{orderId}/discontinue", (string orderId, Discontinu
 {
     if (Rbac.Deny(user, "orders.discontinue") is IResult denied) return denied;
     if (string.IsNullOrWhiteSpace(req.Reason))
-        return Results.Json(new { error = "Reason required" }, JsonOpts.Web, statusCode: 400);
+        return OrderLogic.BadRequest("Reason required");
+    if (req.Reason.Length > OrderLogic.MaxTextLength)
+        return OrderLogic.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
     var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && (x.Status == "active" || x.Status == "pending"));
     if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
     var actor = user.FindFirst("name")?.Value ?? "Unknown";
@@ -646,6 +675,11 @@ record OrderDto(
     string OrderedBy, string OrderedTime, bool? RequiresImplementation,
     List<AdminDto>? Administrations, List<OrderEventDto> History, string? StatusReason);
 
+/* nested in create requests as well as responses/seeds — Disallow makes a
+   typo'd medication field (e.g. "dosage") a 400 at binding time; the seed
+   files carry exactly these fields (byte-parity verified) so boot-time
+   deserialization is unaffected */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record MedicationDto(
     string DrugId, string Drug, string Dose, string Route, string Frequency,
     string Duration, bool Prn, string? PrnIndication);
@@ -655,19 +689,36 @@ record AdminDto(string AdminId, string ScheduledTime, string Status,
 
 record OrderEventDto(string Time, string Actor, string Action, string? Detail);
 
-record NewOrderDraftDto(
-    string PatientId, string Category, string? Summary, MedicationDto? Medication,
-    string Priority, bool? RequiresImplementation);
+/* REQUEST DTOs — unlike the response/seed DTOs above, these carry
+   [JsonUnmappedMemberHandling(Disallow)]: an unrecognized field in a
+   mutation payload fails JSON binding, which minimal APIs surface as an
+   automatic 400 — a typo'd contract can never silently no-op. Fields
+   arrive nullable and are validated explicitly (OrderLogic.ValidateDraft)
+   so a missing field is a 400, never a null-crash or a silent default. */
 
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record NewOrderDraftDto(
+    string? PatientId, string? Category, string? Summary, MedicationDto? Medication,
+    string? Priority, bool? RequiresImplementation);
+
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CreateOrdersRequest(List<NewOrderDraftDto>? Drafts, bool Sign, string? Note);
 
 /* partial medication update — only provided fields are applied */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record MedicationChanges(
     string? DrugId, string? Drug, string? Dose, string? Route, string? Frequency,
-    string? Duration, bool? Prn, string? PrnIndication);
+    string? Duration, bool? Prn, string? PrnIndication)
+{
+    public bool HasAnyField =>
+        DrugId is not null || Drug is not null || Dose is not null || Route is not null
+        || Frequency is not null || Duration is not null || Prn is not null || PrnIndication is not null;
+}
 
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record ModifyOrderRequest(MedicationChanges? Changes, string? Reason);
 
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record DiscontinueRequest(string? Reason);
 
 /* ports of the mock store's helpers (src/lib/api/data/orders.ts) so the
@@ -678,6 +729,79 @@ static class OrderLogic
     static int _adminSeq = 500;  // new administrations: ADM-501…
     static int _rowSeq = 1000;   // insertion order for new rows (seeds are 1…n)
 
+    static readonly string[] Categories = ["Medication", "Lab", "Imaging", "Nursing"];
+    static readonly string[] Priorities = ["Routine", "Urgent", "STAT"];
+
+    /* upper bound on any free-text request field — Kestrel's ~28 MB body
+       limit is the only bound otherwise, and multi-megabyte strings would
+       be persisted and re-served to every client */
+    public const int MaxTextLength = 2000;
+
+    public static IResult BadRequest(string error) =>
+        Results.Json(new { error }, JsonOpts.Web, statusCode: 400);
+
+    /** shared text-field rule: required fields must be non-whitespace;
+        optional fields may be absent but never blank; everything bounded */
+    static string? CheckText(string name, string? value, bool required)
+    {
+        if (value is null) return required ? $"{name} is required" : null;
+        if (string.IsNullOrWhiteSpace(value))
+            return required ? $"{name} is required" : $"{name} must be non-empty when provided";
+        if (value.Length > MaxTextLength) return $"{name} exceeds {MaxTextLength} characters";
+        return null;
+    }
+
+    /** null when the draft is valid; otherwise the validation error to 400.
+        Runs BEFORE any insert so an invalid batch creates zero orders. */
+    public static string? ValidateDraft(NewOrderDraftDto? d, int index, RosterDb db)
+    {
+        var at = $"drafts[{index}]";
+        if (d is null) return $"{at} is null";
+        if (CheckText($"{at}.patientId", d.PatientId, required: true) is string p) return p;
+        if (!db.Patients.AsNoTracking().Any(x => x.PatientId == d.PatientId))
+            return $"{at}.patientId '{d.PatientId}' does not match any roster patient";
+        if (d.Category is null || !Categories.Contains(d.Category))
+            return $"{at}.category must be one of: {string.Join(", ", Categories)}";
+        if (d.Priority is null || !Priorities.Contains(d.Priority))
+            return $"{at}.priority must be one of: {string.Join(", ", Priorities)}";
+        if (d.Medication is null && string.IsNullOrWhiteSpace(d.Summary))
+            return $"{at} requires a summary (non-medication order) or a medication object";
+        /* a provided-but-blank summary must never override the composed
+           medication summary or create a contentless order */
+        if (CheckText($"{at}.summary", d.Summary, required: false) is string s) return s;
+        if (d.Medication is not null)
+        {
+            /* med orders are administered via the MAR schedule — the one-shot
+               nursing implement action doesn't apply to them */
+            if (d.RequiresImplementation == true)
+                return $"{at}: a medication order cannot set requiresImplementation";
+            var m = d.Medication;
+            foreach (var (name, value, required) in new[] {
+                ("drugId", m.DrugId, true), ("drug", m.Drug, true), ("dose", m.Dose, true),
+                ("route", m.Route, true), ("frequency", m.Frequency, true),
+                ("duration", m.Duration, true), ("prnIndication", m.PrnIndication, false) })
+            {
+                if (CheckText($"{at}.medication.{name}", value, required) is string e) return e;
+            }
+        }
+        return null;
+    }
+
+    /** validates a modify payload's provided fields — a change may omit
+        fields but can never blank one or exceed the text bound */
+    public static string? ValidateChanges(MedicationChanges c)
+    {
+        foreach (var (name, value) in new[] {
+            ("drugId", c.DrugId), ("drug", c.Drug), ("dose", c.Dose), ("route", c.Route),
+            ("frequency", c.Frequency), ("duration", c.Duration), ("prnIndication", c.PrnIndication) })
+        {
+            if (value is null) continue;
+            if (string.IsNullOrWhiteSpace(value)) return $"changes.{name} must be a non-empty string";
+            if (value.Length > MaxTextLength) return $"changes.{name} exceeds {MaxTextLength} characters";
+        }
+        return null;
+    }
+
     public static string NextOrderId() => $"ORD-{Interlocked.Increment(ref _orderSeq)}";
     public static string NextAdminId() => $"ADM-{Interlocked.Increment(ref _adminSeq)}";
     public static int NextSeq() => Interlocked.Increment(ref _rowSeq);
@@ -686,7 +810,10 @@ static class OrderLogic
         $"{m.Drug} {m.Dose} · {m.Route} · {(m.Prn ? $"PRN ({m.PrnIndication ?? "as required"})" : m.Frequency)}";
 
     /* mock schedule generation for newly signed med orders: next full hour,
-       plus one interval for q\dh frequencies; PRN gets one availability row */
+       plus one interval for q\dh frequencies; PRN gets one availability row.
+       Frequency is free text (mock parity) — the interval is bounds-checked
+       with TryParse so no payload can crash schedule generation (a q0h /
+       q99999999h string simply yields a single first dose). */
     public static List<AdminDto> GenerateAdministrations(MedicationDto m)
     {
         if (m.Prn) return [new AdminDto(NextAdminId(), "", "scheduled", null, null)];
@@ -694,7 +821,8 @@ static class OrderLogic
         var first = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
         var times = new List<DateTime> { first };
         var interval = System.Text.RegularExpressions.Regex.Match(m.Frequency, @"q(\d+)h");
-        if (interval.Success) times.Add(first.AddHours(int.Parse(interval.Groups[1].Value)));
+        if (interval.Success && int.TryParse(interval.Groups[1].Value, out var hours) && hours is >= 1 and <= 168)
+            times.Add(first.AddHours(hours));
         return times.Select(t => new AdminDto(NextAdminId(), t.ToString("HH:mm"), "scheduled", null, null)).ToList();
     }
 
