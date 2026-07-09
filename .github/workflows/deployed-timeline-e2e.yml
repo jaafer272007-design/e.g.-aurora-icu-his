@@ -1,0 +1,86 @@
+# Deployed Timeline E2E — verifies the LIVE Render service (Stage 10
+# Phase 3, Timeline): authenticated reads return real server-derived
+# events (both roles), unauthenticated is 401, malformed/unknown query
+# params are 400, and an order signed through the real API immediately
+# appears as Timeline events — proving derivation, not a stored copy.
+#
+# IDEMPOTENT BY DESIGN: read assertions check seeded events as a SUBSET,
+# and the derivation proof drives off an order THIS RUN creates+signs via
+# the real Orders endpoint — so the workflow can be re-dispatched any
+# number of times against the ephemeral DB.
+name: Deployed Timeline E2E
+on: workflow_dispatch
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up (Render free tier cold start)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            echo "healthz attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "service never became healthy" && exit 1
+
+      - name: Login as doctor and nurse
+        run: |
+          for u in sara.rahman maya.chen; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+
+      - name: Unauthenticated timeline read → 401
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/timeline?patientId=P-1001")
+          echo "GET /timeline (no token) -> HTTP $code"; [ "$code" = "401" ] || exit 1
+
+      - name: Both roles READ; seeded events present; only server categories (+ CORS)
+        run: |
+          curl -sf -D /tmp/h -H "Authorization: Bearer $NUR" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/timeline?patientId=P-1001" -o /tmp/tl.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c '
+          import json; d=json.load(open("/tmp/tl.json"))
+          cats={e["category"] for e in d}
+          assert cats <= {"order","med","lab","imaging"}, f"non-server category leaked: {cats}"
+          ids={e["id"] for e in d}
+          assert "ORD-2001-h0" in ids and "IMG-7001-ord" in ids, "seeded timeline events missing"
+          assert len(ids)==len(d), "duplicate event ids"
+          print(f"timeline events: {len(d)} | categories: {sorted(cats)} (server-only)")'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/timeline?patientId=P-1001")
+          echo "doctor timeline read -> HTTP $code"; [ "$code" = "200" ] || exit 1
+
+      - name: Malformed/unknown query params → 400 (never a silent 200)
+        run: |
+          check() { echo "$1 -> HTTP $2"; [ "$2" = "400" ] || exit 1; }
+          check "missing patientId"  "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/timeline")"
+          check "unknown patientId"  "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/timeline?patientId=P-9999")"
+          check "unknown query param" "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/timeline?patientId=P-1001&foo=bar")"
+
+      - name: Derivation not duplication — order signed via real API appears once
+        run: |
+          OID=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"P-1007","category":"Nursing","summary":"deployed timeline E2E probe","priority":"Routine"}],"sign":true}' \
+            "$API/api/icu/orders" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["orderId"])')
+          echo "created+signed $OID"
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/timeline?patientId=P-1007" \
+            | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin); mine=[e for e in d if e['refId']=='$OID']
+          ids=[e['id'] for e in mine]
+          assert len(ids)==len(set(ids)), f'duplicate events for $OID: {ids}'
+          titles=' '.join(e['title'] for e in mine)
+          assert 'placed' in titles and 'signed' in titles, mine
+          print('timeline shows', [e['id'] for e in mine], '(created+signed, no dup) — derived, not stored')"
