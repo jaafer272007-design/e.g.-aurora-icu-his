@@ -458,6 +458,8 @@ export interface MedAdministration {
   status: 'scheduled' | AdministrationAction
   documentedTime?: string
   documentedBy?: string
+  /** documented reason — required when held/refused (Stage 10 Phase 3 MAR) */
+  reason?: string
 }
 
 export interface OrderEvent {

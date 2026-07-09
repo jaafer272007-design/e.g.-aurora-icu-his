@@ -52,9 +52,9 @@ export function NurseWorkspace() {
   const patientName = (patientId: string) => patients.find(p => p.patientId === patientId)?.name ?? patientId
 
   /* MAR: documentation event on the canonical order (audit history) */
-  const documentMar = (orderId: string, adminId: string, action: AdministrationAction) => {
+  const documentMar = (orderId: string, adminId: string, action: AdministrationAction, reason?: string) => {
     const row = mar?.find(r => r.adminId === adminId)
-    documentAdministration(orderId, adminId, action, session.name, session.jobTitle).then(updated => {
+    documentAdministration(orderId, adminId, action, session.name, session.jobTitle, reason).then(updated => {
       if (!updated) return
       const admin = updated.administrations?.find(a => a.adminId === adminId)
       setMar(prev => prev && prev.map(r =>

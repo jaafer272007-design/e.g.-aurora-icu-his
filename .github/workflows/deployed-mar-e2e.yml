@@ -1,0 +1,103 @@
+# Deployed MAR E2E — verifies the LIVE Render service (Stage 10 Phase 3,
+# MAR): authenticated reads return the seeded doses, unauthenticated is
+# 401, RBAC polarity holds (doctor 403 on administer, nurse 200), malformed
+# payloads are 400 (never a silent no-op), and held/refused require a
+# reason. Dispatch manually after merging /server changes to main.
+#
+# IDEMPOTENT BY DESIGN: read assertions check seeded doses as a SUBSET
+# (never exact counts), and every administration action targets a
+# scheduled dose on an order THIS RUN creates+signs — so the workflow can
+# be re-dispatched any number of times against the ephemeral DB, even
+# after other clients have documented the seeded doses.
+name: Deployed MAR E2E
+on: workflow_dispatch
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up (Render free tier cold start)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
+            echo "healthz attempt $i: HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "service never became healthy" && exit 1
+
+      - name: Login as doctor and nurse
+        run: |
+          for u in sara.rahman maya.chen; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+
+      - name: Unauthenticated MAR read → 401
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/mar")
+          echo "GET /mar (no token) -> HTTP $code"; [ "$code" = "401" ] || exit 1
+
+      - name: Both roles can READ the MAR; seeded doses present (+ CORS)
+        run: |
+          curl -sf -D /tmp/h -H "Authorization: Bearer $NUR" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/mar" -o /tmp/mar.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c '
+          import json; d=json.load(open("/tmp/mar.json"))
+          ids={r["adminId"] for r in d}
+          seeded={"ADM-401","ADM-402","ADM-403","ADM-404","ADM-405"}
+          missing=seeded-ids
+          assert not missing, f"seeded MAR doses missing: {missing}"
+          print(f"MAR rows: {len(d)} (seeded doses present; extras from prior writes expected)")'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/mar")
+          echo "doctor MAR read -> HTTP $code"; [ "$code" = "200" ] || exit 1
+
+      - name: Seed a signed med order for THIS RUN (own scheduled doses)
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"P-1001","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":true}' \
+            "$API/api/icu/orders" > /tmp/o.json
+          python3 -c '
+          import json,os
+          d=json.load(open("/tmp/o.json"))[0]
+          admins=[a["adminId"] for a in d["administrations"]]
+          assert len(admins)>=2, d
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+            f.write(f"OID={d[\"orderId\"]}\n"); f.write(f"A1={admins[0]}\n"); f.write(f"A2={admins[1]}\n")
+          print("created", d["orderId"], "scheduled doses", admins[:2])'
+
+      - name: RBAC polarity — doctor 403 on administer, nurse 200 (actor from token)
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1")
+          echo "doctor administer -> HTTP $code"; [ "$code" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); a=[x for x in d["administrations"] if x["status"]=="given" and x["documentedBy"]][0]; assert a["documentedBy"]=="RN Maya Chen", a; print("nurse given by:", a["documentedBy"])'
+          # re-document the same dose → 404 (no longer scheduled)
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1")
+          echo "re-document -> HTTP $code"; [ "$code" = "404" ] || exit 1
+
+      - name: Held requires a reason (validation live); with reason → 200 + persisted
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"held"}' "$API/api/icu/mar/$OID/administrations/$A2")
+          echo "held without reason -> HTTP $code"; [ "$code" = "400" ] || exit 1
+          for body in '{}' '{"action":"maybe"}' '{"action":"given","extra":1}'; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/mar/$OID/administrations/$A2")
+            echo "malformed '$body' -> HTTP $code"; [ "$code" = "400" ] || exit 1
+          done
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"held","reason":"SBP 82 — holding per parameters"}' "$API/api/icu/mar/$OID/administrations/$A2" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); a=[x for x in d["administrations"] if x["status"]=="held"][0]; assert a["reason"]=="SBP 82 — holding per parameters" and a["documentedBy"]=="RN Maya Chen", a; print("held with reason:", a["reason"])'

@@ -30,7 +30,7 @@ real APIs and medical devices later.
 9. Login / Role-Switch screen — ✅ built (`/login`, three-layer RBAC below; real username+password auth added in Stage 10 Phase 2, Stage 9 local session kept as the offline fallback)
 10. API Integration (ASP.NET Core Web APIs) — 🔄 in progress: Phase 1
     (roster/patients) + Phase 2 (authentication) + Phase 3 (Labs/Imaging
-    results, then Orders & Medication — server-side RBAC on every
+    results, Orders & Medication, then the MAR — server-side RBAC on every
     mutation) built — see "Stage 10 — API Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
@@ -91,7 +91,9 @@ retired — the login screen replaces it.
   are all derived views; assignments/panels store patient IDs only.
   Orders/results/consults keep denormalized name/bed DISPLAY snapshots by
   design (audit records) but never redefine identity.
-- `orders.ts` — orders & medications incl. full audit history + MAR (Screen 5)
+- `orders.ts` — orders & medications incl. full audit history + MAR (Screen 5).
+  MAR rows are a DERIVED view over the orders' administrations (no store of
+  their own) — real since Stage 10 Phase 3 MAR, reading the real Orders data.
 - `results.ts` — lab draws + imaging studies incl. acknowledgments (Screen 6)
 - `consults.ts` — consult requests, shared by DW and Timeline
 - `notes.ts` — ClinicalNote (progress/nursing/procedure/vent): freeform notes
@@ -339,13 +341,46 @@ own phases.
 - **Frontend adapters**: reads + all five mutations swapped with the
   labs write semantics (server 403/404/400 = real denial, never applied
   locally; network failure or tokenless-session 401 = offline mock
-  apply). `getMarRows`/`documentAdministration` STAY MOCK — documented
-  drift until the MAR phase: doses documented offline and Timeline/alert
-  derivations still read the mock store.
+  apply). `getMarRows`/`documentAdministration` migrated in the MAR PR
+  (below).
 - **Deployed verification**: `.github/workflows/deployed-orders-e2e.yml`
-  (manual dispatch) — 401s, seeded reads, nurse-403 on all four
-  prescriber mutations, doctor-200 with token actor, implement
-  doctor-403/nurse-200 on the LIVE service.
+  (manual dispatch, idempotent) — 401s, seeded reads, nurse-403 on all
+  four prescriber mutations, doctor-200 with token actor, implement
+  doctor-403/nurse-200, malformed→400, unparseable frequency→400 on the
+  LIVE service.
+
+### Phase 3 — Medication Administration Record (MAR, built)
+Third clinical-domain migration; completes Layer 1 for orders + doses.
+Timeline and AI remain mock until their own phases.
+- **No table of its own — reads the REAL Orders data.** MAR rows DERIVE
+  server-side at read time from the signed medication orders'
+  administrations (the coupling: administrations live on Orders, now a
+  real domain, so the MAR never keeps a parallel copy). Verified the
+  server derivation matches the mock `deriveMarRows` byte-for-byte
+  (zero field diffs). Adding an optional `reason` to MedAdministration
+  keeps orders byte-parity (absent on seeds → absent on the wire).
+- **Endpoints** (all `.RequireAuthorization()`): `GET /api/icu/mar`
+  (unit-wide derived rows — the nurse-assignment narrowing stays a
+  client-side derivation), `POST /api/icu/mar/{orderId}/administrations/
+  {adminId}` (document a dose: Given/Held/Refused; mutates the order's
+  administration in place + audit history).
+- **Server-side RBAC — polarity FLIPS vs the prescriber mutations**:
+  administering requires the NURSE's meds.administer, so a DOCTOR token
+  gets a generic 403 (mirroring implement); a nurse token succeeds. Both
+  roles retain read access. The administering actor is ALWAYS the token's
+  name claim. Held/Refused require a reason (validated like discontinue);
+  Given needs none. Re-documenting a non-scheduled dose → 404. Malformed
+  payloads → 400 (unknown fields fail binding; reason bounded) per the
+  request-validation rule.
+- **Frontend**: only the MAR adapters swapped
+  (`getMarRows`/`documentAdministration`) with the proven read/write
+  fallback semantics (server 403/404/400 = real denial never applied
+  locally; offline = mock apply). The MAR card's Held/Refused now open a
+  required-reason dialog. Timeline and AI adapters untouched.
+- **Deployed verification**: `.github/workflows/deployed-mar-e2e.yml`
+  (manual dispatch, idempotent) — 401s, seeded reads (both roles),
+  doctor-403/nurse-200 administer with token actor, held-without-reason
+  400, malformed 400, re-document 404 on the LIVE service.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
@@ -353,8 +388,8 @@ on a FULLY-REAL data foundation beneath it — never mix a new write-feature
 onto a still-mock store.
 
 1. **Layer 1 — Transactional data** (orders, results, medication
-   administrations): mid-migration in Stage 10 Phase 3. Labs/Imaging done
-   (PR #12) and Orders done (PR #14); MAR, Timeline, and AI still to
+   administrations): mid-migration in Stage 10 Phase 3. Labs/Imaging
+   (PR #12), Orders (PR #14), and the MAR done; Timeline and AI still to
    migrate — in that order, one domain per PR, each with the proven JWT +
    server-side RBAC pattern.
 2. **Layer 2 — Entity/ADT data** (patient Admission / Discharge /
@@ -412,8 +447,11 @@ fallback) are built on the ASP.NET Core + SQLite + Docker service in
 /server, deployable via render.yaml. Phase 3 has migrated Labs/Imaging
 results (server-side RBAC on acknowledge) and Orders & Medication
 (server-side RBAC on the full lifecycle — create/sign/modify/discontinue
-doctor-only, implement nurse-only, actor always from the token). Next:
-remaining Phase 3 domains — MAR administrations, Consults/Notes/Nursing,
-Timeline, AI — one domain per PR with the same pattern, then the
-Post-Phase-3 layers (ADT, user administration, master data), then
-Stage 11 device + AI integration per the locked rules above.
+doctor-only, implement nurse-only, actor always from the token) and the
+MAR (dose documentation derived from the real Orders data — nurse-only
+administer with doctor-403, held/refused reason-validated). Next:
+remaining Phase 3 domains — Consults/Notes/Nursing, Timeline, AI — one
+domain per PR with the same pattern, then the database-persistence
+provider swap, then the Post-Phase-3 layers (ADT, user administration,
+master data), then Stage 11 device + AI integration per the locked
+rules above.

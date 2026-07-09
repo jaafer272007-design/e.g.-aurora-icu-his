@@ -133,3 +133,15 @@
  .nw .maracts{justify-content:flex-start;grid-column:2}
  .nw .marstate{justify-self:start;grid-column:2}
 }
+
+/* MAR held/refused reason dialog (Stage 10 Phase 3) */
+.marscrim{position:fixed;inset:0;background:rgba(4,8,14,.66);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:50;padding:20px}
+.mardialog{width:min(460px,100%);background:var(--panel,#0c141f);border:1px solid var(--stroke2,rgba(130,170,230,.22));border-radius:16px;
+ padding:18px 20px;box-shadow:0 18px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:12px}
+.mardialog h2{font-size:14.5px;font-weight:700}
+.mardialog .field{display:flex;flex-direction:column;gap:6px}
+.mardialog label{font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--dim)}
+.mardialog textarea{min-height:76px;resize:vertical;border:1px solid var(--stroke2,rgba(130,170,230,.22));border-radius:11px;
+ background:rgba(10,16,28,.9);color:var(--text);font-size:13px;padding:10px 12px;font-family:inherit}
+.mardialog textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.mardfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}
