@@ -145,6 +145,14 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
         app.Logger.LogInformation("Seeded {Count} orders", orders.Count);
     }
+    if (!db.AiRisks.Any())
+    {
+        var profiles = JsonSerializer.Deserialize<List<AiProfileDto>>(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "ai-seed.json")), JsonOpts.Web)!;
+        db.AiRisks.AddRange(profiles.Select((p, i) => AiRiskRow.FromDto(p, i + 1)));
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded {Count} AI risk profiles", profiles.Count);
+    }
 }
 
 /* health/warmup probe (also Render's health check path) */
@@ -450,6 +458,46 @@ app.MapGet("/api/icu/timeline", (HttpContext ctx, RosterDb db) =>
     return Results.Json(TimelineLogic.Derive(patientId, db), JsonOpts.Web);
 }).RequireAuthorization();
 
+/* ---------------- AI Clinical Assistant (Stage 10 Phase 3, FINAL domain) ----------------
+   THE canonical AI risk store. Everything is SIMULATED mock model output
+   until Stage 11 — no real inference is added here. Read-only for every
+   role (like Timeline): no mutations, no new RBAC surface; auth required,
+   both doctor and nurse read. Risk TREND (rising/falling/stable) and the
+   ~2 h DELTA are COMPUTED at read time from each risk's history — never
+   stored (same locked rule as clock-computed states). Mission Control's
+   AI panel + the alert-center integration keep deriving from this same
+   store (the mock adapter path until getPatientDetail migrates — no
+   parallel copy). */
+
+/* GET /api/icu/ai/ranking — unit-wide ranking by highest current risk;
+   top.trend/top.delta and alsoElevated all derived server-side at read. */
+app.MapGet("/api/icu/ai/ranking", (HttpContext ctx, RosterDb db) =>
+{
+    foreach (var key in ctx.Request.Query.Keys)
+        return OrderLogic.BadRequest($"unknown query parameter '{key}'");
+    return Results.Json(AiLogic.Ranking(db), JsonOpts.Web);
+}).RequireAuthorization();
+
+/* GET /api/icu/ai/risks?patientId — one patient's simulated risk profile
+   (categories, probabilities, q15min history, factors, suggestions). */
+app.MapGet("/api/icu/ai/risks", (HttpContext ctx, RosterDb db) =>
+{
+    foreach (var key in ctx.Request.Query.Keys)
+        if (key != "patientId") return OrderLogic.BadRequest($"unknown query parameter '{key}'");
+    var patientId = ctx.Request.Query["patientId"].ToString();
+    if (string.IsNullOrWhiteSpace(patientId)) return OrderLogic.BadRequest("patientId is required");
+    var row = db.AiRisks.AsNoTracking().FirstOrDefault(a => a.PatientId == patientId);
+    if (row is null)
+    {
+        /* distinguish "not an ICU patient" (400, like other domains) from
+           "a real patient with no AI profile yet" (200 null) */
+        if (!db.Patients.AsNoTracking().Any(p => p.PatientId == patientId))
+            return OrderLogic.BadRequest($"patientId '{patientId}' does not match any roster patient");
+        return Results.Json<AiProfileDto?>(null, JsonOpts.Web);
+    }
+    return Results.Json(row.ToDto(), JsonOpts.Web);
+}).RequireAuthorization();
+
 /* ---------------- Laboratory & Imaging results (Stage 10 Phase 3) ----------------
    The canonical results service — same wire contract the mock adapter
    documents. All endpoints require a valid JWT; the acknowledge actions
@@ -682,6 +730,98 @@ static class TimelineLogic
 record LabItemFull(string Analyte, double Value, string Unit, string RefRange,
     double RefLow, double RefHigh, string Flag);
 
+/* ---------- AI Clinical Assistant derivation (Stage 10 Phase 3, FINAL) ----------
+   Ports the mock ai.ts derivations EXACTLY: riskTrendOf, isElevated, toRanked
+   and deriveRiskRanking. The store keeps only each risk's history[] +
+   probability; trend (rising/falling/stable) and the ~2 h delta are computed
+   HERE at read time — never persisted (locked clock-computed-state rule).
+   Everything is simulated mock model output until Stage 11. */
+static class AiLogic
+{
+    /* trend from the q15min history — delta of last vs first sample */
+    public static string RiskTrendOf(List<int> history)
+    {
+        var delta = history[^1] - history[0];
+        return delta >= 4 ? "rising" : delta <= -4 ? "falling" : "stable";
+    }
+
+    /* elevated = high now, or moderate and climbing (gates ranking chips) */
+    public static bool IsElevated(RiskPredictionDto r) =>
+        r.Probability >= 60 || (r.Probability >= 45 && RiskTrendOf(r.History) == "rising");
+
+    static RankedRiskDto ToRanked(RiskPredictionDto r) =>
+        new(r.Category, r.Probability, RiskTrendOf(r.History), r.Probability - r.History[0]);
+
+    /* Unit-wide ranking by highest current risk across any category —
+       mirrors deriveRiskRanking() byte-for-byte (roster join for diagnosis,
+       sort by top.probability desc, alsoElevated = the rest that are elevated). */
+    public static List<RiskRankingRowDto> Ranking(RosterDb db)
+    {
+        var patients = db.Patients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.Diagnosis);
+        return db.AiRisks.AsNoTracking().OrderBy(a => a.Seq).AsEnumerable()
+            .Select(row =>
+            {
+                var profile = row.ToDto();
+                var sorted = profile.Risks.OrderByDescending(r => r.Probability).ToList();
+                var top = sorted[0];
+                return new RiskRankingRowDto(
+                    profile.PatientId, profile.BedId, profile.PatientName,
+                    patients.TryGetValue(profile.PatientId, out var dx) ? dx : "",
+                    ToRanked(top), top.History,
+                    sorted.Skip(1).Where(IsElevated).Select(ToRanked).ToList(),
+                    profile.UpdatedAt);
+            })
+            .OrderByDescending(r => r.Top.Probability)
+            .ToList();
+    }
+}
+
+/* One row per patient AI risk profile. Only the per-risk history + scalar
+   fields are stored (as a JSON column, same pattern as orders/labs); trend
+   and delta are DERIVED at read (AiLogic). Data/ai-seed.json is GENERATED
+   from src/lib/api/data/ai.ts — never hand-edit it. A Seq column preserves
+   the mock's profile order for the pre-sort ranking traversal. */
+class AiRiskRow
+{
+    [Key]
+    public string PatientId { get; set; } = "";
+    public int Seq { get; set; }
+    public string BedId { get; set; } = "";
+    public string PatientName { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
+    public string RisksJson { get; set; } = "[]";
+
+    public static AiRiskRow FromDto(AiProfileDto d, int seq) => new()
+    {
+        PatientId = d.PatientId, Seq = seq, BedId = d.BedId, PatientName = d.PatientName,
+        UpdatedAt = d.UpdatedAt,
+        RisksJson = JsonSerializer.Serialize(d.Risks, JsonOpts.Web),
+    };
+
+    public AiProfileDto ToDto() => new(
+        PatientId, BedId, PatientName, UpdatedAt,
+        JsonSerializer.Deserialize<List<RiskPredictionDto>>(RisksJson, JsonOpts.Web)!);
+}
+
+/* wire contracts — mirror PatientRiskProfile / RiskPrediction / RiskFactor /
+   RankedRisk / RiskRankingRow in src/lib/api/types.ts (camelCase; optional
+   fields absent, not null — Suggestions/Mitigating). */
+record AiProfileDto(
+    string PatientId, string BedId, string PatientName, string UpdatedAt,
+    List<RiskPredictionDto> Risks);
+
+record RiskPredictionDto(
+    string Category, int Probability, List<int> History, string Rationale,
+    List<RiskFactorDto> Factors, List<string>? Suggestions);
+
+record RiskFactorDto(string Label, int Weight, bool? Mitigating);
+
+record RankedRiskDto(string Category, int Probability, string Trend, int Delta);
+
+record RiskRankingRowDto(
+    string PatientId, string BedId, string PatientName, string Diagnosis,
+    RankedRiskDto Top, List<int> TopHistory, List<RankedRiskDto> AlsoElevated, string UpdatedAt);
+
 /* ---------- persistence ---------- */
 
 class RosterDb(DbContextOptions<RosterDb> options) : DbContext(options)
@@ -691,6 +831,7 @@ class RosterDb(DbContextOptions<RosterDb> options) : DbContext(options)
     public DbSet<LabDrawRow> LabDraws => Set<LabDrawRow>();
     public DbSet<ImagingStudyRow> ImagingStudies => Set<ImagingStudyRow>();
     public DbSet<OrderRow> Orders => Set<OrderRow>();
+    public DbSet<AiRiskRow> AiRisks => Set<AiRiskRow>();
 }
 
 /* One row per staff account (Stage 10 Phase 2). Only the bcrypt hash is
