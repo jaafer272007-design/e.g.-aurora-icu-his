@@ -515,6 +515,37 @@ and redeploys on Render.
   dry. The other five suites were audited persistence-safe (run-created
   mutations, subset reads). Suites must be dispatched SEQUENTIALLY, never
   concurrently (relocation-PR lesson).
+- **The labs acknowledge leg is SPENT (post-#25 live validation,
+  2026-07-09)**: every seeded unacked lab on the durable DB has been
+  acknowledged by prior runs, so `deployed-labs-e2e.yml` now stops at its
+  designed loud-failure assert ("no unacknowledged labs remain on the
+  persistent DB"). This is EXPECTED behavior, not a regression — all
+  read-side steps (401s, seeded reads, CORS, imaging) still pass. The
+  assert's own advice "extend the seed set" CANNOT fix it: the
+  seed-if-empty blocks skip non-empty tables, so new seed entries never
+  reach the existing live DB. Accepted as-is for now; do NOT reset the
+  live database to revive it (that destroys all durable writes). The
+  real fix is a FUTURE PR adding a genuine un-acknowledge or lab-order
+  creation capability — note that un-acknowledging a result is a real
+  CLINICAL action with audit implications (who reversed it, why, the
+  original acknowledgment preserved — same never-destroy principle as
+  the Stage 11 override rule), so it must be designed as a feature,
+  never bolted onto the test suite.
+- **Codified rule — finite seeded resources**: an E2E suite that
+  CONSUMES a finite seeded resource is not idempotent against a durable
+  database, no matter how careful the picking logic — the well
+  eventually runs dry. Future suites must either CREATE the resources
+  they consume (MAR/Timeline/Orders create their own orders; ADT admits
+  and discharges its own patient) or assert READ-SIDE ONLY (auth, AI).
+  Audit of the other six suites (2026-07-09): none consumes a finite
+  seed. One related latent exposure, documented and accepted: the
+  MAR/Timeline/Orders suites create orders against SEEDED patients
+  (P-1001, P-1007) and therefore assume those patients remain ADMITTED —
+  since Layer 2, a live ADT discharge of either would 400 the order
+  create ("orders require an admitted patient") and break those three
+  suites. The full self-sufficiency fix (each suite admits its own
+  patient first, like the ADT suite) rides with a future suite touch,
+  not now.
 - **OPERATIONAL CONSTRAINT — Render free Postgres EXPIRES: 30 days**
   (verified against the Render changelog — the policy changed 2024-05-20
   from the previous 90 days), then a 14-day grace period to upgrade
