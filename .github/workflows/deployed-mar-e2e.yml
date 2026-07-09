@@ -67,14 +67,9 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"drafts":[{"patientId":"P-1001","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":true}' \
             "$API/api/icu/orders" > /tmp/o.json
-          python3 -c '
-          import json,os
-          d=json.load(open("/tmp/o.json"))[0]
-          admins=[a["adminId"] for a in d["administrations"]]
-          assert len(admins)>=2, d
-          with open(os.environ["GITHUB_ENV"],"a") as f:
-            f.write(f"OID={d[\"orderId\"]}\n"); f.write(f"A1={admins[0]}\n"); f.write(f"A2={admins[1]}\n")
-          print("created", d["orderId"], "scheduled doses", admins[:2])'
+          read OID A1 A2 <<<"$(python3 -c 'import json; d=json.load(open("/tmp/o.json"))[0]; a=[x["adminId"] for x in d["administrations"]]; assert len(a)>=2, d; print(d["orderId"], a[0], a[1])')"
+          echo "created $OID scheduled doses $A1 $A2"
+          { echo "OID=$OID"; echo "A1=$A1"; echo "A2=$A2"; } >> "$GITHUB_ENV"
 
       - name: RBAC polarity — doctor 403 on administer, nurse 200 (actor from token)
         run: |
