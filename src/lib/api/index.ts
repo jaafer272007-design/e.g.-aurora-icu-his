@@ -5,11 +5,11 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, Encounter, FormularyDrug,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateUserDraft, EditUserDraft, Encounter, FormularyDrug,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
   OrderSetsResponse, PatientDetailResponse, PatientRiskProfile, PatientSummary, ResultInboxItem,
-  RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse,
+  RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse, UserAccount,
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY, composeBedsResponse, mockAdtBeds } from './data/beds'
 import { allPatients, derivedAlertCount } from './data/patients'
@@ -29,7 +29,7 @@ import {
   applyAcknowledgeImaging, applyAcknowledgeLab, deriveMissionControlLabs, deriveResultInbox,
   imagingFor, labDrawsFor,
 } from './data/results'
-import { getToken, hasPermission, type JobTitle } from '../session'
+import { SAMPLE_STAFF, getToken, hasPermission, usernameOf, type JobTitle } from '../session'
 import { dayOffsetOf, nowHm, timestampMinutes } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
@@ -672,4 +672,82 @@ export function dischargeEncounter(encounterId: string): Promise<AdtWriteResult<
 /** POST /api/icu/adt/encounters/:id/transfer — NURSE RBAC (adt.transfer). REAL-ONLY write. */
 export function transferEncounter(encounterId: string, bedId: string): Promise<AdtWriteResult<Encounter>> {
   return adtPost<Encounter>(`/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/transfer`, 'ADT transfer', { bedId })
+}
+
+/* ---------------- Layer 3 — User Administration (Aurora Core) ----------------
+   Administrator-only (users.manage — server-enforced on every endpoint;
+   these client checks are defense in depth). Accounts are the durable
+   system of record for identity, so WRITES are REAL-ONLY like ADT — a
+   user is never created/edited against local mock state. The list READ
+   falls back to a display-only derivation from the Stage 9 preset staff
+   (no audit history offline). Deactivation is a status change, never a
+   delete. */
+
+async function usersWrite<T>(path: string, what: string, body?: unknown, method: 'POST' | 'PUT' = 'POST'): Promise<AdtWriteResult<T>> {
+  if (!API_BASE) return { kind: 'offline' }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}${path}`, {
+      method,
+      signal: ctrl.signal,
+      headers: { ...authHeaders(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+    clearTimeout(timer)
+    if (res.ok) return { kind: 'ok', data: (await res.json()) as T }
+    if (res.status === 401) {
+      console.info(`[aurora] ${what} API responded 401 — user administration requires the live server`)
+      return { kind: 'offline' }
+    }
+    const err = (await res.json().catch(() => null)) as { error?: string } | null
+    console.info(`[aurora] ${what} API rejected the action (${res.status})`)
+    return { kind: 'rejected', error: err?.error ?? `Rejected (${res.status})` }
+  } catch {
+    console.info(`[aurora] ${what} API unreachable — user administration requires the live server`)
+    return { kind: 'offline' }
+  }
+}
+
+/** GET /api/icu/users — every account incl. deactivated (REAL endpoint;
+ *  display-only fallback derives from the Stage 9 preset staff). */
+export async function getUsers(): Promise<UserAccount[]> {
+  const real = await apiGet<UserAccount[]>('/api/icu/users', 'users')
+  if (real) return real
+  const offline = SAMPLE_STAFF
+    .map((s): UserAccount => ({
+      username: usernameOf(s.name), name: s.name, jobTitle: s.jobTitle,
+      active: true, events: [],
+    }))
+    .sort((a, b) => (a.username < b.username ? -1 : 1))
+  return respond(offline, 120)
+}
+
+/** POST /api/icu/users — create an account (admin-set initial password;
+ *  clinical titles require a justification). REAL-ONLY write. */
+export function createUser(draft: CreateUserDraft): Promise<AdtWriteResult<UserAccount>> {
+  return usersWrite<UserAccount>('/api/icu/users', 'user create', draft)
+}
+
+/** PUT /api/icu/users/:username — edit name/job title (clinical grants
+ *  require a justification; self-demotion is server-rejected). REAL-ONLY. */
+export function editUser(username: string, draft: EditUserDraft): Promise<AdtWriteResult<UserAccount>> {
+  return usersWrite<UserAccount>(`/api/icu/users/${encodeURIComponent(username)}`, 'user edit', draft, 'PUT')
+}
+
+/** POST /api/icu/users/:username/deactivate — status change, never a
+ *  delete (self and last-active-admin are server-rejected). REAL-ONLY. */
+export function deactivateUser(username: string): Promise<AdtWriteResult<UserAccount>> {
+  return usersWrite<UserAccount>(`/api/icu/users/${encodeURIComponent(username)}/deactivate`, 'user deactivate')
+}
+
+/** POST /api/icu/users/:username/reactivate — REAL-ONLY write. */
+export function reactivateUser(username: string): Promise<AdtWriteResult<UserAccount>> {
+  return usersWrite<UserAccount>(`/api/icu/users/${encodeURIComponent(username)}/reactivate`, 'user reactivate')
+}
+
+/** POST /api/icu/users/:username/reset-password — sets a new password;
+ *  the old one is never revealed or transmitted. REAL-ONLY write. */
+export function resetUserPassword(username: string, newPassword: string): Promise<AdtWriteResult<UserAccount>> {
+  return usersWrite<UserAccount>(`/api/icu/users/${encodeURIComponent(username)}/reset-password`, 'password reset', { newPassword })
 }

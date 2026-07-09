@@ -6,3 +6,7 @@
 .toast-blue b{color:var(--blue)}
 .toast-green{border:1px solid rgba(61,232,160,.45)}
 .toast-green b{color:var(--green)}
+.toast-amber{border:1px solid rgba(255,180,84,.45)}
+.toast-amber b{color:var(--amber)}
+.toast-cyan{border:1px solid rgba(53,224,208,.45)}
+.toast-cyan b{color:var(--cyan)}

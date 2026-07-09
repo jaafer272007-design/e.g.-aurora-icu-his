@@ -781,3 +781,50 @@ export interface AdmitResponse {
   patient: { patientId: string; mrn: string; name: string; age: number; sex: Sex; allergies: string }
   encounter: Encounter
 }
+
+/* ================= Layer 3 — User Administration (Aurora Core) =================
+   JobTitle is the SINGLE stored role field — PermissionProfile and
+   Permissions are ALWAYS derived from it at read time (locked RBAC rule),
+   which is why UserAccount carries no profile field: the UI derives it via
+   profileOf(). Deactivation is a status change, never a delete. Every
+   management action lands on the account's immutable audit history. */
+
+/* ---------- GET /api/icu/users ---------- */
+
+export interface UserAuditEvent {
+  /** UTC "yyyy-MM-dd HH:mm" — account changes span months, so unlike
+   *  bedside events the audit time carries the date */
+  time: string
+  /** ALWAYS the acting token's name claim — never a request field */
+  actor: string
+  action: string // created | job title changed | renamed | deactivated | reactivated | password reset
+  detail?: string
+}
+
+export interface UserAccount {
+  username: string
+  name: string
+  jobTitle: string
+  active: boolean
+  events: UserAuditEvent[]
+}
+
+/* ---------- POST /api/icu/users ---------- */
+
+export interface CreateUserDraft {
+  username: string
+  name: string
+  jobTitle: string
+  initialPassword: string
+  /** REQUIRED when jobTitle derives the Doctor or Nurse profile (granting
+   *  clinical authority) — recorded in the audit event */
+  justification?: string
+}
+
+/* ---------- PUT /api/icu/users/:username ---------- */
+
+export interface EditUserDraft {
+  name?: string
+  jobTitle?: string
+  justification?: string
+}

@@ -10,7 +10,7 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconAdmit, IconBed, IconDischarge, IconStats, IconUsers } from '../../components/icons'
 import { getBeds, getUnitSummary } from '../../lib/api'
 import type { BedsResponse, UnitSummaryResponse } from '../../lib/api/types'
-import { getSession, initialsOf, profileOf } from '../../lib/session'
+import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 
 /** Stage 9 — Administrator landing view (/admin). Census, occupancy, and
  *  unit performance for administrative roles — strictly read-only, no
@@ -70,6 +70,11 @@ export function AdminHome() {
           <div className="adnote" role="note">
             Administrative view — census and unit performance only. No clinical actions are
             available from this screen.
+            {hasPermission(session.jobTitle, 'users.manage') && (
+              <button className="adlink adusers" onClick={() => navigate('/admin/users')}>
+                User Administration →
+              </button>
+            )}
           </div>
 
           <div className="adcols">

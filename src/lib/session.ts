@@ -76,6 +76,7 @@ export type Permission =
   | 'adt.admit'            // Layer 2 ADT: open an encounter (doctor authority)
   | 'adt.discharge'        // Layer 2 ADT: close an encounter (doctor authority)
   | 'adt.transfer'         // Layer 2 ADT: move within the unit (nursing action)
+  | 'users.manage'         // Layer 3: user administration (Administrator only)
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -93,8 +94,8 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
     'notes.document', 'results.view', 'ai.view', 'adt.transfer',
   ],
-  /* administrative landing view + census-level board */
-  Administrator: ['admin.view', 'patients.view'],
+  /* administrative landing view + census-level board + user administration */
+  Administrator: ['admin.view', 'patients.view', 'users.manage'],
   /* medication-chart review: orders + renal/liver results, view-only */
   Pharmacist: ['patients.view', 'orders.view', 'results.view'],
   /* vent-focused: orders, ABGs, and risk trajectories, view-only */
