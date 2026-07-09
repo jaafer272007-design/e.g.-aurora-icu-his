@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Card } from '../../components/Card'
 import { VitalTile } from '../../components/VitalTile'
-import { IO_CATEGORIES } from '../../lib/api/data/nursing'
+import { IO_CATEGORIES } from '../../lib/api'
 import type { AssignedPatient, IoEntry, IoKind } from '../../lib/api/types'
 
 interface IoCardProps {
