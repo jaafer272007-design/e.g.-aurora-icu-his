@@ -34,8 +34,10 @@ Modules" below.
     (roster/patients) + Phase 2 (authentication) + Phase 3 (Labs/Imaging
     results, Orders & Medication, the MAR, the Timeline, then AI — the
     FINAL Phase 3 domain; server-side RBAC on every mutation, read-only
-    for the aggregation/AI domains) built; Phase 3 COMPLETE — next is the
-    database-persistence provider swap — see "Stage 10 — API Integration" below
+    for the aggregation/AI domains) built; Phase 3 COMPLETE and database
+    persistence DONE (Postgres + migrations — writes survive restarts;
+    30-day free-DB expiry documented) — next is Layer 2 ADT in Aurora
+    Core — see "Stage 10 — API Integration" below
 11. Medical device integration (ventilators, monitors, lab) + AI
 
 ## Architecture Rules (binding for all future screens)
@@ -467,6 +469,65 @@ just serves the same predictions from SQLite now.
   computed and NOT stored), malformed/unknown-param 400s on the LIVE
   service.
 
+### Database persistence (built) — Postgres + EF Core migrations
+The blocking prerequisite for Layer 2 (ADT) is DONE. Writes (signed
+orders, acknowledged results, documented doses, …) now SURVIVE restarts
+and redeploys on Render.
+- **Provider**: `DATABASE_URL` set → PostgreSQL (`UseNpgsql`); the
+  render.yaml blueprint defines the `aurora-db` free database and wires
+  the connection string into the service env — it exists ONLY in Render's
+  environment, never the repo. `DATABASE_URL` unset → the ORIGINAL
+  ephemeral SQLite demo mode (rebuild + reseed every boot), retained only
+  so a plain local `docker run` still works; the boot log warns LOUDLY.
+- **Migrations, generated ONCE in the final namespaces**
+  (`Aurora.Core.Persistence.Migrations` — the reason relocation came
+  first: the ModelSnapshot embeds namespace-qualified CLR names). Boot =
+  `Database.Migrate()` + the existing seed-if-empty blocks (idempotent
+  per table). Schema changes are new migrations from here on — never a
+  reseed. `EnsureDeleted`/`EnsureCreated` survive only in the SQLite demo
+  path.
+- **Collation parity (review risk #1, verified)**: SQLite orders strings
+  by raw bytes; Postgres by locale. The only DB-side ORDER BYs on string
+  columns — `PatientId`, `LabId`, `StudyId` — are pinned to collation
+  "C" (byte order) via the project's first fluent config (`AuroraDb.
+  OnModelCreating`, Npgsql-guarded); inbox/timeline/AI-ranking sorts are
+  in-memory and unaffected. Verified by a full-surface byte diff of
+  SQLite-old vs Postgres-new (~100 checks, zero diffs).
+- **Persistence-aware ID counters (bug FOUND by the restart test)**: the
+  in-memory ORD-/ADM-/Seq counters used to reset every boot — fine when
+  the DB reseeded too, but against a durable DB a restart re-issued
+  existing ids and a VALID create 500'd on a duplicate key.
+  `OrderLogic.InitializeCounters` now resumes each counter from the
+  highest persisted id in its generated block (ORD-101+/ADM-501+/
+  Seq 1001+ — disjoint from the seed blocks ORD-2001+/ADM-401-4xx/
+  Seq 1-999), so fresh-DB behavior is unchanged and restarts are safe.
+  ~1,900 generated ids fit before touching the seed block — a documented
+  prototype bound, superseded by DB-generated ids at Layer 2.
+- **E2E idempotence under persistence**: `deployed-labs-e2e.yml`
+  acknowledged a HARDCODED lab (single-shot forever on a durable DB — its
+  "idempotence" was an illusion of reseed-on-boot); it now picks an
+  unacked lab dynamically each run and fails loudly when the well runs
+  dry. The other five suites were audited persistence-safe (run-created
+  mutations, subset reads). Suites must be dispatched SEQUENTIALLY, never
+  concurrently (relocation-PR lesson).
+- **OPERATIONAL CONSTRAINT — Render free Postgres EXPIRES: 30 days**
+  (verified against the Render changelog — the policy changed 2024-05-20
+  from the previous 90 days), then a 14-day grace period to upgrade
+  before Render DELETES the database and all data (email warnings before
+  each). 1 GB fixed; one free DB per workspace. At expiry: Migrate()
+  fails at boot, `/healthz` goes down, the frontend falls back to mock
+  (never a broken UI). Recovery: upgrade the plan (data kept) or create
+  a fresh free DB (real writes LOST; seeds repopulate baseline on next
+  boot). Any real use requires a paid database.
+- **Verification**: dotnet build clean; full-surface SQLite-vs-Postgres
+  byte parity (~100 checks incl. every ordered path, error surface, CORS
+  preflight, live create+sign) — zero diffs; the first-ever
+  restart-survival assertion (sign + acknowledge → container restart →
+  writes intact, zero reseeding, no duplication); restart-collision
+  regression (create → restart → create = next id, no 500); all six E2E
+  suites run sequentially TWICE against the same persistent DB — 12/12;
+  SQLite demo fallback boots with the warning.
+
 ## Platform Direction — Aurora Core + Modules (agreed)
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
@@ -560,31 +621,26 @@ built directly in Aurora Core, not in the ICU module.
    the formulary from here instead of the current hardcoded 19-drug list
    in `src/lib/api/data/formulary.ts`.
 
-**Database persistence — BLOCKING prerequisite for Layer 2 (ADT).**
-SQLite currently lives inside the Render container's ephemeral
-filesystem: the DB is rebuilt and reseeded on every restart/redeploy, so
-ALL writes (acknowledged results, signed/modified orders, …) are lost
-when the free-tier service recycles. Acceptable for the prototype —
-reads always reseed to a known state — but it must be fixed before any
-real use, and BEFORE Layer 2: ADT events are the system of record for
-who was admitted where and cannot be rebuilt from a seed file. The fix
-is the EF Core provider swap the architecture was built for (`UseSqlite`
-→ Npgsql for Render Postgres, or `UseSqlServer` per the original plan, +
-connection string), replacing the boot-time `EnsureDeleted`/seed with
-migrations — a data-layer change, not a rewrite.
+**Database persistence — the BLOCKING prerequisite for Layer 2 (ADT) —
+is DONE** (see "Database persistence (built)" above): Render Postgres via
+`DATABASE_URL` + EF Core migrations replace the boot-time
+`EnsureDeleted`/seed; writes survive restarts/redeploys. Two operational
+notes bind: Render's FREE Postgres expires after 30 days (+14-day grace,
+then deletion — see the constraint above; real use needs a paid
+database), and ADT can now be built on a durable system of record as
+required.
 
 Build order (locked, amended by the architectural review): Phase 3
 (Labs/Imaging → Orders → MAR → Timeline → AI) is COMPLETE — all five
 domains real. The Core relocation (option (a) — see "Platform Direction")
-is DONE: the seven real domains live under `server/Core/`. **The next
-step is database persistence** (the Postgres provider swap, the BLOCKING
-prerequisite above — migrations are generated once, in the final
-relocated namespaces) → Layer 2 (ADT) built directly in AURORA CORE →
-Layer 3 (user administration) in Core → Layer 4 (master data / formulary)
-in Core → the deferred Print Center → Stage 11 (device integration + the
-Observation model per the locked rule above). The full architectural
-review + Core-extraction inventory ran before the relocation and resolved
-the domain-relocation open question as (a).
+is DONE, and database persistence (Postgres + migrations, generated once
+in the final relocated namespaces) is DONE. **The next step is Layer 2
+(ADT), built directly in AURORA CORE** → Layer 3 (user administration) in
+Core → Layer 4 (master data / formulary) in Core → the deferred Print
+Center → Stage 11 (device integration + the Observation model per the
+locked rule above). The full architectural review + Core-extraction
+inventory ran before the relocation and resolved the domain-relocation
+open question as (a).
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
@@ -622,11 +678,14 @@ Medication, MAR, Labs, Imaging, Timeline, AI) plus Identity/auth now live
 under `server/Core/` (same assembly, behavior-neutral — routes/DTOs/wire
 shapes byte-identical, verified by full-surface old-vs-new diff + all six
 E2E suites); the roster deliberately stays in `server/Modules/Icu/Roster/`
-(the sanctioned temporary seam — see "Platform Direction"). The next step
-is the database-persistence provider swap (SQLite → Postgres — the
-blocking prerequisite for Layer 2 ADT; migrations generate once, in the
-final namespaces), then the Post-Phase-3 layers built in Core (ADT, user
-administration, master data), then the Print Center, then Stage 11
-device + AI integration per the locked rules above. The Timeline's four
-still-mock sources (Consults/Notes/Nursing/I&O) migrate with that later
-work, not Phase 3.
+(the sanctioned temporary seam — see "Platform Direction"). Database
+persistence is DONE: Render Postgres via DATABASE_URL + EF Core
+migrations (generated once, in the final namespaces); writes survive
+restarts, collation parity is pinned and byte-verified, the id counters
+are persistence-aware, and the labs E2E is idempotent under persistence
+— with the 30-day free-database expiry documented as the operational
+constraint. **The next step is Layer 2 (ADT), built directly in Aurora
+Core**, then user administration (Layer 3) and master data (Layer 4) in
+Core, then the Print Center, then Stage 11 device + AI integration per
+the locked rules above. The Timeline's four still-mock sources
+(Consults/Notes/Nursing/I&O) migrate with that later work, not Phase 3.

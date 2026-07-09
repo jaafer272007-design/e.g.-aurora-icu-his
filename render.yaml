@@ -3,6 +3,23 @@
 # free plan (cold starts after ~15 min idle are expected and documented —
 # the frontend roster adapter falls back to mock data while the service
 # wakes).
+#
+# OPERATIONAL CONSTRAINT — free-tier Postgres EXPIRY (verified against the
+# Render changelog): free databases EXPIRE 30 DAYS after creation (the
+# policy changed 2024-05-20; it was 90 days before that), with a 14-day
+# grace period to upgrade to a paid instance before Render DELETES the
+# database and all its data. Render emails before expiry and again before
+# deletion. 1 GB fixed storage; one free database per workspace. At
+# expiry the service loses its DB: boot-time Migrate() fails, /healthz
+# goes down, and the frontend falls back to mock data (never a broken
+# UI). Recovery paths: upgrade the database plan (data kept), or create
+# a fresh free database and update the blueprint (data LOST — the seed
+# files repopulate baseline data on first boot, but real writes are
+# gone). See CLAUDE.md "Database persistence".
+databases:
+  - name: aurora-db
+    plan: free
+
 services:
   - type: web
     name: ICU
@@ -22,3 +39,11 @@ services:
       # key (tokens then expire on every restart, acceptable for the demo).
       - key: JWT_SECRET
         generateValue: true
+      # Postgres connection (Stage 10 — database persistence). Wired from
+      # the blueprint database above — the connection string exists ONLY in
+      # Render's environment, never in the repo. Without it the service
+      # boots the ephemeral SQLite demo mode (loudly logged at startup).
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aurora-db
+          property: connectionString

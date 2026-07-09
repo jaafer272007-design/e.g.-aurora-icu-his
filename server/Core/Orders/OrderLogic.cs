@@ -112,6 +112,32 @@ static class OrderLogic
     public static string NextAdminId() => $"ADM-{Interlocked.Increment(ref _adminSeq)}";
     public static int NextSeq() => Interlocked.Increment(ref _rowSeq);
 
+    /** PERSISTENCE-AWARE COUNTERS (found by the persistence PR's restart
+        test): the generated-id blocks (ORD-101+, ADM-501+, Seq 1001+) are
+        disjoint from the seed blocks (ORD-2001+, ADM-401-4xx, Seq 1..n).
+        With a DURABLE database the counters must resume from the highest
+        EXISTING generated id after a restart — resetting to the block
+        floor re-issues an id and turns a valid create into a
+        duplicate-key 500. Called once at startup (Seeder). Fresh/ephemeral
+        databases resolve to the floors, so first-boot behavior is
+        unchanged (ORD-101, ADM-501, Seq 1001). The generated blocks hold
+        ~1,900 ids before touching the seed block — a documented prototype
+        bound, replaced by DB-generated ids at Layer 2. */
+    public static void InitializeCounters(AuroraDb db)
+    {
+        static int SuffixOf(string id) =>
+            int.TryParse(id[(id.IndexOf('-') + 1)..], out var n) ? n : 0;
+        _orderSeq = db.Orders.AsNoTracking().Select(o => o.OrderId).AsEnumerable()
+            .Select(SuffixOf).Where(n => n is >= 100 and < 2000)
+            .DefaultIfEmpty(100).Max();
+        _adminSeq = db.Orders.AsNoTracking().Where(o => o.AdministrationsJson != null)
+            .Select(o => o.AdministrationsJson!).AsEnumerable()
+            .SelectMany(j => JsonSerializer.Deserialize<List<AdminDto>>(j, JsonOpts.Web)!)
+            .Select(a => SuffixOf(a.AdminId)).Where(n => n is >= 500 and < 2000)
+            .DefaultIfEmpty(500).Max();
+        _rowSeq = db.Orders.Any() ? Math.Max(1000, db.Orders.Max(o => o.Seq)) : 1000;
+    }
+
     public static string MedSummary(MedicationDto m) =>
         $"{m.Drug} {m.Dose} · {m.Route} · {(m.Prn ? $"PRN ({m.PrnIndication ?? "as required"})" : m.Frequency)}";
 
