@@ -354,9 +354,19 @@ export async function getImplementationQueue(patientIds?: string[]): Promise<Ord
   return respond(q, 120)
 }
 
-/** GET /api/icu/nursing/mar — MAR rows derived from active medication orders.
- *  STILL MOCK — migrates with the MAR/administrations phase. */
-export function getMarRows(patientIds: string[]): Promise<MarRow[]> {
+/* The MAR is a REAL service since Stage 10 Phase 3 (MAR PR). It has no
+ *  store of its own — rows derive server-side from the real Orders
+ *  administrations, and an administration action mutates the order in
+ *  place (same coupling as the mock). RBAC polarity is the inverse of the
+ *  prescriber mutations: administering requires the NURSE's meds.administer
+ *  (a doctor token is 403'd server-side). Timeline and AI stay mock. */
+
+/** GET /api/icu/mar — MAR rows (REAL, unit-wide derived; mock fallback).
+ *  The nurse-assignment narrowing by patientIds stays client-side — the
+ *  same derivation as before, repointed at the real store. */
+export async function getMarRows(patientIds: string[]): Promise<MarRow[]> {
+  const real = await apiGet<MarRow[]>('/api/icu/mar', 'MAR')
+  if (real) return real.filter(r => patientIds.includes(r.patientId))
   return respond(deriveMarRows(patientIds), 120)
 }
 
@@ -414,12 +424,20 @@ export async function completeImplementation(orderId: string, actor: string, job
   return respond(applyImplementation(orderId, actor), 120)
 }
 
-/** POST /api/icu/orders/:orderId/administrations/:adminId (nurse RBAC — document only). */
-export function documentAdministration(
-  orderId: string, adminId: string, action: AdministrationAction, actor: string, jobTitle: JobTitle,
+/** POST /api/icu/mar/:orderId/administrations/:adminId — document a dose
+ *  (Given/Held/Refused; nurse RBAC — checked client-side AND re-enforced
+ *  server-side). Held/Refused require a reason. REAL endpoint; mock
+ *  fallback only when offline. Returns the updated Order. */
+export async function documentAdministration(
+  orderId: string, adminId: string, action: AdministrationAction, actor: string, jobTitle: JobTitle, reason?: string,
 ): Promise<Order | null> {
   if (!hasPermission(jobTitle, 'meds.administer')) return respond(null, 120)
-  return respond(applyAdministration(orderId, adminId, action, actor), 120)
+  const r = await apiPost<Order>(
+    `/api/icu/mar/${encodeURIComponent(orderId)}/administrations/${encodeURIComponent(adminId)}`,
+    'administer', { action, ...(reason ? { reason } : {}) })
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
+  return respond(applyAdministration(orderId, adminId, action, actor, reason), 120)
 }
 
 /* ---------------- Laboratory & Imaging results domain (Screen 6) ----------------

@@ -340,7 +340,7 @@ export function applyImplementation(orderId: string, actor: string): Order | nul
 }
 
 export function applyAdministration(
-  orderId: string, adminId: string, action: AdministrationAction, actor: string,
+  orderId: string, adminId: string, action: AdministrationAction, actor: string, reason?: string,
 ): Order | null {
   const o = ORDERS.find(x => x.orderId === orderId)
   const a = o?.administrations?.find(x => x.adminId === adminId && x.status === 'scheduled')
@@ -349,10 +349,12 @@ export function applyAdministration(
   a.status = action
   a.documentedTime = time
   a.documentedBy = actor
+  const trimmed = reason?.trim()
+  if (trimmed) a.reason = trimmed
   const verb = action === 'given' ? 'administered' : action
   o.history.push({
     time, actor, action: verb,
-    detail: `${a.scheduledTime || 'PRN'} dose ${action} at ${time}`,
+    detail: `${a.scheduledTime || 'PRN'} dose ${action} at ${time}${trimmed ? ` — ${trimmed}` : ''}`,
   })
   return o
 }

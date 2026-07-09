@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
 import { dueStateFor, useNow } from '../../lib/time'
@@ -19,7 +20,44 @@ const PENDING_META = {
 interface MarCardProps {
   rows: MarRow[]
   patients: AssignedPatient[]
-  onDocument: (orderId: string, adminId: string, action: AdministrationAction) => void
+  onDocument: (orderId: string, adminId: string, action: AdministrationAction, reason?: string) => void
+}
+
+/* Held/Refused require a documented reason (validated server-side like a
+   discontinue). Given is one click; held/refused open this prompt. */
+function MarReasonDialog(
+  { row, action, onCancel, onConfirm }:
+  { row: MarRow; action: 'held' | 'refused'; onCancel: () => void; onConfirm: (reason: string) => void },
+) {
+  const [reason, setReason] = useState('')
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    taRef.current?.focus()
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', esc)
+    return () => document.removeEventListener('keydown', esc)
+  }, [onCancel])
+  return (
+    <div className="marscrim" onClick={onCancel}>
+      <div className="mardialog" role="dialog" aria-modal="true" aria-labelledby="marRTitle" onClick={e => e.stopPropagation()}>
+        <h2 id="marRTitle">{action === 'held' ? 'Hold' : 'Refuse'} dose · <span className="num">{row.medication} {row.dose}</span></h2>
+        <div className="field">
+          <label htmlFor="marReason">Reason (required)</label>
+          <textarea
+            ref={taRef} id="marReason" value={reason}
+            placeholder={action === 'held' ? 'e.g. SBP 82 — holding per parameters…' : 'e.g. Patient declined — nausea…'}
+            onChange={e => setReason(e.target.value)}
+          />
+        </div>
+        <div className="mardfoot">
+          <button className="btn ghost" onClick={onCancel}>Cancel</button>
+          <button className={`btn ${action === 'refused' ? 'danger' : 'primary'}`} disabled={!reason.trim()} onClick={() => onConfirm(reason.trim())}>
+            {action === 'held' ? '⊘ Hold dose' : '✕ Refuse dose'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** Medication Administration Record — a derived view over the canonical
@@ -28,6 +66,7 @@ interface MarCardProps {
  *  order's audit history. Due states are computed against the clock. */
 export function MarCard({ rows, patients, onDocument }: MarCardProps) {
   const now = useNow()
+  const [pending, setPending] = useState<{ row: MarRow; action: 'held' | 'refused' } | null>(null)
   const stateOf = (r: MarRow) =>
     r.status !== 'scheduled'
       ? DOCUMENTED_META[r.status]
@@ -60,8 +99,8 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
                   {r.status === 'scheduled' ? (
                     <div className="maracts" role="group" aria-label={`Document ${r.medication} for ${p.name}`}>
                       <button className="mab given" onClick={() => onDocument(r.orderId, r.adminId, 'given')} aria-label={`${r.medication}: given`}>✓ Given</button>
-                      <button className="mab held" onClick={() => onDocument(r.orderId, r.adminId, 'held')} aria-label={`${r.medication}: held`}>⊘ Held</button>
-                      <button className="mab refused" onClick={() => onDocument(r.orderId, r.adminId, 'refused')} aria-label={`${r.medication}: refused`}>✕ Refused</button>
+                      <button className="mab held" onClick={() => setPending({ row: r, action: 'held' })} aria-label={`${r.medication}: held`}>⊘ Held</button>
+                      <button className="mab refused" onClick={() => setPending({ row: r, action: 'refused' })} aria-label={`${r.medication}: refused`}>✕ Refused</button>
                     </div>
                   ) : (
                     <span className="mardoc num">documented {r.documentedTime}</span>
@@ -72,6 +111,14 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
           </div>
         )
       })}
+      {pending && (
+        <MarReasonDialog
+          row={pending.row}
+          action={pending.action}
+          onCancel={() => setPending(null)}
+          onConfirm={reason => { onDocument(pending.row.orderId, pending.row.adminId, pending.action, reason); setPending(null) }}
+        />
+      )}
     </Card>
   )
 }
