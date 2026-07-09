@@ -262,6 +262,10 @@ export function getOrderSets(): Promise<OrderSetsResponse> {
    POST /api/icu/nursing/io                          { patientId, kind, category, volumeMl }
    PUT  /api/icu/nursing/handoff/:patientId          { s, b, a, r }              */
 
+/* I&O category vocabulary — re-exported so pages never import a data store
+   directly (service-layer rule); becomes master data at Layer 4 */
+export { IO_CATEGORIES } from './data/nursing'
+
 /** GET /api/icu/nursing/assignment — the signed-in nurse and assigned patients. */
 export function getNurseAssignment(): Promise<NurseAssignmentResponse> {
   return respond(NURSE_ASSIGNMENT, 120)

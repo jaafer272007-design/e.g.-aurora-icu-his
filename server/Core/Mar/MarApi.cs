@@ -1,0 +1,109 @@
+using System.Security.Claims;
+using System.Text.Json;
+using Aurora.Core.Identity;
+using Aurora.Core.Orders;
+using Aurora.Core.Persistence;
+using Aurora.Core.Shared;
+using Microsoft.EntityFrameworkCore;
+
+namespace Aurora.Core.Mar;
+
+/* ---------------- Medication Administration Record (Stage 10 Phase 3, MAR) ----------------
+   The MAR has NO table of its own: administrations live on the Orders
+   table (the administrations JSON of signed medication orders), so these
+   endpoints read from and mutate the REAL orders store — never a parallel
+   copy (the dependency direction is deliberate: MAR derives from Orders).
+   RBAC polarity FLIPS vs the prescriber mutations: administering a
+   dose requires the NURSE's meds.administer, so a doctor token is 403'd
+   here (mirroring implement). The administering actor is always the
+   token's name claim. Given needs no reason; Held/Refused require one
+   (validated like discontinue). */
+static class MarApi
+{
+    public static void Map(WebApplication app)
+    {
+        /* GET /api/icu/mar — unit-wide MAR rows, DERIVED server-side at read time
+           from the orders' administrations (derived state is never stored). The
+           nurse-assignment narrowing stays a client-side derivation, same as the
+           orders implement queue. */
+        app.MapGet("/api/icu/mar", (AuroraDb db) =>
+            Results.Json(db.Orders.AsNoTracking()
+                .Where(o => o.MedicationJson != null && o.AdministrationsJson != null)
+                .OrderBy(o => o.Seq)
+                .AsEnumerable()
+                .SelectMany(MarLogic.MarRowsFor), JsonOpts.Web))
+            .RequireAuthorization();
+
+        /* POST /api/icu/mar/{orderId}/administrations/{adminId} — document a dose
+           (Given/Held/Refused). Nurse RBAC (meds.administer); doctor → 403.
+           Body: { action, reason? }; reason required for held/refused. */
+        app.MapPost("/api/icu/mar/{orderId}/administrations/{adminId}",
+            (string orderId, string adminId, AdministerRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "meds.administer") is IResult denied) return denied;
+            if (req.Action is not ("given" or "held" or "refused"))
+                return ApiError.BadRequest("action must be one of: given, held, refused");
+            var needsReason = req.Action is "held" or "refused";
+            if (needsReason && string.IsNullOrWhiteSpace(req.Reason))
+                return ApiError.BadRequest($"reason is required when a dose is {req.Action}");
+            if (req.Reason is not null && req.Reason.Length > OrderLogic.MaxTextLength)
+                return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
+
+            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
+            if (row is null || row.AdministrationsJson is null)
+                return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            var admins = JsonSerializer.Deserialize<List<AdminDto>>(row.AdministrationsJson, JsonOpts.Web)!;
+            var idx = admins.FindIndex(a => a.AdminId == adminId && a.Status == "scheduled");
+            if (idx < 0) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var time = DateTime.UtcNow.ToString("HH:mm");
+            var reason = needsReason ? req.Reason!.Trim() : null;
+            admins[idx] = admins[idx] with
+            {
+                Status = req.Action, DocumentedTime = time, DocumentedBy = actor, Reason = reason,
+            };
+            row.AdministrationsJson = JsonSerializer.Serialize(admins, JsonOpts.Web);
+            var verb = req.Action == "given" ? "administered" : req.Action;
+            var detail = $"{(admins[idx].ScheduledTime.Length > 0 ? admins[idx].ScheduledTime : "PRN")} dose {req.Action} at {time}"
+                + (reason is not null ? $" — {reason}" : "");
+            row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, verb, detail));
+            db.SaveChanges();
+            return Results.Json(row.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+    }
+}
+
+/* MAR derivation — relocated from OrderLogic (it is MAR logic that READS
+   orders, not orders logic). */
+static class MarLogic
+{
+    /** MAR rows for one order, DERIVED exactly as the mock deriveMarRows:
+        a scheduled administration only appears while the order is active;
+        documented ones stay for the shift record. */
+    public static IEnumerable<MarRowDto> MarRowsFor(OrderRow o)
+    {
+        var m = JsonSerializer.Deserialize<MedicationDto>(o.MedicationJson!, JsonOpts.Web)!;
+        var admins = JsonSerializer.Deserialize<List<AdminDto>>(o.AdministrationsJson!, JsonOpts.Web)!;
+        var route = $"{m.Route} · {(m.Prn ? $"PRN — {m.PrnIndication ?? "as required"}" : m.Frequency)}";
+        foreach (var a in admins)
+        {
+            if (o.Status != "active" && a.Status == "scheduled") continue;
+            yield return new MarRowDto(o.OrderId, a.AdminId, o.PatientId, o.BedId, m.Drug,
+                m.Dose, route, a.ScheduledTime, m.Prn, a.Status, a.DocumentedTime);
+        }
+    }
+}
+
+/* MAR row — mirrors MarRow in src/lib/api/types.ts; derived at read time
+   from the orders' administrations, never stored. */
+record MarRowDto(
+    string OrderId, string AdminId, string PatientId, string BedId, string Medication,
+    string Dose, string Route, string ScheduledTime, bool Prn, string Status,
+    string? DocumentedTime);
+
+/* MAR administration action request (Stage 10 Phase 3) — Disallow rejects
+   any unrecognized field; action/reason validated explicitly in the
+   endpoint (reason required for held/refused, like discontinue). */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record AdministerRequest(string? Action, string? Reason);
