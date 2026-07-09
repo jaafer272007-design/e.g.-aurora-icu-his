@@ -4,6 +4,14 @@
 # the acknowledge action enforces RBAC SERVER-SIDE — a nurse token is
 # rejected with 403 while a doctor token succeeds (actor taken from the
 # token). Dispatch manually after merging /server changes to main.
+#
+# IDEMPOTENT UNDER PERSISTENCE (fixed in the database-persistence PR):
+# the acknowledge target is picked DYNAMICALLY from the unacked inbox each
+# run — the original hardcoded LAB-6007 could only ever be acknowledged
+# once against a durable database (it "worked" before only because the
+# ephemeral DB reseeded on every boot). With 73 seeded draws the suite has
+# a deep well of targets; when none remain it fails LOUDLY with a clear
+# message instead of a confusing 404.
 name: Deployed Labs E2E
 on: workflow_dispatch
 
@@ -60,10 +68,17 @@ jobs:
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging?patientId=P-1012" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[0]["studyId"]=="IMG-7004", d; print("imaging OK:", d[0]["studyId"], d[0]["status"])'
 
+      - name: Pick an UNACKED lab for THIS RUN (idempotent under persistence)
+        run: |
+          LID=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/inbox" \
+            | python3 -c 'import json,sys; labs=[x for x in json.load(sys.stdin) if x["kind"]=="lab"]; assert labs, "no unacknowledged labs remain on the persistent DB — extend the seed set or reset the database"; print(labs[0]["id"])')
+          echo "acknowledge target: $LID"
+          echo "LID=$LID" >> "$GITHUB_ENV"
+
       - name: NURSE token rejected for acknowledge (server-side RBAC) → 403
         run: |
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" \
-            "$API/api/icu/results/labs/LAB-6007/acknowledge")
+            "$API/api/icu/results/labs/$LID/acknowledge")
           echo "nurse acknowledge -> $out"
           [ "$(echo "$out" | tail -1)" = "403" ] || exit 1
           echo "$out" | head -1 | grep -q '"Insufficient permissions"' || exit 1
@@ -71,9 +86,9 @@ jobs:
       - name: DOCTOR token succeeds for acknowledge (actor from token), replay → 404
         run: |
           curl -sf -X POST -H "Authorization: Bearer $DOC" \
-            "$API/api/icu/results/labs/LAB-6007/acknowledge" \
+            "$API/api/icu/results/labs/$LID/acknowledge" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["acknowledged"] and d["acknowledgedBy"]=="Dr. Sara Rahman", d; print("acknowledged by:", d["acknowledgedBy"], "at:", d["acknowledgedAt"])'
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" \
-            "$API/api/icu/results/labs/LAB-6007/acknowledge")
+            "$API/api/icu/results/labs/$LID/acknowledge")
           echo "replay -> HTTP $code"
           [ "$code" = "404" ] || exit 1

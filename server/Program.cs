@@ -28,11 +28,13 @@ using Microsoft.IdentityModel.Tokens;
                                 bedside snapshot; it splits at Layer 2 ADT +
                                 Stage 11 — see the note in RosterApi.cs)
 
-   SQLite is a deliberate, documented simplification: swapping to Postgres/
-   SQL Server later is an EF Core provider change here + migrations in
-   Core/Persistence, not a rewrite (the NEXT step after this relocation).
-   The container never bakes the DB — it is created and seeded at startup,
-   so the hosting choice stays swappable (Docker anywhere). */
+   PERSISTENCE (Stage 10 — the blocking prerequisite for Layer 2 ADT):
+   PostgreSQL via DATABASE_URL (Render blueprint database; the connection
+   string lives ONLY in the environment, never the repo) with EF Core
+   migrations — writes survive restarts and redeploys. Without
+   DATABASE_URL the service falls back to the ORIGINAL ephemeral SQLite
+   demo mode (rebuilt + reseeded every boot, loudly logged) so a plain
+   local `docker run` still works. See Core/Persistence. */
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,11 +42,22 @@ var builder = WebApplication.CreateBuilder(args);
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-/* SQLite file lives under ./data (ephemeral on Render free tier — reseeded
-   on every boot; the Postgres provider swap replaces this registration). */
-var dbPath = Environment.GetEnvironmentVariable("DB_PATH") ?? "data/aurora.db";
-Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
-builder.Services.AddDbContext<AuroraDb>(o => o.UseSqlite($"Data Source={dbPath}"));
+/* provider selection — Postgres when DATABASE_URL is set (Render, real
+   deployments), ephemeral SQLite demo mode otherwise (see Db notes) */
+string dbLabel;
+if (Db.UsePostgres)
+{
+    var conn = Db.NpgsqlConnectionString(Environment.GetEnvironmentVariable("DATABASE_URL")!);
+    builder.Services.AddDbContext<AuroraDb>(o => o.UseNpgsql(conn));
+    dbLabel = "postgres (DATABASE_URL)";
+}
+else
+{
+    var dbPath = Environment.GetEnvironmentVariable("DB_PATH") ?? "data/aurora.db";
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(dbPath))!);
+    builder.Services.AddDbContext<AuroraDb>(o => o.UseSqlite($"Data Source={dbPath}"));
+    dbLabel = dbPath;
+}
 
 /* CORS — explicit allowlist only. The deployed GitHub Pages origin is the
    default; override/extend with CORS_ORIGINS (semicolon-separated). */
@@ -90,7 +103,7 @@ var demoPassword = Environment.GetEnvironmentVariable("DEMO_PASSWORD") ?? "Auror
    wrong-password take the same time (no user enumeration via timing) */
 var decoyHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString(), workFactor: 10);
 
-Seeder.SeedAll(app, demoPassword, dbPath);
+Seeder.SeedAll(app, demoPassword, dbLabel);
 
 /* health/warmup probe (also Render's health check path) */
 app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3" }));

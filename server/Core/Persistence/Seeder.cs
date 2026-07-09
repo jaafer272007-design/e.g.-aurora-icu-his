@@ -5,24 +5,44 @@ using Aurora.Core.Orders;
 using Aurora.Core.LabImaging;
 using Aurora.Core.Shared;
 using Aurora.Modules.Icu.Roster;
+using Microsoft.EntityFrameworkCore;
 
 namespace Aurora.Core.Persistence;
 
 /* create + seed the database at startup if empty. Seed JSON files are
    GENERATED from the frontend mock stores (see each domain's notes) —
    never hand-edit them. The roster block reads Modules.Icu.Roster types:
-   part of the sanctioned temporary seam documented on AuroraDb. */
+   part of the sanctioned temporary seam documented on AuroraDb.
+
+   PERSISTENCE REGIME (Stage 10 — database persistence):
+   - Postgres: Database.Migrate() applies the EF Core migrations
+     (Core/Persistence/Migrations — generated in the FINAL relocated
+     namespaces), then the seed-if-empty blocks below fill an empty
+     database once. Writes SURVIVE restarts/redeploys from here on;
+     schema changes are new migrations, never a reseed.
+   - SQLite demo fallback (no DATABASE_URL): the ORIGINAL ephemeral
+     regime — rebuild + reseed every boot. Local demo only. */
 static class Seeder
 {
-    public static void SeedAll(WebApplication app, string demoPassword, string dbPath)
+    public static void SeedAll(WebApplication app, string demoPassword, string dbLabel)
     {
         using var scope = app.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AuroraDb>();
-        /* The DB is a startup-built cache (Render free tier disks are ephemeral
-           anyway) — rebuild it every boot so schema changes (e.g. Phase 2's
-           Users table) never need migrations against a stale file. */
-        db.Database.EnsureDeleted();
-        db.Database.EnsureCreated();
+        if (db.Database.IsNpgsql())
+        {
+            db.Database.Migrate();
+        }
+        else
+        {
+            /* EPHEMERAL demo mode — every write is lost on restart. The DB
+               is a startup-built cache rebuilt every boot so the demo never
+               needs migrations against a stale file. */
+            app.Logger.LogWarning(
+                "DATABASE_URL is not set — running the EPHEMERAL SQLite demo mode ({Db}): all writes are lost on restart. Set DATABASE_URL (Postgres) for durable persistence.",
+                dbLabel);
+            db.Database.EnsureDeleted();
+            db.Database.EnsureCreated();
+        }
         if (!db.Patients.Any())
         {
             var seedPath = Path.Combine(AppContext.BaseDirectory, "Data", "roster-seed.json");
@@ -30,7 +50,7 @@ static class Seeder
                 File.ReadAllText(seedPath), JsonOpts.Web)!;
             db.Patients.AddRange(records.Select(PatientRow.FromDto));
             db.SaveChanges();
-            app.Logger.LogInformation("Seeded {Count} roster records into {Db}", records.Count, dbPath);
+            app.Logger.LogInformation("Seeded {Count} roster records into {Db}", records.Count, dbLabel);
         }
         if (!db.Users.Any())
         {
@@ -76,5 +96,10 @@ static class Seeder
             db.SaveChanges();
             app.Logger.LogInformation("Seeded {Count} AI risk profiles", profiles.Count);
         }
+
+        /* resume the generated-id counters from the persisted data — on a
+           fresh database this resolves to the historical floors, so
+           first-boot behavior is unchanged (see OrderLogic notes) */
+        OrderLogic.InitializeCounters(db);
     }
 }
