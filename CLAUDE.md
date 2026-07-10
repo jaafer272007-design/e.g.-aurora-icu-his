@@ -387,7 +387,10 @@ Timeline and AI remain mock until their own phases.
   gets a generic 403 (mirroring implement); a nurse token succeeds. Both
   roles retain read access. The administering actor is ALWAYS the token's
   name claim. Held/Refused require a reason (validated like discontinue);
-  Given needs none. Re-documenting a non-scheduled dose → 404. Malformed
+  Given needs none. Re-documenting a non-scheduled dose → 404
+  (SUPERSEDED by the state-conflict PR: the dose exists, already
+  documented → 409 naming who documented it and when; absent ids stay
+  404). Malformed
   payloads → 400 (unknown fields fail binding; reason bounded) per the
   request-validation rule.
 - **Frontend**: only the MAR adapters swapped
@@ -602,6 +605,10 @@ the point where the roster seam's identity/location half DISSOLVES.
 - **Validation** (codified rule): unknown fields fail binding → 400;
   occupied bed, duplicate open encounter, nonexistent bed, transfer to
   occupied/same bed, re-discharge → 400 each naming the precise conflict
+  (the STATE conflicts among these — occupied bed, duplicate open
+  encounter, same-bed/occupied-target transfer, transfer-of-discharged,
+  re-discharge — are SUPERSEDED to 409 by the state-conflict PR;
+  nonexistent-bed and unknown-field stay validation 400)
   (occupant id, encounter id); unknown encounter → 404. Never a silent
   200, never a 500.
 - **The roster is now a DERIVED view** (`Modules/Icu/Roster`): open
@@ -664,7 +671,10 @@ natural keys — no id counters to resume.
   account (400 — lockout prevention + no quiet track-covering; a LATERAL
   admin→admin self title change stays allowed and audited); (4) the LAST
   ACTIVE Administrator-profile account can be neither deactivated nor
-  demoted (400); (5) granting a CLINICAL JobTitle (any title deriving
+  demoted (400; SUPERSEDED to 409 by the state-conflict PR — transient
+  system state: the same request succeeds once another active
+  administrator exists. The SELF guards deliberately stay 400 —
+  actor-relative, never valid for that pair in any state); (5) granting a CLINICAL JobTitle (any title deriving
   the Doctor or Nurse profile) requires an explicit `justification`
   recorded in the audit — the acknowledged-override pattern from
   medication safety; administrative titles need none.
@@ -682,7 +692,9 @@ natural keys — no id counters to resume.
   "too weak" per the codified validation rule (unknown fields fail
   binding; duplicate username, unknown JobTitle — must be one of the
   20 — blank/weak password, clinical-without-justification, and the
-  self/last-admin guards are each a precise 400; unknown account 404).
+  self guards a precise 400; unknown account 404; replayed
+  deactivate/reactivate and the last-admin guards are 409 since the
+  state-conflict PR).
 - **Migration `AddUserAdmin`** (Users += Active, EventsJson; Username
   collation-"C" pin for the DB-side ORDER BY): backfill defaults
   HAND-SET to true/"[]" so the 20 pre-Layer-3 accounts on the durable
@@ -804,12 +816,12 @@ ends") are ONE RULE: an order's lifecycle is bounded by its ENCOUNTER.**
   with clinician actor + exact reason + cancelled doses, MAR drops the
   rows, administer → 409, readmission = same patient/new encounter/no
   stale actives/new order scoped to the new encounter. LOCAL-ONLY legs
-  (documented in the workflow header with reasons): sign/modify/
-  implement 409s (unreachable live — the cascade removes their
-  preconditions; proven against SQL-injected specimens on a closed
-  encounter) and acknowledge-on-closed-encounter → 200 (live would
-  discharge a seeded patient and break the auth suite's roster
-  subset assert).
+  (documented in the workflow header with reasons), as amended by later
+  PRs: acknowledge-on-closed-encounter → 200 moved LIVE in the results
+  audit PR (the labs suite tests it on its own patient), and the
+  sign/modify-on-closed 409s moved LIVE in the state-conflict PR (the
+  separated lookups no longer 404 on the cascade-discontinued status
+  before the guard answers — the suite now asserts the GUARD's 409).
 - **Recorded open questions (do NOT fix ad hoc)**: (1) administration
   timestamps are DATE-LESS (HH:mm) — masked today by the single-day
   simulation, but a real multi-day chart needs full timestamps;
@@ -842,12 +854,11 @@ acknowledge-on-a-closed-encounter untestable.
   that resolve to NOTHING: acknowledging an already-acknowledged result
   and reversing an unacknowledged one are both 409 with a precise error
   naming the current state (this DELIBERATELY supersedes the Phase 3-era
-  "replayed acknowledge → 404" behavior). KNOWN remaining 404-where-state
-  sites (recorded, ride with the next touch of each): orders sign/modify/
-  discontinue/implement fold status into their lookups (a replayed
-  discontinue or sign of a completed order → 404), and the MAR's
-  re-document of a non-scheduled dose → 404; ADT/Users state conflicts
-  use 400 with precise errors (pre-convention, deliberate then).
+  "replayed acknowledge → 404" behavior). The remaining 404-where-state
+  sites this paragraph used to record (orders sign/modify/discontinue/
+  implement, the MAR re-document) and the ADT/Users 400-where-state
+  conflicts were ALL unified by the state-conflict PR — see "The
+  four-code rule (unified)" below.
 - **Audit timestamps are DATED UTC (yyyy-MM-dd HH:mm, the Layer 3 users-
   audit convention)** on every NEW resulted/acknowledged/unacknowledged
   event — result audit trails span discharges and readmissions. The
@@ -932,6 +943,64 @@ acknowledge-on-a-closed-encounter untestable.
   question one level down: Patient → Encounter → Order → Result). This
   belongs with Layer 4's lab catalog / order sets — recorded here so it
   is not rediscovered later.
+
+### The four-code rule (unified) — the state-conflict PR
+Error semantics are now ONE convention across every domain (results set
+it; this PR applied it API-wide):
+- **403 = you may not** (permission — deliberately generic, never
+  explains which permission was missing)
+- **404 = it is not there** (the addressed id resolves to NOTHING —
+  never used when the resource exists)
+- **409 = it is there, but not like that** (the resource exists; its
+  CURRENT STATE forbids the transition — and the same request could
+  succeed in a different state of the world: sign the order first, free
+  the bed, another active admin exists)
+- **400 = your request was malformed** — including requests that can
+  NEVER succeed against that resource or actor/resource pair regardless
+  of state: SHAPE mismatches (implementing a medication order, modifying
+  a non-medication order), the reserved system principal, and the
+  self-deactivation/self-demotion guards (actor-relative — another admin
+  CAN perform the same action on that account)
+Every non-2xx carries a precise `{error}` naming the current state
+("already documented as given by RN Maya Chen at 14:05 — it is not
+awaiting documentation") except the deliberately generic 403. The rule
+lives in code as `ApiError.BadRequest/StateConflict/NotFound`
+(`server/Core/Shared/`).
+- **Lookup and state are SEPARATED at every mutation** — the pre-
+  convention endpoints folded status into the lookup (`OrderId == id &&
+  Status == "pending"`), making a replayed action indistinguishable from
+  absence. Fixed sites: orders sign/modify/discontinue/implement, MAR
+  re-document (a DELIBERATE REVERSAL of its codified 404 — two nurses
+  racing at one bedside must see "already given by X at T", never "not
+  found"), ADT occupied-bed/duplicate-admission/re-discharge/transfer
+  conflicts, Users deactivate/reactivate replays and the last-admin
+  guards (400 → 409).
+- **The two implement halves, split deliberately**: `requiresImplementation`
+  is SHAPE (immutable — a medication order can never be implemented in
+  any state) → 400; `status` is STATE (sign it and the same request
+  succeeds) → 409.
+- **Guard-before-status ordering** (the administer precedent, now
+  everywhere): on a closed encounter, sign/modify/implement report the
+  ENCOUNTER 409 — the deeper cause — not the cascade-discontinued
+  status. Verified live-reachable: the encounter-scope suite's formerly
+  LOCAL-ONLY sign/modify-on-closed legs now run live, because the
+  lookups no longer 404 on status before the guard can answer.
+- **Frontend audit result — zero behavioral change**: the only
+  status-code branching in any adapter is `=== 401` (the offline/local-
+  session split); `adtPost`/`usersPost` surface the server's `{error}`
+  for every non-401 status and `apiPost` maps them to `denied` (never
+  applied locally) — a 409 already behaved exactly like 403/400.
+- **No schema change** — no migration; a fresh boot applies the existing
+  chain ending at `AddResultAudit`, and the ModelSnapshot is untouched.
+- Deployed suites assert BOTH branches (absent → 404, conflict → 409) of
+  every changed code: orders (replayed sign/discontinue/modify, implement
+  shape-400/pending-409/replay-409, absent-id 404s), MAR (re-document 409
+  with actor, absent order/dose 404s), ADT (occupied/duplicate/
+  re-discharge/transfer 409s + absent-encounter 404s, nonexistent-bed
+  still 400), users (replayed deactivate/reactivate 409, absent account
+  404; last-admin 409 stays local-only — live would mutate seeded
+  admins), encounter-scope (sign/modify on closed → guard 409, now live).
+
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
 INCREMENTALLY: every new layer from now on (ADT, user administration,

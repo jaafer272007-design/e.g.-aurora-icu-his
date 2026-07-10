@@ -123,12 +123,6 @@ static class ResultsLogic
         return JsonSerializer.Serialize(events, JsonOpts.Web);
     }
 
-    /** 409 for a transition the resource's CURRENT STATE forbids (replayed
-        acknowledge / reversal of nothing) — the 403/404/409 convention:
-        404 is reserved for ids that resolve to nothing. */
-    public static IResult StateConflict(string error) =>
-        Results.Json(new { error }, JsonOpts.Web, statusCode: 409);
-
     /** ONE-TIME, IDEMPOTENT boot backfill (results audit PR). Two steps,
         each a no-op on already-migrated data:
         1. Scope EncounterId for every result that has none — the SAME rule

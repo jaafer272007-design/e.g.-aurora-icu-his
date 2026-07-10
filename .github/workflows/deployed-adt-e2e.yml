@@ -3,7 +3,8 @@
 # database, the RBAC matrix in BOTH directions (nurse-403 on admit and
 # discharge, doctor-403 on transfer, actor always from the token), every
 # validation rejection (occupied bed, duplicate open encounter,
-# nonexistent bed, re-discharge, unknown fields → 400 with a precise
+# nonexistent bed and unknown fields → 400; occupied bed, duplicate
+# admission, and re-discharge → 409 state conflicts with a precise
 # {error}; never a silent 200, never a 500), and Bed-Overview reflection
 # (the roster endpoint gains the admission at its bed, moves it on
 # transfer, and drops it on discharge). Dispatch manually after merging
@@ -101,14 +102,16 @@ jobs:
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/patients" \
             | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin) if x['patientId']=='$PID']; assert r and r[0]['bedId']=='$B1', r; print('roster shows', r[0]['patientId'], 'at', r[0]['bedId'])"
 
-      - name: Validation — occupied bed / duplicate open encounter → 400 naming the conflict
+      - name: State conflicts — occupied bed / duplicate open encounter → 409 naming the conflict (four-code rule)
         run: |
-          body=$(curl -s -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"mrn":"'$MRN'-B","name":"Second","age":30,"sex":"M","allergies":"None","diagnosis":"x","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
-          echo "$body" | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already occupied by $PID' in e, e; print('occupied bed:', e)"
-          body=$(curl -s -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+          rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "occupied bed must be 409, got $rc"; exit 1; }
+          echo "$out" | head -1 | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already occupied by $PID' in e, e; print('occupied bed 409:', e)"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"mrn":"'$MRN'","name":"E2E ADT Patient","age":49,"sex":"F","allergies":"None","diagnosis":"x","attending":"a","bedId":"'$B2'"}' "$API/api/icu/adt/admissions")
-          echo "$body" | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already has an open encounter' in e, e; print('duplicate admission:', e)"
+          rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "duplicate admission must be 409, got $rc"; exit 1; }
+          echo "$out" | head -1 | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already has an open encounter' in e, e; print('duplicate admission 409:', e)"
 
       - name: Transfer — DOCTOR → 403; NURSE → 200 (bed moves on Bed Overview); bad targets → 400
         run: |
@@ -118,11 +121,15 @@ jobs:
             | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['bedId']=='$B2', d; print('transferred to', d['bedId'])"
           curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/patients" \
             | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin) if x['patientId']=='$PID'][0]; assert r['bedId']=='$B2', r; print('roster follows the transfer:', r['bedId'])"
-          body=$(curl -s -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"bedId":"B-99"}' "$API/api/icu/adt/encounters/$EID/transfer")
-          echo "$body" | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'does not match any bed' in e, e; print('nonexistent bed:', e)"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"bedId":"B-99"}' "$API/api/icu/adt/encounters/$EID/transfer")
+          rc=$(echo "$out" | tail -1); [ "$rc" = "400" ] || { echo "nonexistent bed stays validation 400, got $rc"; exit 1; }
+          echo "$out" | head -1 | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'does not match any bed' in e, e; print('nonexistent bed 400:', e)"
           occ=$(python3 -c 'import json; print([b["bedId"] for b in json.load(open("/tmp/beds.json")) if b.get("patientId")][0])')
-          body=$(curl -s -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"bedId":"'$occ'"}' "$API/api/icu/adt/encounters/$EID/transfer")
-          echo "$body" | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already occupied' in e, e; print('occupied target:', e)"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"bedId":"'$occ'"}' "$API/api/icu/adt/encounters/$EID/transfer")
+          rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "occupied target must be 409, got $rc"; exit 1; }
+          echo "$out" | head -1 | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already occupied' in e, e; print('occupied target 409:', e)"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"bedId":"'$B1'"}' "$API/api/icu/adt/encounters/ENC-0000/transfer")
+          echo "absent encounter transfer -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
 
       - name: Discharge — NURSE → 403; DOCTOR → 200; bed freed; re-discharge → 400; roster drops the patient
         run: |
@@ -130,8 +137,11 @@ jobs:
           echo "nurse discharge -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
           curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="discharged" and d["dischargedBy"]=="Dr. Sara Rahman", d; print("discharged by", d["dischargedBy"], "at", d["dischargedAt"])'
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
-          echo "re-discharge -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+          rc=$(echo "$out" | tail -1); echo "re-discharge -> HTTP $rc (state conflict)"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already discharged" in e and "nothing to discharge" in e, e'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/ENC-0000/discharge")
+          echo "absent encounter discharge -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/patients" \
             | python3 -c "import json,sys; assert not [x for x in json.load(sys.stdin) if x['patientId']=='$PID']; print('roster no longer lists $PID')"
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
@@ -163,7 +173,7 @@ jobs:
           rc=$(echo "$out" | tail -1)
           case "$rc" in
             200) echo "failure-path cleanup released $EID (bed freed)";;
-            400) echo "$out" | head -1 | grep -q "already discharged" || { echo "unexpected 400: $out"; exit 1; }
+            409) echo "$out" | head -1 | grep -q "already discharged" || { echo "unexpected 409: $out"; exit 1; }
                  echo "$EID already discharged (normal path) — nothing leaked";;
             *)   echo "CLEANUP FAILED: could not release $EID (HTTP $rc) — a bed is leaked, manual action required"; exit 1;;
           esac

@@ -97,10 +97,18 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); a=[x for x in d["administrations"] if x["status"]=="given" and x["documentedBy"]][0]; assert a["documentedBy"]=="RN Maya Chen", a; print("nurse given by:", a["documentedBy"])'
-          # re-document the same dose → 404 (no longer scheduled)
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+          # re-document the same dose → 409 STATE CONFLICT (four-code rule —
+          # supersedes the original 404: the dose EXISTS, already documented;
+          # a racing second nurse must see "already given by X", not "not found")
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1")
-          echo "re-document -> HTTP $code"; [ "$code" = "404" ] || exit 1
+          code=$(echo "$out" | tail -1); echo "re-document -> HTTP $code"; [ "$code" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already documented as given" in e and "RN Maya Chen" in e, e; print("precise 409:", e)'
+          # absent ids stay 404 — the other branch of the same rule
+          for path in "$API/api/icu/mar/ORD-0000/administrations/$A1" "$API/api/icu/mar/$OID/administrations/ADM-0000"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"action":"given"}' "$path")
+            echo "absent id -> HTTP $code"; [ "$code" = "404" ] || exit 1
+          done
 
       - name: Held requires a reason (validation live); with reason → 200 + persisted
         run: |

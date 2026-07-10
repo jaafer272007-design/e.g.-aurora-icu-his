@@ -164,9 +164,9 @@ static class ResultsApi
         {
             if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
             var d = db.LabDraws.FirstOrDefault(x => x.LabId == labId);
-            if (d is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (d is null) return ApiError.NotFound();
             if (d.Acknowledged)
-                return ResultsLogic.StateConflict(
+                return ApiError.StateConflict(
                     $"result '{labId}' is already acknowledged (by {d.AcknowledgedBy} at {d.AcknowledgedAt}) — it is not awaiting acknowledgment");
             var now = DateTime.UtcNow;
             d.Acknowledged = true;
@@ -183,9 +183,9 @@ static class ResultsApi
         {
             if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
             var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId);
-            if (s is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (s is null) return ApiError.NotFound();
             if (s.Acknowledged)
-                return ResultsLogic.StateConflict(
+                return ApiError.StateConflict(
                     $"result '{studyId}' is already acknowledged (by {s.AcknowledgedBy} at {s.AcknowledgedAt}) — it is not awaiting acknowledgment");
             var now = DateTime.UtcNow;
             s.Acknowledged = true;
@@ -214,9 +214,9 @@ static class ResultsApi
             if (req.Reason.Length > OrderLogic.MaxTextLength)
                 return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
             var d = db.LabDraws.FirstOrDefault(x => x.LabId == labId);
-            if (d is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (d is null) return ApiError.NotFound();
             if (!d.Acknowledged)
-                return ResultsLogic.StateConflict(
+                return ApiError.StateConflict(
                     $"result '{labId}' is not acknowledged — there is no acknowledgment to reverse");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             d.EventsJson = ResultsLogic.AppendEvent(d.EventsJson,
@@ -239,9 +239,9 @@ static class ResultsApi
             if (req.Reason.Length > OrderLogic.MaxTextLength)
                 return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
             var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId);
-            if (s is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (s is null) return ApiError.NotFound();
             if (!s.Acknowledged)
-                return ResultsLogic.StateConflict(
+                return ApiError.StateConflict(
                     $"result '{studyId}' is not acknowledged — there is no acknowledgment to reverse");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             s.EventsJson = ResultsLogic.AppendEvent(s.EventsJson,

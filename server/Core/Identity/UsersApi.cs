@@ -108,7 +108,7 @@ static class UsersApi
             if (username == "system")
                 return ApiError.BadRequest("'system' is the reserved system principal — it cannot be edited, reactivated, or given a password");
             var row = db.Users.FirstOrDefault(u => u.Username == username);
-            if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (row is null) return ApiError.NotFound();
 
             var newName = req.Name?.Trim();
             var newTitle = req.JobTitle;
@@ -138,7 +138,8 @@ static class UsersApi
                 /* last-admin guard, demotion variant */
                 if (Rbac.ProfileOf(row.JobTitle) == "Administrator" && newProfile != "Administrator"
                     && row.Active && !UserLogic.OtherActiveAdminExists(db, row.Username))
-                    return ApiError.BadRequest("cannot demote the last active Administrator-profile account");
+                    return ApiError.StateConflict(
+                        $"account '{username}' is the last active Administrator-profile account — it cannot be demoted until another active administrator exists");
                 var detail = $"{row.JobTitle} → {newTitle}"
                     + (string.IsNullOrWhiteSpace(req.Justification) ? "" : $" — justification: {req.Justification!.Trim()}");
                 events.Add(new(UserLogic.Now(), actor, "job title changed", detail));
@@ -165,12 +166,20 @@ static class UsersApi
             if (username == "system")
                 return ApiError.BadRequest("'system' is the reserved system principal — it cannot be edited, reactivated, or given a password");
             var row = db.Users.FirstOrDefault(u => u.Username == username);
-            if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
-            if (!row.Active) return ApiError.BadRequest($"account '{username}' is already deactivated");
+            if (row is null) return ApiError.NotFound();
+            /* FOUR-CODE RULE (state-conflict PR): a replayed deactivation
+               is a STATE conflict (409). The SELF guard stays 400 — it is
+               actor-relative and never valid for this actor/target pair in
+               any state. The LAST-ADMIN guard is 409 — transient system
+               state: create or reactivate another admin and the same
+               request succeeds. */
+            if (!row.Active)
+                return ApiError.StateConflict($"account '{username}' is already deactivated — there is nothing to deactivate");
             if (user.FindFirst("sub")?.Value == row.Username)
                 return ApiError.BadRequest("you cannot deactivate your own account");
             if (Rbac.ProfileOf(row.JobTitle) == "Administrator" && !UserLogic.OtherActiveAdminExists(db, row.Username))
-                return ApiError.BadRequest("cannot deactivate the last active Administrator-profile account");
+                return ApiError.StateConflict(
+                    $"account '{username}' is the last active Administrator-profile account — it cannot be deactivated until another active administrator exists");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.Active = false;
             row.EventsJson = UserLogic.AppendEvents(row.EventsJson,
@@ -186,8 +195,9 @@ static class UsersApi
             if (username == "system")
                 return ApiError.BadRequest("'system' is the reserved system principal — it cannot be edited, reactivated, or given a password");
             var row = db.Users.FirstOrDefault(u => u.Username == username);
-            if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
-            if (row.Active) return ApiError.BadRequest($"account '{username}' is already active");
+            if (row is null) return ApiError.NotFound();
+            if (row.Active)
+                return ApiError.StateConflict($"account '{username}' is already active — there is nothing to reactivate");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.Active = true;
             row.EventsJson = UserLogic.AppendEvents(row.EventsJson,
@@ -206,7 +216,7 @@ static class UsersApi
             if (username == "system")
                 return ApiError.BadRequest("'system' is the reserved system principal — it cannot be edited, reactivated, or given a password");
             var row = db.Users.FirstOrDefault(u => u.Username == username);
-            if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (row is null) return ApiError.NotFound();
             if (UserLogic.ValidatePassword(req.NewPassword, "newPassword") is string pErr)
                 return ApiError.BadRequest(pErr);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";

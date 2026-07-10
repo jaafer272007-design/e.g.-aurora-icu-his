@@ -141,8 +141,9 @@ async function apiGet<T>(path: string, what: string): Promise<T | null> {
 /** Shared POST for real mutating endpoints. Three outcomes, handled
  *  differently on purpose:
  *  - ok: the server applied the change (response body = updated record)
- *  - denied: the server REJECTED it (403 RBAC / 404 already-applied) —
- *    the caller must NOT apply the mock mutation; enforcement is real
+ *  - denied: the server REJECTED it (403 permission / 404 absent /
+ *    409 state conflict / 400 malformed — the four-code rule) — the
+ *    caller must NOT apply the mock mutation; enforcement is real
  *  - offline: unreachable, or a 401 tokenless/stale session whose READS
  *    are already coming from mock — the caller applies the mock mutation
  *    so the Stage 9 offline experience stays coherent */

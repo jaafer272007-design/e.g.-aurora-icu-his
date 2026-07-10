@@ -20,11 +20,6 @@
 # debt). Nothing seeded is mutated; ORD-113 is asserted READ-ONLY.
 #
 # LOCAL-ONLY LEGS (documented, not tested here — each has a reason):
-# - sign/modify/implement → 409 on a closed encounter: unreachable live
-#   because the discharge cascade discontinues active/pending orders
-#   first (the lookups then 404 on status before the guard). Proven
-#   locally against a SQL-injected active/pending specimen on a closed
-#   encounter (a state the API can no longer produce).
 # - result acknowledgment on a CLOSED encounter → 200 (the narrow-
 #   invariant exemption that stops this fix becoming the opposite
 #   patient-safety bug): needs a discharged patient WITH seeded unacked
@@ -194,6 +189,27 @@ jobs:
           assert all(a["status"] != "scheduled" for a in admins), admins
           print("cascade: active + pending both discontinued, actor = discharging clinician, exact reason, scheduled doses cancelled")
           PY
+
+      - name: sign/modify/implement on the CLOSED encounter → 409 at the guard (live since the four-code fix)
+        run: |
+          # Before the state-conflict PR these were unreachable live: the
+          # lookups folded status, so the cascade-discontinued orders
+          # 404'd before the guard could answer. With lookup and state
+          # separated, the ENCOUNTER guard now answers first — the deeper
+          # cause — proving the guard ordering live.
+          for probe in "POST /api/icu/orders/$PEND/sign" "POST /api/icu/orders/$PEND/implement"; do
+            verb="${probe%% *}"; path="${probe#* }"
+            out=$(curl -s -w '\n%{http_code}' -X "$verb" -H "Authorization: Bearer $DOC" "$API$path")
+            rc=$(echo "$out" | tail -1); echo "$path -> HTTP $rc"
+            [ "$rc" = "409" ] || [ "$rc" = "403" ] || { echo "$out"; exit 1; }
+          done
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/orders/$PEND/sign")
+          rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is not open" in e and "signing an order" in e, e; print("sign on closed encounter -> 409 at the GUARD (not a status 409):", e)'
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"changes":{"dose":"2 g"},"reason":"escope probe"}' "$API/api/icu/orders/$MED")
+          rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is not open" in e and "modifying an order" in e, e; print("modify on closed encounter -> 409 at the guard")'
 
       - name: MAR drops the discharged encounter's rows; documenting a dose → 409 at the chokepoint
         run: |
