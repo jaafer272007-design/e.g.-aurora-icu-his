@@ -16,6 +16,15 @@
 # a fresh free database and update the blueprint (data LOST — the seed
 # files repopulate baseline data on first boot, but real writes are
 # gone). See CLAUDE.md "Database persistence".
+# BUILD CONTEXT (the deployed-suite gate depends on this): Render
+# rebuilds this service only for commits touching rootDir server/ (the
+# Dockerfile lives inside it) — and, for THIS FILE, syncs the Blueprint
+# on change. Every deployed E2E suite's warm-up asserts the deployed
+# build's server content equals the dispatched ref's (git tree/blob
+# comparison of server/ + render.yaml). This comment block also serves
+# as the 2026-07-10 empirical probe of whether a render.yaml-only
+# commit triggers a redeploy under rootDir — see CLAUDE.md "The stale
+# gate's dead zone".
 databases:
   - name: aurora-db
     plan: free
