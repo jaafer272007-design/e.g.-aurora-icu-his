@@ -1,0 +1,261 @@
+# Deployed Encounter-Scoping E2E — verifies the LIVE Render service after
+# the ORD-113 fix (an order's lifecycle is bounded by its encounter):
+# create scopes new orders to the open encounter; discharge auto-
+# discontinues the encounter's active/pending orders in the same
+# transaction (audited, discharging clinician as actor, scheduled doses
+# cancelled); the MAR and working queues derive only from open
+# encounters; clinical initiation on a closed episode is 409 Conflict at
+# the EncounterGuard chokepoint; readmission surfaces no stale actives;
+# and the one-time backfill's neutralization of ORD-113 itself (actor
+# System, exact migration reason) is asserted read-only — its continued
+# presence across runs is the idempotence evidence. Dispatch manually
+# after merging /server changes to main — SEQUENTIALLY with the other
+# suites, never concurrently (recorded lesson).
+#
+# IDEMPOTENT UNDER PERSISTENCE BY DESIGN (codified finite-seeded-resources
+# rule): the run admits ITS OWN patient (unique MRN per run id), creates
+# the orders it consumes against that patient, and discharges its own
+# encounters — the discharge cascade itself guarantees no active order is
+# left behind (unlike the MAR/Timeline suites' recorded accumulation
+# debt). Nothing seeded is mutated; ORD-113 is asserted READ-ONLY.
+#
+# LOCAL-ONLY LEGS (documented, not tested here — each has a reason):
+# - sign/modify/implement → 409 on a closed encounter: unreachable live
+#   because the discharge cascade discontinues active/pending orders
+#   first (the lookups then 404 on status before the guard). Proven
+#   locally against a SQL-injected active/pending specimen on a closed
+#   encounter (a state the API can no longer produce).
+# - result acknowledgment on a CLOSED encounter → 200 (the narrow-
+#   invariant exemption that stops this fix becoming the opposite
+#   patient-safety bug): needs a discharged patient WITH seeded unacked
+#   results — discharging a seeded patient live would permanently break
+#   the auth suite's roster subset assertion, so this is proven locally
+#   on a throwaway DB (discharge seeded patient → acknowledge → 200).
+name: Deployed Encounter-Scope E2E
+on: workflow_dispatch
+
+# STRUCTURAL serialization of the deployed suites (the recorded
+# never-dispatch-concurrently lesson): one shared group across all the
+# suites means two can never RUN at once. GitHub keeps at most one
+# PENDING run per group, so still dispatch one at a time.
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm up + require THIS COMMIT's build to be live (no stale deployments)
+        run: |
+          # /healthz serves the deployed commit in `build` (RENDER_GIT_COMMIT).
+          # The suite REFUSES to run against any other build, so a green run
+          # is attributable to exactly the commit it was dispatched on. 60x10s
+          # also covers the Render cold start + a full rebuild after a merge.
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: live build=$build · dispatched commit=$GITHUB_SHA"
+            [ "$build" = "$GITHUB_SHA" ] && exit 0
+            sleep 10
+          done
+          echo "STALE DEPLOYMENT: /healthz build '$build' never matched the dispatched commit '$GITHUB_SHA' — refusing to test an old build" && exit 1
+
+      - name: Login as doctor and nurse
+        run: |
+          for u in sara.rahman maya.chen; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+          echo "MRN=MRN-ESCOPE-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+
+      - name: ORD-113 was neutralized by the audited backfill (read-only; re-asserting every run IS the idempotence evidence)
+        run: |
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=P-1017" -o /tmp/p1017.json
+          python3 - << 'PY'
+          import json
+          REASON = "system migration — encounter closed before the encounter-bound invariant existed"
+          orders = {o["orderId"]: o for o in json.load(open("/tmp/p1017.json"))}
+          o = orders["ORD-113"]
+          assert o["status"] == "discontinued", o["status"]
+          assert o["statusReason"] == REASON, o["statusReason"]
+          assert o["encounterId"] == "ENC-1017", o.get("encounterId")
+          disc = [h for h in o["history"] if h["action"] == "discontinued"]
+          assert len(disc) == 1, disc          # idempotence: never a duplicate audit event
+          assert disc[0]["actor"] == "System", disc[0]
+          assert REASON in (disc[0].get("detail") or ""), disc[0]
+          print("ORD-113: discontinued by actor System with the migration reason, scoped to ENC-1017, exactly one audit event")
+          PY
+
+      - name: Clinical initiation on a patient with NO open encounter → 409 Conflict (chokepoint, not validation)
+        run: |
+          # P-1017 is discharged: creating an order for them is a RESOURCE-STATE
+          # conflict (409), no longer the pre-fix validation 400.
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"P-1017","category":"Nursing","summary":"escope e2e probe","priority":"Routine"}],"sign":false}' \
+            "$API/api/icu/orders")
+          rc=$(echo "$out" | tail -1); echo "create on discharged P-1017 -> HTTP $rc"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "has no open encounter" in e and "new care cannot be initiated on a closed episode" in e, e; print("precise 409:", e)'
+
+      - name: Admit THIS RUN's patient (unique MRN, dynamic free bed)
+        run: |
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds.json
+          B1=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert free, "no free beds — discharge stale encounters"; print(free[0])')
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"E2E Encounter-Scope Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"encounter-scope E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/adm.json
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          read PID EID <<<"$vals"
+          echo "admitted $PID on $EID (bed $B1)"
+          { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
+
+      - name: Create signed med order + pending order — BOTH scoped to the open encounter
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":true}' \
+            "$API/api/icu/orders" -o /tmp/med.json
+          vals=$(EID="$EID" python3 -c '
+          import json, os
+          d = json.load(open("/tmp/med.json"))[0]
+          assert d["encounterId"] == os.environ["EID"], d.get("encounterId")
+          assert d["status"] == "active"
+          sched = [a["adminId"] for a in d["administrations"] if a["status"] == "scheduled"]
+          assert sched, d["administrations"]
+          print(d["orderId"], sched[0])')
+          read MED ADMID <<<"$vals"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"encounter-scope pending order","priority":"Routine"}],"sign":false}' \
+            "$API/api/icu/orders" -o /tmp/pend.json
+          PEND=$(EID="$EID" python3 -c '
+          import json, os
+          d = json.load(open("/tmp/pend.json"))[0]
+          assert d["encounterId"] == os.environ["EID"] and d["status"] == "pending", d
+          print(d["orderId"])')
+          echo "created $MED (active, dose $ADMID) + $PEND (pending) — both carry encounterId=$EID"
+          { echo "MED=$MED"; echo "ADMID=$ADMID"; echo "PEND=$PEND"; } >> "$GITHUB_ENV"
+
+      - name: MAR serves the order's doses while the encounter is open
+        run: |
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" \
+            | MED="$MED" python3 -c '
+          import json, sys, os
+          ids = {r["orderId"] for r in json.load(sys.stdin)}
+          assert os.environ["MED"] in ids, sorted(ids)
+          print("MAR contains the run order while its encounter is open")'
+
+      - name: Discharge → the cascade discontinues BOTH orders in the same transaction (audited, clinician actor, doses cancelled)
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="discharged", d; print("discharged by", d["dischargedBy"])'
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID" -o /tmp/after.json
+          MED="$MED" PEND="$PEND" python3 - << 'PY'
+          import json, os
+          REASON = "patient discharged — auto-discontinued at discharge"
+          d = {o["orderId"]: o for o in json.load(open("/tmp/after.json"))}
+          for key in ("MED", "PEND"):
+              o = d[os.environ[key]]
+              assert o["status"] == "discontinued", (o["orderId"], o["status"])
+              assert o["statusReason"] == REASON, o["statusReason"]
+              last = o["history"][-1]
+              assert last["actor"] == "Dr. Sara Rahman", last   # the DISCHARGING clinician, from the token
+              assert last["action"] == "discontinued" and REASON in (last.get("detail") or ""), last
+          admins = d[os.environ["MED"]]["administrations"]
+          assert all(a["status"] != "scheduled" for a in admins), admins
+          print("cascade: active + pending both discontinued, actor = discharging clinician, exact reason, scheduled doses cancelled")
+          PY
+
+      - name: MAR drops the discharged encounter's rows; documenting a dose → 409 at the chokepoint
+        run: |
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" \
+            | MED="$MED" python3 -c '
+          import json, sys, os
+          ids = {r["orderId"] for r in json.load(sys.stdin)}
+          assert os.environ["MED"] not in ids, "discharged encounter rows must not surface on the MAR"
+          print("MAR no longer serves the discharged encounter")'
+          # the guard sits BEFORE the dose lookup, so this is 409 (encounter
+          # state), not 404 (dose already cancelled) — deliberate ordering
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"given"}' "$API/api/icu/mar/$MED/administrations/$ADMID")
+          rc=$(echo "$out" | tail -1); echo "administer after discharge -> HTTP $rc"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is not open" in e and "documenting a dose" in e, e; print("precise 409:", e)'
+
+      - name: Readmit the same MRN → same patient, NEW encounter, NO stale actives, new order scoped to the new encounter
+        run: |
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds2.json
+          B2=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds2.json")) if not b.get("patientId")]; assert free, "no free beds"; print(free[0])')
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"E2E Encounter-Scope Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"readmission","attending":"Dr. E2E","bedId":"'$B2'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/readm.json
+          vals=$(PID="$PID" EID="$EID" python3 -c '
+          import json, os
+          d = json.load(open("/tmp/readm.json"))
+          assert d["patient"]["patientId"] == os.environ["PID"], d["patient"]   # same person, matched by MRN
+          assert d["encounter"]["encounterId"] != os.environ["EID"]             # a NEW episode
+          print(d["encounter"]["encounterId"])')
+          EID2=$vals
+          echo "readmitted $PID on NEW encounter $EID2"
+          echo "EID2=$EID2" >> "$GITHUB_ENV"
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          stale = [(o["orderId"], o["status"]) for o in d if o["status"] in ("active", "pending")]
+          assert not stale, stale                        # the prior admission surfaces NOTHING actionable
+          assert len(d) >= 2                             # the longitudinal chart keeps the prior orders
+          print("readmission: no stale actives;", len(d), "orders remain on the longitudinal chart")'
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"post-readmission order","priority":"Routine"}],"sign":true}' \
+            "$API/api/icu/orders" -o /tmp/new.json
+          EID2="$EID2" python3 -c '
+          import json, os
+          d = json.load(open("/tmp/new.json"))[0]
+          assert d["encounterId"] == os.environ["EID2"], d.get("encounterId")
+          print(d["orderId"], "scoped to the NEW encounter", d["encounterId"])'
+
+      - name: Final discharge — the cascade closes out the readmission's order too (second cascade evidence)
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID2/discharge" >/dev/null
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          live = [(o["orderId"], o["status"]) for o in d if o["status"] in ("active", "pending")]
+          assert not live, live
+          print("both encounters closed — the run leaves NO active or pending order behind (cascade is the cleanup)")'
+
+      - name: Failure-path cleanup — release THIS run's encounters (runs on failure/cancel too)
+        if: always()
+        run: |
+          # A mid-run failure must not leak a bed-occupying open encounter
+          # (2026-07-10 audit rule). The cascade rides along with each
+          # discharge, so releasing the encounter also discontinues any
+          # order the run left active — asserted, not assumed.
+          if [ -z "${PID:-}" ] || [ -z "${DOC:-}" ]; then
+            echo "no patient was admitted by this run — nothing to release"; exit 0
+          fi
+          open=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID&status=open" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["encounterId"] if d else "")')
+          if [ -n "$open" ]; then
+            curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$open/discharge" >/dev/null \
+              && echo "failure-path cleanup discharged $open" \
+              || { echo "CLEANUP FAILED: could not release $open — a bed is leaked, manual action required"; exit 1; }
+          else
+            echo "no open encounter remains for $PID — nothing leaked"
+          fi
+          curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID" \
+            | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          live = [(o["orderId"], o["status"]) for o in d if o["status"] in ("active", "pending")]
+          assert not live, ("cleanup left live orders:", live)
+          print("cleanup verified: no active/pending order left on the run patient")'

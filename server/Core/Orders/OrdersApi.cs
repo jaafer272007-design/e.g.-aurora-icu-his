@@ -29,6 +29,20 @@ static class OrdersApi
             if (patientId is not null) q = q.Where(o => o.PatientId == patientId);
             if (status is not null) q = q.Where(o => o.Status == status);
             if (implement == true) q = q.Where(o => o.Status == "active" && o.RequiresImplementation == true);
+            /* ENCOUNTER SCOPE, defense in depth: the WORKING QUEUES (the
+               pending/active status views and the implementation queue)
+               derive only from orders whose encounter is OPEN — discharge
+               already discontinues them (the invariant), so on healthy
+               data this filter changes nothing; it exists so a stray
+               closed-encounter active order can never reach a clinician's
+               queue. The plain per-patient chart stays LONGITUDINAL
+               (person-level history; readmission presentation is a
+               recorded open question). */
+            if (status is "pending" or "active" || implement == true)
+            {
+                var open = db.Encounters.Where(e => e.Status == "open").Select(e => e.EncounterId);
+                q = q.Where(o => open.Contains(o.EncounterId));
+            }
             return Results.Json(q.OrderBy(o => o.Seq).AsEnumerable().Select(o => o.ToDto()), JsonOpts.Web);
         }).RequireAuthorization();
 
@@ -55,6 +69,18 @@ static class OrdersApi
                 if (OrderLogic.ValidateDraft(req.Drafts[i], i, db) is string problem)
                     return ApiError.BadRequest(problem);
             }
+            /* THE CHOKEPOINT (409, resource state): every draft's patient
+               must have an OPEN encounter before ANY order is inserted —
+               new care cannot be initiated on a closed episode. The open
+               encounter also provides the order's lifecycle scope. */
+            var openByPatient = new Dictionary<string, Encounter>();
+            foreach (var draft in req.Drafts)
+            {
+                if (openByPatient.ContainsKey(draft.PatientId!)) continue;
+                if (EncounterGuard.RequireOpenForPatient(db, draft.PatientId!, "creating orders", out var openEnc) is IResult conflict)
+                    return conflict;
+                openByPatient[draft.PatientId!] = openEnc!;
+            }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = DateTime.UtcNow.ToString("HH:mm");
@@ -64,7 +90,7 @@ static class OrdersApi
                 /* Layer 2: name/bed resolution reads Core ADT (Patient +
                    open Encounter) — the former roster-table seam site */
                 var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == draft.PatientId);
-                var enc = db.Encounters.AsNoTracking().First(e => e.PatientId == draft.PatientId && e.Status == "open");
+                var enc = openByPatient[draft.PatientId!];
                 var history = new List<OrderEventDto> { new(time, actor, "created", req.Note) };
                 List<AdminDto>? administrations = null;
                 if (req.Sign)
@@ -73,7 +99,7 @@ static class OrdersApi
                     if (draft.Medication is not null) administrations = OrderLogic.GenerateAdministrations(draft.Medication);
                 }
                 var dto = new OrderDto(
-                    OrderLogic.NextOrderId(), draft.PatientId!, enc.BedId, pt.Name,
+                    OrderLogic.NextOrderId(), draft.PatientId!, enc.EncounterId, enc.BedId, pt.Name,
                     draft.Category!, draft.Summary ?? OrderLogic.MedSummary(draft.Medication!),
                     draft.Medication, draft.Priority!, req.Sign ? "active" : "pending",
                     actor, time, draft.RequiresImplementation, administrations, history, null);
@@ -90,6 +116,7 @@ static class OrdersApi
             if (Rbac.Deny(user, "orders.sign") is IResult denied) return denied;
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && x.Status == "pending");
             if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (EncounterGuard.RequireOpen(db, row.EncounterId, "signing an order") is IResult conflict) return conflict;
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var o = row.ToDto();
             row.Status = "active";
@@ -121,6 +148,7 @@ static class OrdersApi
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && (x.Status == "active" || x.Status == "pending"));
             if (row is null || row.MedicationJson is null)
                 return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (EncounterGuard.RequireOpen(db, row.EncounterId, "modifying an order") is IResult conflict) return conflict;
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var before = JsonSerializer.Deserialize<MedicationDto>(row.MedicationJson, JsonOpts.Web)!;
             var (merged, diff) = OrderLogic.ApplyChanges(before, req.Changes);
@@ -144,17 +172,9 @@ static class OrdersApi
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && (x.Status == "active" || x.Status == "pending"));
             if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            row.Status = "discontinued";
-            row.StatusReason = req.Reason.Trim();
-            if (row.AdministrationsJson is not null)
-            {
-                /* remaining scheduled administrations are cancelled with the order */
-                var admins = JsonSerializer.Deserialize<List<AdminDto>>(row.AdministrationsJson, JsonOpts.Web)!
-                    .Where(a => a.Status != "scheduled").ToList();
-                row.AdministrationsJson = JsonSerializer.Serialize(admins, JsonOpts.Web);
-            }
-            row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
-                new(DateTime.UtcNow.ToString("HH:mm"), actor, "discontinued", req.Reason.Trim()));
+            /* shared mechanics — same status/reason/cancelled-schedule/audit
+               path as the discharge hook and the backfill */
+            OrderLogic.Discontinue(row, actor, req.Reason.Trim());
             db.SaveChanges();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
@@ -168,6 +188,7 @@ static class OrdersApi
             if (Rbac.Deny(user, "orders.implement") is IResult denied) return denied;
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && x.Status == "active" && x.RequiresImplementation == true);
             if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (EncounterGuard.RequireOpen(db, row.EncounterId, "implementing an order") is IResult conflict) return conflict;
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = DateTime.UtcNow.ToString("HH:mm");
             row.Status = "completed";

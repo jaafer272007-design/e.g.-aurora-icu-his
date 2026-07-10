@@ -70,6 +70,36 @@ static class Seeder
             db.SaveChanges();
             app.Logger.LogInformation("Seeded {Count} user accounts", staff.Count);
         }
+        /* Reserved SYSTEM principal (encounter-scoping fix): the audited
+           actor for system/lifecycle writes — e.g. the encounter-scope
+           backfill's auto-discontinuations — so a reader years from now
+           sees a migration, not a clinician's decision. It can NEVER
+           authenticate: Active=false (deactivated accounts get the same
+           generic 401 with the bcrypt verify still executed — timing
+           unchanged) and its hash is a valid bcrypt digest of a random
+           GUID discarded here, so no password matches it. JobTitle
+           "System" maps to NO permission profile, so even a forged token
+           passes no RBAC check. NOT emptiness-gated: the live Users table
+           is populated, so this block must be its own idempotent insert.
+           UsersApi refuses to edit/reactivate/reset it (reserved). */
+        if (!db.Users.Any(u => u.Username == "system"))
+        {
+            db.Users.Add(new UserRow
+            {
+                Username = "system",
+                Name = "System",
+                JobTitle = "System",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString(), workFactor: 10),
+                Active = false,
+                EventsJson = JsonSerializer.Serialize(new List<UserEventDto>
+                {
+                    new(UserLogic.Now(), "System", "created",
+                        "reserved system principal — records system/migration actions in audit trails; can never authenticate"),
+                }, JsonOpts.Web),
+            });
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded the reserved 'system' principal (inactive — never authenticates)");
+        }
         if (!db.LabDraws.Any())
         {
             var labs = JsonSerializer.Deserialize<List<LabDrawDto>>(
@@ -132,6 +162,17 @@ static class Seeder
             db.SaveChanges();
             app.Logger.LogInformation("Seeded {Count} beds", beds.Count);
         }
+
+        /* ENCOUNTER-SCOPE BACKFILL (one-time, idempotent — the ORD-113
+           fix): resolve EncounterId for any order that has none (seeds
+           carry none; the create path stores it from here on) and restore
+           the invariant for orders whose encounter closed before it
+           existed. See OrderLogic.BackfillEncounterScope for the rule. */
+        var (scoped, restored) = OrderLogic.BackfillEncounterScope(db);
+        if (scoped > 0 || restored > 0)
+            app.Logger.LogInformation(
+                "Encounter-scope backfill: {Scoped} orders scoped to their encounter, {Restored} auto-discontinued (closed encounter)",
+                scoped, restored);
 
         /* resume the generated-id counters from the persisted data — on a
            fresh database this resolves to the historical floors, so

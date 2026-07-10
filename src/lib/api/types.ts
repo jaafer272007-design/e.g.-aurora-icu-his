@@ -473,6 +473,11 @@ export interface OrderEvent {
 export interface Order {
   orderId: string
   patientId: string
+  /** ENCOUNTER SCOPE (server-side since the ORD-113 fix): the admission
+   *  this order's lifecycle is bounded by — discharge auto-discontinues
+   *  the encounter's active/pending orders. Absent on the mock store
+   *  (encounters are a server-side ADT concept). */
+  encounterId?: string
   /** denormalized display fields (location + name snapshot) */
   bedId: string
   patientName: string

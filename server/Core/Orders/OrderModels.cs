@@ -16,6 +16,11 @@ class OrderRow
     public string OrderId { get; set; } = "";
     public int Seq { get; set; }
     public string PatientId { get; set; } = "";
+    /* ENCOUNTER SCOPE (the ORD-113 fix): an order's lifecycle is bounded
+       by its encounter — patientId stays for person-level identity and
+       the longitudinal chart; encounterId carries the lifecycle. "" only
+       before the boot-time backfill resolves it (seeds carry none). */
+    public string EncounterId { get; set; } = "";
     public string BedId { get; set; } = "";
     public string PatientName { get; set; } = "";
     public string Category { get; set; } = "";
@@ -32,7 +37,8 @@ class OrderRow
 
     public static OrderRow FromDto(OrderDto d, int seq) => new()
     {
-        OrderId = d.OrderId, Seq = seq, PatientId = d.PatientId, BedId = d.BedId,
+        OrderId = d.OrderId, Seq = seq, PatientId = d.PatientId,
+        EncounterId = d.EncounterId ?? "", BedId = d.BedId,
         PatientName = d.PatientName, Category = d.Category, Summary = d.Summary,
         MedicationJson = d.Medication is null ? null : JsonSerializer.Serialize(d.Medication, JsonOpts.Web),
         Priority = d.Priority, Status = d.Status, OrderedBy = d.OrderedBy, OrderedTime = d.OrderedTime,
@@ -43,7 +49,7 @@ class OrderRow
     };
 
     public OrderDto ToDto() => new(
-        OrderId, PatientId, BedId, PatientName, Category, Summary,
+        OrderId, PatientId, EncounterId, BedId, PatientName, Category, Summary,
         MedicationJson is null ? null : JsonSerializer.Deserialize<MedicationDto>(MedicationJson, JsonOpts.Web),
         Priority, Status, OrderedBy, OrderedTime, RequiresImplementation,
         AdministrationsJson is null ? null : JsonSerializer.Deserialize<List<AdminDto>>(AdministrationsJson, JsonOpts.Web),
@@ -54,7 +60,7 @@ class OrderRow
 /* wire contracts — mirror Order / MedicationDetails / MedAdministration /
    OrderEvent / NewOrderDraft in src/lib/api/types.ts */
 record OrderDto(
-    string OrderId, string PatientId, string BedId, string PatientName, string Category,
+    string OrderId, string PatientId, string? EncounterId, string BedId, string PatientName, string Category,
     string Summary, MedicationDto? Medication, string Priority, string Status,
     string OrderedBy, string OrderedTime, bool? RequiresImplementation,
     List<AdminDto>? Administrations, List<OrderEventDto> History, string? StatusReason);

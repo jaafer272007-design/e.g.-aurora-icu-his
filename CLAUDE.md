@@ -549,10 +549,13 @@ and redeploys on Render.
   the SEEDED patients P-1001 and P-1007 and therefore depend on those
   patients having an OPEN ENCOUNTER. Since Layer 2, discharging either
   patient through the live Discharges screen — a LEGITIMATE user
-  action, not misuse — makes the order create return 400 ("orders
-  require an admitted patient") and all three suites fail from then
-  on. The fix is for each suite to admit its own patient first, as the
-  ADT suite already does; it rides with the next touch of each suite.
+  action, not misuse — makes the order create fail (since the
+  encounter-scoping fix: 409 "no open encounter" at the
+  EncounterGuard chokepoint; before it: validation 400) and all three
+  suites fail from then on. The fix is for each suite to admit its own
+  patient first, as the ADT suite already does (and the
+  encounter-scope suite now does); it rides with the next touch of
+  each suite.
 - **OPERATIONAL CONSTRAINT — Render free Postgres EXPIRES: 30 days**
   (verified against the Render changelog — the policy changed 2024-05-20
   from the previous 90 days), then a 14-day grace period to upgrade
@@ -713,6 +716,98 @@ natural keys — no id counters to resume.
   seeded admins). Container-restart survival (accounts, statuses, reset
   password, full audit chains) is asserted locally.
 
+### Encounter-scoped orders (built) — the ORD-113 fix
+Repairs the patient-safety defect found live: ORD-113 stayed ACTIVE on
+the discharged P-1017 (discharge never touched orders; a readmission
+would resurface the previous admission's actives; the MAR inherited the
+defect). **The forward invariant ("orders require an admitted patient")
+and the backward one ("an admission's orders end when the admission
+ends") are ONE RULE: an order's lifecycle is bounded by its ENCOUNTER.**
+- **`encounterId` on orders** alongside patientId (migration
+  `AddOrderEncounterScope`; wire contract gains the field — the ONLY
+  delta, byte-parity verified on everything else). The aggregate root
+  is Patient → Encounter → {Orders, MAR, …}.
+- **ONE chokepoint, not scattered conditions**: `EncounterGuard`
+  (`server/Core/Adt/`) asserts the encounter is open on EVERY
+  clinical-initiation path — order create, sign, modify, implement,
+  dose administration. Lab/imaging/consult REQUEST writes join it when
+  those write paths exist. Blocking is RESOURCE STATE, not validation
+  and not permission — the answer is **409 Conflict** with a precise
+  `{error}`, never 400/403/404 (a Consultant with full authority is
+  equally blocked). The administer guard sits BEFORE the dose lookup so
+  closed-encounter is always 409, never masked as a 404.
+- **THE INVARIANT IS DELIBERATELY NARROW — a closed encounter is NOT
+  immutable**: you cannot initiate new care on a closed episode; you
+  MUST still be able to complete the record of care already given.
+  Explicitly exempt (never routed through the guard, tested): results
+  arriving, result acknowledgment (asserted 200 on a discharged
+  patient), note authoring/addenda, the discharge summary, audited
+  amendments, and manual discontinue of a stray order (closing out the
+  record is not initiating care).
+- **Discharge cascade**: discharging an encounter auto-discontinues its
+  active AND pending orders in the same transaction — audited with the
+  DISCHARGING CLINICIAN as actor, reason "patient discharged —
+  auto-discontinued at discharge", scheduled administrations cancelled
+  via the single shared `OrderLogic.Discontinue` mechanics, never
+  deleted. Lifecycle/system writes to closed encounters go through
+  DISTINCT, EXPLICITLY-NAMED paths (`DischargeCascade`,
+  `BackfillEncounterScope`) with their own audit semantics — never a
+  bypass boolean on the guard.
+- **Encounter-aware derived views**: the MAR and the working queues
+  (pending/active status views, implementation queue) derive ONLY from
+  orders on open encounters; the plain per-patient chart stays
+  LONGITUDINAL (person-level history — readmission presentation
+  semantics are a recorded open question, below).
+- **Reserved System principal** (`system` row in the Users table,
+  seeded idempotently): inactive, JobTitle "System" (maps to NO
+  permission profile), a valid bcrypt hash matching nothing — it can
+  NEVER authenticate (same generic 401 + decoy-verify timing as any bad
+  login, asserted) and all four user-admin mutations on it are 400
+  ("reserved system principal"). It exists so migrations — which have
+  no token — still record an honest audit actor.
+- **One-time audited backfill** (boot-time, idempotent, logged):
+  resolves `encounterId` for every pre-existing order — the patient's
+  OPEN encounter if one exists (every prior order was created under the
+  forward invariant), else the MOST RECENT encounter — then restores
+  the invariant: active/pending orders on non-open encounters are
+  discontinued with actor **System**, reason "system migration —
+  encounter closed before the encounter-bound invariant existed".
+  Verified against a state-equivalent replica of the live DB: all 36
+  orders scoped per the rule, ORD-113 → ENC-1017 and neutralized with
+  exactly one appended audit event, all 35 other orders byte-identical
+  on every pre-existing column, encounters untouched, second boot 0/0
+  with no duplicate events.
+- **Frontend**: `Order.encounterId?` added to the wire type (absent on
+  the mock store); no UI change — `apiPost` already routes any non-401
+  error (incl. the new 409) to `denied`, never applied locally.
+- **Deployed verification**:
+  `.github/workflows/deployed-encounter-scope-e2e.yml` (manual
+  dispatch, SEQUENTIAL, build-id gated, `if: always()` cleanup) —
+  SELF-SUFFICIENT: admits its own patient, creates the orders it
+  consumes, and the discharge cascade itself guarantees no active
+  order is left behind. Asserts: ORD-113's backfill audit (read-only —
+  re-asserting "exactly one discontinued event" every run IS the
+  idempotence evidence), create-on-discharged → 409, both created
+  orders carry the encounterId, cascade discontinues active+pending
+  with clinician actor + exact reason + cancelled doses, MAR drops the
+  rows, administer → 409, readmission = same patient/new encounter/no
+  stale actives/new order scoped to the new encounter. LOCAL-ONLY legs
+  (documented in the workflow header with reasons): sign/modify/
+  implement 409s (unreachable live — the cascade removes their
+  preconditions; proven against SQL-injected specimens on a closed
+  encounter) and acknowledge-on-closed-encounter → 200 (live would
+  discharge a seeded patient and break the auth suite's roster
+  subset assert).
+- **Recorded open questions (do NOT fix ad hoc)**: (1) administration
+  timestamps are DATE-LESS (HH:mm) — masked today by the single-day
+  simulation, but a real multi-day chart needs full timestamps;
+  Stage 11 Observation work is the natural owner. (2) Readmission
+  chart PRESENTATION semantics — the longitudinal per-patient chart
+  now correctly shows prior-encounter orders as discontinued, but how
+  a readmission's chart should present/group prior-episode history
+  (filter by encounter? collapse? annotate?) is an unresolved design
+  question for the Orders screen.
+
 ## Platform Direction — Aurora Core + Modules (agreed)
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
@@ -822,7 +917,9 @@ persistence (Postgres + migrations), **Layer 2 ADT (Aurora
 Core-native Patient/Encounter/Bed with the roster seam's
 identity/location half dissolved)**, and **Layer 3 (user
 administration in Core Identity, escalation safeguards + immutable
-audit)** are DONE. **The next step is Layer 4 (master data /
+audit)**, and **the encounter-scoping fix (the ORD-113 defect — an
+order's lifecycle is bounded by its encounter; see the section
+above)** are DONE. **The next step is Layer 4 (master data /
 formulary) in Core** → the deferred Print Center → Stage 11 (device
 integration + the Observation model per the locked rule above; Stage
 11 also absorbs the remaining bedside-snapshot half of the roster).
@@ -1033,7 +1130,17 @@ self-deactivation guards, last-active-admin guard, clinical-title
 justification, actor always from the token, deactivation = status
 change never a delete, generic 401 for deactivated logins), and the
 `/admin/users` screen showing the live derivation chain before any
-title is granted. **The next step is master data (Layer 4) in Core**,
+title is granted. **The encounter-scoping fix (ORD-113) is DONE**: an
+order's lifecycle is bounded by its encounter — `encounterId` on
+orders, the `EncounterGuard` 409 chokepoint on every clinical-
+initiation path (with the deliberately NARROW invariant: completing
+the record of care stays allowed on a closed encounter), the discharge
+cascade auto-discontinuing active/pending orders in the same
+transaction, encounter-aware MAR/queues over a longitudinal chart, the
+reserved System principal, and the one-time audited backfill that
+neutralized ORD-113 itself (verified against a state-equivalent
+replica of the live DB — see "Encounter-scoped orders (built)").
+**The next step is master data (Layer 4) in Core**,
 then the Print Center, then Stage 11 device + AI integration per the
 locked rules above (Stage 11 also absorbs the roster's remaining
 bedside-snapshot columns). The Timeline's four still-mock sources
