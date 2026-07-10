@@ -199,9 +199,13 @@ jobs:
           echo "OID=$OID" >> "$GITHUB_ENV"; echo "signed $OID for $DRUG"
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DRUG/deactivate")
           echo "deactivate $DRUG -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
-          # (a) the EXISTING order still reads with its medication intact
+          # (a) the EXISTING order still reads with its medication intact.
+          # OID is passed EXPLICITLY: GITHUB_ENV only takes effect in
+          # SUBSEQUENT steps, so os.environ inside THIS step never sees it
+          # (run #1 failed exactly there — the $OID bug class again, one
+          # step earlier).
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID" \
-            | python3 -c "
+            | OID="$OID" python3 -c "
           import json,sys,os
           d=json.load(sys.stdin); oid=os.environ['OID']
           o=[x for x in d if x['orderId']==oid][0]
