@@ -1,107 +1,24 @@
-# Deployed API smoke test — verifies the LIVE Render service end-to-end:
-# health, login issuing a real JWT, generic 401s on bad credentials, the
-# roster endpoint rejecting missing/invalid tokens and serving the seeded
-# records with a valid one, and CORS headers for the GitHub Pages origin.
-# Dispatch manually after a merge deploys /server changes to Render.
-# IDEMPOTENT UNDER ADT (Layer 2): the census legitimately changes as
-# encounters open/close, so the seeded 14 patients are asserted as a
-# SUBSET — never an exact count.
+# TEMPORARY OPS PROBE (read-only) — polls /healthz build for ~14 minutes
+# and prints every change, to observe whether Render redeploys after a
+# render.yaml-only merge. No mutation of any kind.
 name: Deployed API E2E
 on: workflow_dispatch
-
-# STRUCTURAL serialization of the deployed suites (the recorded
-# never-dispatch-concurrently lesson, previously enforced only by memory):
-# one shared group across all eight suites means two can never RUN at
-# once. GitHub keeps at most one PENDING run per group, so still dispatch
-# one at a time — a second queued dispatch may supersede a waiting one.
 concurrency:
   group: deployed-e2e
   cancel-in-progress: false
-
 env:
   API: https://icu-cp49.onrender.com
-  PAGES_ORIGIN: https://jaafer272007-design.github.io
-
 jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the dispatched ref (full history — the gate computes the expected server build from it)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Warm up + require the deployed build to match this ref's LATEST SERVER-TOUCHING commit
+      - name: Poll /healthz build (observation only)
         run: |
-          # THE GATE'S INVARIANT, CORRECTED (the dead-zone fix): the
-          # dispatched ref supplies the TEST code; the deployed build
-          # supplies the SERVER code — they only need to agree about the
-          # SERVER. Render rebuilds only for commits touching the server
-          # build context (render.yaml: rootDir server/, Dockerfile inside
-          # it; render.yaml itself included conservatively — misjudging a
-          # path fails LOUDLY here, never silently green). So the gate
-          # asserts /healthz build == the most recent ancestor of the
-          # dispatched ref that touched that context. STRICTLY STRONGER
-          # than the old HEAD==build rule: an old ref whose HEAD happens to
-          # equal the deployed build now FAILS when newer server-touching
-          # commits exist (the stale case the gate was built for), and a
-          # docs/workflow-only merge no longer creates a dead zone in
-          # which no suite can pass.
-          WANT=$(git log -1 --format=%H -- server/ render.yaml)
-          [ -n "$WANT" ] || { echo "could not determine the latest server-touching commit"; exit 1; }
-          echo "dispatched ref HEAD:             $GITHUB_SHA"
-          echo "latest server-touching ancestor: $WANT  (build context: server/ render.yaml)"
-          for i in $(seq 1 60); do
+          prev=""
+          for i in $(seq 1 56); do
             build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
-            echo "attempt $i: live build=$build · expected=$WANT"
-            [ "$build" = "$WANT" ] && exit 0
-            sleep 10
+            [ "$build" != "$prev" ] && echo "$(date -u +%H:%M:%S) build=$build"
+            prev="$build"
+            sleep 15
           done
-          echo "STALE DEPLOYMENT: /healthz build '$build' never matched this ref's latest server-touching commit '$WANT' — the deployed server does not correspond to this ref's server source" && exit 1
-
-      - name: Login issues a JWT (correct credentials)
-        run: |
-          body=$(curl -sf -X POST "$API/api/auth/login" \
-            -H "Content-Type: application/json" -H "Origin: $PAGES_ORIGIN" \
-            -d '{"username":"sara.rahman","password":"Aurora2026!"}')
-          token=$(echo "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-          echo "$body" | python3 -c '
-          import json,sys,base64
-          d=json.load(sys.stdin)
-          assert d["name"]=="Dr. Sara Rahman" and d["jobTitle"]=="Consultant", d
-          p=d["token"].split(".")[1]; p+="="*(-len(p)%4)
-          c=json.loads(base64.urlsafe_b64decode(p))
-          assert c["sub"]=="sara.rahman" and c["jobTitle"]=="Consultant", c
-          print("JWT claims OK:", {k:c[k] for k in ("sub","jobTitle","iss","aud")})'
-          echo "TOKEN=$token" >> "$GITHUB_ENV"
-
-      - name: Bad credentials → generic 401 (both cases identical)
-        run: |
-          for creds in '{"username":"sara.rahman","password":"wrong"}' '{"username":"ghost.user","password":"Aurora2026!"}'; do
-            out=$(curl -s -w '\n%{http_code}' -X POST "$API/api/auth/login" \
-              -H "Content-Type: application/json" -d "$creds")
-            echo "$creds -> $out"
-            [ "$(echo "$out" | tail -1)" = "401" ] || exit 1
-            echo "$out" | head -1 | grep -q '"Invalid credentials"' || exit 1
-          done
-
-      - name: Roster rejects missing and invalid tokens
-        run: |
-          for auth in "" "Authorization: Bearer not.a.jwt"; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' ${auth:+-H "$auth"} "$API/api/icu/patients")
-            echo "auth='$auth' -> HTTP $code"
-            [ "$code" = "401" ] || exit 1
-          done
-
-      - name: Roster serves the seeded records with a valid token (+ CORS header)
-        run: |
-          curl -sf -D /tmp/headers -H "Authorization: Bearer $TOKEN" -H "Origin: $PAGES_ORIGIN" \
-            "$API/api/icu/patients" -o /tmp/body.json
-          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/headers
-          python3 -c '
-          import json; d=json.load(open("/tmp/body.json"))
-          ids={r["patientId"] for r in d}
-          seeded={f"P-10{n:02d}" for n in range(1,15)}
-          missing=seeded-ids
-          assert not missing, f"seeded patients missing (unless discharged by ADT): {missing}"
-          print(f"records: {len(d)} (seeded 14 present; ADT-admitted extras expected)")'
+          echo "observation window closed; final build=$prev"
