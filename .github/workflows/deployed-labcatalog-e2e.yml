@@ -12,8 +12,9 @@
 # deactivated drug 409, and applying to a DISCHARGED patient answering
 # the SAME 409 a single order gets — asserted string-equal); and the
 # EXPLICIT ABSENCE PROBES the codified coverage lesson demands (unknown
-# testId on an order is accepted — the recorded escape hatch; unknown
-# panel on a result is 400; absent management ids are 404).
+# testId on an order is 400 since the catalogue-authority enforcement —
+# the escape hatch is closed; unknown panel on a result is 400; absent
+# management ids are 404).
 #
 # SELF-SUFFICIENT AND IDEMPOTENT: the run CREATES every test, set and
 # drug it mutates (run-id-unique ids — seeded rows are never mutated),
@@ -181,10 +182,12 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
             -d "$(echo "$RBODY" | sed "s/\"panel\":\"$TID\"/\"panel\":\"no-such-panel\"/")" "$API/api/icu/results/labs")
           echo "unknown panel -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+          # THE ESCAPE HATCH IS CLOSED (safety enforcement): the catalogue
+          # is authoritative — an order for a test in NO catalogue is 400
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d "$(echo "$LDRAFT" | sed "s/\"testId\":\"$TID\"/\"testId\":\"no-such-test\"/;s/\"sign\":true/\"sign\":false/")" "$API/api/icu/orders")
-          echo "order with UNKNOWN testId -> HTTP $rc (accepted — the recorded escape hatch, closed by the queued catalogue-authority enforcement)"
-          [ "$rc" = "200" ] || exit 1
+          rc=$(echo "$out" | tail -1); echo "order with UNKNOWN testId -> HTTP $rc (catalogue authority)"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "does not match any catalogue test" in e, e; print("400:", e)'
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"testId\":\"$TID\",\"medication\":{\"drugId\":\"ceftriaxone\",\"drug\":\"Ceftriaxone\",\"dose\":\"1 g\",\"route\":\"IV\",\"frequency\":\"daily\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":false}" "$API/api/icu/orders")
           echo "testId on a medication draft -> HTTP $rc (shape)"; [ "$rc" = "400" ] || exit 1

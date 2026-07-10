@@ -71,16 +71,19 @@ static class OrderLogic
             return $"{at} requires a summary (non-medication order) or a medication object";
         /* Layer 4 (lab catalogue): a catalogue-test reference is SHAPE —
            only a Lab order can carry one, in any state (400, like
-           requiresImplementation on a medication draft). The inactive-test
-           check is resource STATE and lives in the endpoint (409, after
-           the encounter guard). An UNKNOWN testId stays accepted — the
-           same recorded escape hatch as unknown drugIds, closed by the
-           queued catalogue-authority enforcement. */
+           requiresImplementation on a medication draft). SAFETY
+           ENFORCEMENT closed the escape hatch: the CATALOGUE IS
+           AUTHORITATIVE — an unknown testId is a validation 400 (payload
+           field, the unknown-patientId precedent; 404 stays reserved for
+           addressed resources). The inactive-test check is resource STATE
+           and lives in the endpoint (409, after the encounter guard). */
         if (d.TestId is not null)
         {
             if (d.Category != "Lab")
                 return $"{at}: only a Lab order may reference a catalogue test (testId)";
             if (CheckText($"{at}.testId", d.TestId, required: false) is string tid) return tid;
+            if (MasterData.LabCatalogLogic.Resolve(db, d.TestId) is null)
+                return $"{at}.testId '{d.TestId}' does not match any catalogue test";
         }
         /* a provided-but-blank summary must never override the composed
            medication summary or create a contentless order */
@@ -99,6 +102,12 @@ static class OrderLogic
             {
                 if (CheckText($"{at}.medication.{name}", value, required) is string e) return e;
             }
+            /* SAFETY ENFORCEMENT: the FORMULARY IS AUTHORITATIVE — an
+               unknown drugId is a validation 400 (the live ORD-168 finding
+               closed; the free-text escape hatch is gone). Inactive stays
+               resource state (409, in the endpoint after the guard). */
+            if (FormularyLogic.Resolve(db, m.DrugId) is null)
+                return $"{at}.medication.drugId '{m.DrugId}' does not match any formulary drug";
             if (!FormularyLogic.IsValidFrequency(db, m.Frequency))
                 return $"{at}.medication.frequency '{m.Frequency}' is not a valid frequency — {FormularyLogic.FrequencyRule(db)}";
         }
@@ -119,6 +128,11 @@ static class OrderLogic
         }
         if (c.Frequency is not null && !FormularyLogic.IsValidFrequency(db, c.Frequency))
             return $"changes.frequency '{c.Frequency}' is not a valid frequency — {FormularyLogic.FrequencyRule(db)}";
+        /* formulary authority applies to the modify path's new selection
+           too — unknown target drugId is validation (400); inactive stays
+           the endpoint's 409 */
+        if (c.DrugId is not null && FormularyLogic.Resolve(db, c.DrugId) is null)
+            return $"changes.drugId '{c.DrugId}' does not match any formulary drug";
         return null;
     }
 

@@ -1,8 +1,10 @@
 import type { FormularyDrug, InteractionRule, Order, SafetyIssue } from './types'
 
 /* Medication safety checks — allergy, interaction, duplicate therapy.
-   Runs client-side for immediate feedback; the future ASP.NET Core API
-   re-validates server-side on POST /orders (never trust the client). */
+   Runs client-side for immediate feedback; since the safety-enforcement
+   PR the server RE-RUNS these checks on POST /orders (SafetyLogic) and
+   is authoritative — a client that skips this screen is still caught
+   (hard blocks 409, warn-level requires the audited override). */
 
 const normalize = (s: string) => s.toLowerCase()
 

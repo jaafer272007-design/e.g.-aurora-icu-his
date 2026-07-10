@@ -172,7 +172,7 @@ static class OrderSetsApi
                 req.PatientId, it.Category, it.Summary, it.Medication,
                 it.Priority, it.RequiresImplementation, it.TestId)).ToList();
             return OrdersApi.Create(new CreateOrdersRequest(drafts, req.Sign,
-                req.Note ?? $"applied order set: {row.Name}"), user, db);
+                req.Note ?? $"applied order set: {row.Name}", req.OverrideJustification), user, db);
         }).RequireAuthorization();
     }
 
@@ -198,12 +198,11 @@ static class OrderSetsApi
                 db.AdtPatients.AsNoTracking().Select(p => p.PatientId).FirstOrDefault() ?? "",
                 it.Category, it.Summary, it.Medication, it.Priority,
                 it.RequiresImplementation, it.TestId);
+            /* ValidateDraft now enforces formulary/catalogue AUTHORITY
+               itself (safety enforcement) — unknown drugId/testId in a
+               definition surfaces through the shared 400 text */
             if (OrderLogic.ValidateDraft(probe, i, db) is string shape)
                 return shape.Replace($"drafts[{i}]", at);
-            if (it.Medication is not null && FormularyLogic.Resolve(db, it.Medication.DrugId) is null)
-                return $"{at}.medication.drugId '{it.Medication.DrugId}' does not resolve in the formulary — set definitions must reference known drugs";
-            if (it.TestId is not null && LabCatalogLogic.Resolve(db, it.TestId) is null)
-                return $"{at}.testId '{it.TestId}' does not resolve in the lab catalogue — set definitions must reference known tests";
         }
         return null;
     }

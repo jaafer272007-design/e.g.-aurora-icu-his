@@ -86,8 +86,10 @@ WARNING the first one references stays with the persistence record there.]*
   independent reference (the drug rides on the order) and its own
   order/dose absence paths are probed; the formulary suite probes
   absent drugIds on MANAGEMENT endpoints but its order legs use only
-  drugs it created. The missing absence probes ride with the
-  formulary-authority fix, not ad hoc.
+  drugs it created. The missing absence probes SHIPPED with the
+  safety-enforcement PR (unknown drugId/testId → 400 asserted in the
+  orders/formulary/labcatalog suites; unknown-patientId result creation
+  → 400 in the labs suite).
 
 Cross-references (each rule recorded verbatim at the cited site):
 

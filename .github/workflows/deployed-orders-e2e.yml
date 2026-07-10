@@ -6,10 +6,16 @@
 # token is rejected 403 on all four while a doctor token succeeds with
 # the actor derived from the token; implement is nurse-only (doctor 403).
 #
-# IDEMPOTENT BY DESIGN: every mutation targets an order this run creates,
-# and read assertions check the seeded records as a SUBSET (never exact
-# counts), so the workflow can be dispatched repeatedly between deploys
-# even after other clients have written to the durable DB.
+# IDEMPOTENT AND SELF-SUFFICIENT: every mutation targets an order this
+# run creates ON ITS OWN ADMITTED PATIENT (safety enforcement made shared
+# demo patients untenable — accumulated active orders trigger the
+# duplicate-therapy check — and this also resolves the recorded
+# P-1001-discharge fragility for this suite); read assertions check the
+# seeded records as a SUBSET. The SAFETY step asserts the server-side
+# allergy/interaction/duplicate model live: hard block never overridable,
+# warn-level 409 without an overrideJustification, audited override with
+# one. Cleanup discharges the run's encounter (the cascade closes its
+# orders) and deactivates the run's drug.
 name: Deployed Orders E2E
 on: workflow_dispatch
 
@@ -79,18 +85,38 @@ jobs:
           fi
           echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
 
-      - name: Login as doctor and nurse
+      - name: Login (doctor, nurse, pharmacist) + run-unique names
         run: |
-          for u in sara.rahman maya.chen; do
+          for u in sara.rahman maya.chen samir.qassem; do
             t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
               -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
             case $u in
-              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
-              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+              sara.rahman)  echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)    echo "NUR=$t" >> "$GITHUB_ENV";;
+              samir.qassem) echo "PHA=$t" >> "$GITHUB_ENV";;
             esac
             echo "$u: token issued"
           done
+          { echo "ODRUG=e2e-odrug-${GITHUB_RUN_ID}"; echo "MRN=MRN-ORDE2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+
+      - name: Create the run drug + admit the run patient (self-sufficiency)
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d "{\"drugId\":\"$ODRUG\",\"name\":\"E2E Orders Drug\",\"brandNames\":[],\"drugClass\":\"Test\",\"form\":\"tablet\",\"strengths\":[\"1 mg\"],\"doses\":[\"1 mg\"],\"defaultDose\":\"1 mg\",\"routes\":[\"PO\"],\"frequencies\":[\"daily\"],\"prnCapable\":false,\"allergyBlock\":[],\"allergyWarn\":[]}" \
+            "$API/api/icu/formulary" > /dev/null
+          echo "run drug $ODRUG created"
+          FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
+            | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
+          # allergies "Penicillin" — deliberate: the SAFETY step exercises
+          # the allergy block/warn model against this documented allergy
+          resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"mrn\":\"$MRN\",\"name\":\"Orders E2E Patient\",\"age\":47,\"sex\":\"M\",\"allergies\":\"Penicillin\",\"bedId\":\"$FREE\",\"diagnosis\":\"orders E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            "$API/api/icu/adt/admissions")
+          pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
+          eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+          { echo "PID=$pid"; echo "EID=$eid"; } >> "$GITHUB_ENV"
+          echo "admitted $pid ($eid) at $FREE"
 
       - name: Unauthenticated order reads → 401
         run: |
@@ -128,15 +154,30 @@ jobs:
           echo "order count $before -> $after (must be unchanged)"
           [ "$before" = "$after" ] || exit 1
 
-      - name: Unparseable frequency rejected with 400 (never persisted)
+      - name: Unparseable frequency 400; UNKNOWN drugId/testId 400 (formulary/catalogue AUTHORITY — the closed escape hatch)
         run: |
+          # frequency legs ride the run drug now — drugId "x" is REJECTED
+          # since the authority fix (the old escape-hatch legs are gone)
           for f in "q99999999999h" "q0h" "whenever"; do
             out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-              -d "{\"drafts\":[{\"patientId\":\"P-1001\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"x\",\"drug\":\"X\",\"dose\":\"1 g\",\"route\":\"IV\",\"frequency\":\"$f\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":true}" \
+              -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"$ODRUG\",\"drug\":\"E2E Orders Drug\",\"dose\":\"1 mg\",\"route\":\"PO\",\"frequency\":\"$f\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":false}" \
               "$API/api/icu/orders")
             echo "frequency '$f' -> $out" | head -2
             [ "$(echo "$out" | tail -1)" = "400" ] || exit 1
           done
+          # THE ABSENCE PROBES (the codified coverage lesson, owed by this
+          # suite): an order for an id that resolves to NOTHING is 400
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"totally-fake-drug-xyz\",\"drug\":\"Fictional Compound\",\"dose\":\"1 g\",\"route\":\"IV\",\"frequency\":\"daily\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":true}" \
+            "$API/api/icu/orders")
+          rc=$(echo "$out" | tail -1); echo "UNKNOWN drugId -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "does not match any formulary drug" in e, e; print("400:", e)'
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Lab\",\"summary\":\"ghost test\",\"testId\":\"no-such-test\",\"priority\":\"Routine\"}],\"sign\":false}" \
+            "$API/api/icu/orders")
+          rc=$(echo "$out" | tail -1); echo "UNKNOWN testId -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "does not match any catalogue test" in e, e; print("400:", e)'
+
 
       - name: NURSE token → 403 on ALL prescriber mutations (server-side RBAC)
         run: |
@@ -153,7 +194,7 @@ jobs:
         run: |
           # create an unsigned med order, then drive it through sign → modify → discontinue
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"drafts":[{"patientId":"P-1001","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":false,"note":"deployed E2E"}' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":false,"note":"deployed E2E"}' \
             "$API/api/icu/orders" > /tmp/created.json
           OID=$(python3 -c 'import json; d=json.load(open("/tmp/created.json"))[0]; assert d["status"]=="pending" and d["orderedBy"]=="Dr. Sara Rahman", d; print(d["orderId"])')
           echo "created pending $OID"
@@ -207,7 +248,7 @@ jobs:
       - name: Implement is nurse-only, on THIS RUN's own order (doctor 403, nurse 200)
         run: |
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"drafts":[{"patientId":"P-1001","category":"Nursing","summary":"deployed E2E implementation check","priority":"Routine","requiresImplementation":true}],"sign":true}' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"deployed E2E implementation check","priority":"Routine","requiresImplementation":true}],"sign":true}' \
             "$API/api/icu/orders" > /tmp/impl.json
           IID=$(python3 -c 'import json; print(json.load(open("/tmp/impl.json"))[0]["orderId"])')
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/orders/$IID/implement")
@@ -220,7 +261,7 @@ jobs:
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already completed" in e, e'
           # a PENDING implementation order is state too: it must be signed first
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"drafts":[{"patientId":"P-1001","category":"Nursing","summary":"deployed E2E pending-implement probe","priority":"Routine","requiresImplementation":true}],"sign":false}' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"deployed E2E pending-implement probe","priority":"Routine","requiresImplementation":true}],"sign":false}' \
             "$API/api/icu/orders" > /tmp/pend-impl.json
           PIID=$(python3 -c 'import json; print(json.load(open("/tmp/pend-impl.json"))[0]["orderId"])')
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/orders/$PIID/implement")
@@ -228,3 +269,69 @@ jobs:
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "must be signed before" in e, e'
           # tidy: discontinue the probe so the run leaves nothing pending
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"deployed E2E probe cleanup"}' "$API/api/icu/orders/$PIID/discontinue" >/dev/null
+
+      - name: SERVER-SIDE SAFETY — hard block never overridable; warn 409 → audited override; the client can no longer skip it
+        run: |
+          med(){ echo "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"$1\",\"drug\":\"$2\",\"dose\":\"$3\",\"route\":\"$4\",\"frequency\":\"$5\",\"duration\":\"3 days\",\"prn\":false}}],\"sign\":true${6:+,\"overrideJustification\":\"$6\"}}"; }
+          # (a) allergyBlock vs the documented "Penicillin" allergy → HARD 409,
+          #     and an override justification does NOT clear it
+          for j in "" "clinically essential"; do
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+              -d "$(med piperacillin-tazobactam Piperacillin-Tazobactam "4.5 g" "IV over 30 min" q8h "$j")" "$API/api/icu/orders")
+            rc=$(echo "$out" | tail -1); echo "allergy-blocked drug (override='$j') -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+            echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "safety block" in e and "contraindicated (penicillin)" in e.lower() and "cannot be overridden" in e, e'
+          done
+          # (b) allergyWarn (meropenem: penicillin cross-reactivity) → 409
+          #     WITHOUT an override; 200 WITH one, and the override is AUDITED
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "$(med meropenem Meropenem "1 g" "IV over 30 min" q8h)" "$API/api/icu/orders")
+          rc=$(echo "$out" | tail -1); echo "warn w/o override -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "safety warning" in e and "cross-reactivity" in e and "requires an acknowledged override" in e, e; print("409:", e)'
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "$(med meropenem Meropenem "1 g" "IV over 30 min" q8h "sepsis — benefit outweighs cross-reactivity risk")" "$API/api/icu/orders" \
+            | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)[0]
+          ev=[e for e in d["history"] if e["action"]=="safety override"]
+          assert len(ev)==1 and "cross-reactivity" in ev[0]["detail"] and "justification: sepsis — benefit outweighs cross-reactivity risk" in ev[0]["detail"], d["history"]
+          assert ev[0]["actor"]=="Dr. Sara Rahman" and d["status"]=="active"
+          print("override AUDITED on", d["orderId"], "|", ev[0]["detail"][:80] + "…")'
+          # (c) duplicate therapy (meropenem now active) → warn-level 409
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "$(med meropenem Meropenem "1 g" "IV over 30 min" q8h)" "$API/api/icu/orders")
+          echo "duplicate therapy w/o override -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          # (d) interaction rules: enoxaparin active, then heparin → BLOCK
+          #     (duplicate anticoagulation — never overridable); ketorolac → warn
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "$(med enoxaparin Enoxaparin "40 mg" SC daily)" "$API/api/icu/orders" >/dev/null
+          for j in "" "please"; do
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+              -d "$(med heparin "Heparin (unfractionated)" "5000 U" SC q8h "$j")" "$API/api/icu/orders")
+            rc=$(echo "$out" | tail -1); echo "block-severity interaction (override='$j') -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+            echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "safety block" in e and "Duplicate therapeutic anticoagulation" in e and "cannot be overridden" in e, e'
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "$(med ketorolac Ketorolac "15 mg" IV q6h)" "$API/api/icu/orders")
+          echo "warn-severity interaction w/o override -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+
+      - name: Cleanup — discharge the run encounter + deactivate the run drug (runs on failure/cancel too)
+        if: always()
+        run: |
+          fails=0
+          if [ -n "${EID:-}" ]; then
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+            echo "discharge $EID -> HTTP $rc"
+            { [ "$rc" = "200" ] || [ "$rc" = "409" ]; } || fails=$((fails+1))
+          fi
+          if [ -n "${ODRUG:-}" ]; then
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$ODRUG/deactivate")
+            echo "deactivate $ODRUG -> HTTP $rc"
+            { [ "$rc" = "200" ] || [ "$rc" = "409" ] || [ "$rc" = "404" ]; } || fails=$((fails+1))
+          fi
+          if [ -n "${PID:-}" ]; then
+            st=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID" \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); print("discharged" if d and all(e["status"]=="discharged" for e in d) else "<live>")')
+            echo "encounters final: $st"; [ "$st" = "discharged" ] || fails=$((fails+1))
+          fi
+          [ "$fails" = "0" ] || { echo "cleanup left live state behind"; exit 1; }
+          echo "cleanup complete — no active run state remains"

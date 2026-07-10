@@ -90,9 +90,15 @@ oldest unfulfilled matching order; results may exist without an order —
 walk-in/reflex are legitimate), and ORDER SETS (Pharmacy's
 `ordersets.manage`; apply runs through the shared order-creation path,
 never a bypass), with the eleventh suite
-(`deployed-labcatalog-e2e.yml`)**. **Next: the server-side
-safety-enforcement work item (formulary/catalogue-authoritative
-ordering + the safety.ts move) or the deferred Print Center**,
+(`deployed-labcatalog-e2e.yml`)**. **Server-side safety enforcement is
+DONE**: unknown drugId/testId → 400 (the ORD-168 hole closed, confirmed
+on a live-upgrade replica with the historical-rendering guarantee),
+inactive → 409, and the safety.ts allergy/interaction/duplicate model
+enforced at creation — hard blocks never overridable, warn-level 409
+without an audited overrideJustification; the orders/MAR suites moved
+to own admitted patients (the duplicate-therapy check made shared demo
+patients untenable) with the owed absence probes shipped. **Next: the
+deferred Print Center**,
 then Stage 11 device + AI integration per the
 locked rules above (Stage 11 also absorbs the roster's remaining
 bedside-snapshot columns). The Timeline's four still-mock sources
@@ -439,18 +445,14 @@ conventions.]*
 *[Docs split note: the "Codified rule — finite seeded resources" bullet
 moved to 03_DEVELOPMENT_RULES.md § Deployed E2E suite disciplines.]*
 
-- **WARNING — discharging P-1001 or P-1007 breaks three E2E suites**:
-  the MAR, Timeline, and Orders deployed suites create orders against
-  the SEEDED patients P-1001 and P-1007 and therefore depend on those
-  patients having an OPEN ENCOUNTER. Since Layer 2, discharging either
-  patient through the live Discharges screen — a LEGITIMATE user
-  action, not misuse — makes the order create fail (since the
-  encounter-scoping fix: 409 "no open encounter" at the
-  EncounterGuard chokepoint; before it: validation 400) and all three
-  suites fail from then on. The fix is for each suite to admit its own
-  patient first, as the ADT suite already does (and the
-  encounter-scope suite now does); it rides with the next touch of
-  each suite.
+- **WARNING — discharging P-1007 breaks the Timeline suite** (MOSTLY
+  RESOLVED by the safety-enforcement PR: the Orders and MAR suites now
+  admit their OWN patients — forced anyway, because server-side safety
+  made shared demo patients untenable: their accumulated active orders
+  trip the duplicate-therapy check. Timeline's created order is a
+  Nursing order with no drug, so it was untouched and STILL depends on
+  P-1007 having an open encounter; its own-patient fix rides with its
+  next touch).
 - **OPERATIONAL CONSTRAINT — Render free Postgres EXPIRES: 30 days**
   (verified against the Render changelog — the policy changed 2024-05-20
   from the previous 90 days), then a 14-day grace period to upgrade
@@ -901,16 +903,14 @@ lab test catalog and order sets are the NEXT master-data domains — Layer
   ORD-167/ORD-168 on P-1034 — discontinued "verification artifact" and
   discharged). Management is authoritative (create/deactivate/audit,
   RBAC-enforced) but the order service still accepts ANY drugId string.
-  TO BE FIXED with the queued server-side safety enforcement (the
-  safety.ts move — recorded item (a) below): the order service must
-  treat the formulary as authoritative — ordering an UNKNOWN drugId is
-  rejected (validation 400 naming the field, by the unknown-patientId
-  precedent — the drugId is a payload field, not an addressed resource;
-  404 stays reserved for addressed ids) and an INACTIVE one stays 409.
-  When that ships, the frequency-parity legs in the orders AND
-  formulary suites (which ride the escape hatch with drugId 'x') must
-  switch to formulary drugs, and the mock adapter/UI drift gets its
-  pass.
+  FIXED by the server-side safety-enforcement PR (see "Server-side
+  safety enforcement (built)" below): the order service now treats the
+  formulary as authoritative — ordering an UNKNOWN drugId is rejected
+  (validation 400 naming the field, by the unknown-patientId precedent —
+  the drugId is a payload field, not an addressed resource; 404 stays
+  reserved for addressed ids) and an INACTIVE one stays 409. The
+  frequency-parity legs in the orders AND formulary suites switched to
+  formulary drugs in the same PR.
 
 *[Docs split note: the "CODIFIED TEST-COVERAGE LESSON" bullet moved to
 03_DEVELOPMENT_RULES.md § Deployed E2E suite disciplines.]*
@@ -1047,15 +1047,11 @@ Completes Layer 4's planned domains (`server/Core/MasterData/`).
   card reads the REAL definitions (inactive sets excluded); adapters
   follow the proven read-fallback/REAL-ONLY-write pattern.
 - **Recorded, deliberately not done here**: (a)
-  CATALOGUE-AUTHORITATIVE ORDERING has the same status as the
-  formulary's — an order with an UNKNOWN testId is still accepted (the
-  escape hatch, asserted live as the explicit absence probe) — folded
-  into the SAME server-side enforcement work item as unknown-drugId
-  rejection and the safety checks, not a new item; (b) per the coverage
-  lesson, the new suite carries its absence probes explicitly, and the
-  OTHER suites' missing catalogue-absence probes ride with that
-  enforcement fix; (c) order completion on result arrival; (d)
-  interaction-rule management and dose-limit enforcement (unchanged).
+  CATALOGUE-AUTHORITATIVE ORDERING — SUPERSEDED: shipped with the
+  safety-enforcement PR (unknown testId → 400, inactive stays 409);
+  (b) the suites' absence probes likewise shipped there; (c) order
+  completion on result arrival; (d) interaction-rule management and
+  dose-limit enforcement (unchanged).
 - **Verification**: 67-check behavior matrix (all RBAC polarities incl.
   the pharmacist-403-on-catalogue cross-check, linkage both branches,
   the asymmetry, apply-path equivalence); byte-parity sweep vs main —
@@ -1070,6 +1066,92 @@ Completes Layer 4's planned domains (`server/Core/MasterData/`).
   ELEVENTH suite — gate v3, shared concurrency group, self-sufficient
   (run-unique test/set/drug + own patient), `if: always()` cleanup with
   asserted outcomes.
+
+### Server-side safety enforcement (built) — the reference layer becomes AUTHORITATIVE
+The consolidated work item queued since the formulary's live finding.
+Three interdependent parts, one PR (they share the same test-migration
+consequence). No schema change — the only wire delta is the additive
+`overrideJustification` request field on order create/set apply.
+- **Part 1 — formulary/catalogue authority at ordering**: the order
+  service no longer accepts arbitrary reference ids. Call sites:
+  `OrderLogic.ValidateDraft` (unknown drugId → 400 "does not match any
+  formulary drug"; unknown testId → 400 "does not match any catalogue
+  test" — the unknown-patientId precedent: payload fields, never 404),
+  `OrderLogic.ValidateChanges` (modify's changes.drugId, same 400), and
+  order-set authoring now surfaces the same shared text through
+  ValidateDraft (its own redundant resolution checks removed). INACTIVE
+  stays 409 (state, after the encounter guard) — unchanged. PRECEDENCE
+  NOTE: for a draft with BOTH an unknown drug and an invalid frequency,
+  the unknown-drug 400 now reports first (field order); the frequency
+  error is byte-identical for resolvable drugs.
+- **Part 3 — the safety.ts move (server-authoritative medication
+  safety)**: `SafetyLogic` re-runs the allergy/interaction/duplicate
+  checks at order creation — a client that skips its own check is
+  caught; the client copy stays for UX. THE MODEL: HARD BLOCK, never
+  overridable → 409 (allergyBlock tag matching the patient's documented
+  allergy field; block-severity interaction rules against ACTIVE med
+  orders on the OPEN encounter — e.g. duplicate therapeutic
+  anticoagulation). 409 not 400: correcting the allergy record or
+  discontinuing the interacting order lets the same request succeed.
+  WARN, overridable → 409 WITHOUT `overrideJustification`; proceeds
+  WITH one and appends an audited "safety override" event (actor from
+  the token, the warnings acknowledged, the justification — the Layer 3
+  clinical-justification pattern) to each affected order's history:
+  allergyWarn cross-reactivity, warn-severity interactions, duplicate
+  therapy. Blocks are checked for EVERY draft before any insert (a
+  blocked batch creates zero orders); "none known" allergies skip the
+  allergy legs; a stray justification with no findings is ignored and
+  never audited. Set APPLY inherits everything through the shared
+  create path (sepsis-bundle on a penicillin-allergic patient → the
+  allergy block 409, asserted). RECORDED follow-up scope: the MODIFY
+  path validates formulary authority but does not re-run
+  allergy/interaction screening; batch-internal duplicates (two drafts,
+  same drug, one request) are unseen — same property as the client
+  check; the set-apply endpoint has no per-item skip (the Orders
+  screen's client-side screening composes drafts instead).
+- **HISTORICAL RENDERING GUARANTEE (the Print Center note)**: ORD-168's
+  fictional drug is IN the durable database forever, and any historical
+  view or export — the forthcoming Print Center especially — must render
+  orders whose drugId resolves to nothing without crashing. CONFIRMED at
+  the API level on a live-upgrade replica: an escape-hatch order
+  persisted by the OLD binary still READS under enforcement, its dose
+  can still be modified and it can still be discontinued (the closed
+  encounter state machine's terminal transition), while a NEW order for
+  the same fictional drug is 400. Reads never consult the formulary —
+  UI/print renderers must preserve that property (display the stored
+  drug text, never join-require the formulary row).
+- **Part 2 — the coupled suite migration (the coverage lesson made
+  concrete)**: the orders and formulary suites' frequency-parity legs
+  rode the escape hatch (drugId 'x') and broke by design — they now
+  order real drugs (the orders suite creates its OWN run drug; the
+  formulary suite uses its reserved DRUG2, since an active $DRUG order
+  would trip the duplicate check). The labcatalog suite's
+  unknown-testId leg FLIPPED from asserting acceptance to asserting the
+  400. Absence probes added where owed: orders (unknown drugId + testId
+  400s with exact text), formulary (unknown drugId), labs
+  (create-result-for-unknown-patient 400). The orders and MAR suites
+  now ADMIT THEIR OWN PATIENTS — forced by enforcement itself (the
+  shared P-1001's accumulated active orders trip the duplicate-therapy
+  check on every new med order), which also resolves their leg of the
+  recorded P-1001-discharge WARNING. The orders suite gained a SAFETY
+  step asserting the full model live: allergy block 409 (override does
+  NOT clear it), warn 409 → audited override 200 (event + actor +
+  justification asserted), duplicate 409, interaction block vs warn.
+  Both suites gained if: always() cleanup (discharge + deactivate run
+  rows, outcomes asserted).
+- **Frontend**: `createOrders` sends the order form's acknowledged
+  override text as BOTH `note` (audit display, as before) and
+  `overrideJustification` (the server gate) — the UI flow is unchanged;
+  a raw API client without the acknowledgment is now stopped.
+- **Verification**: 30-check enforcement matrix (authority both
+  branches incl. modify + set-authoring texts, every safety
+  severity/override combination, the audited-event shape, none-known
+  skip, stray-justification no-op, oversized justification 400);
+  35-check byte-parity sweep vs main — zero diffs on every unaffected
+  endpoint (the bad-frequency parity probe repointed at a resolvable
+  drug per the precedence note); live-upgrade replica (zero migrations,
+  the ORD-168 confirmation above); suites: orders/MAR/formulary/
+  labcatalog/labs migrated as described, all eleven YAML-validated.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
@@ -1132,9 +1214,10 @@ audit)**, and **the encounter-scoping fix (the ORD-113 defect — an
 order's lifecycle is bounded by its encounter; see the section
 above)** are DONE, and **Layer 4 is DOMAIN-COMPLETE — the drug
 formulary, the lab test catalogue and order sets are all built in Core
-Master Data** (the recorded enforcement work — formulary/catalogue-
-authoritative ordering + server-side safety — remains). **Next: the
-server-side safety-enforcement work item or the deferred Print
+Master Data**, and **the server-side safety-enforcement work item is
+DONE — the formulary and catalogue are authoritative at ordering and
+medication safety is server-enforced** (see "Server-side safety
+enforcement (built)"). **Next: the deferred Print
 Center** → Stage 11 (device
 integration + the Observation model per the locked rule above; Stage
 11 also absorbs the remaining bedside-snapshot half of the roster).
@@ -1149,6 +1232,8 @@ server-side safety-enforcement work item or the deferred Print Center →
 Stage 11") and extends it. It was not moved from the pre-split file.]*
 
 1. Server-side safety enforcement — IN FLIGHT (draft PR #46, below)
+   *[Superseded in the safety-enforcement PR itself: this item is BUILT —
+   see "Server-side safety enforcement (built)" above.]*
 2. Environment separation (dev/staging/production — the missing concept
    recorded in 01_ARCHITECTURE.md § Environment separation)
 3. Print Center
@@ -1175,6 +1260,11 @@ mechanical re-home of #46's new section into these files.]*
   creation (hard blocks → 409 never overridable; warn-level → 409 without
   an `overrideJustification`, 200 with one plus an audited "safety
   override" event with the token's actor).
+  *[Superseded in the safety-enforcement PR itself (this PR carried the
+  re-home after the docs split merged first): the work is BUILT — the
+  full record is "Server-side safety enforcement (built)" above. Live
+  suite validation (orders → MAR → formulary → labcatalog → labs,
+  sequential) runs after merge + deploy.]*
 
 ## CI Evidence — skipped/no-op checks (incident + codified rule + 2026-07-10 audit)
 Recorded after PR #27 incidentally discovered that PR #25 shipped real

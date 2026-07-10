@@ -97,8 +97,12 @@ record NewOrderDraftDto(
     string? PatientId, string? Category, string? Summary, MedicationDto? Medication,
     string? Priority, bool? RequiresImplementation, string? TestId = null);
 
+/* overrideJustification (safety enforcement): the audited acknowledgment
+   that lets WARN-level safety findings (cross-reactivity, warn-severity
+   interactions, duplicate therapy) proceed — required when any exist,
+   recorded on each affected order's history. HARD blocks ignore it. */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record CreateOrdersRequest(List<NewOrderDraftDto>? Drafts, bool Sign, string? Note);
+record CreateOrdersRequest(List<NewOrderDraftDto>? Drafts, bool Sign, string? Note, string? OverrideJustification = null);
 
 /* partial medication update — only provided fields are applied */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
