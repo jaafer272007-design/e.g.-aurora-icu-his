@@ -1018,6 +1018,15 @@ lives in code as `ApiError.BadRequest/StateConflict/NotFound`
   still 400), users (replayed deactivate/reactivate 409, absent account
   404; last-admin 409 stays local-only — live would mutate seeded
   admins), encounter-scope (sign/modify on closed → guard 409, now live).
+  LIVE VALIDATION COMPLETE (2026-07-10): all suites green against the
+  deployed service. One suite bug found live and fixed on the way (orders
+  run #16): an absent-id 404 probe must carry the token AUTHORIZED for
+  that mutation — RBAC runs BEFORE the lookup and the 403 is generic
+  precisely so error codes are no existence oracle, so probing the
+  nurse-only implement with a doctor token gets 403, never the 404 under
+  test. The orders loop was the only instance (MAR/ADT/users audited
+  correct); same lesson class as the $OID bug — suite code only the
+  runner executes needs the runner to execute it.
 
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
@@ -1257,8 +1266,9 @@ they ride with the next touch of each file):
   deployed commit (main, after Render finishes) — dispatching a
   non-deployed ref now correctly fails. (SUPERSEDED by the gate-context
   fix — see "The stale gate's dead zone" below: the gate now compares
-  against the ref's latest SERVER-TOUCHING commit, so any ref whose
-  server source matches the deployed build passes.)
+  CONTENT of the build context (git tree/blob hashes of server/ +
+  render.yaml), so any ref whose server content matches the deployed
+  build passes.)
 - **Real CI exists (`ci.yml`)** — the repo's first `pull_request`
   trigger: `tsc -b --force` + `vite build` (frontend) and
   `dotnet build server` (the C# server is no longer compiled by
@@ -1328,6 +1338,39 @@ its objects — a depth-1 checkout would fail the gate loudly on every
 run. A render.yaml-only mismatch gets a DISTINCT message: if Render's
 Blueprint sync did not redeploy for the change, a MANUAL DEPLOY of the
 latest commit clears the gate (documented operational step).
+
+**The CONFIG MISMATCH branch was FIRED live, not reasoned about
+(2026-07-10, probe PR #38)**: a comment-only render.yaml change was
+merged deliberately to put main into the one state that branch handles
+(server trees equal, render.yaml blobs differ — a state nobody had
+produced). Both protocol legs confirmed on the live service:
+(1) the next dispatch (orders run 29110897161) spent its full
+60-attempt budget — every attempt logging server trees EQUAL — then
+failed with the exact message: "CONFIG MISMATCH: server/ trees are
+EQUAL but render.yaml differs between this ref and the deployed build
+'5c42000…'. … trigger a MANUAL DEPLOY of the latest commit to clear
+this gate — an expected operational step, not a dead zone."
+(2) after the manual Render deploy, the same dispatch (run
+29112564472) PASSED — the deploy landed mid-loop (attempt 23 still saw
+build 5c42000, attempt 24 saw the freshly deployed main HEAD with
+matching tree+blob → exit 0), the gate's retry budget doubling as the
+deploy-waiter by design.
+WHAT THE PROBE ESTABLISHES — stated precisely, not as a
+classification: only case (c) — a comment-only render.yaml edit
+triggers NO Render rebuild (the build id sat unchanged for the ~35
+minutes between the probe's merge and the manual deploy). Case (b) — a
+SEMANTIC render.yaml change that alters the deployed artifact — goes
+through Render's Blueprint sync, a DIFFERENT mechanism from the
+rootDir build filter, which a comment-only probe never exercises; (b)
+REMAINS AN UNTESTED INFERENCE (the gate's message says "should have
+redeployed — check the dashboard" precisely because this is unproven).
+KEEPING render.yaml IN THE COMPARISON SET never depended on the probe
+— the ASYMMETRY settles it: if the set is a superset (render.yaml
+turns out not to be a build input), the cost is a documented manual
+deploy after a config-only change — loud and recoverable; if the set
+were a subset (render.yaml dropped but semantic changes DO alter the
+artifact), a stale server would pass the gate silently. A recoverable
+loud failure beats an unrecoverable silent pass.
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
