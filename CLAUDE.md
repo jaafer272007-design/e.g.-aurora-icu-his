@@ -574,6 +574,24 @@ and redeploys on Render.
   suites run sequentially TWICE against the same persistent DB — 12/12;
   SQLite demo fallback boots with the warning.
 
+### Single environment — every test writes to the system of record (recorded constraint)
+Aurora has ONE environment. All verification — the automated deployed
+suites and manual testing alike — writes PERMANENTLY to the live durable
+database. Test patients, test accounts, and their audit events are
+indistinguishable from real ones and cannot be removed, because the
+never-destroy principle correctly forbids it. Known artifacts to date:
+users tc004411 and test.consultant33256 (deactivated), patients P-1023
+"EncScope Test" and P-1024 "Admin409 Test", and several E2E-created
+patients and encounters, all discharged.
+
+This is NOT a hygiene problem — it is a MISSING ARCHITECTURAL CONCEPT:
+dev/staging/production separation. It must be resolved BEFORE any real
+patient data exists (test writes mixed into a record containing real
+patients would be a clinical-integrity failure, not clutter), and it
+gets harder to resolve the longer the durable database grows — every
+accumulated artifact is one more row a future environment split has to
+classify.
+
 ### Layer 2 — ADT (built) — the first Aurora Core-native domain
 Patient / Encounter / Bed live in `server/Core/Adt/` from day one — never
 ICU-shaped first. The first WRITE feature on the durable database, and
