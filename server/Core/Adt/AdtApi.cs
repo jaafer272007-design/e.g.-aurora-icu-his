@@ -139,6 +139,17 @@ static class AdtApi
             enc.DischargedAt = time;
             enc.DischargedBy = actor;
             enc.EventsJson = AdtLogic.AppendEvent(enc.EventsJson, new(time, actor, "discharged", $"from {enc.BedId}"));
+            /* THE BACKWARD INVARIANT (one rule with the create-time
+               chokepoint): an order's lifecycle is bounded by its
+               encounter. Closing the encounter discontinues its
+               active/pending orders in the SAME transaction via the
+               explicitly-named LIFECYCLE path — audited with the
+               discharging clinician as actor, never deleted; remaining
+               scheduled administrations cancelled by the shared
+               discontinue mechanics. (Adt calling into Orders is a
+               deliberate Core-internal coupling; a future domain-event
+               seam would decouple it.) */
+            Aurora.Core.Orders.OrderLogic.DischargeCascade(db, enc.EncounterId, actor);
             db.SaveChanges();
             var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).Name;
             return Results.Json(enc.ToDto(name), JsonOpts.Web);

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Aurora.Core.Adt;
 using Aurora.Core.Identity;
 using Aurora.Core.Orders;
 using Aurora.Core.Persistence;
@@ -27,12 +28,21 @@ static class MarApi
            nurse-assignment narrowing stays a client-side derivation, same as the
            orders implement queue. */
         app.MapGet("/api/icu/mar", (AuroraDb db) =>
-            Results.Json(db.Orders.AsNoTracking()
+        {
+            /* ENCOUNTER SCOPE (defense in depth): MAR rows derive only from
+               orders on OPEN encounters — a discharged admission's schedule
+               must never surface as current doses (the ORD-113 class). On
+               healthy data this changes nothing: discharge already
+               discontinued those orders. */
+            var open = db.Encounters.AsNoTracking()
+                .Where(e => e.Status == "open").Select(e => e.EncounterId).ToHashSet();
+            return Results.Json(db.Orders.AsNoTracking()
                 .Where(o => o.MedicationJson != null && o.AdministrationsJson != null)
                 .OrderBy(o => o.Seq)
                 .AsEnumerable()
-                .SelectMany(MarLogic.MarRowsFor), JsonOpts.Web))
-            .RequireAuthorization();
+                .Where(o => open.Contains(o.EncounterId))
+                .SelectMany(MarLogic.MarRowsFor), JsonOpts.Web);
+        }).RequireAuthorization();
 
         /* POST /api/icu/mar/{orderId}/administrations/{adminId} — document a dose
            (Given/Held/Refused). Nurse RBAC (meds.administer); doctor → 403.
@@ -52,6 +62,11 @@ static class MarApi
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null || row.AdministrationsJson is null)
                 return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            /* THE CHOKEPOINT (409, resource state): the encounter must be
+               OPEN — asserted independently of order status so the two can
+               never diverge silently, and even a Consultant with full
+               authority is equally blocked. */
+            if (EncounterGuard.RequireOpen(db, row.EncounterId, "documenting a dose") is IResult conflict) return conflict;
             var admins = JsonSerializer.Deserialize<List<AdminDto>>(row.AdministrationsJson, JsonOpts.Web)!;
             var idx = admins.FindIndex(a => a.AdminId == adminId && a.Status == "scheduled");
             if (idx < 0) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);

@@ -105,6 +105,8 @@ static class UsersApi
         app.MapPut("/api/icu/users/{username}", (string username, EditUserRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "users.manage") is IResult denied) return denied;
+            if (username == "system")
+                return ApiError.BadRequest("'system' is the reserved system principal — it cannot be edited, reactivated, or given a password");
             var row = db.Users.FirstOrDefault(u => u.Username == username);
             if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
 
@@ -160,6 +162,8 @@ static class UsersApi
         app.MapPost("/api/icu/users/{username}/deactivate", (string username, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "users.manage") is IResult denied) return denied;
+            if (username == "system")
+                return ApiError.BadRequest("'system' is the reserved system principal — it cannot be edited, reactivated, or given a password");
             var row = db.Users.FirstOrDefault(u => u.Username == username);
             if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
             if (!row.Active) return ApiError.BadRequest($"account '{username}' is already deactivated");
@@ -179,6 +183,8 @@ static class UsersApi
         app.MapPost("/api/icu/users/{username}/reactivate", (string username, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "users.manage") is IResult denied) return denied;
+            if (username == "system")
+                return ApiError.BadRequest("'system' is the reserved system principal — it cannot be edited, reactivated, or given a password");
             var row = db.Users.FirstOrDefault(u => u.Username == username);
             if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
             if (row.Active) return ApiError.BadRequest($"account '{username}' is already active");
@@ -197,6 +203,8 @@ static class UsersApi
             (string username, ResetPasswordRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "users.manage") is IResult denied) return denied;
+            if (username == "system")
+                return ApiError.BadRequest("'system' is the reserved system principal — it cannot be edited, reactivated, or given a password");
             var row = db.Users.FirstOrDefault(u => u.Username == username);
             if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
             if (UserLogic.ValidatePassword(req.NewPassword, "newPassword") is string pErr)
