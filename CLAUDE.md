@@ -1299,18 +1299,35 @@ was wrong; the gate's INVARIANT was stated one level too coarsely. The
 dispatched ref supplies the TEST code; the deployed build supplies the
 SERVER code — they only need to agree about the SERVER. CORRECTED
 INVARIANT (all nine suites): /healthz build == the most recent ancestor
-of the dispatched ref that touched the server build context, computed
-in-workflow from a full-history checkout (`git log -1 --format=%H --
-server/ render.yaml`). The context is `server/` (rootDir; the
-Dockerfile lives inside it) plus `render.yaml` itself, included
-conservatively — misjudging a path fails LOUDLY at the gate, never
-silently green. The corrected rule is STRICTLY STRONGER than
-HEAD==build: an old ref whose HEAD happens to equal the deployed build
-now fails when newer server-touching commits exist (exactly the stale
-case the gate was built for), and the dead zone is gone (the fix is
-itself workflow-only — no rebuild follows and none is needed; the gate
-passes because the ref's latest server-touching ancestor IS the
-deployed build — the fix unblocks itself).
+of the dispatched ref that touched the server build context. FIRST
+IMPLEMENTATION (ancestor-commit identity via `git log -1 -- server/
+render.yaml`) failed its first live run on a MERGE COMMIT: git log
+attributes a server change to the BRANCH commit while Render deploys
+the MERGE commit — same tree, different ids. The honest form of "they
+agree about the server" is CONTENT equality, so the gate (all nine
+suites) compares git TREE/BLOB hashes of the build context between the
+dispatched ref and the commit /healthz reports:
+`git rev-parse "$GITHUB_SHA:server"` == `git rev-parse "$build:server"`
+(plus the render.yaml blob), from a full-history checkout. The context
+is `server/` (rootDir; the Dockerfile lives inside it) plus
+`render.yaml`, included conservatively — misjudging a path fails
+LOUDLY at the gate, never silently green; a deployed commit outside
+the ref's history fails rev-parse → loud. STRICTLY STRONGER than
+HEAD==build: newer server content on the ref than deployed (the
+classic stale case) differs → fails; and the dead zone is gone —
+docs/workflow-only merges leave the server trees equal, so suites
+dispatch green without a rebuild. GENERAL RULE (generalizes the
+rootDir discovery rather than merely documenting it): a verification
+gate's comparison set must be EXACTLY the set of inputs that determine
+the artifact it verifies — a superset creates a dead zone (the gate
+demands agreement on inputs the artifact never consumed), a subset
+lets staleness through (the artifact changed on an input the gate
+ignores). The gate's checkout uses fetch-depth: 0 deliberately: the
+deployed commit can be arbitrarily old, and resolving its tree needs
+its objects — a depth-1 checkout would fail the gate loudly on every
+run. A render.yaml-only mismatch gets a DISTINCT message: if Render's
+Blueprint sync did not redeploy for the change, a MANUAL DEPLOY of the
+latest commit clears the gate (documented operational step).
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
