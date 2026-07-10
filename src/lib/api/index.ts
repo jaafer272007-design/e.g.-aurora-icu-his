@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateUserDraft, EditUserDraft, Encounter, FormularyDrug,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateUserDraft, EditDrugDraft, EditUserDraft, Encounter, FormularyDrug,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
   OrderSetsResponse, PatientDetailResponse, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -20,7 +20,7 @@ import { allConsults } from './data/consults'
 import { allRiskProfiles, deriveMissionControlRisks, deriveRiskAlerts, deriveRiskRanking, riskProfileFor } from './data/ai'
 import { notesFor } from './data/notes'
 import { deriveTimeline } from './data/timeline'
-import { FORMULARY, INTERACTION_RULES, ORDER_SET_DEFS } from './data/formulary'
+import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
 import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
   applySign, deriveMarRows, insertOrder,
@@ -325,14 +325,62 @@ export function recordIoEntry(draft: NewIoEntry, jobTitle: JobTitle): Promise<Io
    POST /api/icu/orders/:orderId/implement
    POST /api/icu/orders/:orderId/administrations/:adminId  { action } */
 
-/** GET /api/icu/formulary — searchable medication formulary. */
-export function getFormulary(): Promise<FormularyDrug[]> {
+/* ---------------- Layer 4 — Master Data: the formulary (Aurora Core) ----------------
+   The drug list is a REAL database-backed reference table Pharmacy
+   maintains (formulary.manage — server-enforced on every mutation; these
+   client checks are defense in depth). Reference data is a durable
+   system of record like ADT/identity, so WRITES are REAL-ONLY — a drug
+   is never created/edited against local mock state; READS fall back to
+   the mock formulary offline (no audit history). Removing a drug is
+   deactivation, never a delete: an inactive drug cannot be selected for
+   a NEW order (server 409) but every existing order still renders. */
+
+/** GET /api/icu/formulary — the full formulary incl. inactive drugs
+ *  (REAL endpoint; the ordering UI excludes inactive ones client-side). */
+export async function getFormulary(): Promise<FormularyDrug[]> {
+  const real = await apiGet<FormularyDrug[]>('/api/icu/formulary', 'formulary')
+  if (real) return real
   return respond(FORMULARY, 120)
 }
 
-/** GET /api/icu/formulary/interactions — pairwise interaction rules. */
-export function getInteractionRules(): Promise<InteractionRule[]> {
+/** GET /api/icu/formulary/interactions — pairwise interaction rules
+ *  (read-only; the client-side safety checks in safety.ts consume them —
+ *  moving those checks server-side is recorded future scope). */
+export async function getInteractionRules(): Promise<InteractionRule[]> {
+  const real = await apiGet<InteractionRule[]>('/api/icu/formulary/interactions', 'interaction rules')
+  if (real) return real
   return respond(INTERACTION_RULES, 120)
+}
+
+/** GET /api/icu/formulary/frequencies — the named frequency vocabulary
+ *  (order frequencies validate against these ∪ q<1-48>h server-side). */
+export async function getFrequencyVocabulary(): Promise<string[]> {
+  const real = await apiGet<string[]>('/api/icu/formulary/frequencies', 'frequency vocabulary')
+  if (real) return real
+  return respond(NAMED_FREQUENCIES, 120)
+}
+
+/** POST /api/icu/formulary — add a drug (Pharmacy RBAC, formulary.manage).
+ *  REAL-ONLY write. */
+export function createFormularyDrug(draft: CreateDrugDraft): Promise<AdtWriteResult<FormularyDrug>> {
+  return usersWrite<FormularyDrug>('/api/icu/formulary', 'formulary create', draft)
+}
+
+/** PUT /api/icu/formulary/:drugId — edit reference fields (drugId is the
+ *  immutable natural key). REAL-ONLY write. */
+export function updateFormularyDrug(drugId: string, draft: EditDrugDraft): Promise<AdtWriteResult<FormularyDrug>> {
+  return usersWrite<FormularyDrug>(`/api/icu/formulary/${encodeURIComponent(drugId)}`, 'formulary edit', draft, 'PUT')
+}
+
+/** POST /api/icu/formulary/:drugId/deactivate — status change, never a
+ *  delete (historical orders must keep resolving). REAL-ONLY write. */
+export function deactivateFormularyDrug(drugId: string): Promise<AdtWriteResult<FormularyDrug>> {
+  return usersWrite<FormularyDrug>(`/api/icu/formulary/${encodeURIComponent(drugId)}/deactivate`, 'formulary deactivate')
+}
+
+/** POST /api/icu/formulary/:drugId/reactivate — REAL-ONLY write. */
+export function reactivateFormularyDrug(drugId: string): Promise<AdtWriteResult<FormularyDrug>> {
+  return usersWrite<FormularyDrug>(`/api/icu/formulary/${encodeURIComponent(drugId)}/reactivate`, 'formulary reactivate')
 }
 
 /** GET /api/icu/order-sets/definitions — order sets with expandable items. */

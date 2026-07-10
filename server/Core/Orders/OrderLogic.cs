@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Aurora.Core.Adt;
+using Aurora.Core.MasterData;
 using Aurora.Core.Persistence;
 using Aurora.Core.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -21,21 +22,13 @@ static class OrderLogic
 
     /* Frequency is the one medication field the server INTERPRETS (it
        drives administration-schedule generation), so unlike the
-       display-only free-text fields (dose/route/duration — Layer 4
-       formulary scope) it must parse: either a named frequency from the
-       vocabulary the formulary/order sets/seeds actually use, or qNh with
-       a physically sane interval. Anything else is a 400, never saved. */
-    static readonly string[] NamedFrequencies =
-        ["continuous", "daily", "bid", "tid", "qid", "once",
-         "sliding scale", "per level", "per CRRT protocol"];
-
-    public static bool IsValidFrequency(string f) =>
-        NamedFrequencies.Contains(f)
-        || (System.Text.RegularExpressions.Regex.Match(f, @"^q(\d{1,2})h$") is { Success: true } m
-            && int.TryParse(m.Groups[1].Value, out var h) && h is >= 1 and <= 48);
-
-    public const string FrequencyRule =
-        "must be one of: continuous, daily, bid, tid, qid, once, sliding scale, per level, per CRRT protocol, or q<1-48>h";
+       display-only free-text fields (dose/route/duration) it must parse.
+       LAYER 4: the named vocabulary is MASTER DATA now — the hardcoded
+       array that lived here ("per CRRT protocol" was ICU-specific content
+       sitting in Core/Orders) moved to the NamedFrequencies table, read
+       via FormularyLogic. Validation behavior is byte-identical: a named
+       value ∪ q<1-48>h, and the error text is built from the table in
+       seed order. Anything else is a 400, never saved. */
 
     /* upper bound on any free-text request field — Kestrel's ~28 MB body
        limit is the only bound otherwise, and multi-megabyte strings would
@@ -93,15 +86,15 @@ static class OrderLogic
             {
                 if (CheckText($"{at}.medication.{name}", value, required) is string e) return e;
             }
-            if (!IsValidFrequency(m.Frequency))
-                return $"{at}.medication.frequency '{m.Frequency}' is not a valid frequency — {FrequencyRule}";
+            if (!FormularyLogic.IsValidFrequency(db, m.Frequency))
+                return $"{at}.medication.frequency '{m.Frequency}' is not a valid frequency — {FormularyLogic.FrequencyRule(db)}";
         }
         return null;
     }
 
     /** validates a modify payload's provided fields — a change may omit
         fields but can never blank one or exceed the text bound */
-    public static string? ValidateChanges(MedicationChanges c)
+    public static string? ValidateChanges(MedicationChanges c, AuroraDb db)
     {
         foreach (var (name, value) in new[] {
             ("drugId", c.DrugId), ("drug", c.Drug), ("dose", c.Dose), ("route", c.Route),
@@ -111,8 +104,8 @@ static class OrderLogic
             if (string.IsNullOrWhiteSpace(value)) return $"changes.{name} must be a non-empty string";
             if (value.Length > MaxTextLength) return $"changes.{name} exceeds {MaxTextLength} characters";
         }
-        if (c.Frequency is not null && !IsValidFrequency(c.Frequency))
-            return $"changes.frequency '{c.Frequency}' is not a valid frequency — {FrequencyRule}";
+        if (c.Frequency is not null && !FormularyLogic.IsValidFrequency(db, c.Frequency))
+            return $"changes.frequency '{c.Frequency}' is not a valid frequency — {FormularyLogic.FrequencyRule(db)}";
         return null;
     }
 

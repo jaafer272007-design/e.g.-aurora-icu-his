@@ -82,13 +82,14 @@ PermissionProfile → Permissions (and Dashboard landing view):
 | Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge | /workspace |
 | Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer | /nurse |
 | Administrator        | admin.view, patients.view, users.manage | /admin |
-| Pharmacist           | patients.view, orders.view, results.view (view-only) | /beds |
+| Pharmacist           | patients.view, orders.view, results.view, formulary.manage (Layer 4 — maintain the drug formulary) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
 | Ancillary            | patients.view, orders.view, results.view, results.create | /beds |
 | AlliedHealth         | patients.view, results.view (view-only) | /beds |
 
 Route guards: /workspace = orders.sign · /nurse = meds.administer ·
 /admin = admin.view · /admin/users = users.manage (Layer 3) ·
+/formulary = formulary.manage (Layer 4 — Pharmacy) ·
 /beds & /patients & /timeline = patients.view ·
 /orders = orders.view (mutating UI additionally needs the prescriber
 permissions) · /labs = results.view · /ai = ai.view · /admissions &
@@ -354,7 +355,9 @@ own phases.
   sets/seeds use — named values (continuous, daily, bid, tid, qid, once,
   sliding scale, per level, per CRRT protocol) or q<1-48>h — anything
   else is 400, never saved. Display-only free text (dose/route/duration)
-  stays bounded free text until Layer 4 makes it formulary-driven.
+  stays bounded free text — Layer 4's formulary now CARRIES the
+  reference values (doses, routes, limits) but order fields remain free
+  text; enforcement against them is recorded future scope.
   This rule applies to every future mutating endpoint.
 - **Frontend adapters**: reads + all five mutations swapped with the
   labs write semantics (server 403/404/400 = real denial, never applied
@@ -1028,6 +1031,101 @@ lives in code as `ApiError.BadRequest/StateConflict/NotFound`
   correct); same lesson class as the $OID bug — suite code only the
   runner executes needs the runner to execute it.
 
+### Layer 4 — Master Data: the Formulary (built) — Aurora Core
+The REFERENCE layer begins (`server/Core/MasterData/`) — the third kind
+of data, distinct from transactional (orders, results) and entity
+(patients, encounters, users): a real, database-backed drug formulary
+Pharmacy maintains, replacing the hardcoded 19-drug frontend list. The
+lab test catalog and order sets are the NEXT master-data domains — Layer
+4 is formulary-complete, not complete.
+- **Tables** (migration `AddFormulary` — three new tables, nothing else
+  touched): FormularyDrugs (one row per drug: generic name, brand names,
+  class, form, strengths, doses, default dose, dose limits
+  min/max/maxDaily/perKg, routes, per-drug frequencies, PRN flag, the
+  allergyBlock/allergyWarn tags safety.ts consumes, Active, append-only
+  EventsJson, Seq; DrugId is a natural key — no counters), NamedFrequencies
+  (the vocabulary), InteractionRules (pairwise, read-only this PR). Seeds
+  formulary-seed.json / frequencies-seed.json / interactions-seed.json are
+  GENERATED from `src/lib/api/data/formulary.ts` (extended with the new
+  reference fields) — never hand-edit. No DB-side string ORDER BY → no
+  new collation pins.
+- **RBAC — a new profile boundary**: `formulary.manage` on the PHARMACIST
+  profile (the results.create polarity flip): doctor/nurse/administrator
+  tokens get the generic 403 on every mutation; every authenticated
+  profile reads. Verified in both directions.
+- **Endpoints**: `GET /api/icu/formulary` (all drugs incl. inactive; the
+  ordering UI filters), `GET .../frequencies`, `GET .../interactions`
+  (reads for all); `POST /api/icu/formulary` (create), `PUT .../{drugId}`
+  (edit — drugId is the immutable natural key; audited field diffs),
+  `POST .../{drugId}/deactivate|reactivate` (mutations, Pharmacy only).
+  Audit events carry dated UTC times and the TOKEN's actor (Layer 3
+  convention).
+- **DEACTIVATION, NEVER DELETION** (the Layer 3 rule applied to reference
+  data): a drug that has ever been prescribed must stay resolvable
+  forever or historical orders become unreadable. An INACTIVE drug cannot
+  be selected for a NEW order — order create (and modify changing the
+  drugId) answers **409** ("reactivate it and the same request succeeds"
+  — resource state, checked after the encounter guard so the deeper
+  cause reports first); every EXISTING order referencing it keeps
+  rendering, and its lifecycle (modify dose, discontinue, MAR) continues
+  — asserted live. A drugId with NO formulary row stays permitted free
+  text on orders — the documented escape hatch until the formulary is
+  the sole source of orderable drugs.
+- **The frequency vocabulary MOVED to master data**: OrderLogic's
+  hardcoded array ("per CRRT protocol" was ICU-specific content sitting
+  in Core/Orders) became the NamedFrequencies table; order validation
+  reads it via FormularyLogic and builds the error text from it in seed
+  order — behavior BYTE-IDENTICAL (accepted set = the 9 named values ∪
+  q<1-48>h; rejected q0h/q49h/q99999999999h/whenever with the exact
+  pre-Layer-4 message — asserted string-equal locally and live). Per-drug
+  frequencies on formulary create/edit validate against the same
+  vocabulary, so Pharmacy can never author a frequency the order endpoint
+  would reject.
+- **Four-code**: replayed de/reactivation → 409; duplicate drugId on
+  create → 409 naming the existing drug (drug ids are permanent).
+  RECORDED TENSION, not fixed here: Layer 3's duplicate USERNAME is a
+  400 — the two duplicate-natural-key answers should converge one way or
+  the other in a later consistency pass. Absent id → 404; malformed →
+  400 (unknown fields fail binding; an all-null doseLimits object on
+  edit CLEARS the limits — partial updates cannot otherwise express
+  removal).
+- **Frontend**: `/formulary` management screen (route guard
+  formulary.manage — only Pharmacist profiles see the nav item or reach
+  it): drug list with status/allergy-tag/dose-limit display, create/edit
+  forms with the live frequency-vocabulary hint, deactivate/reactivate
+  with confirm, per-drug audit history. Formulary WRITES are REAL-ONLY
+  (reference data is a durable system of record); reads fall back to the
+  mock store offline. Orders & Medication now reads its drug list from
+  the API (`getFormulary` w/ mock fallback) and the order-entry search
+  excludes inactive drugs (server enforces regardless).
+- **Recorded, deliberately NOT done here**: (a) the safety.ts
+  allergy/interaction checks stay CLIENT-side; once they move
+  server-side, a client that skips them must be REJECTED (the server
+  re-validates on POST /orders — defense in depth becomes enforcement);
+  (b) the order→result linkage open question rides with the LAB CATALOG,
+  the next master-data domain; (c) interaction-rule MANAGEMENT (the
+  table is served read-only); (d) dose-limit ENFORCEMENT at ordering
+  time (the limits are carried reference data today).
+- **Verification**: 78-check behavior matrix (RBAC both directions, all
+  four-code branches, the deactivation invariant end-to-end, the exact
+  frequency accepted/rejected sets incl. error-text string equality);
+  35-check byte-parity sweep old-main vs branch on every unaffected
+  endpoint (zero diffs — incl. the frequency error text, now DB-built);
+  live-upgrade migration simulation against a replica carrying replayed
+  live-like writes (one migration applied, all 9 pre-existing tables
+  byte-identical, 19/9/6 rows seeded, second boot 0 changes);
+  Postgres restart survival (created drug + deactivation + audit intact,
+  create-after-restart Seq continues, the 409 holds).
+  `deployed-formulary-e2e.yml` (manual dispatch, gate v3 content
+  equality, shared `deployed-e2e` concurrency group — the tenth suite):
+  SELF-SUFFICIENT per the finite-seeded-resources rule — creates every
+  drug it mutates (run-unique ids, never touches the 19 seeded drugs),
+  admits its own patient for the deactivation-invariant proof, asserts
+  seeded reads as a SUBSET (vocabulary asserted EXACT — no endpoint
+  mutates it, and exactness IS the parity claim), and ends with
+  `if: always()` cleanup (discharge + deactivate run drugs, outcomes
+  asserted loudly).
+
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
 INCREMENTALLY: every new layer from now on (ADT, user administration,
@@ -1117,9 +1215,14 @@ built directly in Aurora Core, not in the ICU module.
 4. **Layer 4 — Master/reference data** (drug formulary, lab test catalog,
    order sets as maintained DATABASE tables with a manual data-entry UI —
    not hardcoded frontend lists): built in AURORA CORE — the reference
-   layer Pharmacy/Lab admins maintain. Orders & Medication then reads
-   the formulary from here instead of the current hardcoded 19-drug list
-   in `src/lib/api/data/formulary.ts`.
+   layer Pharmacy/Lab admins maintain. **The FORMULARY is DONE**
+   (`server/Core/MasterData/` + `/formulary`; see "Layer 4 — Master
+   Data: the Formulary (built)" above) — Orders & Medication now reads
+   the drug list from the API (the hardcoded list survives only as the
+   offline mock fallback), the frequency vocabulary moved out of
+   Core/Orders into master data, and prescribing an inactive drug is a
+   409. The LAB TEST CATALOG and ORDER SETS remain — Layer 4 is
+   formulary-complete, not complete.
 
 **Database persistence — the BLOCKING prerequisite for Layer 2 (ADT) —
 is DONE** (see "Database persistence (built)" above): Render Postgres via
@@ -1138,8 +1241,10 @@ identity/location half dissolved)**, and **Layer 3 (user
 administration in Core Identity, escalation safeguards + immutable
 audit)**, and **the encounter-scoping fix (the ORD-113 defect — an
 order's lifecycle is bounded by its encounter; see the section
-above)** are DONE. **The next step is Layer 4 (master data /
-formulary) in Core** → the deferred Print Center → Stage 11 (device
+above)** are DONE, and **Layer 4's FIRST domain — the drug formulary
+in Core Master Data — is DONE** (the lab test catalog and order sets
+remain). **Next: the remaining Layer 4 domains (lab catalog / order
+sets) or the deferred Print Center** → Stage 11 (device
 integration + the Observation model per the locked rule above; Stage
 11 also absorbs the remaining bedside-snapshot half of the roster).
 The full architectural review + Core-extraction inventory ran before
@@ -1446,8 +1551,17 @@ with server-derived encounterId, the ASYMMETRIC encounter rule (create
 the AddResultAudit migration + backfill verified against a
 live-equivalent replica, and the labs E2E suite rewritten
 self-sufficient — the permanently-spent acknowledge leg is resolved by
-feature, not test reset. **The next step is master data (Layer 4) in
-Core**,
+feature, not test reset. **Layer 4's first domain — the DRUG FORMULARY
+in Core Master Data — is DONE** (`server/Core/MasterData/` +
+`/formulary`; see "Layer 4 — Master Data: the Formulary (built)"):
+Pharmacy-maintained reference tables behind the new `formulary.manage`
+permission, deactivation-never-deletion with the inactive-drug 409 at
+order create/modify, the frequency vocabulary moved out of Core/Orders
+with byte-identical validation, Orders & Medication reading the drug
+list from the API, and the tenth deployed suite
+(`deployed-formulary-e2e.yml`, self-sufficient). **Next: the remaining
+Layer 4 domains (lab test catalog, order sets — Layer 4 is
+formulary-complete, not complete)**,
 then the Print Center, then Stage 11 device + AI integration per the
 locked rules above (Stage 11 also absorbs the roster's remaining
 bedside-snapshot columns). The Timeline's four still-mock sources

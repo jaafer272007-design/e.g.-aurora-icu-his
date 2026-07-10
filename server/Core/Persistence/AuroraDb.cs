@@ -1,6 +1,7 @@
 using Aurora.Core.Adt;
 using Aurora.Core.Ai;
 using Aurora.Core.Identity;
+using Aurora.Core.MasterData;
 using Aurora.Core.Orders;
 using Aurora.Core.LabImaging;
 using Aurora.Modules.Icu.Roster;
@@ -32,6 +33,11 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
     public DbSet<Patient> AdtPatients => Set<Patient>();
     public DbSet<Encounter> Encounters => Set<Encounter>();
     public DbSet<BedRow> Beds => Set<BedRow>();
+    /* Layer 4 Master Data (Aurora Core): the reference layer Pharmacy
+       maintains — drugs, the named frequency vocabulary, interaction rules */
+    public DbSet<FormularyDrugRow> FormularyDrugs => Set<FormularyDrugRow>();
+    public DbSet<NamedFrequencyRow> NamedFrequencies => Set<NamedFrequencyRow>();
+    public DbSet<InteractionRuleRow> InteractionRules => Set<InteractionRuleRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {

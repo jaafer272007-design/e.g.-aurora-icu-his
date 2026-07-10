@@ -42,8 +42,13 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
   const results = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return []
+    /* Layer 4: an INACTIVE formulary drug cannot be selected for a new
+       order — excluded from search (the server 409s it regardless);
+       existing orders referencing it still render everywhere */
     return formulary
-      .filter(d => d.name.toLowerCase().includes(q) || d.drugClass.toLowerCase().includes(q))
+      .filter(d => d.active !== false)
+      .filter(d => d.name.toLowerCase().includes(q) || d.drugClass.toLowerCase().includes(q)
+        || d.brandNames.some(b => b.toLowerCase().includes(q)))
       .slice(0, 6)
   }, [query, formulary])
 

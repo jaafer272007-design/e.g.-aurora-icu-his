@@ -1,0 +1,267 @@
+# Deployed Formulary E2E — verifies the LIVE Render service (Layer 4,
+# Aurora Core: master data / the drug formulary). Core assertions:
+# Pharmacy-only RBAC in BOTH directions (doctor/nurse/administrator → 403
+# on EVERY formulary mutation, pharmacist succeeds; every profile reads),
+# the deactivation invariant (an order referencing a drug KEEPS RENDERING
+# after the drug is deactivated, while a NEW order for it is a 409 that
+# clears on reactivation), the frequency vocabulary now served from
+# master data with validation behavior byte-identical to the pre-Layer-4
+# hardcoded list (exact accepted/rejected sets and error text), audited
+# mutations with the actor ALWAYS from the token, and the four-code rule
+# (replayed de/reactivation 409, duplicate drugId 409, absent id 404,
+# malformed 400). Dispatch manually after merging /server changes to
+# main — SEQUENTIALLY with the other suites.
+#
+# SELF-SUFFICIENT AND IDEMPOTENT (the finite-seeded-resources rule): the
+# run CREATES every drug it mutates (run-id-unique ids) and never mutates
+# the 19 seeded drugs; the deactivation-invariant proof ADMITS ITS OWN
+# PATIENT (unique MRN, dynamic free bed) and discharges it in cleanup
+# (the discharge cascade closes the run's orders). Deactivated run drugs
+# accumulate across runs by design — never a delete; that accumulation is
+# the live durability evidence. Container-restart survival is asserted in
+# local verification.
+name: Deployed Formulary E2E
+on: workflow_dispatch
+
+# STRUCTURAL serialization of the deployed suites (the recorded
+# never-dispatch-concurrently lesson): one shared group across all suites.
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objects)
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 is LOAD-BEARING: the gate runs `git rev-parse
+          # "$build:server"` where $build is whatever commit Render is
+          # serving — after a docs/workflow streak that can be arbitrarily
+          # deep in history. The default fetch-depth: 1 has only HEAD's
+          # objects, so the gate would fail loudly on EVERY run (safe but
+          # useless). Full history also covers merge commits and any
+          # main-ancestor the service may be serving.
+          fetch-depth: 0
+
+      - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+        run: |
+          # THE GATE'S INVARIANT (see CLAUDE.md "The stale gate's dead
+          # zone"): the dispatched ref supplies the TEST code; the
+          # deployed build supplies the SERVER code — they must agree
+          # about the SERVER, and the honest form of that is CONTENT
+          # equality of the build context (server/ + render.yaml), not
+          # commit identity.
+          WANT_SRV=$(git rev-parse "$GITHUB_SHA:server")
+          WANT_YML=$(git rev-parse "$GITHUB_SHA:render.yaml")
+          echo "dispatched ref HEAD: $GITHUB_SHA"
+          echo "expected build context: server tree $WANT_SRV · render.yaml blob $WANT_YML"
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            BS=$(git rev-parse -q --verify "$build:server" 2>/dev/null || echo "<unknown-commit>")
+            BY=$(git rev-parse -q --verify "$build:render.yaml" 2>/dev/null || echo "<unknown-commit>")
+            echo "attempt $i: live build=$build · its server tree=$BS"
+            [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && exit 0
+            sleep 10
+          done
+          if [ "$BS" = "$WANT_SRV" ] && [ "$BY" != "$WANT_YML" ]; then
+            echo "CONFIG MISMATCH: server/ trees are EQUAL but render.yaml differs between this ref and the deployed build '$build'." \
+              "If the render.yaml change was semantic (env vars/build config), Render's Blueprint sync should have redeployed — check the dashboard." \
+              "If Render did not redeploy (e.g. a comment-only edit), trigger a MANUAL DEPLOY of the latest commit to clear this gate — an expected operational step, not a dead zone." && exit 1
+          fi
+          echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
+
+      - name: Login all four profiles + run-unique names
+        run: |
+          for u in sara.rahman maya.chen samir.qassem yusuf.karim; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman)  echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)    echo "NUR=$t" >> "$GITHUB_ENV";;
+              samir.qassem) echo "PHA=$t" >> "$GITHUB_ENV";;
+              yusuf.karim)  echo "ADM=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+          { echo "DRUG=e2e-drug-${GITHUB_RUN_ID}"; echo "DRUG2=e2e-drug2-${GITHUB_RUN_ID}";
+            echo "MRN=MRN-L4E2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+
+      - name: Reads — 401 unauth; every profile 200 (+ CORS); seeded SUBSET; vocabulary exact
+        run: |
+          for p in formulary formulary/frequencies formulary/interactions; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/$p")
+            echo "unauth /$p -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          done
+          for who in DOC NUR PHA ADM; do
+            eval "t=\$$who"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $t" "$API/api/icu/formulary")
+            echo "$who read -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          done
+          curl -sf -D /tmp/h -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/formulary" -o /tmp/fm.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          # seeded reads are a SUBSET assertion (run drugs accumulate across runs)
+          python3 -c '
+          import json; d=json.load(open("/tmp/fm.json"))
+          assert len(d) >= 19, len(d)
+          v=[x for x in d if x["drugId"]=="vancomycin"][0]
+          assert v["name"]=="Vancomycin" and v["brandNames"]==["Vancocin"] and v["frequencies"]==["q12h","q24h","per level"]
+          n=[x for x in d if x["drugId"]=="noradrenaline"][0]
+          assert n["doseLimits"]=={"perKg":"1 µg/kg/min max"} and isinstance(n["active"],bool) and isinstance(n["history"],list)
+          print(f"formulary: {len(d)} drugs (19 seeded present; run drugs accumulate)")'
+          # the vocabulary is EXACT: no management endpoint mutates it, so
+          # exactness is safe (unlike row counts) and IS the parity claim
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/formulary/frequencies" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d==["continuous","daily","bid","tid","qid","once","sliding scale","per level","per CRRT protocol"], d; print("vocabulary exact:", d)'
+          curl -sf -H "Authorization: Bearer $ADM" "$API/api/icu/formulary/interactions" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d)>=6 and {"a":"enoxaparin","b":"heparin","severity":"block","note":"Duplicate therapeutic anticoagulation — bleeding risk."} in d, d; print(f"interactions: {len(d)}")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/formulary?active=true")
+          echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
+      - name: RBAC both directions — doctor/nurse/admin 403 on every mutation (pharmacist 200s follow)
+        run: |
+          CRE="{\"drugId\":\"$DRUG\",\"name\":\"E2E Probe\",\"brandNames\":[],\"drugClass\":\"Test\",\"form\":\"tablet\",\"strengths\":[\"1 mg\"],\"doses\":[\"1 mg\"],\"defaultDose\":\"1 mg\",\"routes\":[\"PO\"],\"frequencies\":[\"daily\"],\"prnCapable\":false,\"allergyBlock\":[],\"allergyWarn\":[]}"
+          echo "CRE=$CRE" >> "$GITHUB_ENV"
+          for who in DOC NUR ADM; do
+            eval "t=\$$who"
+            for m in "POST /api/icu/formulary $CRE" "PUT /api/icu/formulary/$DRUG {\"name\":\"X\"}" \
+                     "POST /api/icu/formulary/$DRUG/deactivate " "POST /api/icu/formulary/$DRUG/reactivate "; do
+              verb="${m%% *}"; rest="${m#* }"; path="${rest%% *}"; data="${rest#* }"
+              rc=$(curl -s -o /dev/null -w '%{http_code}' -X "$verb" -H "Authorization: Bearer $t" -H 'Content-Type: application/json' ${data:+-d "$data"} "$API$path")
+              echo "$who $verb $path -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+            done
+          done
+
+      - name: Pharmacist creates the run's drug — audited with the TOKEN actor; duplicate → 409; malformed → 400
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$CRE" "$API/api/icu/formulary" > /tmp/cre.json
+          python3 -c '
+          import json,os; d=json.load(open("/tmp/cre.json"))
+          assert d["drugId"]==os.environ["DRUG"] and d["active"] is True
+          h=d["history"]; assert len(h)==1 and h[0]["actor"]=="Samir Qassem" and h[0]["action"]=="added to formulary", h
+          assert len(h[0]["time"])==16, h  # dated UTC (yyyy-MM-dd HH:mm)
+          print("created:", d["drugId"], "| audit actor:", h[0]["actor"], "at", h[0]["time"])'
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$CRE" "$API/api/icu/formulary")
+          rc=$(echo "$out" | tail -1); echo "duplicate create -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already exists in the formulary" in e, e'
+          # malformed → 400: unknown field (binding), bad drugId, empty strengths, invalid per-drug frequency
+          for body in \
+            "$(echo "$CRE" | sed "s/\"prnCapable\":false/\"prnCapable\":false,\"typo\":true/")" \
+            "$(echo "$CRE" | sed "s/$DRUG/Bad_Id/")" \
+            "$(echo "$CRE" | sed "s/\"strengths\":\[\"1 mg\"\]/\"strengths\":[]/;s/$DRUG/e2e-x-$GITHUB_RUN_ID/")" \
+            "$(echo "$CRE" | sed "s/\"frequencies\":\[\"daily\"\]/\"frequencies\":[\"whenever\"]/;s/$DRUG/e2e-x-$GITHUB_RUN_ID/")" \
+            ; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/formulary")
+            echo "malformed create -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          done
+
+      - name: Edit — audited diff; no-change → 400; absent id → 404
+        run: |
+          curl -sf -X PUT -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d '{"name":"E2E Probe Renamed","prnCapable":true}' "$API/api/icu/formulary/$DRUG" > /tmp/edit.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/edit.json"))
+          assert d["name"]=="E2E Probe Renamed" and d["prnCapable"] is True
+          acts=[(e["action"],e.get("detail")) for e in d["history"]]
+          assert ("changed","name: E2E Probe → E2E Probe Renamed") in acts, acts
+          assert ("changed","prnCapable: false → true") in acts, acts
+          assert all(e["actor"]=="Samir Qassem" for e in d["history"])
+          print("edit audited:", acts[-2:])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d '{"name":"E2E Probe Renamed"}' "$API/api/icu/formulary/$DRUG")
+          echo "no-change edit -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d '{"name":"X"}' "$API/api/icu/formulary/ghost-$GITHUB_RUN_ID")
+          echo "absent edit -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+
+      - name: Admit THIS RUN's patient (self-sufficiency — never depends on seeded admissions)
+        run: |
+          vals=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); free=[b["bedId"] for b in d if not b.get("patientId")]; assert free, "no free beds"; print(free[0])')
+          echo "BED=$vals" >> "$GITHUB_ENV"
+          resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"mrn\":\"$MRN\",\"name\":\"L4 Formulary E2E\",\"age\":41,\"sex\":\"F\",\"allergies\":\"None known\",\"bedId\":\"$vals\",\"diagnosis\":\"Formulary E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            "$API/api/icu/adt/admissions")
+          pid=$(echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["patient"]["patientId"])')
+          eid=$(echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["encounter"]["encounterId"])')
+          { echo "PID=$pid"; echo "EID=$eid"; } >> "$GITHUB_ENV"
+          echo "admitted $pid ($eid) at bed $vals"
+
+      - name: THE DEACTIVATION INVARIANT — existing order renders; new order 409; reactivate clears
+        run: |
+          MED="{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"$DRUG\",\"drug\":\"E2E Probe Renamed\",\"dose\":\"1 mg\",\"route\":\"PO\",\"frequency\":\"daily\",\"duration\":\"3 days\",\"prn\":false}}],\"sign\":true}"
+          OID=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$MED" "$API/api/icu/orders" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)[0]; assert d["status"]=="active", d; print(d["orderId"])')
+          echo "OID=$OID" >> "$GITHUB_ENV"; echo "signed $OID for $DRUG"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DRUG/deactivate")
+          echo "deactivate $DRUG -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          # (a) the EXISTING order still reads with its medication intact
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID" \
+            | python3 -c "
+          import json,sys,os
+          d=json.load(sys.stdin); oid=os.environ['OID']
+          o=[x for x in d if x['orderId']==oid][0]
+          assert o['medication']['drugId']==os.environ['DRUG'] and o['status']=='active', o
+          print('existing order still renders:', oid, o['medication']['drug'])"
+          # (b) a NEW order for the inactive drug → 409 naming the state
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$MED" "$API/api/icu/orders")
+          rc=$(echo "$out" | tail -1); echo "new order for inactive drug -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is inactive in the formulary" in e and "cannot be selected for a new order" in e, e; print("409:", e)'
+          # (c) replayed deactivation is a state conflict
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DRUG/deactivate")
+          echo "re-deactivate -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/ghost-$GITHUB_RUN_ID/deactivate")
+          echo "deactivate absent -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          # (d) reactivate → the SAME create succeeds again; replay → 409
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DRUG/reactivate")
+          echo "reactivate -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DRUG/reactivate")
+          echo "re-reactivate -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$MED" "$API/api/icu/orders")
+          echo "order after reactivation -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+
+      - name: Frequency vocabulary — validation behavior byte-identical to pre-Layer-4
+        run: |
+          freqbody(){ echo "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"x\",\"drug\":\"X\",\"dose\":\"1\",\"route\":\"PO\",\"frequency\":\"$1\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":false}"; }
+          for f in continuous daily bid tid qid once "sliding scale" "per level" "per CRRT protocol" q1h q48h; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$(freqbody "$f")" "$API/api/icu/orders")
+            echo "accept '$f' -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          done
+          for f in q0h q49h q99999999999h whenever; do
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$(freqbody "$f")" "$API/api/icu/orders")
+            rc=$(echo "$out" | tail -1); echo "reject '$f' -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+            got=$(echo "$out" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["error"])')
+            want="drafts[0].medication.frequency '$f' is not a valid frequency — must be one of: continuous, daily, bid, tid, qid, once, sliding scale, per level, per CRRT protocol, or q<1-48>h"
+            [ "$got" = "$want" ] || { echo "TEXT DRIFT: got '$got'"; exit 1; }
+          done
+          echo "accepted set and rejected set (incl. exact error text) match the pre-Layer-4 behavior"
+
+      - name: Cleanup — discharge the run's encounter + deactivate the run's drug (runs on failure/cancel too)
+        if: always()
+        run: |
+          fails=0
+          if [ -n "${EID:-}" ]; then
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+            echo "discharge $EID -> HTTP $rc"
+            # 409 = already discharged (an earlier retry) — both terminal states are clean
+            { [ "$rc" = "200" ] || [ "$rc" = "409" ]; } || fails=$((fails+1))
+          fi
+          if [ -n "${DRUG:-}" ]; then
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DRUG/deactivate")
+            echo "deactivate run drug $DRUG -> HTTP $rc"
+            # 200 = deactivated now; 409 = already inactive; 404 = the run
+            # failed before creating it — all three leave nothing active
+            { [ "$rc" = "200" ] || [ "$rc" = "409" ] || [ "$rc" = "404" ]; } || fails=$((fails+1))
+          fi
+          # loud outcome assertion — the cleanup itself must not silently no-op
+          if [ -n "${EID:-}" ]; then
+            st=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID" \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[-1]["status"] if d else "<none>")')
+            echo "encounter final status: $st"; [ "$st" = "discharged" ] || fails=$((fails+1))
+          fi
+          [ "$fails" = "0" ] || { echo "cleanup left live state behind"; exit 1; }
+          echo "cleanup complete — no active run state remains"

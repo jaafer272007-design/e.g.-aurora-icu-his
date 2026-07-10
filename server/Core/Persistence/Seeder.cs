@@ -2,6 +2,7 @@ using System.Text.Json;
 using Aurora.Core.Adt;
 using Aurora.Core.Ai;
 using Aurora.Core.Identity;
+using Aurora.Core.MasterData;
 using Aurora.Core.Orders;
 using Aurora.Core.LabImaging;
 using Aurora.Core.Shared;
@@ -161,6 +162,40 @@ static class Seeder
             db.Beds.AddRange(beds.Select((b, i) => new BedRow { BedId = b.BedId, Area = b.Area, Seq = i + 1 }));
             db.SaveChanges();
             app.Logger.LogInformation("Seeded {Count} beds", beds.Count);
+        }
+
+        /* Layer 4 Master Data (Aurora Core): the formulary, the named
+           frequency vocabulary (moved from OrderLogic's hardcoded array),
+           and the interaction rules — all GENERATED from
+           src/lib/api/data/formulary.ts (never hand-edit the seeds).
+           Seed rows carry empty audit histories (historical data — the
+           ADT convention: facts are never invented). */
+        if (!db.FormularyDrugs.Any())
+        {
+            var drugs = JsonSerializer.Deserialize<List<FormularyDrugDto>>(
+                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "formulary-seed.json")), JsonOpts.Web)!;
+            db.FormularyDrugs.AddRange(drugs.Select((d, i) => FormularyDrugRow.FromDto(d, i + 1)));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} formulary drugs", drugs.Count);
+        }
+        if (!db.NamedFrequencies.Any())
+        {
+            var freqs = JsonSerializer.Deserialize<List<string>>(
+                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "frequencies-seed.json")), JsonOpts.Web)!;
+            db.NamedFrequencies.AddRange(freqs.Select((v, i) => new NamedFrequencyRow { Value = v, Seq = i + 1 }));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} named frequencies", freqs.Count);
+        }
+        if (!db.InteractionRules.Any())
+        {
+            var rules = JsonSerializer.Deserialize<List<InteractionRuleDto>>(
+                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "interactions-seed.json")), JsonOpts.Web)!;
+            db.InteractionRules.AddRange(rules.Select(r => new InteractionRuleRow
+            {
+                A = r.A, B = r.B, Severity = r.Severity, Note = r.Note,
+            }));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} interaction rules", rules.Count);
         }
 
         /* ENCOUNTER-SCOPE BACKFILL (one-time, idempotent — the ORD-113

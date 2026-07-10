@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using Aurora.Core.Adt;
 using Aurora.Core.Identity;
+using Aurora.Core.MasterData;
 using Aurora.Core.Persistence;
 using Aurora.Core.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -81,6 +82,21 @@ static class OrdersApi
                     return conflict;
                 openByPatient[draft.PatientId!] = openEnc!;
             }
+            /* LAYER 4 — the formulary's deactivation invariant, RESOURCE
+               STATE (409): an INACTIVE drug cannot be selected for a new
+               order (reactivate it and the same request succeeds).
+               Checked for every draft BEFORE any insert, after the
+               encounter guard (the deeper cause reports first). A drugId
+               with NO formulary row stays permitted free text — the
+               documented escape hatch until the formulary is the sole
+               source of orderable drugs. */
+            foreach (var draft in req.Drafts)
+            {
+                if (draft.Medication is null) continue;
+                if (FormularyLogic.Resolve(db, draft.Medication.DrugId) is { Active: false } inactive)
+                    return ApiError.StateConflict(
+                        $"drug '{inactive.Name}' ({inactive.DrugId}) is inactive in the formulary — it cannot be selected for a new order");
+            }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = DateTime.UtcNow.ToString("HH:mm");
@@ -153,7 +169,7 @@ static class OrdersApi
                 return ApiError.BadRequest("changes must include at least one medication field (drug, dose, route, frequency, duration, prn, prnIndication)");
             /* provided change values must be usable — a whitespace dose blanking an
                ACTIVE medication order is exactly the silent hazard this guards */
-            if (OrderLogic.ValidateChanges(req.Changes) is string invalid)
+            if (OrderLogic.ValidateChanges(req.Changes, db) is string invalid)
                 return ApiError.BadRequest(invalid);
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null) return ApiError.NotFound();
@@ -168,6 +184,12 @@ static class OrdersApi
             if (row.Status is not ("active" or "pending"))
                 return ApiError.StateConflict(
                     $"order '{orderId}' is {row.Status} — a {row.Status} order cannot be modified");
+            /* LAYER 4: changing the order TO an inactive formulary drug is
+               the same new-selection state conflict as at create */
+            if (req.Changes.DrugId is not null
+                && FormularyLogic.Resolve(db, req.Changes.DrugId) is { Active: false } inactiveDrug)
+                return ApiError.StateConflict(
+                    $"drug '{inactiveDrug.Name}' ({inactiveDrug.DrugId}) is inactive in the formulary — it cannot be selected for a new order");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var before = JsonSerializer.Deserialize<MedicationDto>(row.MedicationJson, JsonOpts.Web)!;
             var (merged, diff) = OrderLogic.ApplyChanges(before, req.Changes);

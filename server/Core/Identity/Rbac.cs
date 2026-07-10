@@ -31,7 +31,11 @@ static class Rbac
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "results.view", "ai.view", "adt.transfer"],
         ["Administrator"] = ["admin.view", "patients.view", "users.manage"],
-        ["Pharmacist"] = ["patients.view", "orders.view", "results.view"],
+        /* formulary.manage (Layer 4): maintaining the drug formulary is
+           PHARMACY's authority — the same polarity flip as results.create
+           on Ancillary (doctor/nurse/administrator tokens are 403'd on
+           every formulary mutation; every profile may read) */
+        ["Pharmacist"] = ["patients.view", "orders.view", "results.view", "formulary.manage"],
         ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],
         /* results.create (results audit PR): entering a result is the
            PRODUCING SERVICE's authority — lab/radiology technicians — not
