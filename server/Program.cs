@@ -130,5 +130,7 @@ TimelineApi.Map(app);
 AiApi.Map(app);
 ResultsApi.Map(app);
 FormularyApi.Map(app);
+LabCatalogApi.Map(app);
+OrderSetsApi.Map(app);
 
 app.Run();

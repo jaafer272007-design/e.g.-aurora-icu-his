@@ -1,0 +1,113 @@
+[
+  {
+    "setId": "sepsis-bundle",
+    "name": "Sepsis Bundle",
+    "description": "Hour-1 bundle: cultures, lactate, broad-spectrum cover, fluids.",
+    "items": [
+      {
+        "category": "Lab",
+        "summary": "Blood cultures ×2 (peripheral + line) before antibiotics",
+        "priority": "STAT",
+        "requiresImplementation": true
+      },
+      {
+        "category": "Lab",
+        "summary": "Lactate now, repeat q4h until < 2 mmol/L",
+        "testId": "Lactate",
+        "priority": "STAT",
+        "requiresImplementation": true
+      },
+      {
+        "category": "Medication",
+        "priority": "STAT",
+        "medication": {
+          "drugId": "piperacillin-tazobactam",
+          "drug": "Piperacillin-Tazobactam",
+          "dose": "4.5 g",
+          "route": "IV over 30 min",
+          "frequency": "q8h",
+          "duration": "7 days",
+          "prn": false
+        }
+      },
+      {
+        "category": "Nursing",
+        "summary": "Balanced crystalloid 30 mL/kg over 3 h — reassess after each 500 mL",
+        "priority": "Urgent",
+        "requiresImplementation": true
+      }
+    ]
+  },
+  {
+    "setId": "dvt-prophylaxis",
+    "name": "DVT Prophylaxis",
+    "description": "Pharmacologic + mechanical prophylaxis.",
+    "items": [
+      {
+        "category": "Medication",
+        "priority": "Routine",
+        "medication": {
+          "drugId": "enoxaparin",
+          "drug": "Enoxaparin",
+          "dose": "40 mg",
+          "route": "SC",
+          "frequency": "daily",
+          "duration": "ongoing",
+          "prn": false
+        }
+      },
+      {
+        "category": "Nursing",
+        "summary": "Apply intermittent pneumatic compression, both legs",
+        "priority": "Routine",
+        "requiresImplementation": true
+      }
+    ]
+  },
+  {
+    "setId": "insulin-sliding-scale",
+    "name": "Insulin Sliding Scale",
+    "description": "SC correction scale with q6h glucose checks.",
+    "items": [
+      {
+        "category": "Medication",
+        "priority": "Routine",
+        "medication": {
+          "drugId": "insulin-actrapid",
+          "drug": "Insulin (Actrapid)",
+          "dose": "sliding scale",
+          "route": "SC",
+          "frequency": "q6h",
+          "duration": "ongoing",
+          "prn": false
+        }
+      },
+      {
+        "category": "Nursing",
+        "summary": "Capillary glucose q6h — notify if < 4 or > 12 mmol/L",
+        "priority": "Routine",
+        "requiresImplementation": true
+      }
+    ]
+  },
+  {
+    "setId": "daily-am-labs",
+    "name": "Daily AM Labs",
+    "description": "Standard 06:00 draw panel.",
+    "items": [
+      {
+        "category": "Lab",
+        "summary": "CBC, U&E, Mg/PO₄, LFTs with 06:00 draw",
+        "priority": "Routine",
+        "requiresImplementation": true
+      },
+      {
+        "category": "Lab",
+        "summary": "ABG with 06:00 draw if ventilated",
+        "testId": "ABG",
+        "priority": "Routine",
+        "requiresImplementation": true
+      }
+    ]
+  }
+]

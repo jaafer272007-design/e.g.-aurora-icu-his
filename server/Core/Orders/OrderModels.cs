@@ -26,6 +26,10 @@ class OrderRow
     public string Category { get; set; } = "";
     public string Summary { get; set; } = "";
     public string? MedicationJson { get; set; }
+    /* Layer 4 (lab catalogue): the catalogue test a Lab order references —
+       the order half of the order→result linkage. Null on non-Lab orders,
+       free-text lab orders, and every pre-catalogue row. */
+    public string? TestId { get; set; }
     public string Priority { get; set; } = "";
     public string Status { get; set; } = "";
     public string OrderedBy { get; set; } = "";
@@ -41,6 +45,7 @@ class OrderRow
         EncounterId = d.EncounterId ?? "", BedId = d.BedId,
         PatientName = d.PatientName, Category = d.Category, Summary = d.Summary,
         MedicationJson = d.Medication is null ? null : JsonSerializer.Serialize(d.Medication, JsonOpts.Web),
+        TestId = d.TestId,
         Priority = d.Priority, Status = d.Status, OrderedBy = d.OrderedBy, OrderedTime = d.OrderedTime,
         RequiresImplementation = d.RequiresImplementation,
         AdministrationsJson = d.Administrations is null ? null : JsonSerializer.Serialize(d.Administrations, JsonOpts.Web),
@@ -54,7 +59,7 @@ class OrderRow
         Priority, Status, OrderedBy, OrderedTime, RequiresImplementation,
         AdministrationsJson is null ? null : JsonSerializer.Deserialize<List<AdminDto>>(AdministrationsJson, JsonOpts.Web),
         JsonSerializer.Deserialize<List<OrderEventDto>>(HistoryJson, JsonOpts.Web)!,
-        StatusReason);
+        StatusReason, TestId);
 }
 
 /* wire contracts — mirror Order / MedicationDetails / MedAdministration /
@@ -63,7 +68,8 @@ record OrderDto(
     string OrderId, string PatientId, string? EncounterId, string BedId, string PatientName, string Category,
     string Summary, MedicationDto? Medication, string Priority, string Status,
     string OrderedBy, string OrderedTime, bool? RequiresImplementation,
-    List<AdminDto>? Administrations, List<OrderEventDto> History, string? StatusReason);
+    List<AdminDto>? Administrations, List<OrderEventDto> History, string? StatusReason,
+    string? TestId = null);
 
 /* nested in create requests as well as responses/seeds — Disallow makes a
    typo'd medication field (e.g. "dosage") a 400 at binding time; the seed
@@ -89,7 +95,7 @@ record OrderEventDto(string Time, string Actor, string Action, string? Detail);
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record NewOrderDraftDto(
     string? PatientId, string? Category, string? Summary, MedicationDto? Medication,
-    string? Priority, bool? RequiresImplementation);
+    string? Priority, bool? RequiresImplementation, string? TestId = null);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CreateOrdersRequest(List<NewOrderDraftDto>? Drafts, bool Sign, string? Note);

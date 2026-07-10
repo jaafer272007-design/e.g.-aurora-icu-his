@@ -38,6 +38,10 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
     public DbSet<FormularyDrugRow> FormularyDrugs => Set<FormularyDrugRow>();
     public DbSet<NamedFrequencyRow> NamedFrequencies => Set<NamedFrequencyRow>();
     public DbSet<InteractionRuleRow> InteractionRules => Set<InteractionRuleRow>();
+    /* Layer 4 phase 2: the lab test catalogue (Laboratory's reference
+       layer) and order sets (clinical bundles referencing both) */
+    public DbSet<LabTestRow> LabTests => Set<LabTestRow>();
+    public DbSet<OrderSetRow> OrderSets => Set<OrderSetRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {

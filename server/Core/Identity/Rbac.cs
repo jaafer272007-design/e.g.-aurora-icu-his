@@ -34,14 +34,24 @@ static class Rbac
         /* formulary.manage (Layer 4): maintaining the drug formulary is
            PHARMACY's authority — the same polarity flip as results.create
            on Ancillary (doctor/nurse/administrator tokens are 403'd on
-           every formulary mutation; every profile may read) */
-        ["Pharmacist"] = ["patients.view", "orders.view", "results.view", "formulary.manage"],
+           every formulary mutation; every profile may read).
+           ordersets.manage (Layer 4 phase 2): order sets are protocol
+           authorship, stewarded with the formulary in this provisional
+           model — a distinct permission atom so a future profile split
+           costs a table edit. APPLYING a set is clinician authority
+           (orders.create/orders.sign), never this. */
+        ["Pharmacist"] = ["patients.view", "orders.view", "results.view", "formulary.manage", "ordersets.manage"],
         ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],
         /* results.create (results audit PR): entering a result is the
            PRODUCING SERVICE's authority — lab/radiology technicians — not
            the prescriber's (doctor/nurse tokens are 403'd on create, the
            same polarity flip as implement/administer/transfer) */
-        ["Ancillary"] = ["patients.view", "orders.view", "results.view", "results.create"],
+        /* labcatalog.manage (Layer 4 phase 2): maintaining the lab test
+           catalogue is the LABORATORY's authority — the producing-service
+           principle behind results.create, kept as its OWN atom: entering
+           a transactional result and redefining reference data are
+           different authorities even while both sit on this profile */
+        ["Ancillary"] = ["patients.view", "orders.view", "results.view", "results.create", "labcatalog.manage"],
         ["AlliedHealth"] = ["patients.view", "results.view"],
     };
 

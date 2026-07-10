@@ -10,6 +10,8 @@ import { AiAssistant } from './pages/AiAssistant/AiAssistant'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
 import { Formulary } from './pages/Formulary/Formulary'
+import { LabCatalog } from './pages/LabCatalog/LabCatalog'
+import { OrderSetsAdmin } from './pages/OrderSetsAdmin/OrderSetsAdmin'
 import { Admissions } from './pages/Admissions/Admissions'
 import { Discharges } from './pages/Discharges/Discharges'
 import { Login } from './pages/Login/Login'
@@ -25,6 +27,8 @@ import { getSession, landingRouteOf } from './lib/session'
    /admin                  Administrator landing      admin.view
    /admin/users            User Administration        users.manage (Layer 3)
    /formulary              Formulary management       formulary.manage (Layer 4 — Pharmacy)
+   /lab-catalog            Lab catalogue management   labcatalog.manage (Layer 4 — Laboratory)
+   /order-sets             Order-set management       ordersets.manage (Layer 4 — Pharmacy)
    /beds                   ICU Bed Overview           patients.view
    /patients/:patientId    Patient Mission Control    patients.view
    /orders(/:patientId)    Orders & Medication        orders.view (mutations need more)
@@ -53,6 +57,8 @@ export default function App() {
         <Route path="/admin" element={<RequireSession permission="admin.view"><AdminHome /></RequireSession>} />
         <Route path="/admin/users" element={<RequireSession permission="users.manage"><UsersAdmin /></RequireSession>} />
         <Route path="/formulary" element={<RequireSession permission="formulary.manage"><Formulary /></RequireSession>} />
+        <Route path="/lab-catalog" element={<RequireSession permission="labcatalog.manage"><LabCatalog /></RequireSession>} />
+        <Route path="/order-sets" element={<RequireSession permission="ordersets.manage"><OrderSetsAdmin /></RequireSession>} />
         <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />

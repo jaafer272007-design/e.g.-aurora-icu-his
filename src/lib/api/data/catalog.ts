@@ -1,0 +1,80 @@
+import type { LabTest } from '../types'
+
+/* Lab Test Catalogue (Layer 4 master data, Aurora Core) — the tests that
+   can be ordered, as reference data the Laboratory maintains. The seven
+   entries mirror the panels the labs domain already implies (the seeded
+   results and the LAB_TREND templates) so the catalogue and existing
+   results are consistent by construction. Analyte definitions carry
+   units and reference ranges only — chart presentation metadata
+   (colors, critical bands, scaling) stays with the trend templates.
+   Seed source for server/Data/labcatalog-seed.json (generated — never
+   hand-edit). testId == the LabPanelKey the results wire already uses. */
+
+export const LAB_CATALOG: LabTest[] = [
+  {
+    testId: 'CBC', name: 'Complete Blood Count', category: 'Hematology',
+    specimen: 'Whole blood (EDTA)', active: true,
+    analytes: [
+      { analyte: 'WBC', unit: '×10⁹/L', refRange: '4.0–11.0', refLow: 4, refHigh: 11 },
+      { analyte: 'Hgb', unit: 'g/dL', refRange: '12–16', refLow: 12, refHigh: 16 },
+      { analyte: 'Platelets', unit: '×10⁹/L', refRange: '150–400', refLow: 150, refHigh: 400 },
+      { analyte: 'Neut%', unit: '%', refRange: '40–75', refLow: 40, refHigh: 75 },
+    ],
+  },
+  {
+    testId: 'ABG', name: 'Arterial Blood Gas', category: 'Blood gas',
+    specimen: 'Arterial blood (heparinized)', active: true,
+    analytes: [
+      { analyte: 'pH', unit: '', refRange: '7.35–7.45', refLow: 7.35, refHigh: 7.45 },
+      { analyte: 'PaO₂', unit: 'mmHg', refRange: '80–100', refLow: 80, refHigh: 100 },
+      { analyte: 'PaCO₂', unit: 'mmHg', refRange: '35–45', refLow: 35, refHigh: 45 },
+      { analyte: 'HCO₃', unit: 'mmol/L', refRange: '22–26', refLow: 22, refHigh: 26 },
+    ],
+  },
+  {
+    testId: 'Electrolytes', name: 'Electrolyte Panel', category: 'Chemistry',
+    specimen: 'Serum', active: true,
+    analytes: [
+      { analyte: 'Na⁺', unit: 'mmol/L', refRange: '135–145', refLow: 135, refHigh: 145 },
+      { analyte: 'K⁺', unit: 'mmol/L', refRange: '3.5–5.0', refLow: 3.5, refHigh: 5 },
+      { analyte: 'Mg²⁺', unit: 'mg/dL', refRange: '1.7–2.4', refLow: 1.7, refHigh: 2.4 },
+      { analyte: 'Ca²⁺', unit: 'mg/dL', refRange: '8.5–10.5', refLow: 8.5, refHigh: 10.5 },
+    ],
+  },
+  {
+    testId: 'Renal', name: 'Renal Function Panel', category: 'Chemistry',
+    specimen: 'Serum', active: true,
+    analytes: [
+      { analyte: 'Creatinine', unit: 'mg/dL', refRange: '0.6–1.2', refLow: 0.6, refHigh: 1.2 },
+      { analyte: 'BUN', unit: 'mg/dL', refRange: '8–20', refLow: 8, refHigh: 20 },
+      { analyte: 'eGFR', unit: 'mL/min', refRange: '> 60', refLow: 60, refHigh: 999 },
+    ],
+  },
+  {
+    testId: 'Liver', name: 'Liver Function Panel', category: 'Chemistry',
+    specimen: 'Serum', active: true,
+    analytes: [
+      { analyte: 'AST', unit: 'U/L', refRange: '10–40', refLow: 10, refHigh: 40 },
+      { analyte: 'ALT', unit: 'U/L', refRange: '10–40', refLow: 10, refHigh: 40 },
+      { analyte: 'T.Bili', unit: 'mg/dL', refRange: '0.2–1.2', refLow: 0.2, refHigh: 1.2 },
+      { analyte: 'Albumin', unit: 'g/dL', refRange: '3.5–5.0', refLow: 3.5, refHigh: 5 },
+    ],
+  },
+  {
+    testId: 'Coagulation', name: 'Coagulation Panel', category: 'Hematology',
+    specimen: 'Citrated plasma', active: true,
+    analytes: [
+      { analyte: 'INR', unit: '', refRange: '0.9–1.2', refLow: 0.9, refHigh: 1.2 },
+      { analyte: 'aPTT', unit: 's', refRange: '25–35', refLow: 25, refHigh: 35 },
+      { analyte: 'Fibrinogen', unit: 'mg/dL', refRange: '200–400', refLow: 200, refHigh: 400 },
+      { analyte: 'D-dimer', unit: 'µg/mL', refRange: '< 0.5', refLow: 0, refHigh: 0.5 },
+    ],
+  },
+  {
+    testId: 'Lactate', name: 'Lactate', category: 'Blood gas',
+    specimen: 'Arterial blood (heparinized)', active: true,
+    analytes: [
+      { analyte: 'Lactate', unit: 'mmol/L', refRange: '0.5–2.0', refLow: 0.5, refHigh: 2 },
+    ],
+  },
+]

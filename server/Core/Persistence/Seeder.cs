@@ -197,6 +197,26 @@ static class Seeder
             db.SaveChanges();
             app.Logger.LogInformation("Seeded {Count} interaction rules", rules.Count);
         }
+        /* Layer 4 phase 2: the lab test catalogue (GENERATED from
+           src/lib/api/data/catalog.ts — the panels the seeded labs domain
+           already implies, so catalogue and results agree by construction)
+           and order sets (GENERATED from formulary.ts ORDER_SET_DEFS). */
+        if (!db.LabTests.Any())
+        {
+            var tests = JsonSerializer.Deserialize<List<LabTestDto>>(
+                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "labcatalog-seed.json")), JsonOpts.Web)!;
+            db.LabTests.AddRange(tests.Select((t, i) => LabTestRow.FromDto(t, i + 1)));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} lab catalogue tests", tests.Count);
+        }
+        if (!db.OrderSets.Any())
+        {
+            var sets = JsonSerializer.Deserialize<List<OrderSetDto>>(
+                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "ordersets-seed.json")), JsonOpts.Web)!;
+            db.OrderSets.AddRange(sets.Select((x, i) => OrderSetRow.FromDto(x, i + 1)));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} order sets", sets.Count);
+        }
 
         /* ENCOUNTER-SCOPE BACKFILL (one-time, idempotent — the ORD-113
            fix): resolve EncounterId for any order that has none (seeds
