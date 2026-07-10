@@ -97,7 +97,8 @@ static class ResultsApi
                 return conflict;
             var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
+            var now = DateTime.UtcNow;
+            var time = now.ToString("HH:mm");
             var items = req.Items!.Select(i => new LabItemFull(
                 i.Analyte!, i.Value!.Value, i.Unit ?? "", i.RefRange!, i.RefLow!.Value, i.RefHigh!.Value, i.Flag!)).ToList();
             var row = new LabDrawRow
@@ -110,7 +111,7 @@ static class ResultsApi
                 Flag = ResultsLogic.DeriveLabFlag(req.Items!), Note = req.Note?.Trim(),
                 Acknowledged = false,
                 EventsJson = JsonSerializer.Serialize(
-                    new List<ResultEventDto> { new(time, actor, "resulted", null) }, JsonOpts.Web),
+                    new List<ResultEventDto> { new(now.ToString("yyyy-MM-dd HH:mm"), actor, "resulted", null) }, JsonOpts.Web),
             };
             db.LabDraws.Add(row);
             db.SaveChanges();
@@ -130,7 +131,8 @@ static class ResultsApi
                 return conflict;
             var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
+            var now = DateTime.UtcNow;
+            var time = now.ToString("HH:mm");
             var row = new ImagingStudyRow
             {
                 StudyId = ResultsLogic.NextStudyId(), PatientId = req.PatientId!,
@@ -141,7 +143,7 @@ static class ResultsApi
                 Flag = req.Flag!, Note = req.Note?.Trim(),
                 Acknowledged = false,
                 EventsJson = JsonSerializer.Serialize(
-                    new List<ResultEventDto> { new(time, actor, "resulted", null) }, JsonOpts.Web),
+                    new List<ResultEventDto> { new(now.ToString("yyyy-MM-dd HH:mm"), actor, "resulted", null) }, JsonOpts.Web),
             };
             db.ImagingStudies.Add(row);
             db.SaveChanges();
@@ -150,17 +152,28 @@ static class ResultsApi
 
         /* POST /api/icu/results/labs/{labId}/acknowledge — doctor RBAC
            (results.acknowledge). NO EncounterGuard — acknowledging is
-           completing the record and must succeed on a closed encounter. */
+           completing the record and must succeed on a closed encounter.
+           REPLAY IS A STATE CONFLICT (409), not absence: a result that is
+           already acknowledged EXISTS — 404 is reserved for ids that
+           resolve to nothing (the 403/404/409 convention codified by the
+           encounter-scoping fix). Event times are DATED UTC (the users-
+           audit convention — result audit trails span discharges and
+           readmissions); the acknowledgedAt SUMMARY stays HH:mm (the
+           bedside display contract, unchanged on the wire). */
         app.MapPost("/api/icu/results/labs/{labId}/acknowledge", (string labId, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
-            var d = db.LabDraws.FirstOrDefault(x => x.LabId == labId && !x.Acknowledged);
+            var d = db.LabDraws.FirstOrDefault(x => x.LabId == labId);
             if (d is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (d.Acknowledged)
+                return ResultsLogic.StateConflict(
+                    $"result '{labId}' is already acknowledged (by {d.AcknowledgedBy} at {d.AcknowledgedAt}) — it is not awaiting acknowledgment");
+            var now = DateTime.UtcNow;
             d.Acknowledged = true;
             d.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";
-            d.AcknowledgedAt = DateTime.UtcNow.ToString("HH:mm");
+            d.AcknowledgedAt = now.ToString("HH:mm");
             d.EventsJson = ResultsLogic.AppendEvent(d.EventsJson,
-                new(d.AcknowledgedAt, d.AcknowledgedBy, "acknowledged", null));
+                new(now.ToString("yyyy-MM-dd HH:mm"), d.AcknowledgedBy, "acknowledged", null));
             db.SaveChanges();
             return Results.Json(d.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
@@ -169,13 +182,17 @@ static class ResultsApi
         app.MapPost("/api/icu/results/imaging/{studyId}/acknowledge", (string studyId, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
-            var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId && !x.Acknowledged);
+            var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId);
             if (s is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (s.Acknowledged)
+                return ResultsLogic.StateConflict(
+                    $"result '{studyId}' is already acknowledged (by {s.AcknowledgedBy} at {s.AcknowledgedAt}) — it is not awaiting acknowledgment");
+            var now = DateTime.UtcNow;
             s.Acknowledged = true;
             s.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";
-            s.AcknowledgedAt = DateTime.UtcNow.ToString("HH:mm");
+            s.AcknowledgedAt = now.ToString("HH:mm");
             s.EventsJson = ResultsLogic.AppendEvent(s.EventsJson,
-                new(s.AcknowledgedAt, s.AcknowledgedBy, "acknowledged", null));
+                new(now.ToString("yyyy-MM-dd HH:mm"), s.AcknowledgedBy, "acknowledged", null));
             db.SaveChanges();
             return Results.Json(s.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
@@ -196,12 +213,14 @@ static class ResultsApi
                 return ApiError.BadRequest("reason is required to reverse an acknowledgment");
             if (req.Reason.Length > OrderLogic.MaxTextLength)
                 return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
-            var d = db.LabDraws.FirstOrDefault(x => x.LabId == labId && x.Acknowledged);
+            var d = db.LabDraws.FirstOrDefault(x => x.LabId == labId);
             if (d is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (!d.Acknowledged)
+                return ResultsLogic.StateConflict(
+                    $"result '{labId}' is not acknowledged — there is no acknowledgment to reverse");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
             d.EventsJson = ResultsLogic.AppendEvent(d.EventsJson,
-                new(time, actor, "unacknowledged",
+                new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "unacknowledged",
                     $"acknowledgment by {d.AcknowledgedBy} at {d.AcknowledgedAt} reversed — {req.Reason.Trim()}"));
             d.Acknowledged = false;
             d.AcknowledgedBy = null;
@@ -219,12 +238,14 @@ static class ResultsApi
                 return ApiError.BadRequest("reason is required to reverse an acknowledgment");
             if (req.Reason.Length > OrderLogic.MaxTextLength)
                 return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
-            var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId && x.Acknowledged);
+            var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId);
             if (s is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (!s.Acknowledged)
+                return ResultsLogic.StateConflict(
+                    $"result '{studyId}' is not acknowledged — there is no acknowledgment to reverse");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
             s.EventsJson = ResultsLogic.AppendEvent(s.EventsJson,
-                new(time, actor, "unacknowledged",
+                new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "unacknowledged",
                     $"acknowledgment by {s.AcknowledgedBy} at {s.AcknowledgedAt} reversed — {req.Reason.Trim()}"));
             s.Acknowledged = false;
             s.AcknowledgedBy = null;

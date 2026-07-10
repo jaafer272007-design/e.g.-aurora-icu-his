@@ -297,7 +297,9 @@ remain mock until their own phases.
   Acknowledge requires `results.acknowledge`: a NURSE token gets a
   generic 403 even when the UI is bypassed; a doctor token succeeds. The
   acknowledging actor is the TOKEN's name claim — never a request field.
-  Replayed acknowledge → 404. Client `hasPermission` checks remain as
+  Replayed acknowledge → 404 (SUPERSEDED by the results audit PR:
+  replay is now a 409 state conflict — see that section). Client
+  `hasPermission` checks remain as
   defense in depth.
 - **Frontend adapters** (`apiGet`/`apiPost` helpers): reads fall back to
   mock on unreachable/timeout/401 (console-logged) like the roster; the
@@ -835,7 +837,25 @@ acknowledge-on-a-closed-encounter untestable.
   validated like discontinue); the current-state summary fields clear
   and the result RETURNS TO THE INBOX (derived, as always). RBAC mirrors
   acknowledge — doctor 200, nurse generic 403, verified both directions.
-  Un-ack of an unacknowledged result → 404 (replay-safe, like ack).
+- **Replay is a STATE CONFLICT (409), never 404** — by the 403/404/409
+  convention the encounter-scoping fix codified, 404 is reserved for ids
+  that resolve to NOTHING: acknowledging an already-acknowledged result
+  and reversing an unacknowledged one are both 409 with a precise error
+  naming the current state (this DELIBERATELY supersedes the Phase 3-era
+  "replayed acknowledge → 404" behavior). KNOWN remaining 404-where-state
+  sites (recorded, ride with the next touch of each): orders sign/modify/
+  discontinue/implement fold status into their lookups (a replayed
+  discontinue or sign of a completed order → 404), and the MAR's
+  re-document of a non-scheduled dose → 404; ADT/Users state conflicts
+  use 400 with precise errors (pre-convention, deliberate then).
+- **Audit timestamps are DATED UTC (yyyy-MM-dd HH:mm, the Layer 3 users-
+  audit convention)** on every NEW resulted/acknowledged/unacknowledged
+  event — result audit trails span discharges and readmissions. The
+  acknowledgedAt SUMMARY field stays HH:mm (the bedside display
+  contract, byte-parity preserved). KNOWN LIMITATION: the 79 backfilled
+  acknowledgment events carry whatever the pre-migration rows stored —
+  bare HH:mm, "D-n HH:mm", or "" — a date was never recorded and is NOT
+  fabricated; only post-migration events carry full dates.
 - **Result creation** (`POST /api/icu/results/labs` and `/imaging`):
   results arrive UNACKNOWLEDGED and enter the inbox. Scoped to the
   patient's open encounter exactly as orders are — `encounterId`
@@ -898,11 +918,20 @@ acknowledge-on-a-closed-encounter untestable.
   SUBSET (len>=49 + lookup-by-id), covers creation RBAC both directions,
   the encounterId binding tripwire, nurse-403/doctor-200 acknowledge
   (automated RBAC coverage restored), the full un-ack cycle
-  (never-destroy history, inbox return, replay 404), create-on-closed →
-  409 vs ack/un-ack-on-closed → 200 LIVE, and ends with `if: always()`
-  cleanup that discharges the run's encounter AND acknowledges any
-  leftover run results (both legal on the closed encounter by design) —
-  the suite is permanently green-capable against the durable DB again.
+  (never-destroy history, inbox return, replay 409 / absent-id 404),
+  create-on-closed → 409 vs ack/un-ack-on-closed → 200 LIVE, and ends
+  with `if: always()` cleanup that discharges the run's encounter AND
+  acknowledges any leftover run results (both legal on the closed
+  encounter by design) — the suite is permanently green-capable against
+  the durable DB again.
+- **Recorded open question (do NOT fix ad hoc) — results have NO ORDER
+  LINKAGE**: a result carries patientId and encounterId but nothing ties
+  it to the order that requested it — a doctor orders a CBC, a
+  technician creates a CBC result, and the two are unconnected. In a
+  real HIS the result FULFILS the order (the same aggregate-root
+  question one level down: Patient → Encounter → Order → Result). This
+  belongs with Layer 4's lab catalog / order sets — recorded here so it
+  is not rediscovered later.
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
 INCREMENTALLY: every new layer from now on (ADT, user administration,

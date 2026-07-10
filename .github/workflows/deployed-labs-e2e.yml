@@ -9,8 +9,9 @@
 # server-derived encounterId (client-supplied → 400 binding),
 # acknowledge RBAC restored to automated coverage (nurse 403 / doctor
 # 200 with token actor), un-acknowledge (never-destroy history, required
-# reason, returns to inbox, replay 404), and THE ASYMMETRIC ENCOUNTER
-# RULE live: create on a closed encounter → 409 (initiating care) while
+# reason, returns to inbox, replay 409 / absent-id 404), and THE ASYMMETRIC
+# ENCOUNTER RULE live: create on a closed encounter → 409 (initiating
+# care) while
 # acknowledge AND un-acknowledge on that same closed encounter → 200
 # (completing the record of care already given). Dispatch manually after
 # merging /server changes to main — SEQUENTIALLY with the other suites.
@@ -147,8 +148,14 @@ jobs:
           assert d["acknowledged"] is True and d["acknowledgedBy"]=="Dr. Sara Rahman"
           assert [e["action"] for e in d["history"]] == ["resulted","acknowledged"]
           print("doctor acknowledged; actor from token; event appended")'
+          # replay is a STATE CONFLICT, not absence — the result exists, already acknowledged
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/labs/$LABID/acknowledge")
+          rc=$(echo "$out" | tail -1); echo "replay acknowledge -> HTTP $rc"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already acknowledged" in e, e'
 
-      - name: Un-acknowledge — nurse 403; missing reason 400; doctor+reason 200 (NEVER-DESTROY history, back in inbox); replay 404
+
+      - name: Un-acknowledge — nurse 403; missing reason 400; doctor+reason 200 (NEVER-DESTROY history, back in inbox); replay 409, absent id 404
         run: |
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API/api/icu/results/labs/$LABID/unacknowledge")
           echo "nurse un-acknowledge -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
@@ -168,8 +175,12 @@ jobs:
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/inbox" | LABID="$LABID" python3 -c '
           import json,sys,os; assert os.environ["LABID"] in {i["id"] for i in json.load(sys.stdin)}
           print("result RETURNED to the inbox")'
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API/api/icu/results/labs/$LABID/unacknowledge")
-          echo "replay un-acknowledge -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API/api/icu/results/labs/$LABID/unacknowledge")
+          rc=$(echo "$out" | tail -1); echo "replay un-acknowledge -> HTTP $rc (state conflict, not absence)"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is not acknowledged" in e and "no acknowledgment to reverse" in e, e'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API/api/icu/results/labs/LAB-0000/unacknowledge")
+          echo "un-acknowledge of a NONEXISTENT id -> HTTP $rc"; [ "$rc" = "404" ] || exit 1   # 404 stays reserved for absence
 
       - name: THE ASYMMETRIC ENCOUNTER RULE, live — discharge; create → 409; acknowledge AND un-acknowledge on the CLOSED encounter → 200
         run: |
