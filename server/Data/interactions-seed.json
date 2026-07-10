@@ -1,0 +1,38 @@
+[
+  {
+    "a": "enoxaparin",
+    "b": "heparin",
+    "severity": "block",
+    "note": "Duplicate therapeutic anticoagulation — bleeding risk."
+  },
+  {
+    "a": "enoxaparin",
+    "b": "ketorolac",
+    "severity": "warn",
+    "note": "NSAID + LMWH increases bleeding risk — review indication."
+  },
+  {
+    "a": "heparin",
+    "b": "ketorolac",
+    "severity": "warn",
+    "note": "NSAID + heparin increases bleeding risk — review indication."
+  },
+  {
+    "a": "metoprolol",
+    "b": "diltiazem",
+    "severity": "warn",
+    "note": "Additive AV-nodal blockade — bradycardia/hypotension risk."
+  },
+  {
+    "a": "morphine",
+    "b": "fentanyl",
+    "severity": "warn",
+    "note": "Duplicate opioid therapy — sedation and respiratory depression risk."
+  },
+  {
+    "a": "furosemide",
+    "b": "vancomycin",
+    "severity": "warn",
+    "note": "Additive nephro-/ototoxicity — monitor levels and renal function."
+  }
+]

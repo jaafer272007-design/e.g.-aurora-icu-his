@@ -1,0 +1,11 @@
+[
+  "continuous",
+  "daily",
+  "bid",
+  "tid",
+  "qid",
+  "once",
+  "sliding scale",
+  "per level",
+  "per CRRT protocol"
+]

@@ -2,6 +2,7 @@ using Aurora.Core.Adt;
 using Aurora.Core.Ai;
 using Aurora.Core.Identity;
 using Aurora.Core.Mar;
+using Aurora.Core.MasterData;
 using Aurora.Core.Orders;
 using Aurora.Core.Persistence;
 using Aurora.Core.LabImaging;
@@ -128,5 +129,6 @@ MarApi.Map(app);
 TimelineApi.Map(app);
 AiApi.Map(app);
 ResultsApi.Map(app);
+FormularyApi.Map(app);
 
 app.Run();

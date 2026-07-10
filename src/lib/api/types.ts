@@ -507,13 +507,44 @@ export interface NewOrderDraft {
   requiresImplementation?: boolean
 }
 
-/* ---------- GET /api/icu/formulary ---------- */
+/* ---------- GET /api/icu/formulary (Layer 4 — master data, Aurora Core) ----------
+   The reference layer Pharmacy maintains: a real database table since
+   Layer 4, no longer a hardcoded frontend list. Removing a drug is a
+   STATUS change (active=false) — a drug that has ever been prescribed
+   must stay resolvable forever or historical orders become unreadable. */
+
+/** display-string dose bounds — reference data carried per drug; dose-range
+ *  ENFORCEMENT at ordering time is recorded future scope, not Layer 4 */
+export interface DoseLimits {
+  min?: string
+  /** per dose */
+  max?: string
+  maxDaily?: string
+  /** weight-based bound, where applicable */
+  perKg?: string
+}
+
+/** one audited change on a formulary drug (Layer 3 users convention:
+ *  dated UTC times — reference data changes span months) */
+export interface FormularyEvent {
+  time: string
+  actor: string
+  action: string
+  detail?: string
+}
 
 export interface FormularyDrug {
   drugId: string
+  /** generic name */
   name: string
+  brandNames: string[]
   drugClass: string
+  /** dosage form(s) as stocked */
+  form: string
+  strengths: string[]
   doses: string[]
+  defaultDose: string
+  doseLimits?: DoseLimits
   routes: string[]
   frequencies: string[]
   prnCapable: boolean
@@ -521,7 +552,33 @@ export interface FormularyDrug {
   allergyBlock: string[]
   /** cross-reactivity tags that WARN */
   allergyWarn: string[]
+  /** deactivation is a status change, never a delete — an inactive drug
+   *  cannot be selected for a NEW order; existing orders still render */
+  active: boolean
+  /** per-drug audit history (absent on the mock store) */
+  history?: FormularyEvent[]
 }
+
+/** POST /api/icu/formulary — create draft (Pharmacist formulary.manage) */
+export interface CreateDrugDraft {
+  drugId: string
+  name: string
+  brandNames: string[]
+  drugClass: string
+  form: string
+  strengths: string[]
+  doses: string[]
+  defaultDose: string
+  doseLimits?: DoseLimits
+  routes: string[]
+  frequencies: string[]
+  prnCapable: boolean
+  allergyBlock: string[]
+  allergyWarn: string[]
+}
+
+/** PUT /api/icu/formulary/:drugId — all fields optional; drugId immutable */
+export type EditDrugDraft = Partial<Omit<CreateDrugDraft, 'drugId'>>
 
 export interface InteractionRule {
   a: string

@@ -9,6 +9,7 @@ import { Timeline } from './pages/Timeline/Timeline'
 import { AiAssistant } from './pages/AiAssistant/AiAssistant'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
+import { Formulary } from './pages/Formulary/Formulary'
 import { Admissions } from './pages/Admissions/Admissions'
 import { Discharges } from './pages/Discharges/Discharges'
 import { Login } from './pages/Login/Login'
@@ -23,6 +24,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /nurse                  Nurse Workspace            meds.administer
    /admin                  Administrator landing      admin.view
    /admin/users            User Administration        users.manage (Layer 3)
+   /formulary              Formulary management       formulary.manage (Layer 4 — Pharmacy)
    /beds                   ICU Bed Overview           patients.view
    /patients/:patientId    Patient Mission Control    patients.view
    /orders(/:patientId)    Orders & Medication        orders.view (mutations need more)
@@ -50,6 +52,7 @@ export default function App() {
         <Route path="/nurse" element={<RequireSession permission="meds.administer"><NurseWorkspace /></RequireSession>} />
         <Route path="/admin" element={<RequireSession permission="admin.view"><AdminHome /></RequireSession>} />
         <Route path="/admin/users" element={<RequireSession permission="users.manage"><UsersAdmin /></RequireSession>} />
+        <Route path="/formulary" element={<RequireSession permission="formulary.manage"><Formulary /></RequireSession>} />
         <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />

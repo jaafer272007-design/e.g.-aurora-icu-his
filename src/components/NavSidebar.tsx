@@ -5,7 +5,7 @@ import {
 } from './icons'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 
-export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'users' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'users' | 'formulary' | 'alerts' | 'statistics' | 'settings'
 
 interface NavItem {
   key: NavKey
@@ -43,6 +43,7 @@ export function NavSidebar({ active, alertCount = 0, footerLines }: NavSidebarPr
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge />, to: '/discharges', perm: 'patients.view' },
     { key: 'users', label: 'User Accounts', icon: <IconUsers size={16} />, to: '/admin/users', perm: 'users.manage' },
+    { key: 'formulary', label: 'Formulary', icon: <IconPill />, to: '/formulary', perm: 'formulary.manage' },
     { key: 'alerts', label: 'Alerts', icon: <IconAlertTriangle />, badge: alertCount },
     { key: 'statistics', label: 'Statistics', icon: <IconStats /> },
     { key: 'settings', label: 'Settings', icon: <IconSettings /> },
