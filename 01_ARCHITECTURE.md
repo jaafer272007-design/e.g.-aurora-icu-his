@@ -407,7 +407,12 @@ Aurora Core target structure above. A historical-rendering guarantee for it
 (historical views and exports must render orders whose drugId no longer
 resolves from the stored text, never join-requiring the formulary row) is
 specified in the in-flight server-side safety-enforcement PR (#46) and gets
-re-homed here when that PR merges.]*
+re-homed here when that PR merges. The guarantee's read half is VERIFIED
+against the current code: order READS never consult the formulary —
+`FormularyLogic` is referenced in `server/Core/Orders/` only on the
+create/modify validation paths (inactive-drug 409, frequency vocabulary);
+the GET path serializes stored rows, so an order whose drugId has no
+formulary row renders from its stored text today.]*
 
 ## Locked Decisions (do not re-litigate without asking)
 - RBAC: Doctor = full order/medication authority. Nurse = administer +
