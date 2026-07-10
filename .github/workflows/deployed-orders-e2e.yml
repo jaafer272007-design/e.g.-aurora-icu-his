@@ -124,6 +124,7 @@ jobs:
             "$API/api/icu/orders" > /tmp/created.json
           OID=$(python3 -c 'import json; d=json.load(open("/tmp/created.json"))[0]; assert d["status"]=="pending" and d["orderedBy"]=="Dr. Sara Rahman", d; print(d["orderId"])')
           echo "created pending $OID"
+          echo "OID=$OID" >> "$GITHUB_ENV"   # the four-code step below runs in its OWN shell
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?status=pending" \
             | python3 -c "import json,sys; ids=[o['orderId'] for o in json.load(sys.stdin)]; assert '$OID' in ids, ids; print('pending queue contains $OID')"
           curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/orders/$OID/sign" \
