@@ -45,9 +45,16 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the dispatched ref (full history — the gate computes the expected server build from it)
+      - name: Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objects)
         uses: actions/checkout@v4
         with:
+          # fetch-depth: 0 is LOAD-BEARING: the gate runs `git rev-parse
+          # "$build:server"` where $build is whatever commit Render is
+          # serving — after a docs/workflow streak that can be arbitrarily
+          # deep in history. The default fetch-depth: 1 has only HEAD's
+          # objects, so the gate would fail loudly on EVERY run (safe but
+          # useless). Full history also covers merge commits and any
+          # main-ancestor the service may be serving.
           fetch-depth: 0
 
       - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
@@ -80,6 +87,11 @@ jobs:
             [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && exit 0
             sleep 10
           done
+          if [ "$BS" = "$WANT_SRV" ] && [ "$BY" != "$WANT_YML" ]; then
+            echo "CONFIG MISMATCH: server/ trees are EQUAL but render.yaml differs between this ref and the deployed build '$build'." \
+              "If the render.yaml change was semantic (env vars/build config), Render's Blueprint sync should have redeployed — check the dashboard." \
+              "If Render did not redeploy (e.g. a comment-only edit), trigger a MANUAL DEPLOY of the latest commit to clear this gate — an expected operational step, not a dead zone." && exit 1
+          fi
           echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
 
       - name: Bootstrap — seeded ADMIN login (read-only dependency) + run-unique names

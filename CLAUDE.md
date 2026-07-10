@@ -1316,7 +1316,18 @@ the ref's history fails rev-parse → loud. STRICTLY STRONGER than
 HEAD==build: newer server content on the ref than deployed (the
 classic stale case) differs → fails; and the dead zone is gone —
 docs/workflow-only merges leave the server trees equal, so suites
-dispatch green without a rebuild.
+dispatch green without a rebuild. GENERAL RULE (generalizes the
+rootDir discovery rather than merely documenting it): a verification
+gate's comparison set must be EXACTLY the set of inputs that determine
+the artifact it verifies — a superset creates a dead zone (the gate
+demands agreement on inputs the artifact never consumed), a subset
+lets staleness through (the artifact changed on an input the gate
+ignores). The gate's checkout uses fetch-depth: 0 deliberately: the
+deployed commit can be arbitrarily old, and resolving its tree needs
+its objects — a depth-1 checkout would fail the gate loudly on every
+run. A render.yaml-only mismatch gets a DISTINCT message: if Render's
+Blueprint sync did not redeploy for the change, a MANUAL DEPLOY of the
+latest commit clears the gate (documented operational step).
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
