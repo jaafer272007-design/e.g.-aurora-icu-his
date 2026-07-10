@@ -500,11 +500,15 @@ export async function getMarRows(patientIds: string[]): Promise<MarRow[]> {
 }
 
 /** POST /api/icu/orders — create order(s); sign=true activates immediately (doctor RBAC).
- *  `note` (e.g. an acknowledged safety-warning override) is written to the audit history.
- *  REAL endpoint; patient name/bed resolved server-side from the roster. */
+ *  `note` (the acknowledged safety-warning override composed by the order
+ *  form) is written to the audit history AND carried as the server-side
+ *  overrideJustification: since safety enforcement, the SERVER re-runs the
+ *  allergy/interaction/duplicate checks and 409s warn-level findings
+ *  without it (hard blocks are never overridable) — the client check is
+ *  UX, the server is authoritative. */
 export async function createOrders(drafts: NewOrderDraft[], actor: string, sign: boolean, jobTitle: JobTitle, note?: string): Promise<Order[]> {
   if (!hasPermission(jobTitle, 'orders.create') || (sign && !hasPermission(jobTitle, 'orders.sign'))) return respond([], 120)
-  const r = await apiPost<Order[]>('/api/icu/orders', 'create order', { drafts, sign, note })
+  const r = await apiPost<Order[]>('/api/icu/orders', 'create order', { drafts, sign, note, ...(note ? { overrideJustification: note } : {}) })
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return []
   const created = drafts.map(d => {

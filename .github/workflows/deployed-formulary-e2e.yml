@@ -147,6 +147,12 @@ jobs:
           h=d["history"]; assert len(h)==1 and h[0]["actor"]=="Samir Qassem" and h[0]["action"]=="added to formulary", h
           assert len(h[0]["time"])==16, h  # dated UTC (yyyy-MM-dd HH:mm)
           print("created:", d["drugId"], "| audit actor:", h[0]["actor"], "at", h[0]["time"])'
+          # DRUG2: a second clean run drug for the frequency-parity legs —
+          # the invariant step leaves an ACTIVE $DRUG order, and a second
+          # $DRUG draft would 409 on the duplicate-therapy safety check
+          curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d "$(echo "$CRE" | sed "s/$DRUG/$DRUG2/;s/E2E Probe/E2E Probe Two/")" "$API/api/icu/formulary" > /dev/null
+          echo "created $DRUG2 (frequency-leg drug)"
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$CRE" "$API/api/icu/formulary")
           rc=$(echo "$out" | tail -1); echo "duplicate create -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already exists in the formulary" in e, e'
@@ -230,7 +236,9 @@ jobs:
 
       - name: Frequency vocabulary — validation behavior byte-identical to pre-Layer-4
         run: |
-          freqbody(){ echo "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"x\",\"drug\":\"X\",\"dose\":\"1\",\"route\":\"PO\",\"frequency\":\"$1\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":false}"; }
+          # drugId "x" is gone — the formulary is AUTHORITATIVE now
+          # (unknown drugId → 400); the parity legs ride the run's DRUG2
+          freqbody(){ echo "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"$DRUG2\",\"drug\":\"E2E Probe Two\",\"dose\":\"1 mg\",\"route\":\"PO\",\"frequency\":\"$1\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":false}"; }
           for f in continuous daily bid tid qid once "sliding scale" "per level" "per CRRT protocol" q1h q48h; do
             rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$(freqbody "$f")" "$API/api/icu/orders")
             echo "accept '$f' -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
@@ -243,6 +251,13 @@ jobs:
             [ "$got" = "$want" ] || { echo "TEXT DRIFT: got '$got'"; exit 1; }
           done
           echo "accepted set and rejected set (incl. exact error text) match the pre-Layer-4 behavior"
+          # ABSENCE PROBE (the coverage lesson, owed by this suite): an
+          # order for a drug in NO formulary is a validation 400 now
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"ghost-drug-$GITHUB_RUN_ID\",\"drug\":\"Ghost\",\"dose\":\"1 mg\",\"route\":\"PO\",\"frequency\":\"daily\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":false}" \
+            "$API/api/icu/orders")
+          rc=$(echo "$out" | tail -1); echo "UNKNOWN drugId -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "does not match any formulary drug" in e, e; print("400:", e)'
 
       - name: Cleanup — discharge the run's encounter + deactivate the run's drug (runs on failure/cancel too)
         if: always()
@@ -254,13 +269,14 @@ jobs:
             # 409 = already discharged (an earlier retry) — both terminal states are clean
             { [ "$rc" = "200" ] || [ "$rc" = "409" ]; } || fails=$((fails+1))
           fi
-          if [ -n "${DRUG:-}" ]; then
-            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DRUG/deactivate")
-            echo "deactivate run drug $DRUG -> HTTP $rc"
+          for d in "${DRUG:-}" "${DRUG2:-}"; do
+            [ -n "$d" ] || continue
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$d/deactivate")
+            echo "deactivate run drug $d -> HTTP $rc"
             # 200 = deactivated now; 409 = already inactive; 404 = the run
             # failed before creating it — all three leave nothing active
             { [ "$rc" = "200" ] || [ "$rc" = "409" ] || [ "$rc" = "404" ]; } || fails=$((fails+1))
-          fi
+          done
           # loud outcome assertion — the cleanup itself must not silently no-op
           if [ -n "${EID:-}" ]; then
             st=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID" \

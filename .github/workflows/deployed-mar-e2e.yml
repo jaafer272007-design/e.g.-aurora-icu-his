@@ -91,6 +91,18 @@ jobs:
             echo "$u: token issued"
           done
 
+      - name: Admit THIS RUN's patient (safety enforcement made the shared P-1001 untenable — accumulated actives trip the duplicate-therapy check; this also resolves the recorded P-1001-discharge fragility)
+        run: |
+          FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
+            | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
+          resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"MRN-MARE2E-'$GITHUB_RUN_ID'","name":"MAR E2E Patient","age":58,"sex":"F","allergies":"None known","bedId":"'$FREE'","diagnosis":"MAR E2E","attending":"Dr. Sara Rahman"}' \
+            "$API/api/icu/adt/admissions")
+          pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
+          eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+          { echo "PID=$pid"; echo "EID=$eid"; } >> "$GITHUB_ENV"
+          echo "admitted $pid ($eid) at $FREE"
+
       - name: Unauthenticated MAR read → 401
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/mar")
@@ -113,7 +125,7 @@ jobs:
       - name: Seed a signed med order for THIS RUN (own scheduled doses)
         run: |
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"drafts":[{"patientId":"P-1001","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":true}' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":true}' \
             "$API/api/icu/orders" > /tmp/o.json
           # standalone assignment so a failing assert FAILS THIS STEP —
           # `read VAR <<<"$(…)"` swallowed it (2026-07-10 audit finding)
@@ -155,3 +167,18 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"action":"held","reason":"SBP 82 — holding per parameters"}' "$API/api/icu/mar/$OID/administrations/$A2" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); a=[x for x in d["administrations"] if x["status"]=="held"][0]; assert a["reason"]=="SBP 82 — holding per parameters" and a["documentedBy"]=="RN Maya Chen", a; print("held with reason:", a["reason"])'
+
+      - name: Cleanup — discharge the run encounter (runs on failure/cancel too)
+        if: always()
+        run: |
+          fails=0
+          if [ -n "${EID:-}" ]; then
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+            echo "discharge $EID -> HTTP $rc"
+            { [ "$rc" = "200" ] || [ "$rc" = "409" ]; } || fails=$((fails+1))
+            st=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID" \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); print("discharged" if d and all(e["status"]=="discharged" for e in d) else "<live>")')
+            echo "encounters final: $st"; [ "$st" = "discharged" ] || fails=$((fails+1))
+          fi
+          [ "$fails" = "0" ] || { echo "cleanup left live state behind"; exit 1; }
+          echo "cleanup complete"

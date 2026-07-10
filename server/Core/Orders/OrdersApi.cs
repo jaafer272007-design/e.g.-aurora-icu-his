@@ -121,6 +121,32 @@ static class OrdersApi
                         $"test '{inactiveTest.Name}' ({inactiveTest.TestId}) is inactive in the lab catalogue — it cannot be selected for a new order");
             }
 
+            /* SERVER-SIDE MEDICATION SAFETY (the safety.ts move — see
+               SafetyLogic): hard blocks are 409 and never overridable;
+               warn-level findings are 409 unless the request carries an
+               audited overrideJustification. Checked for EVERY draft
+               before any insert (a blocked batch creates zero orders). */
+            if (req.OverrideJustification is { Length: > OrderLogic.MaxTextLength })
+                return ApiError.BadRequest($"overrideJustification exceeds {OrderLogic.MaxTextLength} characters");
+            var overridesByDraft = new Dictionary<NewOrderDraftDto, List<SafetyLogic.Issue>>();
+            foreach (var draft in req.Drafts)
+            {
+                if (draft.Medication is null) continue;
+                var issues = SafetyLogic.Check(db, draft.PatientId!, openByPatient[draft.PatientId!].EncounterId, draft.Medication);
+                var blocks = issues.Where(i => i.Severity == "block").ToList();
+                if (blocks.Count > 0)
+                    return ApiError.StateConflict(
+                        $"safety block — {string.Join(" | ", blocks.Select(b => b.Message))} This contraindication cannot be overridden.");
+                var warns = issues.Where(i => i.Severity == "warn").ToList();
+                if (warns.Count > 0)
+                {
+                    if (string.IsNullOrWhiteSpace(req.OverrideJustification))
+                        return ApiError.StateConflict(
+                            $"safety warning — {string.Join(" | ", warns.Select(w => w.Message))} Ordering requires an acknowledged override (overrideJustification).");
+                    overridesByDraft[draft] = warns;
+                }
+            }
+
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = DateTime.UtcNow.ToString("HH:mm");
             var created = new List<OrderDto>();
@@ -131,6 +157,9 @@ static class OrdersApi
                 var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == draft.PatientId);
                 var enc = openByPatient[draft.PatientId!];
                 var history = new List<OrderEventDto> { new(time, actor, "created", req.Note) };
+                if (overridesByDraft.TryGetValue(draft, out var overridden))
+                    history.Add(new(time, actor, "safety override",
+                        $"{string.Join(" | ", overridden.Select(w => w.Message))} — justification: {req.OverrideJustification!.Trim()}"));
                 List<AdminDto>? administrations = null;
                 if (req.Sign)
                 {

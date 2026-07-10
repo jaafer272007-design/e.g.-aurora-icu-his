@@ -71,4 +71,4 @@ record EditOrderSetRequest(string? Name, string? Description, List<OrderSetItemR
 /** POST /api/icu/order-sets/{setId}/apply — clinician authority (the
     order-creation permissions), never the set-management permission */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record ApplyOrderSetRequest(string? PatientId, bool Sign, string? Note);
+record ApplyOrderSetRequest(string? PatientId, bool Sign, string? Note, string? OverrideJustification = null);
