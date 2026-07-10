@@ -34,15 +34,38 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - name: Warm up + require THIS COMMIT's build to be live (no stale deployments)
+      - name: Check out the dispatched ref (full history — the gate computes the expected server build from it)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Warm up + require the deployed build to match this ref's LATEST SERVER-TOUCHING commit
         run: |
+          # THE GATE'S INVARIANT, CORRECTED (the dead-zone fix): the
+          # dispatched ref supplies the TEST code; the deployed build
+          # supplies the SERVER code — they only need to agree about the
+          # SERVER. Render rebuilds only for commits touching the server
+          # build context (render.yaml: rootDir server/, Dockerfile inside
+          # it; render.yaml itself included conservatively — misjudging a
+          # path fails LOUDLY here, never silently green). So the gate
+          # asserts /healthz build == the most recent ancestor of the
+          # dispatched ref that touched that context. STRICTLY STRONGER
+          # than the old HEAD==build rule: an old ref whose HEAD happens to
+          # equal the deployed build now FAILS when newer server-touching
+          # commits exist (the stale case the gate was built for), and a
+          # docs/workflow-only merge no longer creates a dead zone in
+          # which no suite can pass.
+          WANT=$(git log -1 --format=%H -- server/ render.yaml)
+          [ -n "$WANT" ] || { echo "could not determine the latest server-touching commit"; exit 1; }
+          echo "dispatched ref HEAD:             $GITHUB_SHA"
+          echo "latest server-touching ancestor: $WANT  (build context: server/ render.yaml)"
           for i in $(seq 1 60); do
             build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
-            echo "attempt $i: live build=$build · dispatched commit=$GITHUB_SHA"
-            [ "$build" = "$GITHUB_SHA" ] && exit 0
+            echo "attempt $i: live build=$build · expected=$WANT"
+            [ "$build" = "$WANT" ] && exit 0
             sleep 10
           done
-          echo "STALE DEPLOYMENT: /healthz build '$build' never matched the dispatched commit '$GITHUB_SHA' — refusing to test an old build" && exit 1
+          echo "STALE DEPLOYMENT: /healthz build '$build' never matched this ref's latest server-touching commit '$WANT' — the deployed server does not correspond to this ref's server source" && exit 1
 
       - name: Login as doctor, nurse, and laboratory technician
         run: |
