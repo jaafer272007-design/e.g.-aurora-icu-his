@@ -485,6 +485,10 @@ export interface Order {
   /** one-line description; composed from medication fields for med orders */
   summary: string
   medication?: MedicationDetails
+  /** Layer 4 (lab catalogue): the catalogue test a Lab order references —
+   *  the order half of the order→result linkage. Optional; absent on the
+   *  mock store and on free-text lab orders. */
+  testId?: string
   priority: OrderPriority
   status: OrderStatus
   orderedBy: string
@@ -503,6 +507,8 @@ export interface NewOrderDraft {
   category: OrderCategory
   summary?: string
   medication?: MedicationDetails
+  /** Lab orders only: the catalogue test being ordered (Layer 4) */
+  testId?: string
   priority: OrderPriority
   requiresImplementation?: boolean
 }
@@ -580,6 +586,47 @@ export interface CreateDrugDraft {
 /** PUT /api/icu/formulary/:drugId — all fields optional; drugId immutable */
 export type EditDrugDraft = Partial<Omit<CreateDrugDraft, 'drugId'>>
 
+/* ---------- GET /api/icu/lab-catalog (Layer 4 — master data, Aurora Core) ----------
+   The tests that can be ordered — reference data the LABORATORY maintains
+   (labcatalog.manage on the Ancillary profile). Deactivation is a status
+   change, never a delete: an inactive test cannot be newly ORDERED (409),
+   but every existing result referencing it still renders, and resulting
+   against it stays allowed (completing ordered care is never blocked by a
+   reference-data status change). testId == the LabPanelKey on results. */
+
+export interface AnalyteDef {
+  analyte: string
+  /** may be empty — unitless analytes (pH, INR) are canonical */
+  unit: string
+  refRange: string
+  refLow: number
+  refHigh: number
+}
+
+export interface LabTest {
+  testId: string
+  name: string
+  /** panel grouping, e.g. Hematology / Chemistry / Blood gas */
+  category: string
+  specimen: string
+  analytes: AnalyteDef[]
+  active: boolean
+  /** per-test audit history (absent on the mock store) */
+  history?: FormularyEvent[]
+}
+
+/** POST /api/icu/lab-catalog — create draft (labcatalog.manage) */
+export interface CreateLabTestDraft {
+  testId: string
+  name: string
+  category: string
+  specimen: string
+  analytes: AnalyteDef[]
+}
+
+/** PUT /api/icu/lab-catalog/:testId — all fields optional; testId immutable */
+export type EditLabTestDraft = Partial<Omit<CreateLabTestDraft, 'testId'>>
+
 export interface InteractionRule {
   a: string
   b: string
@@ -599,6 +646,8 @@ export interface OrderSetItemTemplate {
   category: OrderCategory
   summary?: string
   medication?: MedicationDetails
+  /** Lab items: the catalogue test the item orders (Layer 4) */
+  testId?: string
   priority: OrderPriority
   requiresImplementation?: boolean
 }
@@ -608,6 +657,11 @@ export interface OrderSetDef {
   name: string
   description: string
   items: OrderSetItemTemplate[]
+  /** Layer 4: order sets are master data — deactivation is a status
+   *  change; an inactive set cannot be applied (409). Absent on mock. */
+  active?: boolean
+  /** per-set audit history (absent on the mock store) */
+  history?: FormularyEvent[]
 }
 
 /* ---------- GET /api/icu/nursing/mar (derived view) ---------- */
@@ -668,6 +722,11 @@ export interface LabDraw {
    *  patient's open encounter (results audit PR), never client-supplied;
    *  absent on the mock store */
   encounterId?: string
+  /** Layer 4 (order→result linkage): the lab order this result FULFILS —
+   *  SERVER-derived at creation (oldest unfulfilled active Lab order for
+   *  the same test on the open encounter), never client-supplied; absent
+   *  when no order matches (walk-in/reflex results are legitimate). */
+  orderId?: string
   /** denormalized display fields */
   bedId: string
   patientName: string

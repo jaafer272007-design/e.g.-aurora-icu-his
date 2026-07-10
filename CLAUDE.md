@@ -82,14 +82,16 @@ PermissionProfile → Permissions (and Dashboard landing view):
 | Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge | /workspace |
 | Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer | /nurse |
 | Administrator        | admin.view, patients.view, users.manage | /admin |
-| Pharmacist           | patients.view, orders.view, results.view, formulary.manage (Layer 4 — maintain the drug formulary) | /beds |
+| Pharmacist           | patients.view, orders.view, results.view, formulary.manage, ordersets.manage (Layer 4 — maintain the formulary + author order sets) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
-| Ancillary            | patients.view, orders.view, results.view, results.create | /beds |
+| Ancillary            | patients.view, orders.view, results.view, results.create, labcatalog.manage (Layer 4 — maintain the lab test catalogue) | /beds |
 | AlliedHealth         | patients.view, results.view (view-only) | /beds |
 
 Route guards: /workspace = orders.sign · /nurse = meds.administer ·
 /admin = admin.view · /admin/users = users.manage (Layer 3) ·
 /formulary = formulary.manage (Layer 4 — Pharmacy) ·
+/lab-catalog = labcatalog.manage (Layer 4 — Laboratory) ·
+/order-sets = ordersets.manage (Layer 4 — Pharmacy) ·
 /beds & /patients & /timeline = patients.view ·
 /orders = orders.view (mutating UI additionally needs the prescriber
 permissions) · /labs = results.view · /ai = ai.view · /admissions &
@@ -1169,6 +1171,104 @@ lab test catalog and order sets are the NEXT master-data domains — Layer
   `if: always()` cleanup (discharge + deactivate run drugs, outcomes
   asserted loudly).
 
+### Layer 4 phase 2 — Lab Test Catalogue, order→result linkage, Order Sets (built)
+Completes Layer 4's planned domains (`server/Core/MasterData/`).
+- **Lab Test Catalogue** (migration `AddLabCatalogOrderSets`, table
+  LabTests): one row per orderable test — testId (natural key == the
+  LabPanelKey the results wire has always used), name, category grouping,
+  specimen, component analytes (unit + refRange + numeric bounds) as a
+  JSON column, Active, append-only EventsJson. SEEDED FROM WHAT THE LABS
+  DOMAIN ALREADY IMPLIES: `src/lib/api/data/catalog.ts` (new mock store,
+  the seed source) is derived from the seven panels in the seeded
+  results/LAB_TREND templates, so catalogue and existing results agree by
+  construction; chart presentation metadata stays with the trend
+  templates. New permission `labcatalog.manage` on ANCILLARY — the
+  producing-service principle behind results.create, kept as its OWN
+  atom (entering a result ≠ redefining reference ranges); doctor, nurse,
+  PHARMACIST and administrator are all 403'd on catalogue mutations.
+- **The panel vocabulary moved to the catalogue** (the NamedFrequencies
+  precedent): ResultsLogic's hardcoded Panels array is gone; result
+  creation validates the panel against the LabTests table and builds the
+  error text from it in seed order — byte-identical on seeds. A panel
+  resolves against ANY catalogue test, ACTIVE OR INACTIVE — deactivation
+  blocks ORDERING, never RESULTING (below). Modalities stay a closed
+  union until the imaging-order workflow exists.
+- **Deactivation invariant, with a deliberate asymmetry**: an inactive
+  test cannot be NEWLY ORDERED (order create with its testId → 409,
+  after the encounter guard); every existing result referencing it keeps
+  rendering; and creating a RESULT for it stays 200 — a result completes
+  care already ordered, and blocking it would strand the day-3 order
+  whose test was retired on day 5 (the results-audit asymmetry, one
+  level down). All three directions asserted live.
+- **ORDER→RESULT LINKAGE (closes the recorded open question)**: orders
+  gain `testId?` (Lab category only — testId on any other category is
+  SHAPE, 400); lab results gain `orderId?` — SERVER-derived at creation
+  (a payload carrying it fails binding, exactly as encounterId does):
+  the result fulfils the OLDEST UNFULFILLED active Lab order for the
+  same test on the open encounter. THE MODEL CHOICE, justified: results
+  MAY exist without an order — reflex adds, standing lab protocols and
+  walk-in/outside results are legitimate unsolicited entries in any real
+  LIS, mandatory linkage would block exactly those, and all ~80
+  pre-linkage rows stay null (a linkage is never invented — the
+  never-fabricate backfill rule). Both wire deltas are ADDITIVE
+  (`Order.testId?`, `LabDraw.orderId?` — absent on all pre-existing
+  rows, so every unaffected read is byte-identical). Order COMPLETION
+  when its result arrives is a recorded open question — the linkage is
+  one-way (result → order) this PR.
+- **Order Sets** (table OrderSets, seeded from formulary.ts
+  ORDER_SET_DEFS; the Lactate/ABG lab items now carry their catalogue
+  testIds): named bundles referencing the formulary and the catalogue.
+  New permission `ordersets.manage` on PHARMACIST (protocol authorship
+  stewarded with the formulary in the provisional model; a distinct atom
+  so a future split costs a table edit). AUTHORING integrity: set items
+  validate the same shape rules as order drafts, and an UNKNOWN
+  drugId/testId in a DEFINITION is 400 (reference data must be
+  internally consistent) while an INACTIVE reference is allowed at
+  authoring and 409s at APPLY (state).
+- **APPLY IS THE ORDER-CREATION PATH, NEVER A BYPASS**:
+  `POST /api/icu/order-sets/{setId}/apply` composes drafts and calls the
+  SAME OrdersApi.Create the endpoint uses (extracted, behavior-neutral)
+  — clinician RBAC (orders.create/sign — nurse 403), draft validation,
+  the encounter guard, and the inactive-drug/test 409s all apply
+  identically; applying to a DISCHARGED patient returns the
+  STRING-IDENTICAL 409 a single order gets (asserted). An inactive SET
+  is its own 409. NOTE: the Orders screen's set expansion keeps its
+  client-side allergy screening and composes drafts through POST /orders
+  (the same path, still no bypass); the apply endpoint applies ALL items
+  — replicating the safety screen server-side is the queued
+  safety-enforcement work item.
+- **Frontend**: `/lab-catalog` (Laboratory) + `/order-sets` (Pharmacy)
+  management screens with per-item audit history (set items edited as
+  validated JSON — a structured set-item editor is recorded display
+  debt); the Orders screen gains a catalogue-driven "Order Lab Test"
+  picker (active tests only, orders carry the testId) and its order-set
+  card reads the REAL definitions (inactive sets excluded); adapters
+  follow the proven read-fallback/REAL-ONLY-write pattern.
+- **Recorded, deliberately not done here**: (a)
+  CATALOGUE-AUTHORITATIVE ORDERING has the same status as the
+  formulary's — an order with an UNKNOWN testId is still accepted (the
+  escape hatch, asserted live as the explicit absence probe) — folded
+  into the SAME server-side enforcement work item as unknown-drugId
+  rejection and the safety checks, not a new item; (b) per the coverage
+  lesson, the new suite carries its absence probes explicitly, and the
+  OTHER suites' missing catalogue-absence probes ride with that
+  enforcement fix; (c) order completion on result arrival; (d)
+  interaction-rule management and dose-limit enforcement (unchanged).
+- **Verification**: 67-check behavior matrix (all RBAC polarities incl.
+  the pharmacist-403-on-catalogue cross-check, linkage both branches,
+  the asymmetry, apply-path equivalence); byte-parity sweep vs main —
+  zero diffs on every unaffected endpoint including the three formulary
+  reads (the additive columns are invisible on pre-existing rows);
+  live-upgrade migration simulation on a Postgres replica with replayed
+  writes (one migration, all pre-existing DATA byte-identical —
+  compared per-column since ADD COLUMN changes physical order — new
+  tables 7/4, both new columns all-null); second boot 0/0; restart
+  survival (linkage, catalogue test + audit, set deactivation all
+  intact; creates continue). `deployed-labcatalog-e2e.yml` is the
+  ELEVENTH suite — gate v3, shared concurrency group, self-sufficient
+  (run-unique test/set/drug + own patient), `if: always()` cleanup with
+  asserted outcomes.
+
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
 INCREMENTALLY: every new layer from now on (ADT, user administration,
@@ -1264,8 +1364,11 @@ built directly in Aurora Core, not in the ICU module.
    the drug list from the API (the hardcoded list survives only as the
    offline mock fallback), the frequency vocabulary moved out of
    Core/Orders into master data, and prescribing an inactive drug is a
-   409. The LAB TEST CATALOG and ORDER SETS remain — Layer 4 is
-   formulary-complete, not complete.
+   409. **The LAB TEST CATALOGUE and ORDER SETS are DONE too** (see
+   "Layer 4 phase 2" below) — Layer 4's three planned domains are all
+   built; what remains of the reference layer is the recorded
+   enforcement work (formulary/catalogue-authoritative ordering,
+   server-side safety checks).
 
 **Database persistence — the BLOCKING prerequisite for Layer 2 (ADT) —
 is DONE** (see "Database persistence (built)" above): Render Postgres via
@@ -1284,10 +1387,12 @@ identity/location half dissolved)**, and **Layer 3 (user
 administration in Core Identity, escalation safeguards + immutable
 audit)**, and **the encounter-scoping fix (the ORD-113 defect — an
 order's lifecycle is bounded by its encounter; see the section
-above)** are DONE, and **Layer 4's FIRST domain — the drug formulary
-in Core Master Data — is DONE** (the lab test catalog and order sets
-remain). **Next: the remaining Layer 4 domains (lab catalog / order
-sets) or the deferred Print Center** → Stage 11 (device
+above)** are DONE, and **Layer 4 is DOMAIN-COMPLETE — the drug
+formulary, the lab test catalogue and order sets are all built in Core
+Master Data** (the recorded enforcement work — formulary/catalogue-
+authoritative ordering + server-side safety — remains). **Next: the
+server-side safety-enforcement work item or the deferred Print
+Center** → Stage 11 (device
 integration + the Observation model per the locked rule above; Stage
 11 also absorbs the remaining bedside-snapshot half of the roster).
 The full architectural review + Core-extraction inventory ran before
@@ -1602,10 +1707,19 @@ permission, deactivation-never-deletion with the inactive-drug 409 at
 order create/modify, the frequency vocabulary moved out of Core/Orders
 with byte-identical validation, Orders & Medication reading the drug
 list from the API, and the tenth deployed suite
-(`deployed-formulary-e2e.yml`, self-sufficient). **Next: the remaining
-Layer 4 domains (lab test catalog, order sets — Layer 4 is
-formulary-complete, not complete)**,
-then the Print Center, then Stage 11 device + AI integration per the
+(`deployed-formulary-e2e.yml`, self-sufficient). **Layer 4 phase 2 is
+DONE — the Lab Test Catalogue (Laboratory's `labcatalog.manage` on
+Ancillary, seeded from the panels the labs domain implies, panel
+vocabulary moved out of ResultsLogic), the ORDER→RESULT LINKAGE
+(`Order.testId?` + server-derived `LabDraw.orderId?` fulfilling the
+oldest unfulfilled matching order; results may exist without an order —
+walk-in/reflex are legitimate), and ORDER SETS (Pharmacy's
+`ordersets.manage`; apply runs through the shared order-creation path,
+never a bypass), with the eleventh suite
+(`deployed-labcatalog-e2e.yml`)**. **Next: the server-side
+safety-enforcement work item (formulary/catalogue-authoritative
+ordering + the safety.ts move) or the deferred Print Center**,
+then Stage 11 device + AI integration per the
 locked rules above (Stage 11 also absorbs the roster's remaining
 bedside-snapshot columns). The Timeline's four still-mock sources
 (Consults/Notes/Nursing/I&O) migrate with that later work, not Phase 3.

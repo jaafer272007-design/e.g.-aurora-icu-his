@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateUserDraft, EditDrugDraft, EditUserDraft, Encounter, FormularyDrug,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
   OrderSetsResponse, PatientDetailResponse, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -21,6 +21,7 @@ import { allRiskProfiles, deriveMissionControlRisks, deriveRiskAlerts, deriveRis
 import { notesFor } from './data/notes'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
+import { LAB_CATALOG } from './data/catalog'
 import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
   applySign, deriveMarRows, insertOrder,
@@ -383,9 +384,68 @@ export function reactivateFormularyDrug(drugId: string): Promise<AdtWriteResult<
   return usersWrite<FormularyDrug>(`/api/icu/formulary/${encodeURIComponent(drugId)}/reactivate`, 'formulary reactivate')
 }
 
-/** GET /api/icu/order-sets/definitions — order sets with expandable items. */
-export function getOrderSetDefs(): Promise<OrderSetDef[]> {
+/** GET /api/icu/order-sets — order sets with expandable items (REAL
+ *  master data since Layer 4 phase 2; mock fallback offline). */
+export async function getOrderSetDefs(): Promise<OrderSetDef[]> {
+  const real = await apiGet<OrderSetDef[]>('/api/icu/order-sets', 'order sets')
+  if (real) return real
   return respond(ORDER_SET_DEFS, 120)
+}
+
+/* ---------------- Layer 4 phase 2 — Lab Test Catalogue + Order Sets ----------------
+   Reference data the LABORATORY (labcatalog.manage, Ancillary profile)
+   and PHARMACY (ordersets.manage) maintain — REAL-ONLY writes like every
+   master-data domain; reads fall back to the mock stores offline.
+   Deactivation is a status change, never a delete: an inactive test
+   cannot be newly ORDERED (server 409) but every existing result
+   referencing it still renders; an inactive set cannot be applied. */
+
+/** GET /api/icu/lab-catalog — all tests incl. inactive. */
+export async function getLabCatalog(): Promise<LabTest[]> {
+  const real = await apiGet<LabTest[]>('/api/icu/lab-catalog', 'lab catalogue')
+  if (real) return real
+  return respond(LAB_CATALOG, 120)
+}
+
+/** POST /api/icu/lab-catalog — add a test (Laboratory RBAC). REAL-ONLY. */
+export function createLabTest(draft: CreateLabTestDraft): Promise<AdtWriteResult<LabTest>> {
+  return usersWrite<LabTest>('/api/icu/lab-catalog', 'lab-catalogue create', draft)
+}
+
+/** PUT /api/icu/lab-catalog/:testId — edit (testId immutable). REAL-ONLY. */
+export function updateLabTest(testId: string, draft: EditLabTestDraft): Promise<AdtWriteResult<LabTest>> {
+  return usersWrite<LabTest>(`/api/icu/lab-catalog/${encodeURIComponent(testId)}`, 'lab-catalogue edit', draft, 'PUT')
+}
+
+/** POST /api/icu/lab-catalog/:testId/deactivate — status change, never a
+ *  delete (historical results keep resolving). REAL-ONLY. */
+export function deactivateLabTest(testId: string): Promise<AdtWriteResult<LabTest>> {
+  return usersWrite<LabTest>(`/api/icu/lab-catalog/${encodeURIComponent(testId)}/deactivate`, 'lab-catalogue deactivate')
+}
+
+/** POST /api/icu/lab-catalog/:testId/reactivate — REAL-ONLY. */
+export function reactivateLabTest(testId: string): Promise<AdtWriteResult<LabTest>> {
+  return usersWrite<LabTest>(`/api/icu/lab-catalog/${encodeURIComponent(testId)}/reactivate`, 'lab-catalogue reactivate')
+}
+
+/** POST /api/icu/order-sets — author a set (ordersets.manage). REAL-ONLY. */
+export function createOrderSet(draft: { setId: string; name: string; description: string; items: OrderSetItemTemplate[] }): Promise<AdtWriteResult<OrderSetDef>> {
+  return usersWrite<OrderSetDef>('/api/icu/order-sets', 'order-set create', draft)
+}
+
+/** PUT /api/icu/order-sets/:setId — edit a set. REAL-ONLY. */
+export function updateOrderSet(setId: string, draft: { name?: string; description?: string; items?: OrderSetItemTemplate[] }): Promise<AdtWriteResult<OrderSetDef>> {
+  return usersWrite<OrderSetDef>(`/api/icu/order-sets/${encodeURIComponent(setId)}`, 'order-set edit', draft, 'PUT')
+}
+
+/** POST /api/icu/order-sets/:setId/deactivate — REAL-ONLY. */
+export function deactivateOrderSet(setId: string): Promise<AdtWriteResult<OrderSetDef>> {
+  return usersWrite<OrderSetDef>(`/api/icu/order-sets/${encodeURIComponent(setId)}/deactivate`, 'order-set deactivate')
+}
+
+/** POST /api/icu/order-sets/:setId/reactivate — REAL-ONLY. */
+export function reactivateOrderSet(setId: string): Promise<AdtWriteResult<OrderSetDef>> {
+  return usersWrite<OrderSetDef>(`/api/icu/order-sets/${encodeURIComponent(setId)}/reactivate`, 'order-set reactivate')
 }
 
 /* The Orders domain is a REAL service since Stage 10 Phase 3 (Orders PR) —

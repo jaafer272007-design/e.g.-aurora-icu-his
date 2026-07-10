@@ -79,6 +79,8 @@ export type Permission =
   | 'adt.transfer'         // Layer 2 ADT: move within the unit (nursing action)
   | 'users.manage'         // Layer 3: user administration (Administrator only)
   | 'formulary.manage'     // Layer 4: maintain the drug formulary (Pharmacy authority)
+  | 'labcatalog.manage'    // Layer 4 phase 2: maintain the lab test catalogue (Laboratory authority)
+  | 'ordersets.manage'     // Layer 4 phase 2: author order sets (stewarded with the formulary)
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -101,13 +103,13 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   /* medication-chart review + Layer 4: maintaining the formulary is
      PHARMACY's authority (the same polarity flip as results.create on
      Ancillary — doctors/nurses/administrators are 403'd on mutations) */
-  Pharmacist: ['patients.view', 'orders.view', 'results.view', 'formulary.manage'],
+  Pharmacist: ['patients.view', 'orders.view', 'results.view', 'formulary.manage', 'ordersets.manage'],
   /* vent-focused: orders, ABGs, and risk trajectories, view-only */
   RespiratoryTherapist: ['patients.view', 'orders.view', 'results.view', 'ai.view'],
   /* lab/radiology technicians: pending order worklist + results; entering
      a RESULT is the producing service's authority (results audit PR) —
      doctors/nurses are 403'd on create, the usual polarity flip */
-  Ancillary: ['patients.view', 'orders.view', 'results.view', 'results.create'],
+  Ancillary: ['patients.view', 'orders.view', 'results.view', 'results.create', 'labcatalog.manage'],
   /* physio/dietitian: chart + results, view-only */
   AlliedHealth: ['patients.view', 'results.view'],
 }

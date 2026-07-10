@@ -101,10 +101,26 @@ static class ResultsApi
             var time = now.ToString("HH:mm");
             var items = req.Items!.Select(i => new LabItemFull(
                 i.Analyte!, i.Value!.Value, i.Unit ?? "", i.RefRange!, i.RefLow!.Value, i.RefHigh!.Value, i.Flag!)).ToList();
+            /* ORDER→RESULT LINKAGE (Layer 4 phase 2) — SERVER-derived,
+               never client-supplied (a payload carrying orderId fails
+               binding, exactly as encounterId does): the result fulfils
+               the OLDEST unfulfilled active Lab order for the SAME test
+               on this open encounter, when one exists. No match → the
+               result stands alone: walk-in, reflex and protocol-added
+               results are legitimate, and mandatory linkage would block
+               exactly the entries a real lab performs unsolicited. */
+            var fulfilled = db.LabDraws.AsNoTracking()
+                .Where(x => x.OrderId != null).Select(x => x.OrderId).ToHashSet();
+            var linkedOrder = db.Orders.AsNoTracking()
+                .Where(o => o.PatientId == req.PatientId && o.EncounterId == enc!.EncounterId
+                    && o.Category == "Lab" && o.TestId == req.Panel && o.Status == "active")
+                .OrderBy(o => o.Seq).AsEnumerable()
+                .FirstOrDefault(o => !fulfilled.Contains(o.OrderId));
             var row = new LabDrawRow
             {
                 LabId = ResultsLogic.NextLabId(), PatientId = req.PatientId!,
-                EncounterId = enc!.EncounterId, BedId = enc.BedId, PatientName = pt.Name,
+                EncounterId = enc!.EncounterId, OrderId = linkedOrder?.OrderId,
+                BedId = enc.BedId, PatientName = pt.Name,
                 Panel = req.Panel!.Trim(), Label = req.Label!.Trim(),
                 CollectedAt = time, ResultedAt = time,
                 ItemsJson = JsonSerializer.Serialize(items, JsonOpts.Web),

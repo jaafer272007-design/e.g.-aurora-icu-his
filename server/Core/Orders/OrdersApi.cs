@@ -57,6 +57,21 @@ static class OrdersApi
            attributes), and every draft is validated BEFORE any is inserted so a
            bad batch creates zero orders, never a partial one. */
         app.MapPost("/api/icu/orders", (CreateOrdersRequest req, ClaimsPrincipal user, AuroraDb db) =>
+            Create(req, user, db)).RequireAuthorization();
+
+        /* the sign endpoint and everything below are unchanged; the create
+           body lives in Create() so the ORDER-SET APPLY endpoint (Layer 4
+           phase 2, Core/MasterData/OrderSetsApi) runs through the exact
+           same path — every invariant (RBAC, validation, encounter guard,
+           inactive-drug/test 409) applies identically; a set is a
+           convenience layer, never a bypass. */
+        MapRest(app);
+    }
+
+    /** the SINGLE order-creation path — the POST /api/icu/orders body and
+        the order-set apply both run through here */
+    internal static IResult Create(CreateOrdersRequest req, ClaimsPrincipal user, AuroraDb db)
+    {
         {
             if (Rbac.Deny(user, "orders.create") is IResult d1) return d1;
             if (req.Sign && Rbac.Deny(user, "orders.sign") is IResult d2) return d2;
@@ -92,10 +107,18 @@ static class OrdersApi
                source of orderable drugs. */
             foreach (var draft in req.Drafts)
             {
-                if (draft.Medication is null) continue;
-                if (FormularyLogic.Resolve(db, draft.Medication.DrugId) is { Active: false } inactive)
+                if (draft.Medication is not null
+                    && FormularyLogic.Resolve(db, draft.Medication.DrugId) is { Active: false } inactive)
                     return ApiError.StateConflict(
                         $"drug '{inactive.Name}' ({inactive.DrugId}) is inactive in the formulary — it cannot be selected for a new order");
+                /* the lab catalogue's identical invariant (Layer 4 phase 2):
+                   an INACTIVE test cannot be newly ordered; an UNKNOWN
+                   testId stays accepted (the recorded escape hatch, closed
+                   by the queued catalogue-authority enforcement) */
+                if (draft.TestId is not null
+                    && LabCatalogLogic.Resolve(db, draft.TestId) is { Active: false } inactiveTest)
+                    return ApiError.StateConflict(
+                        $"test '{inactiveTest.Name}' ({inactiveTest.TestId}) is inactive in the lab catalogue — it cannot be selected for a new order");
             }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
@@ -118,14 +141,18 @@ static class OrdersApi
                     OrderLogic.NextOrderId(), draft.PatientId!, enc.EncounterId, enc.BedId, pt.Name,
                     draft.Category!, draft.Summary ?? OrderLogic.MedSummary(draft.Medication!),
                     draft.Medication, draft.Priority!, req.Sign ? "active" : "pending",
-                    actor, time, draft.RequiresImplementation, administrations, history, null);
+                    actor, time, draft.RequiresImplementation, administrations, history, null,
+                    draft.TestId);
                 db.Orders.Add(OrderRow.FromDto(dto, OrderLogic.NextSeq()));
                 created.Add(dto);
             }
             db.SaveChanges();
             return Results.Json(created, JsonOpts.Web);
-        }).RequireAuthorization();
+        }
+    }
 
+    static void MapRest(WebApplication app)
+    {
         /* POST /api/icu/orders/{orderId}/sign — doctor RBAC (orders.sign).
            FOUR-CODE RULE (state-conflict PR): the lookup is by id ALONE —
            an absent id is 404; an order that exists but is not pending is

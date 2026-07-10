@@ -9,17 +9,18 @@ import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconPencil, IconPill } from '../../components/icons'
 import {
-  createOrders, discontinueOrder, getFormulary, getInteractionRules, getOrderSetDefs,
+  createOrders, discontinueOrder, getFormulary, getInteractionRules, getLabCatalog, getOrderSetDefs,
   getPatientDetail, getPatientOrders, getPatients, getPendingOrders, modifyOrder, signOrder,
 } from '../../lib/api'
 import type {
-  FormularyDrug, InteractionRule, MedicationDetails, NewOrderDraft, Order, OrderPriority,
+  FormularyDrug, InteractionRule, LabTest, MedicationDetails, NewOrderDraft, Order, OrderPriority,
   OrderSetDef, OrderSetItemTemplate, Patient, PatientSummary,
 } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { OrderListCard } from './OrderListCard'
 import { NewOrderCard } from './NewOrderCard'
 import { OrderSetsCard } from './OrderSetsCard'
+import { LabOrderCard } from './LabOrderCard'
 import { DiscontinueDialog, ModifyDialog } from './OrderDialogs'
 
 
@@ -41,6 +42,7 @@ export function OrdersMedication() {
   const [orders, setOrders] = useState<Order[] | null>(null)
   const [pendingAll, setPendingAll] = useState<Order[]>([])
   const [formulary, setFormulary] = useState<FormularyDrug[] | null>(null)
+  const [labCatalog, setLabCatalog] = useState<LabTest[] | null>(null)
   const [rules, setRules] = useState<InteractionRule[]>([])
   const [setDefs, setSetDefs] = useState<OrderSetDef[]>([])
   const [modifyId, setModifyId] = useState<string | null>(null)
@@ -49,6 +51,7 @@ export function OrdersMedication() {
   useEffect(() => {
     getPatients().then(setPatients)
     getFormulary().then(setFormulary)
+    getLabCatalog().then(setLabCatalog)
     getInteractionRules().then(setRules)
     getOrderSetDefs().then(setSetDefs)
   }, [])
@@ -120,12 +123,24 @@ export function OrdersMedication() {
     })
   }
 
+  const handleLabOrder = (test: LabTest, priority: OrderPriority, sign: boolean) => {
+    const draft: NewOrderDraft = {
+      patientId, category: 'Lab', summary: `${test.name} (${test.specimen})`,
+      testId: test.testId, priority, requiresImplementation: true,
+    }
+    createOrders([draft], session.name, sign, session.jobTitle).then(([o]) => {
+      refresh()
+      showToast(sign ? 'Lab order signed & active' : 'Lab order saved as pending', o?.summary ?? '')
+    })
+  }
+
   const handleExpandSet = (set: OrderSetDef, items: OrderSetItemTemplate[], skipped: string[]) => {
     const drafts: NewOrderDraft[] = items.map(it => ({
       patientId,
       category: it.category,
       summary: it.summary,
       medication: it.medication,
+      testId: it.testId,
       priority: it.priority,
       requiresImplementation: it.requiresImplementation,
     }))
@@ -206,9 +221,12 @@ export function OrdersMedication() {
                     onCreate={handleCreate}
                   />
                 )}
+                {labCatalog && canPrescribe && (
+                  <LabOrderCard catalog={labCatalog} onOrder={handleLabOrder} />
+                )}
                 {formulary && canPrescribe && (
                   <OrderSetsCard
-                    sets={setDefs}
+                    sets={setDefs.filter(x => x.active !== false)}
                     patient={{ patientId: patient.patientId, allergies: patient.allergies }}
                     formulary={formulary}
                     rules={rules}

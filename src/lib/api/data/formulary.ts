@@ -191,7 +191,7 @@ export const ORDER_SET_DEFS: OrderSetDef[] = [
     description: 'Hour-1 bundle: cultures, lactate, broad-spectrum cover, fluids.',
     items: [
       { category: 'Lab', summary: 'Blood cultures ×2 (peripheral + line) before antibiotics', priority: 'STAT', requiresImplementation: true },
-      { category: 'Lab', summary: 'Lactate now, repeat q4h until < 2 mmol/L', priority: 'STAT', requiresImplementation: true },
+      { category: 'Lab', summary: 'Lactate now, repeat q4h until < 2 mmol/L', testId: 'Lactate', priority: 'STAT', requiresImplementation: true },
       {
         category: 'Medication', priority: 'STAT',
         medication: { drugId: 'piperacillin-tazobactam', drug: 'Piperacillin-Tazobactam', dose: '4.5 g', route: 'IV over 30 min', frequency: 'q8h', duration: '7 days', prn: false },
@@ -226,7 +226,7 @@ export const ORDER_SET_DEFS: OrderSetDef[] = [
     description: 'Standard 06:00 draw panel.',
     items: [
       { category: 'Lab', summary: 'CBC, U&E, Mg/PO₄, LFTs with 06:00 draw', priority: 'Routine', requiresImplementation: true },
-      { category: 'Lab', summary: 'ABG with 06:00 draw if ventilated', priority: 'Routine', requiresImplementation: true },
+      { category: 'Lab', summary: 'ABG with 06:00 draw if ventilated', testId: 'ABG', priority: 'Routine', requiresImplementation: true },
     ],
   },
 ]

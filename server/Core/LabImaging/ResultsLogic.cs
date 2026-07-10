@@ -21,9 +21,14 @@ static class ResultsLogic
     /* the wire contract types these as closed unions (LabPanelKey /
        ImagingModality in src/lib/api/types.ts) — a field the contract
        closes must parse (the frequency-vocabulary precedent), so an
-       unknown panel/modality is a 400, never saved */
-    static readonly string[] Panels =
-        ["CBC", "ABG", "Electrolytes", "Renal", "Liver", "Coagulation", "Lactate"];
+       unknown panel/modality is a 400, never saved. LAYER 4 PHASE 2: the
+       PANEL vocabulary is the LAB TEST CATALOGUE now — the hardcoded
+       array moved to the LabTests table (seeded from the same seven
+       panels, so validation is byte-identical) and the error text is
+       built from it in seed order. A panel resolves against ANY catalogue
+       test, active OR inactive: deactivation blocks ORDERING, never
+       RESULTING — a result completes care already ordered. Modalities
+       stay a closed union until the imaging-order workflow exists. */
     static readonly string[] Modalities = ["CXR", "CT", "US", "Echo", "MRI"];
 
     public static string NextLabId() => $"LAB-{Interlocked.Increment(ref _labSeq)}";
@@ -64,8 +69,8 @@ static class ResultsLogic
         if (CheckText("patientId", r.PatientId, required: true) is string p) return p;
         if (!db.AdtPatients.AsNoTracking().Any(x => x.PatientId == r.PatientId))
             return $"patientId '{r.PatientId}' does not match any roster patient";
-        if (r.Panel is null || !Panels.Contains(r.Panel))
-            return $"panel must be one of: {string.Join(", ", Panels)}";
+        if (r.Panel is null || Aurora.Core.MasterData.LabCatalogLogic.Resolve(db, r.Panel) is null)
+            return $"panel must be one of: {string.Join(", ", Aurora.Core.MasterData.LabCatalogLogic.TestIds(db))}";
         if (CheckText("label", r.Label, required: true) is string lb) return lb;
         if (CheckText("note", r.Note, required: false) is string nt) return nt;
         if (r.Items is null || r.Items.Count == 0)

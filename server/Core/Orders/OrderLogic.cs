@@ -69,6 +69,19 @@ static class OrderLogic
             return $"{at}.priority must be one of: {string.Join(", ", Priorities)}";
         if (d.Medication is null && string.IsNullOrWhiteSpace(d.Summary))
             return $"{at} requires a summary (non-medication order) or a medication object";
+        /* Layer 4 (lab catalogue): a catalogue-test reference is SHAPE —
+           only a Lab order can carry one, in any state (400, like
+           requiresImplementation on a medication draft). The inactive-test
+           check is resource STATE and lives in the endpoint (409, after
+           the encounter guard). An UNKNOWN testId stays accepted — the
+           same recorded escape hatch as unknown drugIds, closed by the
+           queued catalogue-authority enforcement. */
+        if (d.TestId is not null)
+        {
+            if (d.Category != "Lab")
+                return $"{at}: only a Lab order may reference a catalogue test (testId)";
+            if (CheckText($"{at}.testId", d.TestId, required: false) is string tid) return tid;
+        }
         /* a provided-but-blank summary must never override the composed
            medication summary or create a contentless order */
         if (CheckText($"{at}.summary", d.Summary, required: false) is string s) return s;

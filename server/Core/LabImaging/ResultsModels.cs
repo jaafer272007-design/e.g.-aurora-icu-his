@@ -21,6 +21,13 @@ class LabDrawRow
        never client-supplied. "" only before the boot backfill scopes
        pre-existing rows (same rule as Orders.EncounterId). */
     public string EncounterId { get; set; } = "";
+    /* Layer 4 phase 2 (order→result linkage): the lab order this result
+       FULFILS — SERVER-derived at creation (the oldest unfulfilled active
+       Lab order for the same test on the open encounter), never
+       client-supplied. Null when no order matches: walk-in, reflex and
+       protocol-added results legitimately exist without an order, and
+       every pre-linkage row stays null (a linkage is never invented). */
+    public string? OrderId { get; set; }
     public string BedId { get; set; } = "";
     public string PatientName { get; set; } = "";
     public string Panel { get; set; } = "";
@@ -42,7 +49,7 @@ class LabDrawRow
     public static LabDrawRow FromDto(LabDrawDto d) => new()
     {
         LabId = d.LabId, PatientId = d.PatientId, EncounterId = d.EncounterId ?? "",
-        BedId = d.BedId, PatientName = d.PatientName,
+        OrderId = d.OrderId, BedId = d.BedId, PatientName = d.PatientName,
         Panel = d.Panel, Label = d.Label, CollectedAt = d.CollectedAt, ResultedAt = d.ResultedAt,
         ItemsJson = JsonSerializer.Serialize(d.Items, JsonOpts.Web),
         Flag = d.Flag, Note = d.Note, Acknowledged = d.Acknowledged,
@@ -58,7 +65,7 @@ class LabDrawRow
             Panel, Label, CollectedAt, ResultedAt,
             JsonSerializer.Deserialize<JsonElement>(ItemsJson, JsonOpts.Web),
             Flag, Note, Acknowledged, AcknowledgedBy, AcknowledgedAt,
-            events.Count == 0 ? null : events);
+            events.Count == 0 ? null : events, OrderId);
     }
 }
 
@@ -117,7 +124,7 @@ record LabDrawDto(
     string LabId, string PatientId, string? EncounterId, string BedId, string PatientName, string Panel,
     string Label, string CollectedAt, string ResultedAt, JsonElement Items, string Flag,
     string? Note, bool Acknowledged, string? AcknowledgedBy, string? AcknowledgedAt,
-    List<ResultEventDto>? History);
+    List<ResultEventDto>? History, string? OrderId = null);
 
 record ImagingStudyDto(
     string StudyId, string PatientId, string? EncounterId, string BedId, string PatientName, string Modality,

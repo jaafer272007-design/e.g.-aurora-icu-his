@@ -1,0 +1,285 @@
+# Deployed Lab Catalogue + Order Sets E2E — verifies the LIVE Render
+# service (Layer 4 phase 2, Aurora Core Master Data). Core assertions:
+# Laboratory-only RBAC on catalogue mutations and Pharmacy-only RBAC on
+# set mutations, IN BOTH DIRECTIONS (four denied profiles each); the
+# deactivation invariant for tests (new ORDER for an inactive test → 409;
+# the existing result keeps rendering; creating a RESULT for the inactive
+# test stays 200 — completing ordered care is never blocked); the
+# ORDER→RESULT LINKAGE (a result fulfils the oldest unfulfilled matching
+# order — server-derived; a second result stands alone; client-supplied
+# orderId fails binding); order-set APPLY running through the SHARED
+# order-creation path (nurse 403, inactive set 409, set referencing a
+# deactivated drug 409, and applying to a DISCHARGED patient answering
+# the SAME 409 a single order gets — asserted string-equal); and the
+# EXPLICIT ABSENCE PROBES the codified coverage lesson demands (unknown
+# testId on an order is accepted — the recorded escape hatch; unknown
+# panel on a result is 400; absent management ids are 404).
+#
+# SELF-SUFFICIENT AND IDEMPOTENT: the run CREATES every test, set and
+# drug it mutates (run-id-unique ids — seeded rows are never mutated),
+# admits its own patient, and discharges it. Inactive run rows accumulate
+# across runs by design (never a delete — live durability evidence).
+name: Deployed LabCatalog E2E
+on: workflow_dispatch
+
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objects)
+        uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 is LOAD-BEARING: the gate resolves the deployed
+          # commit's tree, which can be arbitrarily deep in history.
+          fetch-depth: 0
+
+      - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+        run: |
+          # Gate v3 (see CLAUDE.md "The stale gate's dead zone"): CONTENT
+          # equality of the build context (server/ + render.yaml).
+          WANT_SRV=$(git rev-parse "$GITHUB_SHA:server")
+          WANT_YML=$(git rev-parse "$GITHUB_SHA:render.yaml")
+          echo "dispatched ref HEAD: $GITHUB_SHA"
+          echo "expected build context: server tree $WANT_SRV · render.yaml blob $WANT_YML"
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            BS=$(git rev-parse -q --verify "$build:server" 2>/dev/null || echo "<unknown-commit>")
+            BY=$(git rev-parse -q --verify "$build:render.yaml" 2>/dev/null || echo "<unknown-commit>")
+            echo "attempt $i: live build=$build · its server tree=$BS"
+            [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && exit 0
+            sleep 10
+          done
+          if [ "$BS" = "$WANT_SRV" ] && [ "$BY" != "$WANT_YML" ]; then
+            echo "CONFIG MISMATCH: server/ trees are EQUAL but render.yaml differs between this ref and the deployed build '$build'." \
+              "If the render.yaml change was semantic (env vars/build config), Render's Blueprint sync should have redeployed — check the dashboard." \
+              "If Render did not redeploy (e.g. a comment-only edit), trigger a MANUAL DEPLOY of the latest commit to clear this gate — an expected operational step, not a dead zone." && exit 1
+          fi
+          echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
+
+      - name: Login five profiles + run-unique names
+        run: |
+          for u in sara.rahman maya.chen samir.qassem yusuf.karim noor.al-amin; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman)  echo "DOC=$t" >> "$GITHUB_ENV";;
+              maya.chen)    echo "NUR=$t" >> "$GITHUB_ENV";;
+              samir.qassem) echo "PHA=$t" >> "$GITHUB_ENV";;
+              yusuf.karim)  echo "ADM=$t" >> "$GITHUB_ENV";;
+              noor.al-amin) echo "LAB=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+          { echo "TID=e2e-test-${GITHUB_RUN_ID}"; echo "SID=e2e-set-${GITHUB_RUN_ID}";
+            echo "DID=e2e-setdrug-${GITHUB_RUN_ID}"; echo "MRN=MRN-L4P2E2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+
+      - name: Reads — 401 unauth; every profile 200 (+ CORS); seeded SUBSET by id
+        run: |
+          for p in lab-catalog order-sets; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/$p")
+            echo "unauth /$p -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          done
+          for who in DOC NUR PHA ADM LAB; do
+            eval "t=\$$who"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $t" "$API/api/icu/lab-catalog")
+            echo "$who read catalogue -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          done
+          curl -sf -D /tmp/h -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/lab-catalog" -o /tmp/cat.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c '
+          import json; d=json.load(open("/tmp/cat.json"))
+          ids={t["testId"] for t in d}
+          assert {"CBC","ABG","Electrolytes","Renal","Liver","Coagulation","Lactate"} <= ids, ids
+          cbc=[t for t in d if t["testId"]=="CBC"][0]
+          assert cbc["analytes"][0]["analyte"]=="WBC" and cbc["specimen"]=="Whole blood (EDTA)"
+          print(f"catalogue: {len(d)} tests (7 seeded present; run tests accumulate)")'
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/order-sets" \
+            | python3 -c '
+          import json,sys; d=json.load(sys.stdin)
+          ids={s["setId"] for s in d}
+          assert {"sepsis-bundle","dvt-prophylaxis","insulin-sliding-scale","daily-am-labs"} <= ids, ids
+          sep=[s for s in d if s["setId"]=="sepsis-bundle"][0]
+          assert any(i.get("testId")=="Lactate" for i in sep["items"]), sep["items"]
+          print(f"order sets: {len(d)} (4 seeded present)")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/order-sets?active=true")
+          echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
+      - name: RBAC both directions — catalogue is Laboratory-only, sets are Pharmacy-only
+        run: |
+          TCRE="{\"testId\":\"$TID\",\"name\":\"E2E Panel\",\"category\":\"Chemistry\",\"specimen\":\"Serum\",\"analytes\":[{\"analyte\":\"X\",\"unit\":\"mg/dL\",\"refRange\":\"1-2\",\"refLow\":1,\"refHigh\":2}]}"
+          echo "TCRE=$TCRE" >> "$GITHUB_ENV"
+          for who in DOC NUR PHA ADM; do
+            eval "t=\$$who"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $t" -H 'Content-Type: application/json' -d "$TCRE" "$API/api/icu/lab-catalog")
+            echo "$who catalogue create -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          done
+          SCRE_PROBE='{"setId":"rbac-probe","name":"X","description":"d","items":[{"category":"Nursing","summary":"x","priority":"Routine"}]}'
+          for who in DOC NUR ADM LAB; do
+            eval "t=\$$who"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $t" -H 'Content-Type: application/json' -d "$SCRE_PROBE" "$API/api/icu/order-sets")
+            echo "$who set create -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          done
+
+      - name: Laboratory creates the run's test — audit actor from token; duplicate 409; malformed 400; absent 404
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' -d "$TCRE" "$API/api/icu/lab-catalog" > /tmp/tcre.json
+          python3 -c '
+          import json,os; d=json.load(open("/tmp/tcre.json"))
+          assert d["testId"]==os.environ["TID"] and d["active"] is True
+          h=d["history"]; assert h[0]["actor"]=="Noor Al-Amin" and h[0]["action"]=="added to catalogue" and len(h[0]["time"])==16
+          print("created:", d["testId"], "| audit actor:", h[0]["actor"])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' -d "$TCRE" "$API/api/icu/lab-catalog")
+          echo "duplicate testId -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          for body in \
+            "$(echo "$TCRE" | sed 's/\"analytes\":\[[^]]*\]/\"analytes\":[]/;s/'$TID'/e2e-x-'$GITHUB_RUN_ID'/')" \
+            "$(echo "$TCRE" | sed 's/\"refLow\":1,\"refHigh\":2/\"refLow\":5,\"refHigh\":2/;s/'$TID'/e2e-x-'$GITHUB_RUN_ID'/')" \
+            "$(echo "$TCRE" | sed 's/}$/,"typo":true}/;s/'$TID'/e2e-x-'$GITHUB_RUN_ID'/')" ; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/lab-catalog")
+            echo "malformed catalogue create -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' -d '{"name":"X"}' "$API/api/icu/lab-catalog/ghost-$GITHUB_RUN_ID")
+          echo "edit absent -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+
+      - name: Admit THIS RUN's patient
+        run: |
+          FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
+            | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
+          resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"mrn\":\"$MRN\",\"name\":\"L4P2 Catalogue E2E\",\"age\":36,\"sex\":\"M\",\"allergies\":\"None known\",\"bedId\":\"$FREE\",\"diagnosis\":\"Catalogue E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            "$API/api/icu/adt/admissions")
+          pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
+          eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+          { echo "PID=$pid"; echo "EID=$eid"; } >> "$GITHUB_ENV"
+          echo "admitted $pid ($eid) at $FREE"
+
+      - name: ORDER→RESULT LINKAGE — result fulfils the order; second stands alone; client orderId fails binding
+        run: |
+          LDRAFT="{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Lab\",\"summary\":\"E2E panel now\",\"testId\":\"$TID\",\"priority\":\"STAT\",\"requiresImplementation\":true}],\"sign\":true}"
+          OID=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$LDRAFT" "$API/api/icu/orders" \
+            | python3 -c 'import json,sys,os; d=json.load(sys.stdin)[0]; assert d["testId"]==os.environ["TID"] and d["status"]=="active", d; print(d["orderId"])')
+          echo "OID=$OID" >> "$GITHUB_ENV"; echo "signed $OID for $TID"
+          RBODY="{\"patientId\":\"$PID\",\"panel\":\"$TID\",\"label\":\"Now\",\"items\":[{\"analyte\":\"X\",\"value\":1.5,\"unit\":\"mg/dL\",\"refRange\":\"1-2\",\"refLow\":1,\"refHigh\":2,\"flag\":\"normal\"}]}"
+          curl -sf -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' -d "$RBODY" "$API/api/icu/results/labs" \
+            | OID="$OID" python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert d.get("orderId")==os.environ["OID"], d.get("orderId"); print("linked:", d["labId"], "→", d["orderId"])'
+          # the order is now fulfilled — a SECOND result stands alone (walk-in/reflex)
+          curl -sf -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' -d "$RBODY" "$API/api/icu/results/labs" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "orderId" not in d, d.get("orderId"); print("second result stands alone (no orderId)")'
+          # server-derived, never client-supplied — the binding tripwire
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
+            -d "$(echo "$RBODY" | sed 's/\"panel\"/\"orderId\":\"ORD-0000\",\"panel\"/')" "$API/api/icu/results/labs")
+          echo "client-supplied orderId -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # EXPLICIT ABSENCE PROBES (the codified coverage lesson):
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
+            -d "$(echo "$RBODY" | sed "s/\"panel\":\"$TID\"/\"panel\":\"no-such-panel\"/")" "$API/api/icu/results/labs")
+          echo "unknown panel -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "$(echo "$LDRAFT" | sed "s/\"testId\":\"$TID\"/\"testId\":\"no-such-test\"/;s/\"sign\":true/\"sign\":false/")" "$API/api/icu/orders")
+          echo "order with UNKNOWN testId -> HTTP $rc (accepted — the recorded escape hatch, closed by the queued catalogue-authority enforcement)"
+          [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Medication\",\"priority\":\"Routine\",\"testId\":\"$TID\",\"medication\":{\"drugId\":\"ceftriaxone\",\"drug\":\"Ceftriaxone\",\"dose\":\"1 g\",\"route\":\"IV\",\"frequency\":\"daily\",\"duration\":\"1 day\",\"prn\":false}}],\"sign\":false}" "$API/api/icu/orders")
+          echo "testId on a medication draft -> HTTP $rc (shape)"; [ "$rc" = "400" ] || exit 1
+
+      - name: THE DEACTIVATION INVARIANT — new order 409; results keep rendering; RESULTING stays allowed
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" "$API/api/icu/lab-catalog/$TID/deactivate")
+          echo "deactivate $TID -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Lab\",\"summary\":\"again\",\"testId\":\"$TID\",\"priority\":\"Routine\"}],\"sign\":false}" "$API/api/icu/orders")
+          rc=$(echo "$out" | tail -1); echo "new order for inactive test -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is inactive in the lab catalogue" in e and "cannot be selected for a new order" in e, e; print("409:", e)'
+          # existing results referencing the inactive test still render
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/labs?patientId=$PID" \
+            | python3 -c 'import json,sys,os; d=json.load(sys.stdin); r=[x for x in d if x["panel"]==os.environ["TID"]]; assert len(r)>=2, len(r); print(f"existing results still render: {len(r)}")'
+          # THE ASYMMETRY: resulting against the inactive test stays 200 (completing ordered care)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
+            -d "{\"patientId\":\"$PID\",\"panel\":\"$TID\",\"label\":\"Now\",\"items\":[{\"analyte\":\"X\",\"value\":1.4,\"unit\":\"mg/dL\",\"refRange\":\"1-2\",\"refLow\":1,\"refHigh\":2,\"flag\":\"normal\"}]}" "$API/api/icu/results/labs")
+          echo "result for INACTIVE test -> HTTP $rc (resulting is never blocked)"; [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" "$API/api/icu/lab-catalog/$TID/deactivate")
+          echo "re-deactivate -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" "$API/api/icu/lab-catalog/$TID/reactivate")
+          echo "reactivate -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+
+      - name: ORDER SETS — authoring integrity; apply via the SHARED path; inactive set/drug 409s
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d "{\"drugId\":\"$DID\",\"name\":\"E2E Set Drug\",\"brandNames\":[],\"drugClass\":\"Test\",\"form\":\"tablet\",\"strengths\":[\"1 mg\"],\"doses\":[\"1 mg\"],\"defaultDose\":\"1 mg\",\"routes\":[\"PO\"],\"frequencies\":[\"daily\"],\"prnCapable\":false,\"allergyBlock\":[],\"allergyWarn\":[]}" \
+            "$API/api/icu/formulary" > /dev/null
+          SCRE="{\"setId\":\"$SID\",\"name\":\"E2E Bundle\",\"description\":\"catalogue e2e\",\"items\":[{\"category\":\"Lab\",\"summary\":\"E2E panel\",\"testId\":\"$TID\",\"priority\":\"STAT\",\"requiresImplementation\":true},{\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"$DID\",\"drug\":\"E2E Set Drug\",\"dose\":\"1 mg\",\"route\":\"PO\",\"frequency\":\"daily\",\"duration\":\"3 days\",\"prn\":false}}]}"
+          curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$SCRE" "$API/api/icu/order-sets" \
+            | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert d["setId"]==os.environ["SID"] and d["history"][0]["actor"]=="Samir Qassem"; print("set created:", d["setId"])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$SCRE" "$API/api/icu/order-sets")
+          echo "duplicate setId -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d '{"setId":"e2e-bad-'$GITHUB_RUN_ID'","name":"X","description":"d","items":[{"category":"Lab","summary":"s","testId":"no-such-test","priority":"Routine"}]}' "$API/api/icu/order-sets")
+          echo "set w/ unknown test -> HTTP $rc (authoring integrity)"; [ "$rc" = "400" ] || exit 1
+          # APPLY — clinician authority via the shared create path
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply")
+          echo "nurse apply -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply" \
+            | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert len(d)==2 and all(o["status"]=="pending" for o in d); assert any(o.get("testId")==os.environ["TID"] for o in d); print("applied:", [o["orderId"] for o in d])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/ghost-$GITHUB_RUN_ID/apply")
+          echo "apply absent set -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          # set referencing a DEACTIVATED drug → 409 at apply (the run's OWN drug)
+          curl -s -o /dev/null -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DID/deactivate"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply")
+          rc=$(echo "$out" | tail -1); echo "apply set w/ inactive drug -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "inactive in the formulary" in e, e'
+          curl -s -o /dev/null -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DID/reactivate"
+          # inactive SET → 409; replay/reactivate cycle
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/order-sets/$SID/deactivate")
+          echo "set deactivate -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply")
+          echo "apply inactive set -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/order-sets/$SID/deactivate")
+          echo "set re-deactivate -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/order-sets/$SID/reactivate")
+          echo "set reactivate -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+
+      - name: Apply to a DISCHARGED patient — the SAME 409 a single order gets (string-equal)
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+          echo "discharge $EID -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          single=$(curl -s -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Nursing\",\"summary\":\"x\",\"priority\":\"Routine\"}],\"sign\":false}" "$API/api/icu/orders")
+          setout=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply")
+          rc=$(echo "$setout" | tail -1); echo "apply to discharged -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$setout"; exit 1; }
+          e1=$(echo "$single" | python3 -c 'import json,sys; print(json.load(sys.stdin)["error"])')
+          e2=$(echo "$setout" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["error"])')
+          echo "single-order 409: $e1"; echo "set-apply 409:     $e2"
+          [ "$e1" = "$e2" ] || { echo "the two 409s differ — the set is not going through the same path"; exit 1; }
+          echo "identical 409 — the apply path IS the order-creation path"
+
+      - name: Cleanup — discharge + deactivate run rows (runs on failure/cancel too)
+        if: always()
+        run: |
+          fails=0
+          if [ -n "${EID:-}" ]; then
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+            echo "discharge $EID -> HTTP $rc"
+            { [ "$rc" = "200" ] || [ "$rc" = "409" ]; } || fails=$((fails+1))
+          fi
+          for pair in "lab-catalog:$TID:LAB" "order-sets:$SID:PHA" "formulary:$DID:PHA"; do
+            path="${pair%%:*}"; rest="${pair#*:}"; id="${rest%%:*}"; who="${rest#*:}"
+            [ -n "$id" ] || continue
+            eval "t=\$$who"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $t" "$API/api/icu/$path/$id/deactivate")
+            echo "deactivate $path/$id -> HTTP $rc"
+            { [ "$rc" = "200" ] || [ "$rc" = "409" ] || [ "$rc" = "404" ]; } || fails=$((fails+1))
+          done
+          if [ -n "${PID:-}" ]; then
+            st=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID" \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); print("discharged" if d and all(e["status"]=="discharged" for e in d) else "<live>")')
+            echo "encounters final: $st"; [ "$st" = "discharged" ] || fails=$((fails+1))
+          fi
+          [ "$fails" = "0" ] || { echo "cleanup left live state behind"; exit 1; }
+          echo "cleanup complete — no active run state remains"
