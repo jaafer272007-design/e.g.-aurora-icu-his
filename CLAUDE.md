@@ -585,7 +585,12 @@ indistinguishable from real ones and cannot be removed, because the
 never-destroy principle correctly forbids it. Known artifacts to date:
 users tc004411 and test.consultant33256 (deactivated), patients P-1023
 "EncScope Test" and P-1024 "Admin409 Test", and several E2E-created
-patients and encounters, all discharged.
+patients and encounters, all discharged. Layer 4 additions: patient
+P-1034 "Formulary Test" (discharged) with orders ORD-167/ORD-168 for
+nonexistent drugs (the formulary-authority live finding — discontinued,
+reason "verification artifact"), formulary-suite run patients (e.g.
+P-1032, discharged) and their run drugs (inactive, accumulate by
+design), and two inactive e2e drugs from suite runs.
 
 This is NOT a hygiene problem — it is a MISSING ARCHITECTURAL CONCEPT:
 dev/staging/production separation. It must be resolved BEFORE any real
@@ -1070,7 +1075,42 @@ lab test catalog and order sets are the NEXT master-data domains — Layer
   rendering, and its lifecycle (modify dose, discontinue, MAR) continues
   — asserted live. A drugId with NO formulary row stays permitted free
   text on orders — the documented escape hatch until the formulary is
-  the sole source of orderable drugs.
+  the sole source of orderable drugs. (SUPERSEDED as an acceptable end
+  state by the live finding below: the escape hatch is now a RECORDED
+  DEFECT to close with the safety-enforcement work, not a design.)
+- **LIVE FINDING (2026-07-10, post-merge verification) — THE FORMULARY
+  IS NOT YET AUTHORITATIVE FOR ORDERING**: an order for
+  'totally-fake-drug-xyz' ("Fictional Compound"), a drug in NO
+  formulary, was created and signed with a 200 (live artifacts
+  ORD-167/ORD-168 on P-1034 — discontinued "verification artifact" and
+  discharged). Management is authoritative (create/deactivate/audit,
+  RBAC-enforced) but the order service still accepts ANY drugId string.
+  TO BE FIXED with the queued server-side safety enforcement (the
+  safety.ts move — recorded item (a) below): the order service must
+  treat the formulary as authoritative — ordering an UNKNOWN drugId is
+  rejected (validation 400 naming the field, by the unknown-patientId
+  precedent — the drugId is a payload field, not an addressed resource;
+  404 stays reserved for addressed ids) and an INACTIVE one stays 409.
+  When that ships, the frequency-parity legs in the orders AND
+  formulary suites (which ride the escape hatch with drugId 'x') must
+  switch to formulary drugs, and the mock adapter/UI drift gets its
+  pass.
+- **CODIFIED TEST-COVERAGE LESSON (the general form of this miss)**: a
+  SELF-SUFFICIENT suite that creates the entities it then uses will
+  NEVER test the "entity does not exist" path unless that case is
+  written explicitly — self-sufficiency (the finite-seeded-resources
+  rule) systematically hides absence paths. Every suite must probe its
+  REFERENCE LOOKUPS with ids that resolve to nothing, not only the ids
+  it created. Audit (2026-07-10): the orders suite EXERCISES unknown
+  drugIds (frequency legs, drugId 'x') but asserts acceptance-by-design,
+  never rejection; the labs suite creates results only for its OWN
+  admitted patient — create-with-unknown-patientId is never probed
+  (the server validates it; nothing asserts it); MAR adds no
+  independent reference (the drug rides on the order) and its own
+  order/dose absence paths are probed; the formulary suite probes
+  absent drugIds on MANAGEMENT endpoints but its order legs use only
+  drugs it created. The missing absence probes ride with the
+  formulary-authority fix, not ad hoc.
 - **The frequency vocabulary MOVED to master data**: OrderLogic's
   hardcoded array ("per CRRT protocol" was ICU-specific content sitting
   in Core/Orders) became the NamedFrequencies table; order validation
@@ -1101,7 +1141,10 @@ lab test catalog and order sets are the NEXT master-data domains — Layer
 - **Recorded, deliberately NOT done here**: (a) the safety.ts
   allergy/interaction checks stay CLIENT-side; once they move
   server-side, a client that skips them must be REJECTED (the server
-  re-validates on POST /orders — defense in depth becomes enforcement);
+  re-validates on POST /orders — defense in depth becomes enforcement).
+  FORMULARY AUTHORITY AT ORDERING is part of this same work item (the
+  live finding above): unknown drugId → 400, inactive → 409, plus the
+  suites' missing absence probes;
   (b) the order→result linkage open question rides with the LAB CATALOG,
   the next master-data domain; (c) interaction-rule MANAGEMENT (the
   table is served read-only); (d) dose-limit ENFORCEMENT at ordering
