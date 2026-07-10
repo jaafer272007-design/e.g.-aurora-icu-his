@@ -107,6 +107,27 @@ jobs:
           [ "$rc" = "409" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "has no open encounter" in e and "new care cannot be initiated on a closed episode" in e, e; print("precise 409:", e)'
 
+      - name: encounterId is STRICTLY SERVER-DERIVED — supplying it in a mutation payload fails binding (400)
+        run: |
+          # The scoping value is never accepted from the client: a doctor
+          # could otherwise attribute an order to an encounter of their
+          # choosing (another patient's, or a closed one). The request DTOs
+          # carry JsonUnmappedMemberHandling.Disallow and no EncounterId
+          # member, so the field fails binding exactly like any unknown
+          # field — this leg is the regression tripwire for that property.
+          for body in \
+            '{"drafts":[{"patientId":"P-1001","encounterId":"ENC-1007","category":"Nursing","summary":"spoof probe","priority":"Routine"}],"sign":true}' \
+            '{"encounterId":"ENC-1007","drafts":[{"patientId":"P-1001","category":"Nursing","summary":"spoof probe","priority":"Routine"}],"sign":true}'; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/orders")
+            echo "create with client-supplied encounterId -> HTTP $rc"
+            [ "$rc" = "400" ] || exit 1
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"reason":"spoof probe","changes":{"encounterId":"ENC-1007","dose":"2 g"}}' "$API/api/icu/orders/ORD-2001")
+          echo "modify with encounterId in changes -> HTTP $rc"
+          [ "$rc" = "400" ] || exit 1
+          echo "encounterId rejected everywhere it could be supplied — scoping is the server's alone"
+
       - name: Admit THIS RUN's patient (unique MRN, dynamic free bed)
         run: |
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds.json
