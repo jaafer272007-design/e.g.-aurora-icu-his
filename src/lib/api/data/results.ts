@@ -358,6 +358,29 @@ export function applyAcknowledgeImaging(studyId: string, actor: string, time: st
   return s
 }
 
+/* un-acknowledge (results audit PR): the offline/mock apply mirrors the
+   server's never-destroy semantics as far as the mock store can — the
+   current-state summary clears and the result re-enters the derived inbox.
+   (The mock store keeps no event history; the audited record is the
+   SERVER's — offline reversal is a Stage 9 display convenience only.) */
+export function applyUnacknowledgeLab(labId: string): LabDraw | null {
+  const d = LAB_DRAWS.find(x => x.labId === labId && x.acknowledged)
+  if (!d) return null
+  d.acknowledged = false
+  d.acknowledgedBy = undefined
+  d.acknowledgedAt = undefined
+  return d
+}
+
+export function applyUnacknowledgeImaging(studyId: string): ImagingStudy | null {
+  const s = IMAGING.find(x => x.studyId === studyId && x.acknowledged)
+  if (!s) return null
+  s.acknowledged = false
+  s.acknowledgedBy = undefined
+  s.acknowledgedAt = undefined
+  return s
+}
+
 /** Legacy Mission Control lab-trend view, derived from the canonical draws
     (same scaled series/colors as the approved prototype). */
 export function deriveMissionControlLabs(patientId: string): Labs {

@@ -174,10 +174,22 @@ static class Seeder
                 "Encounter-scope backfill: {Scoped} orders scoped to their encounter, {Restored} auto-discontinued (closed encounter)",
                 scoped, restored);
 
+        /* RESULT AUDIT BACKFILL (one-time, idempotent — results audit PR):
+           scope EncounterId for results that predate result scoping (same
+           rule as orders) and RESTRUCTURE existing acknowledgments into
+           the append-only event history from their own stored actor/time
+           fields — never invented. See ResultsLogic.BackfillResultAudit. */
+        var (rScoped, restructured) = ResultsLogic.BackfillResultAudit(db);
+        if (rScoped > 0 || restructured > 0)
+            app.Logger.LogInformation(
+                "Result-audit backfill: {Scoped} results scoped to their encounter, {Restructured} existing acknowledgments restructured into event history",
+                rScoped, restructured);
+
         /* resume the generated-id counters from the persisted data — on a
            fresh database this resolves to the historical floors, so
            first-boot behavior is unchanged (see OrderLogic notes) */
         OrderLogic.InitializeCounters(db);
         AdtLogic.InitializeCounters(db);
+        ResultsLogic.InitializeCounters(db);
     }
 }

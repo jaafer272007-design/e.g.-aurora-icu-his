@@ -26,7 +26,8 @@ import {
   applySign, deriveMarRows, insertOrder,
 } from './data/orders'
 import {
-  applyAcknowledgeImaging, applyAcknowledgeLab, deriveMissionControlLabs, deriveResultInbox,
+  applyAcknowledgeImaging, applyAcknowledgeLab, applyUnacknowledgeImaging, applyUnacknowledgeLab,
+  deriveMissionControlLabs, deriveResultInbox,
   imagingFor, labDrawsFor,
 } from './data/results'
 import { SAMPLE_STAFF, getToken, hasPermission, usernameOf, type JobTitle } from '../session'
@@ -512,6 +513,31 @@ export function acknowledgeResult(
   kind: 'lab' | 'imaging', id: string, actor: string, jobTitle: JobTitle,
 ): Promise<LabDraw | ImagingStudy | null> {
   return kind === 'lab' ? acknowledgeLab(id, actor, jobTitle) : acknowledgeImaging(id, actor, jobTitle)
+}
+
+/** POST /api/icu/results/labs/:labId/unacknowledge — REVERSE an
+ *  acknowledgment (results audit PR). Same RBAC as acknowledge; a REQUIRED
+ *  reason is validated server-side. Never a deletion: the server keeps the
+ *  original acknowledgment in the result's audit history and the result
+ *  returns to the inbox. Offline mock apply clears the summary only (the
+ *  audited record is the server's). */
+export async function unacknowledgeLab(labId: string, reason: string, jobTitle: JobTitle): Promise<LabDraw | null> {
+  if (!hasPermission(jobTitle, 'results.acknowledge')) return respond(null, 120)
+  const r = await apiPost<LabDraw>(
+    `/api/icu/results/labs/${encodeURIComponent(labId)}/unacknowledge`, 'unacknowledge', { reason })
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
+  return respond(applyUnacknowledgeLab(labId), 120)
+}
+
+/** POST /api/icu/results/imaging/:studyId/unacknowledge — same semantics. */
+export async function unacknowledgeImaging(studyId: string, reason: string, jobTitle: JobTitle): Promise<ImagingStudy | null> {
+  if (!hasPermission(jobTitle, 'results.acknowledge')) return respond(null, 120)
+  const r = await apiPost<ImagingStudy>(
+    `/api/icu/results/imaging/${encodeURIComponent(studyId)}/unacknowledge`, 'unacknowledge', { reason })
+  if (r.kind === 'ok') return r.data
+  if (r.kind === 'denied') return null
+  return respond(applyUnacknowledgeImaging(studyId), 120)
 }
 
 /* ---------------- Timeline domain (Screen 7) ----------------

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
 import { agoLabel, useNow } from '../../lib/time'
@@ -20,13 +20,59 @@ interface ImagingCardProps {
   /** derived from the session's permissions (results.acknowledge) */
   canAcknowledge: boolean
   onAcknowledge: (studyId: string) => void
+  /** reverse an acknowledgment — requires a documented reason (results
+   *  audit PR); same permission as acknowledge */
+  onUnacknowledge: (studyId: string, reason: string) => void
+}
+
+/* Reversing an acknowledgment requires a documented reason (validated
+   server-side like discontinue); the original acknowledgment is preserved
+   in the result's audit history — never deleted. */
+function UnackReasonDialog(
+  { study, onCancel, onConfirm }:
+  { study: ImagingStudy; onCancel: () => void; onConfirm: (reason: string) => void },
+) {
+  const [reason, setReason] = useState('')
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    taRef.current?.focus()
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', esc)
+    return () => document.removeEventListener('keydown', esc)
+  }, [onCancel])
+  return (
+    <div className="liscrim" onClick={onCancel}>
+      <div className="lidialog" role="dialog" aria-modal="true" aria-labelledby="liUnackTitle" onClick={e => e.stopPropagation()}>
+        <h2 id="liUnackTitle">Reverse acknowledgment · <span className="num">{study.description}</span></h2>
+        <p className="lidnote">
+          The original acknowledgment ({study.acknowledgedBy} · {study.acknowledgedAt}) is preserved in the
+          audit history; the study returns to the results inbox.
+        </p>
+        <div className="field">
+          <label htmlFor="liUnackReason">Reason (required)</label>
+          <textarea
+            ref={taRef} id="liUnackReason" value={reason}
+            placeholder="e.g. Acknowledged in error — addendum pending review…"
+            onChange={e => setReason(e.target.value)}
+          />
+        </div>
+        <div className="lidfoot">
+          <button className="btn ghost" onClick={onCancel}>Cancel</button>
+          <button className="btn danger" disabled={!reason.trim()} onClick={() => onConfirm(reason.trim())}>
+            ↩ Reverse acknowledgment
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** Imaging study list with report/impression text and status progression.
  *  Acknowledge is doctor RBAC — nurses view only. */
-export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge }: ImagingCardProps) {
+export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, onUnacknowledge }: ImagingCardProps) {
   const now = useNow()
   const [open, setOpen] = useState<Set<string>>(new Set())
+  const [unackTarget, setUnackTarget] = useState<ImagingStudy | null>(null)
 
   const toggle = (id: string) =>
     setOpen(prev => {
@@ -79,7 +125,18 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge }: 
                 )}
                 <div className="lisack">
                   {s.acknowledged ? (
-                    <span className="liacked">✓ Acknowledged by {s.acknowledgedBy} · {s.acknowledgedAt}</span>
+                    <>
+                      <span className="liacked">✓ Acknowledged by {s.acknowledgedBy} · {s.acknowledgedAt}</span>
+                      {canAck && (
+                        <button
+                          className="liunackbtn"
+                          onClick={() => setUnackTarget(s)}
+                          aria-label={`Reverse acknowledgment of ${s.description}`}
+                        >
+                          ↩ Reverse
+                        </button>
+                      )}
+                    </>
                   ) : canAck ? (
                     <button className="liackbtn" onClick={() => onAcknowledge(s.studyId)} aria-label={`Acknowledge ${s.description}`}>
                       ✓ Acknowledge
@@ -95,6 +152,13 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge }: 
           </div>
         )
       })}
+      {unackTarget && (
+        <UnackReasonDialog
+          study={unackTarget}
+          onCancel={() => setUnackTarget(null)}
+          onConfirm={reason => { onUnacknowledge(unackTarget.studyId, reason); setUnackTarget(null) }}
+        />
+      )}
     </Card>
   )
 }

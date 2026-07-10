@@ -8,18 +8,21 @@ namespace Aurora.Core.Adt;
    The aggregate root is Patient → Encounter → {Orders, MAR, …}: an order's
    lifecycle is bounded by its ENCOUNTER, and every path that INITIATES new
    care asserts the encounter is open HERE — create order, sign, modify,
-   implement, administer today; lab/imaging/consult REQUEST writes join this
-   chokepoint when those write paths exist. One place, not scattered
-   per-endpoint conditions.
+   implement, administer, and lab/imaging RESULT creation (results audit
+   PR); consult REQUEST writes join this chokepoint when that write path
+   exists. One place, not scattered per-endpoint conditions.
 
    THE INVARIANT IS DELIBERATELY NARROW — a closed encounter is NOT
    immutable: you cannot initiate new care on a closed episode, but you must
    still be able to COMPLETE THE RECORD of care already given. Explicitly
-   exempt (never route through this guard): results arriving, result
-   acknowledgment, note authoring and addenda, the discharge summary,
-   audited amendments, and the manual discontinue of a stray order (closing
-   out the record is not initiating care). A system that cannot attach a
-   day-7 blood culture result to a day-3 draw loses clinical data.
+   exempt (never route through this guard): result acknowledgment AND its
+   audited reversal (un-acknowledge), note authoring and addenda, the
+   discharge summary, audited amendments, and the manual discontinue of a
+   stray order (closing out the record is not initiating care). A system
+   that cannot attach a day-7 blood culture result to a day-3 draw loses
+   clinical data — which is why acknowledge/un-acknowledge on a result
+   CREATED while the encounter was open must keep working after discharge,
+   even though creating a NEW result then requires an open encounter.
 
    Blocking here is RESOURCE STATE, not validation and not permission — a
    Consultant with full prescribing authority is equally blocked — so the

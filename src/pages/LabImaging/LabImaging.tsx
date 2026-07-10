@@ -10,7 +10,7 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconFlask } from '../../components/icons'
 import {
   acknowledgeImaging, acknowledgeLab, getImagingStudies, getLabDraws, getPatientDetail,
-  getPatients, getResultInbox,
+  getPatients, getResultInbox, unacknowledgeImaging,
 } from '../../lib/api'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import type {
@@ -94,6 +94,17 @@ export function LabImaging() {
     else ackImaging(item.id)
   }
 
+  /* reverse an acknowledgment (results audit PR) — required reason is
+     collected by the card's dialog; the server preserves the original
+     acknowledgment in the audit history and the study re-enters the inbox */
+  const unackImaging = (studyId: string, reason: string) => {
+    unacknowledgeImaging(studyId, reason, session.jobTitle).then(ok => {
+      if (!ok) { showToast('Not permitted', 'Reversal requires physician role'); return }
+      refresh()
+      showToast('Acknowledgment reversed', `${ok.description} · returned to the results inbox`)
+    })
+  }
+
   const patientInbox = inbox.filter(i => i.patientId === patientId)
   const latestByPanel = new Map<string, LabDraw>()
   draws?.forEach(d => latestByPanel.set(d.panel, d))
@@ -157,7 +168,7 @@ export function LabImaging() {
               </div>
               <div className="licolR">
                 <ResultInboxCard items={patientInbox} canAcknowledge={canAck} onAcknowledge={ackInboxItem} />
-                <ImagingCard studies={studies} canAcknowledge={canAck} onAcknowledge={ackImaging} />
+                <ImagingCard studies={studies} canAcknowledge={canAck} onAcknowledge={ackImaging} onUnacknowledge={unackImaging} />
               </div>
             </div>
           )}

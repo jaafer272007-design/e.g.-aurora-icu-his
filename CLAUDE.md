@@ -84,7 +84,7 @@ PermissionProfile → Permissions (and Dashboard landing view):
 | Administrator        | admin.view, patients.view, users.manage | /admin |
 | Pharmacist           | patients.view, orders.view, results.view (view-only) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
-| Ancillary            | patients.view, orders.view, results.view (view-only) | /beds |
+| Ancillary            | patients.view, orders.view, results.view, results.create | /beds |
 | AlliedHealth         | patients.view, results.view (view-only) | /beds |
 
 Route guards: /workspace = orders.sign · /nurse = meds.administer ·
@@ -297,7 +297,9 @@ remain mock until their own phases.
   Acknowledge requires `results.acknowledge`: a NURSE token gets a
   generic 403 even when the UI is bypassed; a doctor token succeeds. The
   acknowledging actor is the TOKEN's name claim — never a request field.
-  Replayed acknowledge → 404. Client `hasPermission` checks remain as
+  Replayed acknowledge → 404 (SUPERSEDED by the results audit PR:
+  replay is now a 409 state conflict — see that section). Client
+  `hasPermission` checks remain as
   defense in depth.
 - **Frontend adapters** (`apiGet`/`apiPost` helpers): reads fall back to
   mock on unreachable/timeout/401 (console-logged) like the roster; the
@@ -520,22 +522,17 @@ and redeploys on Render.
   dry. The other five suites were audited persistence-safe (run-created
   mutations, subset reads). Suites must be dispatched SEQUENTIALLY, never
   concurrently (relocation-PR lesson).
-- **The labs acknowledge leg is SPENT (post-#25 live validation,
-  2026-07-09)**: every seeded unacked lab on the durable DB has been
-  acknowledged by prior runs, so `deployed-labs-e2e.yml` now stops at its
-  designed loud-failure assert ("no unacknowledged labs remain on the
-  persistent DB"). This is EXPECTED behavior, not a regression — all
-  read-side steps (401s, seeded reads, CORS, imaging) still pass. The
-  assert's own advice "extend the seed set" CANNOT fix it: the
-  seed-if-empty blocks skip non-empty tables, so new seed entries never
-  reach the existing live DB. Accepted as-is for now; do NOT reset the
-  live database to revive it (that destroys all durable writes). The
-  real fix is a FUTURE PR adding a genuine un-acknowledge or lab-order
-  creation capability — note that un-acknowledging a result is a real
-  CLINICAL action with audit implications (who reversed it, why, the
-  original acknowledgment preserved — same never-destroy principle as
-  the Stage 11 override rule), so it must be designed as a feature,
-  never bolted onto the test suite.
+- **The labs acknowledge leg was SPENT (post-#25 live validation,
+  2026-07-09) — RESOLVED by the results-audit PR**: every seeded unacked
+  lab on the durable DB had been acknowledged by prior runs, so
+  `deployed-labs-e2e.yml` stopped forever at its designed loud-failure
+  assert, its nurse-403 RBAC check lost automated coverage, and
+  acknowledge-on-a-closed-encounter was untestable by anyone. The fix
+  shipped as the predicted feature, never a test reset: genuine result
+  CREATION plus audited UN-ACKNOWLEDGE (see "Result un-acknowledgment +
+  result creation (built)" below), and the suite was rewritten
+  self-sufficient — it creates the results it consumes. The
+  do-NOT-reset-the-live-database rule stands.
 - **Codified rule — finite seeded resources**: an E2E suite that
   CONSUMES a finite seeded resource is not idempotent against a durable
   database, no matter how careful the picking logic — the well
@@ -730,8 +727,9 @@ ends") are ONE RULE: an order's lifecycle is bounded by its ENCOUNTER.**
 - **ONE chokepoint, not scattered conditions**: `EncounterGuard`
   (`server/Core/Adt/`) asserts the encounter is open on EVERY
   clinical-initiation path — order create, sign, modify, implement,
-  dose administration. Lab/imaging/consult REQUEST writes join it when
-  those write paths exist. Blocking is RESOURCE STATE, not validation
+  dose administration, and (since the results audit PR) lab/imaging
+  RESULT creation; consult REQUEST writes join it when that path
+  exists. Blocking is RESOURCE STATE, not validation
   and not permission — the answer is **409 Conflict** with a precise
   `{error}`, never 400/403/404 (a Consultant with full authority is
   equally blocked). The administer guard sits BEFORE the dose lookup so
@@ -739,11 +737,14 @@ ends") are ONE RULE: an order's lifecycle is bounded by its ENCOUNTER.**
 - **THE INVARIANT IS DELIBERATELY NARROW — a closed encounter is NOT
   immutable**: you cannot initiate new care on a closed episode; you
   MUST still be able to complete the record of care already given.
-  Explicitly exempt (never routed through the guard, tested): results
-  arriving, result acknowledgment (asserted 200 on a discharged
-  patient), note authoring/addenda, the discharge summary, audited
-  amendments, and manual discontinue of a stray order (closing out the
-  record is not initiating care).
+  Explicitly exempt (never routed through the guard, tested): result
+  acknowledgment AND its audited reversal (both asserted 200 on a
+  discharged patient — live, since the results audit PR), note
+  authoring/addenda, the discharge summary, audited amendments, and
+  manual discontinue of a stray order (closing out the record is not
+  initiating care). Creating a NEW result is initiating care and IS
+  guarded (the asymmetry — see "Result un-acknowledgment + result
+  creation (built)").
 - **The order STATE MACHINE on a closed encounter (the general form of
   the narrow invariant)**: an order may only move TOWARD a terminal
   state — never be acted upon or activated. administer, sign, modify,
@@ -819,7 +820,118 @@ ends") are ONE RULE: an order's lifecycle is bounded by its ENCOUNTER.**
   (filter by encounter? collapse? annotate?) is an unresolved design
   question for the Orders screen.
 
-## Platform Direction — Aurora Core + Modules (agreed)
+### Result un-acknowledgment + result creation (built) — the results audit PR
+A genuine clinical feature, not a test fixture — built because live
+verification proved a class of correct clinical behaviour had become
+unverifiable: no way to create a result, no way to reverse an
+acknowledgment, the labs suite permanently red on its spent seeded well,
+its nurse-403 check without automated guard, and
+acknowledge-on-a-closed-encounter untestable.
+- **Un-acknowledge** (`POST /api/icu/results/{labs|imaging}/{id}/
+  unacknowledge`): a clinician reverses their own or another's
+  acknowledgment. NEVER a deletion (the never-destroy principle from the
+  Stage 11 override rule and Layer 3 deactivation): results now carry an
+  append-only EventsJson history — the original acknowledgment (actor,
+  time) survives there forever; the reversal appends its own audited
+  event with actor FROM THE TOKEN and a REQUIRED reason (400 without,
+  validated like discontinue); the current-state summary fields clear
+  and the result RETURNS TO THE INBOX (derived, as always). RBAC mirrors
+  acknowledge — doctor 200, nurse generic 403, verified both directions.
+- **Replay is a STATE CONFLICT (409), never 404** — by the 403/404/409
+  convention the encounter-scoping fix codified, 404 is reserved for ids
+  that resolve to NOTHING: acknowledging an already-acknowledged result
+  and reversing an unacknowledged one are both 409 with a precise error
+  naming the current state (this DELIBERATELY supersedes the Phase 3-era
+  "replayed acknowledge → 404" behavior). KNOWN remaining 404-where-state
+  sites (recorded, ride with the next touch of each): orders sign/modify/
+  discontinue/implement fold status into their lookups (a replayed
+  discontinue or sign of a completed order → 404), and the MAR's
+  re-document of a non-scheduled dose → 404; ADT/Users state conflicts
+  use 400 with precise errors (pre-convention, deliberate then).
+- **Audit timestamps are DATED UTC (yyyy-MM-dd HH:mm, the Layer 3 users-
+  audit convention)** on every NEW resulted/acknowledged/unacknowledged
+  event — result audit trails span discharges and readmissions. The
+  acknowledgedAt SUMMARY field stays HH:mm (the bedside display
+  contract, byte-parity preserved). KNOWN LIMITATION: the 79 backfilled
+  acknowledgment events carry whatever the pre-migration rows stored —
+  bare HH:mm, "D-n HH:mm", or "" — a date was never recorded and is NOT
+  fabricated; only post-migration events carry full dates.
+- **Result creation** (`POST /api/icu/results/labs` and `/imaging`):
+  results arrive UNACKNOWLEDGED and enter the inbox. Scoped to the
+  patient's open encounter exactly as orders are — `encounterId`
+  SERVER-derived, never client-supplied (a payload containing it at ANY
+  position fails binding → 400; asserted in the suite as the regression
+  tripwire). Authority is the PRODUCING SERVICE's: new permission
+  `results.create` on the Ancillary profile (lab/radiology technicians;
+  seeded accounts noor.al-amin / pablo.reyes) — doctor AND nurse tokens
+  are 403'd on create, the same polarity flip as implement/administer/
+  transfer. Validation per the codified rule: closed vocabularies parse
+  (panel ∈ the LabPanelKey union, modality ∈ ImagingModality, item/study
+  flags ∈ normal|abnormal|critical — the frequency precedent), items
+  complete with finite values and sane ref ranges (unit may be EMPTY —
+  unitless analytes like pH are part of the canonical shape), draw-level
+  flag DERIVED from the worst item (never client-supplied), bed/name
+  resolved from Core ADT, timestamps and actor server-stamped. Imaging
+  creation records the RESULTED stage (status final, report+impression
+  required) — the ordered/performed pipeline arrives with the imaging
+  ORDER workflow, not manual result entry. Ids LAB-9001+/IMG-9501+
+  (disjoint from seed blocks, persistence-aware counters per the
+  OrderLogic rule — restart-verified).
+- **THE ENCOUNTER RULE IS ASYMMETRIC HERE — the crux**: CREATING a
+  result is initiating care → EncounterGuard, 409 on a closed episode.
+  ACKNOWLEDGING and UN-ACKNOWLEDGING are completing the record of care
+  already given → they MUST succeed on a closed encounter (the day-3
+  blood culture that results on day 7, after discharge). The guard is
+  NEVER called on the ack/un-ack paths, and the suite asserts both
+  directions LIVE (it can now: the results belong to the suite's own
+  admitted-then-discharged patient, so no seeded patient is touched).
+- **Migration `AddResultAudit`** (LabDraws + ImagingStudies +=
+  EncounterId, EventsJson; EventsJson backfill default hand-set to "[]"
+  per the Layer 3 lesson) + idempotent boot backfill: scopes existing
+  results by the orders rule (open encounter, else most recent) and
+  RESTRUCTURES existing acknowledgments into the event history FROM THE
+  ROW'S OWN stored actor/time fields — the same facts moved into the
+  append-only record, never invented (a seed acknowledgment with no
+  stored actor becomes actor "Unknown", time "" — the ADT historical-
+  seed convention). Verified against a live-equivalent replica (all 73
+  labs acknowledged — the spent-well state): 80 results scoped, 79
+  acknowledgments restructured from their own fields, every pre-existing
+  column byte-identical, Orders/Encounters tables untouched, second boot
+  0/0 with no duplicate events, and un-ack works on the migrated
+  live-shaped rows (the spent well is now recoverable BY DESIGN — a
+  clinical action, not a test reset).
+- **Wire deltas**: LabDraw/ImagingStudy gain `encounterId` + `history`
+  (ResultEvent[]) — verified as the ONLY deltas by a 94-check
+  byte-parity sweep. Frontend: types extended; `unacknowledgeLab`/
+  `unacknowledgeImaging` adapters (proven write semantics — denied never
+  applied locally; offline mock-apply clears the summary only, the
+  audited record is the server's); the Labs screen's ImagingCard gains a
+  permission-gated "Reverse" action with a required-reason dialog (the
+  MAR held/refused pattern). DISPLAY DEBTS (documented, deliberate):
+  acknowledged LAB results have no list UI yet, so lab un-ack is
+  adapter/API-level until a lab result-detail view exists; result-entry
+  UI for technicians is deferred to Layer 4 (needs the lab test catalog)
+  — the LIS/device feed is the real source at Stage 11.
+- **`deployed-labs-e2e.yml` REWRITTEN self-sufficient** (the codified
+  finite-seeded-resources rule): admits its own patient, creates the
+  results it consumes via the real endpoint, asserts seeded reads as a
+  SUBSET (len>=49 + lookup-by-id), covers creation RBAC both directions,
+  the encounterId binding tripwire, nurse-403/doctor-200 acknowledge
+  (automated RBAC coverage restored), the full un-ack cycle
+  (never-destroy history, inbox return, replay 409 / absent-id 404),
+  create-on-closed → 409 vs ack/un-ack-on-closed → 200 LIVE, and ends
+  with `if: always()` cleanup that discharges the run's encounter AND
+  acknowledges any leftover run results (both legal on the closed
+  encounter by design) — the suite is permanently green-capable against
+  the durable DB again.
+- **Recorded open question (do NOT fix ad hoc) — results have NO ORDER
+  LINKAGE**: a result carries patientId and encounterId but nothing ties
+  it to the order that requested it — a doctor orders a CBC, a
+  technician creates a CBC result, and the two are unconnected. In a
+  real HIS the result FULFILS the order (the same aggregate-root
+  question one level down: Patient → Encounter → Order → Result). This
+  belongs with Layer 4's lab catalog / order sets — recorded here so it
+  is not rediscovered later.
 AURORA ICU becomes ONE MODULE of a broader Hospital Information System.
 Rather than a single large Core-extraction refactor later, the Core grows
 INCREMENTALLY: every new layer from now on (ADT, user administration,
@@ -1151,7 +1263,17 @@ transaction, encounter-aware MAR/queues over a longitudinal chart, the
 reserved System principal, and the one-time audited backfill that
 neutralized ORD-113 itself (verified against a state-equivalent
 replica of the live DB — see "Encounter-scoped orders (built)").
-**The next step is master data (Layer 4) in Core**,
+**Result un-acknowledgment + result creation are DONE** (the results
+audit PR): audited never-destroy reversal of acknowledgments (doctor
+RBAC, required reason, result returns to the inbox), real lab/imaging
+result creation under the new Ancillary `results.create` permission
+with server-derived encounterId, the ASYMMETRIC encounter rule (create
+→ 409 on closed; ack/un-ack → 200 on closed — completing the record),
+the AddResultAudit migration + backfill verified against a
+live-equivalent replica, and the labs E2E suite rewritten
+self-sufficient — the permanently-spent acknowledge leg is resolved by
+feature, not test reset. **The next step is master data (Layer 4) in
+Core**,
 then the Print Center, then Stage 11 device + AI integration per the
 locked rules above (Stage 11 also absorbs the roster's remaining
 bedside-snapshot columns). The Timeline's four still-mock sources
