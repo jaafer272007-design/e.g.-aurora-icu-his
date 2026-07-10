@@ -744,7 +744,18 @@ ends") are ONE RULE: an order's lifecycle is bounded by its ENCOUNTER.**
   patient), note authoring/addenda, the discharge summary, audited
   amendments, and manual discontinue of a stray order (closing out the
   record is not initiating care).
-- **Discharge cascade**: discharging an encounter auto-discontinues its
+- **The order STATE MACHINE on a closed encounter (the general form of
+  the narrow invariant)**: an order may only move TOWARD a terminal
+  state — never be acted upon or activated. administer, sign, modify,
+  implement → 409; discontinue → 200. "You cannot initiate new care on
+  a closed episode, but you must still complete the record of care
+  already given" is the clinical statement of this rule; the state
+  machine is its mechanical statement. It is also why the discharge
+  cascade and the migration backfill are COHERENT with the invariant
+  rather than exceptions to it: both only move orders toward a
+  terminal state (discontinued) — they take the one transition the
+  closed encounter permits, which is why they need named paths for
+  their audit semantics but no bypass of the guard's rule.
   active AND pending orders in the same transaction — audited with the
   DISCHARGING CLINICIAN as actor, reason "patient discharged —
   auto-discontinued at discharge", scheduled administrations cancelled
