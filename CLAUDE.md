@@ -829,6 +829,117 @@ integration + the Observation model per the locked rule above; Stage
 The full architectural review + Core-extraction inventory ran before
 the relocation and resolved the domain-relocation open question as (a).
 
+## CI Evidence — skipped/no-op checks (incident + codified rule + 2026-07-10 audit)
+Recorded after PR #27 incidentally discovered that PR #25 shipped real
+TypeScript errors with every check "green". Full audit detail lives in
+the audit PR's description; this section is the durable record.
+
+**The incident — two independent no-op layers, same symptom:**
+- **Local**: bare `npx tsc --noEmit` against the ROOT tsconfig has been a
+  NO-OP since the Vite scaffold — the root file is solution-style
+  (references only, no sources), so tsc compiles nothing and exits 0.
+  That "tsc clean" claim let PR #25 ship real type errors in the
+  Admissions/Discharges pages. The real commands: `npx tsc -b --force`
+  or `npm run build` (which runs `tsc -b`).
+- **CI**: `deploy-pages.yml` is the ONLY automatic workflow, and its
+  build job is gated on "head branch has an open PR against main"
+  evaluated AT PUSH TIME. The standard flow pushes first and opens the
+  PR seconds later, so a single-push branch's only gate evaluation sees
+  ZERO open PRs → the build/deploy job is SKIPPED → the run concludes
+  SUCCESS → the commit (and the fresh PR) wear a green
+  "Deploy to GitHub Pages" check under which npm ci / tsc / vite never
+  ran (verified from run #56's gate log: "open PRs …: 0" seconds before
+  PR #25's PR existed). A one-commit PR can merge with the frontend
+  never typechecked by any machine. PR #27 fixed the type errors; the
+  gate design itself is UNCHANGED and this trap remains until a gate
+  redesign PR.
+
+**CODIFIED RULE — a skipped check and a passed check are visually
+identical.** A run whose gated jobs are skipped still concludes SUCCESS
+and shows green on the commit. Green CI is NOT evidence unless the job
+carrying the assertions actually EXECUTED — before treating any check as
+evidence (in review, in a verification report, in "CI is green"), open
+the run and confirm the asserting job ran and reached its assertion
+steps. The same rule covers local commands (a command that can exit 0
+without evaluating anything is not a check) and two corollaries:
+ABSENCE of a check is equally silent (manual-dispatch suites produce
+evidence only when someone dispatches them), and an assertion whose
+failure is swallowed by its surrounding construct (`cmd && echo` lists,
+`read VAR <<<"$(…assert…)"`) gated nothing.
+
+**2026-07-10 audit of every gate in `.github/workflows/`** (each finding
+adversarially verified; fixes deliberately NOT applied — docs-only audit,
+they ride with the next touch of each file):
+- **Topology**: NO `pull_request` trigger exists anywhere; NOTHING runs
+  on push to main (green main = no workflow ran); no GitHub check ever
+  compiles the ASP.NET Core server — a C# compile error merges green and
+  fails only inside Render's own build, invisible to GitHub; all eight
+  deployed E2E suites are `workflow_dispatch`-only, so their evidence is
+  absent by default. deploy-pages extras: `workflow_dispatch` bypasses
+  the PR gate entirely; one shared `pages` concurrency group cancels
+  OTHER branches' in-flight deploys; unset `API_BASE_URL` deploys a
+  mock-mode site, green.
+- **Setup-failure semantics — all eight suites are LOUD**: warm-up
+  exhaustion, login failure, or an unreachable service abort RED (never
+  a silent green). No suite concludes success after an early setup
+  abort. This half of the audit question is clean.
+- **Confirmed green-without-assertion sites** (step-level, all caught or
+  bounded downstream today): the users suite's CLEANUP step swallows
+  every failure (`curl && echo` lists + unconditional final echo) — it
+  can print "no active e2e credentials remain" while discharging and
+  deactivating NOTHING; the `read VAR <<<"$(python3 -c '…assert…')"`
+  pattern (MAR order-seeding, ADT admit/bed-pick, users admit) swallows
+  its assert — the step passes with empty vars and a LATER step fails
+  red with a misattributed cause; orders' "never persisted" claim is
+  asserted only for the P-1001-scoped bodies (not the P-9999 body, and
+  not at all for unparseable-frequency); four of six ADT validation
+  checks assert the error TEXT but not the 400 status; ADT's
+  durable-count and the suites' echo-only lines assert nothing.
+- **BIGGEST FINDING — every suite is now stale-deployment-blind**: five
+  suites gate warm-up on `/healthz` alone, which the PREVIOUS build
+  keeps serving during a Render rebuild (the AI suite's own comment
+  documents this exact trap); and since Layer 3 shipped, the three
+  401-vs-404 endpoint-presence gates (AI/ADT/users) no longer
+  distinguish builds either — every deployed build now has every
+  surface. ALL EIGHT suites can run green against a STALE deployment,
+  and with `autoDeploy: true` and no build identifier on `/healthz`, no
+  green run is attributable to a specific commit. The fix (future PR):
+  serve a build/commit id on `/healthz` and make every warm-up assert
+  it.
+- **Sequential dispatch is enforced by NOTHING** — the recorded
+  never-concurrently lesson has no `concurrency:` group behind it on any
+  E2E suite; concurrent dispatches race on free-bed picks and the ADT
+  occupied-bed probe (false reds/greens).
+- **Durable-DB debts**: labs' `assert len(d)==49` is an EXACT count in
+  violation of the codified subset rule (breaks the moment lab creation
+  ships); the permanently-red labs suite means its nurse-403/doctor-200
+  acknowledge assertions are PERMANENTLY unobtainable live (and a
+  suite that is always red breeds alarm fatigue that corrupts the
+  meaning of red everywhere); suites accumulate clinical writes on live
+  demo patients without cleanup (every MAR run leaves an ACTIVE
+  vancomycin order on P-1001, every timeline run an active order on
+  P-1007); there is NO failure-path cleanup (`if: always()` appears
+  nowhere) — a mid-run failure in the ADT or users suite leaks an OPEN
+  encounter occupying a bed forever, and repeated failures exhaust the
+  free beds both suites need; orders/MAR/timeline headers still say
+  "ephemeral DB" (stale since the persistence PR).
+- **Hardening notes (theoretical today, recorded)**: every CORS assert
+  tests only a simple-request response header — no suite ever issues an
+  OPTIONS preflight, though the UI's order-modify depends on PUT being
+  in the preflight allowlist — and greps the origin as an unescaped
+  regex; server response values flow unsanitized into `GITHUB_ENV` and
+  into `python3 -c` source strings (the system under test could in
+  principle forge its own verdict); the auth suite never asserts the JWT
+  `exp` claim; the users suite's no-password-material check matches only
+  the literal key `passwordHash`; `deploy-pages` interpolates
+  `github.ref_name` raw into shell + a query string.
+- **Checked and clean**: no `continue-on-error`, no `if: always()`, no
+  `|| true` outside the warm-up loops, no `exit 0` shortcuts beyond the
+  documented gates. One tempting claim was REFUTED against source and is
+  deliberately not recorded: the AI ranking does NOT drop discharged
+  patients (the diagnosis join falls back to ""), so ADT discharges do
+  not break the AI suite.
+
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
 - Touch targets ≥ 44×44px
