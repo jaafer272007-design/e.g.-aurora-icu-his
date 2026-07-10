@@ -189,11 +189,17 @@ jobs:
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/orders/$OID/implement")
           rc=$(echo "$out" | tail -1); echo "implement med order -> HTTP $rc (shape)"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "administered via the MAR" in e, e'
-          # absent ids stay 404 on every mutation — the other branch
-          for m in "POST /api/icu/orders/ORD-0000/sign" "POST /api/icu/orders/ORD-0000/discontinue" "POST /api/icu/orders/ORD-0000/implement"; do
-            verb="${m%% *}"; path="${m#* }"
-            rc=$(curl -s -o /dev/null -w '%{http_code}' -X "$verb" -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API$path")
-            echo "absent $path -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          # absent ids stay 404 on every mutation — the other branch.
+          # Each probe carries the token AUTHORIZED for that mutation:
+          # RBAC runs BEFORE the lookup and 403 is deliberately generic
+          # (it must not reveal whether the id exists), so a doctor token
+          # probing the nurse-only implement gets 403, never the 404
+          # under test (run #16 failed exactly there).
+          for m in "DOC POST /api/icu/orders/ORD-0000/sign" "DOC POST /api/icu/orders/ORD-0000/discontinue" "NUR POST /api/icu/orders/ORD-0000/implement"; do
+            who="${m%% *}"; rest="${m#* }"; verb="${rest%% *}"; path="${rest#* }"
+            if [ "$who" = "NUR" ]; then tok="$NUR"; else tok="$DOC"; fi
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X "$verb" -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API$path")
+            echo "absent $path ($who) -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
           done
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"changes":{"dose":"2 g"},"reason":"x"}' "$API/api/icu/orders/ORD-0000")
           echo "absent modify -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
