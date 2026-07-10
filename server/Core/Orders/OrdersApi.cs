@@ -110,13 +110,23 @@ static class OrdersApi
             return Results.Json(created, JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* POST /api/icu/orders/{orderId}/sign — doctor RBAC (orders.sign). */
+        /* POST /api/icu/orders/{orderId}/sign — doctor RBAC (orders.sign).
+           FOUR-CODE RULE (state-conflict PR): the lookup is by id ALONE —
+           an absent id is 404; an order that exists but is not pending is
+           a 409 naming its current state (the state used to be folded
+           into the lookup, making a replayed sign look like absence).
+           The encounter guard runs BEFORE the status check so a closed
+           episode reports its deeper cause, matching the administer
+           precedent. */
         app.MapPost("/api/icu/orders/{orderId}/sign", (string orderId, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "orders.sign") is IResult denied) return denied;
-            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && x.Status == "pending");
-            if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
+            if (row is null) return ApiError.NotFound();
             if (EncounterGuard.RequireOpen(db, row.EncounterId, "signing an order") is IResult conflict) return conflict;
+            if (row.Status != "pending")
+                return ApiError.StateConflict(
+                    $"order '{orderId}' is {(row.Status == "active" ? "already active" : row.Status)} — it is not awaiting signature");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var o = row.ToDto();
             row.Status = "active";
@@ -145,10 +155,19 @@ static class OrdersApi
                ACTIVE medication order is exactly the silent hazard this guards */
             if (OrderLogic.ValidateChanges(req.Changes) is string invalid)
                 return ApiError.BadRequest(invalid);
-            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && (x.Status == "active" || x.Status == "pending"));
-            if (row is null || row.MedicationJson is null)
-                return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
+            if (row is null) return ApiError.NotFound();
+            /* SHAPE, not state: a non-medication order has no medication
+               fields in ANY state — the request can never succeed against
+               this resource, so it is a 400 (like requiresImplementation
+               on a medication draft), never a 409 */
+            if (row.MedicationJson is null)
+                return ApiError.BadRequest(
+                    $"order '{orderId}' is not a medication order — there are no medication fields to modify");
             if (EncounterGuard.RequireOpen(db, row.EncounterId, "modifying an order") is IResult conflict) return conflict;
+            if (row.Status is not ("active" or "pending"))
+                return ApiError.StateConflict(
+                    $"order '{orderId}' is {row.Status} — a {row.Status} order cannot be modified");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var before = JsonSerializer.Deserialize<MedicationDto>(row.MedicationJson, JsonOpts.Web)!;
             var (merged, diff) = OrderLogic.ApplyChanges(before, req.Changes);
@@ -169,8 +188,18 @@ static class OrdersApi
                 return ApiError.BadRequest("Reason required");
             if (req.Reason.Length > OrderLogic.MaxTextLength)
                 return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
-            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && (x.Status == "active" || x.Status == "pending"));
-            if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
+            if (row is null) return ApiError.NotFound();
+            /* deliberately NO EncounterGuard (closing out the record stays
+               allowed on a closed encounter) — but the state machine still
+               holds: an order already at a terminal state cannot be
+               discontinued again */
+            if (row.Status == "discontinued")
+                return ApiError.StateConflict(
+                    $"order '{orderId}' is already discontinued{(row.StatusReason is null ? "" : $" ({row.StatusReason})")} — there is nothing to discontinue");
+            if (row.Status == "completed")
+                return ApiError.StateConflict(
+                    $"order '{orderId}' is completed — it has already reached a terminal state");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             /* shared mechanics — same status/reason/cancelled-schedule/audit
                path as the discharge hook and the backfill */
@@ -186,9 +215,23 @@ static class OrdersApi
         app.MapPost("/api/icu/orders/{orderId}/implement", (string orderId, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "orders.implement") is IResult denied) return denied;
-            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId && x.Status == "active" && x.RequiresImplementation == true);
-            if (row is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
+            if (row is null) return ApiError.NotFound();
+            /* THE TWO HALVES of the old folded lookup, split deliberately:
+               requiresImplementation is SHAPE — immutable; implementing
+               this order can never succeed in any state → 400 (the same
+               judgement as create's "a medication order cannot set
+               requiresImplementation"). Status is STATE — sign it and the
+               same request succeeds → 409. */
+            if (row.RequiresImplementation != true)
+                return ApiError.BadRequest(row.MedicationJson is not null
+                    ? $"order '{orderId}' is a medication order — doses are administered via the MAR, not implemented"
+                    : $"order '{orderId}' does not require implementation");
             if (EncounterGuard.RequireOpen(db, row.EncounterId, "implementing an order") is IResult conflict) return conflict;
+            if (row.Status != "active")
+                return ApiError.StateConflict(row.Status == "pending"
+                    ? $"order '{orderId}' is pending — it must be signed before it can be implemented"
+                    : $"order '{orderId}' is {(row.Status == "completed" ? "already completed" : row.Status)} — it is not awaiting implementation");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = DateTime.UtcNow.ToString("HH:mm");
             row.Status = "completed";

@@ -175,9 +175,17 @@ jobs:
           echo "deactivated login -> $(echo "$out"|tail -1)"; [ "$(echo "$out"|tail -1)" = "401" ] || exit 1
           echo "$out" | head -1 | grep -q '"Invalid credentials"' || exit 1
           echo "generic body — no account-state oracle"
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$UPHA/deactivate")
-          echo "re-deactivate -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # replayed status change = STATE CONFLICT (four-code rule; was 400 pre-convention)
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$UPHA/deactivate")
+          rc=$(echo "$out" | tail -1); echo "re-deactivate -> HTTP $rc (state conflict)"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already deactivated" in e, e'
           curl -sf -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$UPHA/reactivate" >/dev/null
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$UPHA/reactivate")
+          rc=$(echo "$out" | tail -1); echo "re-reactivate -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already active" in e, e'
+          # absent account stays 404 — the other branch
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/ghost.user.${GITHUB_RUN_ID}/deactivate")
+          echo "absent account deactivate -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UPHA'","password":"E2ePharm99!"}')
           echo "reactivated login -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
 

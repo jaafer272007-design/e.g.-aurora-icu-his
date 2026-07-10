@@ -80,10 +80,16 @@ static class AdtApi
                 return ApiError.BadRequest("sex must be one of: M, F");
             if (!db.Beds.AsNoTracking().Any(b => b.BedId == req.BedId))
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
+            /* FOUR-CODE RULE (state-conflict PR): an occupied bed and a
+               patient already admitted are RESOURCE STATE, not payload
+               validation — the same request succeeds once the bed frees /
+               the prior encounter closes → 409 (was 400, pre-convention).
+               An unknown bedId stays 400: the payload references a bed
+               that does not exist. */
             var occupant = db.Encounters.AsNoTracking()
                 .FirstOrDefault(e => e.Status == "open" && e.BedId == req.BedId);
             if (occupant is not null)
-                return ApiError.BadRequest($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
+                return ApiError.StateConflict($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
 
             var mrn = req.Mrn!.Trim();
             var patient = db.AdtPatients.FirstOrDefault(p => p.Mrn == mrn);
@@ -92,7 +98,7 @@ static class AdtApi
                 var openEnc = db.Encounters.AsNoTracking()
                     .FirstOrDefault(e => e.PatientId == patient.PatientId && e.Status == "open");
                 if (openEnc is not null)
-                    return ApiError.BadRequest(
+                    return ApiError.StateConflict(
                         $"patient '{patient.PatientId}' ({mrn}) already has an open encounter '{openEnc.EncounterId}'");
             }
             else
@@ -130,9 +136,12 @@ static class AdtApi
         {
             if (Rbac.Deny(user, "adt.discharge") is IResult denied) return denied;
             var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
-            if (enc is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (enc is null) return ApiError.NotFound();
             if (enc.Status == "discharged")
-                return ApiError.BadRequest($"encounter '{encounterId}' is already discharged");
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' is already discharged"
+                    + (string.IsNullOrEmpty(enc.DischargedBy) ? "" : $" (by {enc.DischargedBy} at {enc.DischargedAt})")
+                    + " — there is nothing to discharge");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = DateTime.UtcNow.ToString("HH:mm");
             enc.Status = "discharged";
@@ -166,17 +175,18 @@ static class AdtApi
             if (string.IsNullOrWhiteSpace(req.BedId))
                 return ApiError.BadRequest("bedId is required");
             var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
-            if (enc is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            if (enc is null) return ApiError.NotFound();
             if (enc.Status == "discharged")
-                return ApiError.BadRequest($"cannot transfer encounter '{encounterId}' — it is discharged");
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' is discharged — a closed encounter cannot be transferred");
             if (!db.Beds.AsNoTracking().Any(b => b.BedId == req.BedId))
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
             if (enc.BedId == req.BedId)
-                return ApiError.BadRequest($"encounter '{encounterId}' is already in bed '{req.BedId}'");
+                return ApiError.StateConflict($"encounter '{encounterId}' is already in bed '{req.BedId}'");
             var occupant = db.Encounters.AsNoTracking()
                 .FirstOrDefault(e => e.Status == "open" && e.BedId == req.BedId);
             if (occupant is not null)
-                return ApiError.BadRequest($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
+                return ApiError.StateConflict($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = DateTime.UtcNow.ToString("HH:mm");
             var from = enc.BedId;

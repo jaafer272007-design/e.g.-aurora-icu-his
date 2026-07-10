@@ -135,6 +135,35 @@ jobs:
             -d '{"reason":"deployed E2E"}' "$API/api/icu/orders/$OID/discontinue" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="discontinued" and d["history"][-1]["actor"]=="Dr. Sara Rahman" and not [a for a in (d.get("administrations") or []) if a["status"]=="scheduled"], d; print("discontinued | scheduled admins cancelled")'
 
+      - name: FOUR-CODE RULE on the same order — replays → 409 naming the state; absent ids → 404; shape → 400
+        run: |
+          # $OID is now discontinued: every replayed transition is a STATE
+          # conflict (was 404 pre-convention — the state was folded into the
+          # lookup, making a replayed action look like absence)
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/orders/$OID/sign")
+          rc=$(echo "$out" | tail -1); echo "sign discontinued -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is discontinued" in e and "not awaiting signature" in e, e'
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"reason":"replay"}' "$API/api/icu/orders/$OID/discontinue")
+          rc=$(echo "$out" | tail -1); echo "re-discontinue -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already discontinued" in e, e'
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"changes":{"dose":"2 g"},"reason":"replay"}' "$API/api/icu/orders/$OID")
+          rc=$(echo "$out" | tail -1); echo "modify discontinued -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "discontinued order cannot be modified" in e, e'
+          # implement of a MEDICATION order is SHAPE, not state -> 400
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/orders/$OID/implement")
+          rc=$(echo "$out" | tail -1); echo "implement med order -> HTTP $rc (shape)"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "administered via the MAR" in e, e'
+          # absent ids stay 404 on every mutation — the other branch
+          for m in "POST /api/icu/orders/ORD-0000/sign" "POST /api/icu/orders/ORD-0000/discontinue" "POST /api/icu/orders/ORD-0000/implement"; do
+            verb="${m%% *}"; path="${m#* }"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X "$verb" -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API$path")
+            echo "absent $path -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"changes":{"dose":"2 g"},"reason":"x"}' "$API/api/icu/orders/ORD-0000")
+          echo "absent modify -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+
       - name: Implement is nurse-only, on THIS RUN's own order (doctor 403, nurse 200)
         run: |
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
@@ -145,3 +174,17 @@ jobs:
           echo "doctor implement $IID -> HTTP $code"; [ "$code" = "403" ] || exit 1
           curl -sf -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/orders/$IID/implement" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="completed" and d["history"][-1]["actor"]=="RN Maya Chen", d; print("nurse implement:", d["status"], "| by:", d["history"][-1]["actor"])'
+          # replayed implement (now completed) -> 409 naming the state
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/orders/$IID/implement")
+          rc=$(echo "$out" | tail -1); echo "re-implement -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already completed" in e, e'
+          # a PENDING implementation order is state too: it must be signed first
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"P-1001","category":"Nursing","summary":"deployed E2E pending-implement probe","priority":"Routine","requiresImplementation":true}],"sign":false}' \
+            "$API/api/icu/orders" > /tmp/pend-impl.json
+          PIID=$(python3 -c 'import json; print(json.load(open("/tmp/pend-impl.json"))[0]["orderId"])')
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/orders/$PIID/implement")
+          rc=$(echo "$out" | tail -1); echo "implement pending -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "must be signed before" in e, e'
+          # tidy: discontinue the probe so the run leaves nothing pending
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"deployed E2E probe cleanup"}' "$API/api/icu/orders/$PIID/discontinue" >/dev/null

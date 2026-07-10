@@ -61,15 +61,27 @@ static class MarApi
 
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null || row.AdministrationsJson is null)
-                return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+                return ApiError.NotFound();   // absent order, or no dose schedule exists on it — the adminId resolves to nothing
             /* THE CHOKEPOINT (409, resource state): the encounter must be
                OPEN — asserted independently of order status so the two can
                never diverge silently, and even a Consultant with full
                authority is equally blocked. */
             if (EncounterGuard.RequireOpen(db, row.EncounterId, "documenting a dose") is IResult conflict) return conflict;
             var admins = JsonSerializer.Deserialize<List<AdminDto>>(row.AdministrationsJson, JsonOpts.Web)!;
-            var idx = admins.FindIndex(a => a.AdminId == adminId && a.Status == "scheduled");
-            if (idx < 0) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            var idx = admins.FindIndex(a => a.AdminId == adminId);
+            if (idx < 0) return ApiError.NotFound();
+            /* FOUR-CODE RULE (state-conflict PR — this DELIBERATELY
+               REVERSES the codified "re-document of a non-scheduled dose
+               → 404"): the dose EXISTS, it is simply already documented.
+               Two nurses racing at the same bedside must see "already
+               given by X at T", never "not found" — a 404 tells the
+               second nurse the dose vanished; a 409 tells them their
+               colleague documented it first. */
+            if (admins[idx].Status != "scheduled")
+                return ApiError.StateConflict(
+                    $"dose '{adminId}' was already documented as {admins[idx].Status}"
+                    + (admins[idx].DocumentedBy is null ? "" : $" by {admins[idx].DocumentedBy} at {admins[idx].DocumentedTime}")
+                    + " — it is not awaiting documentation");
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = DateTime.UtcNow.ToString("HH:mm");
