@@ -1255,7 +1255,10 @@ they ride with the next touch of each file):
   "STALE DEPLOYMENT" failure, never a green run against an old build.
   Corollary: suites must be dispatched on a ref whose HEAD is the
   deployed commit (main, after Render finishes) — dispatching a
-  non-deployed ref now correctly fails.
+  non-deployed ref now correctly fails. (SUPERSEDED by the gate-context
+  fix — see "The stale gate's dead zone" below: the gate now compares
+  against the ref's latest SERVER-TOUCHING commit, so any ref whose
+  server source matches the deployed build passes.)
 - **Real CI exists (`ci.yml`)** — the repo's first `pull_request`
   trigger: `tsc -b --force` + `vite build` (frontend) and
   `dotnet build server` (the C# server is no longer compiled by
@@ -1284,6 +1287,30 @@ they ride with the next touch of each file):
   hardening, the deploy-pages PR-gate redesign, the permanently-red
   labs acknowledge leg, and MAR/timeline clinical-write accumulation
   on live demo patients.
+
+**The stale gate's dead zone (found live 2026-07-10, fixed same day):**
+two CORRECT mechanisms combined into a state where no suite could pass.
+Render's build filter (rootDir `server/` in render.yaml) skips deploys
+for commits that do not touch the server build context — so after a
+docs- or workflow-only merge, `/healthz build` keeps serving the older
+server commit while every ref's HEAD has moved past it, and the
+HEAD==build gate fails on every possible dispatch. Neither mechanism
+was wrong; the gate's INVARIANT was stated one level too coarsely. The
+dispatched ref supplies the TEST code; the deployed build supplies the
+SERVER code — they only need to agree about the SERVER. CORRECTED
+INVARIANT (all nine suites): /healthz build == the most recent ancestor
+of the dispatched ref that touched the server build context, computed
+in-workflow from a full-history checkout (`git log -1 --format=%H --
+server/ render.yaml`). The context is `server/` (rootDir; the
+Dockerfile lives inside it) plus `render.yaml` itself, included
+conservatively — misjudging a path fails LOUDLY at the gate, never
+silently green. The corrected rule is STRICTLY STRONGER than
+HEAD==build: an old ref whose HEAD happens to equal the deployed build
+now fails when newer server-touching commits exist (exactly the stale
+case the gate was built for), and the dead zone is gone (the fix is
+itself workflow-only — no rebuild follows and none is needed; the gate
+passes because the ref's latest server-touching ancestor IS the
+deployed build — the fix unblocks itself).
 
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
