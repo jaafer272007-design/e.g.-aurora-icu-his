@@ -39,33 +39,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Warm up + require the deployed build to match this ref's LATEST SERVER-TOUCHING commit
+      - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
         run: |
-          # THE GATE'S INVARIANT, CORRECTED (the dead-zone fix): the
-          # dispatched ref supplies the TEST code; the deployed build
-          # supplies the SERVER code — they only need to agree about the
-          # SERVER. Render rebuilds only for commits touching the server
-          # build context (render.yaml: rootDir server/, Dockerfile inside
-          # it; render.yaml itself included conservatively — misjudging a
-          # path fails LOUDLY here, never silently green). So the gate
-          # asserts /healthz build == the most recent ancestor of the
-          # dispatched ref that touched that context. STRICTLY STRONGER
-          # than the old HEAD==build rule: an old ref whose HEAD happens to
-          # equal the deployed build now FAILS when newer server-touching
-          # commits exist (the stale case the gate was built for), and a
-          # docs/workflow-only merge no longer creates a dead zone in
-          # which no suite can pass.
-          WANT=$(git log -1 --format=%H -- server/ render.yaml)
-          [ -n "$WANT" ] || { echo "could not determine the latest server-touching commit"; exit 1; }
-          echo "dispatched ref HEAD:             $GITHUB_SHA"
-          echo "latest server-touching ancestor: $WANT  (build context: server/ render.yaml)"
+          # THE GATE'S INVARIANT, refined once more (the merge-commit
+          # lesson): the dispatched ref supplies the TEST code; the
+          # deployed build supplies the SERVER code — they must agree
+          # about the SERVER, and the honest form of that is CONTENT
+          # equality of the build context, not commit identity. Commit
+          # identity failed twice: HEAD==build broke on docs/workflow-only
+          # merges (Render's rootDir filter never rebuilds), and
+          # latest-server-touching-ancestor==build broke on MERGE commits
+          # (git log attributes a change to the BRANCH commit while
+          # Render deploys the MERGE commit — same tree, different ids).
+          # So the gate compares git TREE/BLOB hashes of the build context
+          # (server/ + render.yaml — the Dockerfile lives inside server/)
+          # between the dispatched ref and the commit /healthz reports.
+          # A deployed commit outside this ref's history fails rev-parse
+          # → loud failure; newer server content on the ref than deployed
+          # (the classic stale case) differs → loud failure.
+          WANT_SRV=$(git rev-parse "$GITHUB_SHA:server")
+          WANT_YML=$(git rev-parse "$GITHUB_SHA:render.yaml")
+          echo "dispatched ref HEAD: $GITHUB_SHA"
+          echo "expected build context: server tree $WANT_SRV · render.yaml blob $WANT_YML"
           for i in $(seq 1 60); do
             build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
-            echo "attempt $i: live build=$build · expected=$WANT"
-            [ "$build" = "$WANT" ] && exit 0
+            BS=$(git rev-parse -q --verify "$build:server" 2>/dev/null || echo "<unknown-commit>")
+            BY=$(git rev-parse -q --verify "$build:render.yaml" 2>/dev/null || echo "<unknown-commit>")
+            echo "attempt $i: live build=$build · its server tree=$BS"
+            [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && exit 0
             sleep 10
           done
-          echo "STALE DEPLOYMENT: /healthz build '$build' never matched this ref's latest server-touching commit '$WANT' — the deployed server does not correspond to this ref's server source" && exit 1
+          echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
 
       - name: Login as doctor, nurse, and laboratory technician
         run: |
