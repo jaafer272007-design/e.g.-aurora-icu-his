@@ -21,6 +21,15 @@
 name: Deployed ADT E2E
 on: workflow_dispatch
 
+# STRUCTURAL serialization of the deployed suites (the recorded
+# never-dispatch-concurrently lesson, previously enforced only by memory):
+# one shared group across all eight suites means two can never RUN at
+# once. GitHub keeps at most one PENDING run per group, so still dispatch
+# one at a time — a second queued dispatch may supersede a waiting one.
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
 env:
   API: https://icu-cp49.onrender.com
   PAGES_ORIGIN: https://jaafer272007-design.github.io
@@ -29,18 +38,21 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - name: Warm up + wait for the ADT code to be LIVE (cold start + redeploy)
+      - name: Warm up + require THIS COMMIT's build to be live (no stale deployments)
         run: |
-          # gate on the ADT surface being present (401 = endpoint exists,
-          # auth required; 404 = old build) — same pattern as the AI suite
-          for i in $(seq 1 40); do
-            health=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
-            adt=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/api/icu/adt/beds" || true)
-            echo "attempt $i: healthz HTTP $health · unauth /adt/beds HTTP $adt"
-            [ "$health" = "200" ] && [ "$adt" = "401" ] && exit 0
+          # /healthz serves the deployed commit in `build` (RENDER_GIT_COMMIT).
+          # The suite REFUSES to run against any other build, so a green run
+          # is attributable to exactly the commit it was dispatched on — a
+          # suite can never again test a stale deployment and report green
+          # (the 2026-07-10 CI-evidence audit's biggest finding). 60x10s also
+          # covers the Render cold start + a full rebuild after a merge.
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: live build=$build · dispatched commit=$GITHUB_SHA"
+            [ "$build" = "$GITHUB_SHA" ] && exit 0
             sleep 10
           done
-          echo "ADT endpoints never went live (healthz $health, /adt/beds $adt)" && exit 1
+          echo "STALE DEPLOYMENT: /healthz build '$build' never matched the dispatched commit '$GITHUB_SHA' — refusing to test an old build" && exit 1
 
       - name: Login as doctor and nurse
         run: |
@@ -60,7 +72,10 @@ jobs:
         run: |
           curl -sf -D /tmp/h -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/adt/beds" -o /tmp/beds.json
           grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
-          read B1 B2 <<<"$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert len(free)>=2, f"need 2 free beds, have {free} — discharge stale encounters"; print(free[0], free[1])')"
+          # standalone assignment so a failing assert FAILS THIS STEP —
+          # `read VAR <<<"$(…)"` swallowed it (2026-07-10 audit finding)
+          vals=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert len(free)>=2, f"need 2 free beds, have {free} — discharge stale encounters"; print(free[0], free[1])')
+          read B1 B2 <<<"$vals"
           echo "using free beds $B1, $B2"
           { echo "B1=$B1"; echo "B2=$B2"; } >> "$GITHUB_ENV"
 
@@ -79,7 +94,8 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"mrn":"'$MRN'","name":"E2E ADT Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
-          read PID EID <<<"$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. Sara Rahman", d; print(d["patient"]["patientId"], d["encounter"]["encounterId"])')"
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. Sara Rahman", d; print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          read PID EID <<<"$vals"
           echo "admitted $PID encounter $EID by token actor"
           { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/patients" \
@@ -132,3 +148,22 @@ jobs:
           print('closed encounter durable with full event history:', ' → '.join(ev))"
           total=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?status=discharged" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
           echo "discharged encounters on the durable DB (accumulates across runs): $total"
+
+      - name: Failure-path cleanup — release THIS run's encounter (runs on failure/cancel too)
+        if: always()
+        run: |
+          # A mid-run failure used to leak an OPEN encounter occupying a bed
+          # forever (2026-07-10 audit). This step runs on success, failure
+          # AND cancellation; on the success path the encounter is already
+          # discharged and the 400 branch below confirms it.
+          if [ -z "${EID:-}" ] || [ -z "${DOC:-}" ]; then
+            echo "no encounter was created by this run — nothing to release"; exit 0
+          fi
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+          rc=$(echo "$out" | tail -1)
+          case "$rc" in
+            200) echo "failure-path cleanup released $EID (bed freed)";;
+            400) echo "$out" | head -1 | grep -q "already discharged" || { echo "unexpected 400: $out"; exit 1; }
+                 echo "$EID already discharged (normal path) — nothing leaked";;
+            *)   echo "CLEANUP FAILED: could not release $EID (HTTP $rc) — a bed is leaked, manual action required"; exit 1;;
+          esac
