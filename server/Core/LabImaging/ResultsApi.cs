@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Text.Json;
+using Aurora.Core.Adt;
 using Aurora.Core.Identity;
+using Aurora.Core.Orders;
 using Aurora.Core.Persistence;
 using Aurora.Core.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -16,7 +18,25 @@ namespace Aurora.Core.LabImaging;
    computed at read time, never stored). A nurse token is rejected with a
    403 here regardless of what the UI shows — the first real server-side
    RBAC enforcement. The acknowledging actor is taken from the TOKEN's
-   name claim, never from the request body (server-verified identity). */
+   name claim, never from the request body (server-verified identity).
+
+   RESULTS AUDIT PR — creation + un-acknowledgment. THE ENCOUNTER RULE IS
+   ASYMMETRIC HERE, deliberately:
+   - CREATING a result is initiating care → requires the patient's OPEN
+     encounter (EncounterGuard, 409 on a closed episode) and is scoped to
+     it (encounterId server-derived, never client-supplied).
+   - ACKNOWLEDGING and UN-ACKNOWLEDGING are completing the record of care
+     already given → they MUST succeed on a closed encounter. A blood
+     culture drawn on day 3 that results on day 7, after discharge, must
+     be acknowledgeable. EncounterGuard is NEVER called on these paths.
+   Creation authority is the PRODUCING SERVICE's: results.create belongs
+   to the Ancillary profile (lab/radiology technicians) — a doctor or
+   nurse token gets 403 on create, mirroring how implement/administer flip
+   polarity. Un-acknowledge mirrors acknowledge (results.acknowledge,
+   doctor-only) and is NEVER a deletion: the original acknowledgment
+   survives in the append-only event history; the reversal is its own
+   audited event with a REQUIRED reason (the never-destroy principle from
+   the Stage 11 override rule and Layer 3 deactivation). */
 static class ResultsApi
 {
     public static void Map(WebApplication app)
@@ -61,7 +81,76 @@ static class ResultsApi
                 .OrderByDescending(x => x.Time, StringComparer.Ordinal), JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* POST /api/icu/results/labs/{labId}/acknowledge — doctor RBAC (results.acknowledge). */
+        /* POST /api/icu/results/labs — CREATE a lab result (results audit PR).
+           Ancillary RBAC (results.create — the producing service enters
+           results; doctor/nurse tokens are 403'd). The result is scoped to
+           the patient's OPEN encounter (409 if closed — initiating care)
+           and arrives UNACKNOWLEDGED, entering the inbox. encounterId,
+           bed/name snapshots, draw-level flag, timestamps, and the actor
+           are all server-derived — none is accepted from the client. */
+        app.MapPost("/api/icu/results/labs", (CreateLabRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "results.create") is IResult denied) return denied;
+            if (ResultsLogic.ValidateLabCreate(req, db) is string problem)
+                return ApiError.BadRequest(problem);
+            if (EncounterGuard.RequireOpenForPatient(db, req.PatientId!, "creating a lab result", out var enc) is IResult conflict)
+                return conflict;
+            var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var time = DateTime.UtcNow.ToString("HH:mm");
+            var items = req.Items!.Select(i => new LabItemFull(
+                i.Analyte!, i.Value!.Value, i.Unit ?? "", i.RefRange!, i.RefLow!.Value, i.RefHigh!.Value, i.Flag!)).ToList();
+            var row = new LabDrawRow
+            {
+                LabId = ResultsLogic.NextLabId(), PatientId = req.PatientId!,
+                EncounterId = enc!.EncounterId, BedId = enc.BedId, PatientName = pt.Name,
+                Panel = req.Panel!.Trim(), Label = req.Label!.Trim(),
+                CollectedAt = time, ResultedAt = time,
+                ItemsJson = JsonSerializer.Serialize(items, JsonOpts.Web),
+                Flag = ResultsLogic.DeriveLabFlag(req.Items!), Note = req.Note?.Trim(),
+                Acknowledged = false,
+                EventsJson = JsonSerializer.Serialize(
+                    new List<ResultEventDto> { new(time, actor, "resulted", null) }, JsonOpts.Web),
+            };
+            db.LabDraws.Add(row);
+            db.SaveChanges();
+            return Results.Json(row.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* POST /api/icu/results/imaging — CREATE an imaging result (same rules;
+           the study is recorded at the RESULTED stage: report + impression
+           present, status final — the ordered/performed pipeline stages
+           arrive with the imaging ORDER workflow, not manual result entry). */
+        app.MapPost("/api/icu/results/imaging", (CreateImagingRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "results.create") is IResult denied) return denied;
+            if (ResultsLogic.ValidateImagingCreate(req, db) is string problem)
+                return ApiError.BadRequest(problem);
+            if (EncounterGuard.RequireOpenForPatient(db, req.PatientId!, "creating an imaging result", out var enc) is IResult conflict)
+                return conflict;
+            var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var time = DateTime.UtcNow.ToString("HH:mm");
+            var row = new ImagingStudyRow
+            {
+                StudyId = ResultsLogic.NextStudyId(), PatientId = req.PatientId!,
+                EncounterId = enc!.EncounterId, BedId = enc.BedId, PatientName = pt.Name,
+                Modality = req.Modality!.Trim(), Description = req.Description!.Trim(),
+                OrderedAt = time, PerformedAt = time, ReportedAt = time, Status = "final",
+                Report = req.Report!.Trim(), Impression = req.Impression!.Trim(),
+                Flag = req.Flag!, Note = req.Note?.Trim(),
+                Acknowledged = false,
+                EventsJson = JsonSerializer.Serialize(
+                    new List<ResultEventDto> { new(time, actor, "resulted", null) }, JsonOpts.Web),
+            };
+            db.ImagingStudies.Add(row);
+            db.SaveChanges();
+            return Results.Json(row.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* POST /api/icu/results/labs/{labId}/acknowledge — doctor RBAC
+           (results.acknowledge). NO EncounterGuard — acknowledging is
+           completing the record and must succeed on a closed encounter. */
         app.MapPost("/api/icu/results/labs/{labId}/acknowledge", (string labId, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
@@ -70,6 +159,8 @@ static class ResultsApi
             d.Acknowledged = true;
             d.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";
             d.AcknowledgedAt = DateTime.UtcNow.ToString("HH:mm");
+            d.EventsJson = ResultsLogic.AppendEvent(d.EventsJson,
+                new(d.AcknowledgedAt, d.AcknowledgedBy, "acknowledged", null));
             db.SaveChanges();
             return Results.Json(d.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
@@ -83,6 +174,61 @@ static class ResultsApi
             s.Acknowledged = true;
             s.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";
             s.AcknowledgedAt = DateTime.UtcNow.ToString("HH:mm");
+            s.EventsJson = ResultsLogic.AppendEvent(s.EventsJson,
+                new(s.AcknowledgedAt, s.AcknowledgedBy, "acknowledged", null));
+            db.SaveChanges();
+            return Results.Json(s.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* POST /api/icu/results/labs/{labId}/unacknowledge — reverse an
+           acknowledgment (own or another's). Doctor RBAC mirrors
+           acknowledge; a REQUIRED reason is validated like discontinue.
+           NEVER a deletion: the original acknowledgment stays in the event
+           history; the reversal appends its own audited event; the
+           current-state summary clears and the result RETURNS TO THE
+           INBOX (derived from Acknowledged=false). NO EncounterGuard —
+           completing the record stays allowed on a closed encounter. */
+        app.MapPost("/api/icu/results/labs/{labId}/unacknowledge",
+            (string labId, UnacknowledgeRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
+            if (string.IsNullOrWhiteSpace(req.Reason))
+                return ApiError.BadRequest("reason is required to reverse an acknowledgment");
+            if (req.Reason.Length > OrderLogic.MaxTextLength)
+                return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
+            var d = db.LabDraws.FirstOrDefault(x => x.LabId == labId && x.Acknowledged);
+            if (d is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var time = DateTime.UtcNow.ToString("HH:mm");
+            d.EventsJson = ResultsLogic.AppendEvent(d.EventsJson,
+                new(time, actor, "unacknowledged",
+                    $"acknowledgment by {d.AcknowledgedBy} at {d.AcknowledgedAt} reversed — {req.Reason.Trim()}"));
+            d.Acknowledged = false;
+            d.AcknowledgedBy = null;
+            d.AcknowledgedAt = null;
+            db.SaveChanges();
+            return Results.Json(d.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* POST /api/icu/results/imaging/{studyId}/unacknowledge — same rules. */
+        app.MapPost("/api/icu/results/imaging/{studyId}/unacknowledge",
+            (string studyId, UnacknowledgeRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
+            if (string.IsNullOrWhiteSpace(req.Reason))
+                return ApiError.BadRequest("reason is required to reverse an acknowledgment");
+            if (req.Reason.Length > OrderLogic.MaxTextLength)
+                return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
+            var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId && x.Acknowledged);
+            if (s is null) return Results.Json(new { error = "Not found" }, JsonOpts.Web, statusCode: 404);
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var time = DateTime.UtcNow.ToString("HH:mm");
+            s.EventsJson = ResultsLogic.AppendEvent(s.EventsJson,
+                new(time, actor, "unacknowledged",
+                    $"acknowledgment by {s.AcknowledgedBy} at {s.AcknowledgedAt} reversed — {req.Reason.Trim()}"));
+            s.Acknowledged = false;
+            s.AcknowledgedBy = null;
+            s.AcknowledgedAt = null;
             db.SaveChanges();
             return Results.Json(s.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();

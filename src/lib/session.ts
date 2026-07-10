@@ -70,6 +70,7 @@ export type Permission =
   | 'meds.administer'      // MAR documentation (given / held / refused)
   | 'results.view'
   | 'results.acknowledge'
+  | 'results.create'       // results audit PR: enter a lab/imaging result (producing service)
   | 'notes.document'       // nursing tasks, I&O, SBAR handoff
   | 'ai.view'
   | 'admin.view'           // administrative landing view
@@ -100,8 +101,10 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   Pharmacist: ['patients.view', 'orders.view', 'results.view'],
   /* vent-focused: orders, ABGs, and risk trajectories, view-only */
   RespiratoryTherapist: ['patients.view', 'orders.view', 'results.view', 'ai.view'],
-  /* lab/radiology technicians: pending order worklist + results, view-only */
-  Ancillary: ['patients.view', 'orders.view', 'results.view'],
+  /* lab/radiology technicians: pending order worklist + results; entering
+     a RESULT is the producing service's authority (results audit PR) —
+     doctors/nurses are 403'd on create, the usual polarity flip */
+  Ancillary: ['patients.view', 'orders.view', 'results.view', 'results.create'],
   /* physio/dietitian: chart + results, view-only */
   AlliedHealth: ['patients.view', 'results.view'],
 }

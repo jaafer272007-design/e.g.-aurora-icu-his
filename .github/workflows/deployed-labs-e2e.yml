@@ -1,25 +1,26 @@
 # Deployed Labs/Imaging E2E — verifies the LIVE Render service after a
-# /server deploy (Stage 10 Phase 3): authenticated lab/imaging/inbox
-# fetches return the real seeded data, unauthenticated calls are 401, and
-# the acknowledge action enforces RBAC SERVER-SIDE — a nurse token is
-# rejected with 403 while a doctor token succeeds (actor taken from the
-# token). Dispatch manually after merging /server changes to main.
-#
-# IDEMPOTENT UNDER PERSISTENCE (fixed in the database-persistence PR):
-# the acknowledge target is picked DYNAMICALLY from the unacked inbox each
-# run — the original hardcoded LAB-6007 could only ever be acknowledged
-# once against a durable database (it "worked" before only because the
-# ephemeral DB reseeded on every boot). With 73 seeded draws the suite has
-# a deep well of targets; when none remain it fails LOUDLY with a clear
-# message instead of a confusing 404.
+# /server deploy. REWRITTEN by the results-audit PR to be SELF-SUFFICIENT
+# per the codified finite-seeded-resources rule: the suite ADMITS ITS OWN
+# PATIENT and CREATES THE RESULTS IT CONSUMES (the real result-creation
+# endpoint, Ancillary RBAC), so the permanently-spent seeded-unacked well
+# no longer exists as a dependency and the suite is idempotent against
+# the durable database forever. Covers: seeded SUBSET reads + 401s +
+# CORS, creation RBAC in both directions (tech 200, doctor/nurse 403),
+# server-derived encounterId (client-supplied → 400 binding),
+# acknowledge RBAC restored to automated coverage (nurse 403 / doctor
+# 200 with token actor), un-acknowledge (never-destroy history, required
+# reason, returns to inbox, replay 404), and THE ASYMMETRIC ENCOUNTER
+# RULE live: create on a closed encounter → 409 (initiating care) while
+# acknowledge AND un-acknowledge on that same closed encounter → 200
+# (completing the record of care already given). Dispatch manually after
+# merging /server changes to main — SEQUENTIALLY with the other suites.
 name: Deployed Labs E2E
 on: workflow_dispatch
 
 # STRUCTURAL serialization of the deployed suites (the recorded
-# never-dispatch-concurrently lesson, previously enforced only by memory):
-# one shared group across all eight suites means two can never RUN at
-# once. GitHub keeps at most one PENDING run per group, so still dispatch
-# one at a time — a second queued dispatch may supersede a waiting one.
+# never-dispatch-concurrently lesson): one shared group across all the
+# suites means two can never RUN at once. GitHub keeps at most one
+# PENDING run per group, so still dispatch one at a time.
 concurrency:
   group: deployed-e2e
   cancel-in-progress: false
@@ -34,12 +35,6 @@ jobs:
     steps:
       - name: Warm up + require THIS COMMIT's build to be live (no stale deployments)
         run: |
-          # /healthz serves the deployed commit in `build` (RENDER_GIT_COMMIT).
-          # The suite REFUSES to run against any other build, so a green run
-          # is attributable to exactly the commit it was dispatched on — a
-          # suite can never again test a stale deployment and report green
-          # (the 2026-07-10 CI-evidence audit's biggest finding). 60x10s also
-          # covers the Render cold start + a full rebuild after a merge.
           for i in $(seq 1 60); do
             build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
             echo "attempt $i: live build=$build · dispatched commit=$GITHUB_SHA"
@@ -48,66 +43,188 @@ jobs:
           done
           echo "STALE DEPLOYMENT: /healthz build '$build' never matched the dispatched commit '$GITHUB_SHA' — refusing to test an old build" && exit 1
 
-      - name: Login as doctor and nurse
+      - name: Login as doctor, nurse, and laboratory technician
         run: |
-          for u in sara.rahman maya.chen; do
+          for u in sara.rahman maya.chen noor.al-amin; do
             t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
               -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
             case $u in
-              sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
-              maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+              sara.rahman)  echo "DOC=$t"  >> "$GITHUB_ENV";;
+              maya.chen)    echo "NUR=$t"  >> "$GITHUB_ENV";;
+              noor.al-amin) echo "TECH=$t" >> "$GITHUB_ENV";;
             esac
             echo "$u: token issued"
           done
+          echo "MRN=MRN-LABS-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
 
-      - name: Unauthenticated labs/imaging/inbox → 401
+      - name: Unauthenticated reads → 401; seeded reads are a SUBSET (+ CORS)
         run: |
-          for path in "results/labs?patientId=P-1001" "results/imaging?patientId=P-1001" "results/inbox"; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/$path")
-            echo "$path -> HTTP $code"
-            [ "$code" = "401" ] || exit 1
+          for path in "/api/icu/results/labs?patientId=P-1001" "/api/icu/results/imaging?patientId=P-1001" "/api/icu/results/inbox"; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' "$API$path")
+            echo "unauth $path -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
           done
-
-      - name: Authenticated lab fetch returns real seeded data (+ CORS)
-        run: |
           curl -sf -D /tmp/h -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" \
             "$API/api/icu/results/labs?patientId=P-1001" -o /tmp/labs.json
           grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
           python3 -c '
           import json; d=json.load(open("/tmp/labs.json"))
-          # SUBSET assertion (codified rule) — never an exact count: the
-          # durable DB legitimately grows when lab creation ships. Lookup
-          # by id, not position: future ids can sort before LAB-6xxx.
-          assert len(d)>=49, len(d)
-          byid={x["labId"]: x for x in d}
-          assert "LAB-6001" in byid and byid["LAB-6001"]["panel"]=="CBC", "seeded LAB-6001 missing/wrong"
-          unacked=[x["labId"] for x in d if not x["acknowledged"]]
-          print("draws:", len(d), "| unacked:", unacked)'
-          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging?patientId=P-1012" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d[0]["studyId"]=="IMG-7004", d; print("imaging OK:", d[0]["studyId"], d[0]["status"])'
+          by={x["labId"]:x for x in d}
+          assert len(d)>=49, len(d)                                # subset rule — never an exact count
+          l=by["LAB-6001"]
+          assert l["panel"]=="CBC" and l["encounterId"]=="ENC-1001", l
+          print("P-1001 labs:", len(d), "draws (seeded subset present; rows scoped to their encounter)")'
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/results/imaging?patientId=P-1001" | python3 -c '
+          import json,sys; d={x["studyId"]:x for x in json.load(sys.stdin)}
+          assert "IMG-7001" in d and d["IMG-7001"]["encounterId"]=="ENC-1001"
+          print("imaging seeded subset present (nurse read OK)")'
 
-      - name: Pick an UNACKED lab for THIS RUN (idempotent under persistence)
+      - name: Admit THIS RUN's patient (unique MRN, dynamic free bed)
         run: |
-          LID=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/inbox" \
-            | python3 -c 'import json,sys; labs=[x for x in json.load(sys.stdin) if x["kind"]=="lab"]; assert labs, "no unacknowledged labs remain on the persistent DB — extend the seed set or reset the database"; print(labs[0]["id"])')
-          echo "acknowledge target: $LID"
-          echo "LID=$LID" >> "$GITHUB_ENV"
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds.json
+          B1=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert free, "no free beds — discharge stale encounters"; print(free[0])')
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"E2E Labs Patient","age":58,"sex":"F","allergies":"None documented","diagnosis":"labs E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/adm.json
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          read PID EID <<<"$vals"
+          echo "admitted $PID on $EID (bed $B1)"
+          { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
 
-      - name: NURSE token rejected for acknowledge (server-side RBAC) → 403
+      - name: Creation RBAC both directions — doctor/nurse 403, unauth 401; TECH creates (encounterId server-derived)
         run: |
-          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" \
-            "$API/api/icu/results/labs/$LID/acknowledge")
-          echo "nurse acknowledge -> $out"
-          [ "$(echo "$out" | tail -1)" = "403" ] || exit 1
-          echo "$out" | head -1 | grep -q '"Insufficient permissions"' || exit 1
+          body='{"patientId":"'$PID'","panel":"CBC","label":"Now","note":"labs E2E created result","items":[{"analyte":"WBC","value":18.4,"unit":"x10^9/L","refRange":"4.0-11.0","refLow":4,"refHigh":11,"flag":"abnormal"},{"analyte":"Hgb","value":6.9,"unit":"g/dL","refRange":"12-16","refLow":12,"refHigh":16,"flag":"critical"}]}'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/results/labs")
+          echo "doctor create -> HTTP $rc"; [ "$rc" = "403" ] || { echo "doctor create must be 403 (producing-service authority)"; exit 1; }
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/results/labs")
+          echo "nurse create -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "$body" "$API/api/icu/results/labs")
+          echo "unauth create -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $TECH" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/results/labs" -o /tmp/lab.json
+          LABID=$(EID="$EID" python3 -c '
+          import json, os
+          d = json.load(open("/tmp/lab.json"))
+          assert d["encounterId"] == os.environ["EID"], d.get("encounterId")   # server-derived scope
+          assert d["acknowledged"] is False and "acknowledgedBy" not in d
+          assert d["flag"] == "critical"                                        # derived from the worst item
+          assert [e["action"] for e in d["history"]] == ["resulted"]
+          assert d["history"][0]["actor"] == "Noor Al-Amin"                     # token actor
+          print(d["labId"])')
+          curl -sf -X POST -H "Authorization: Bearer $TECH" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","modality":"CXR","description":"Portable chest — labs E2E","report":"Lines satisfactory.","impression":"No acute change.","flag":"normal"}' \
+            "$API/api/icu/results/imaging" -o /tmp/img.json
+          IMGID=$(EID="$EID" python3 -c '
+          import json, os
+          d = json.load(open("/tmp/img.json"))
+          assert d["encounterId"] == os.environ["EID"] and d["status"] == "final" and d["acknowledged"] is False
+          print(d["studyId"])')
+          echo "tech created $LABID (lab) + $IMGID (imaging), both scoped to $EID, both unacknowledged"
+          { echo "LABID=$LABID"; echo "IMGID=$IMGID"; } >> "$GITHUB_ENV"
 
-      - name: DOCTOR token succeeds for acknowledge (actor from token), replay → 404
+      - name: encounterId is STRICTLY SERVER-DERIVED — supplying it fails binding (400); malformed → precise 400
         run: |
-          curl -sf -X POST -H "Authorization: Bearer $DOC" \
-            "$API/api/icu/results/labs/$LID/acknowledge" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["acknowledged"] and d["acknowledgedBy"]=="Dr. Sara Rahman", d; print("acknowledged by:", d["acknowledgedBy"], "at:", d["acknowledgedAt"])'
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" \
-            "$API/api/icu/results/labs/$LID/acknowledge")
-          echo "replay -> HTTP $code"
-          [ "$code" = "404" ] || exit 1
+          for body in \
+            '{"patientId":"'$PID'","encounterId":"ENC-1001","panel":"CBC","label":"Now","items":[{"analyte":"W","value":5,"unit":"x","refRange":"1-2","refLow":1,"refHigh":2,"flag":"normal"}]}' \
+            '{"patientId":"'$PID'","panel":"CBC","label":"Now","items":[{"analyte":"W","value":5,"unit":"x","refRange":"1-2","refLow":1,"refHigh":2,"flag":"normal","encounterId":"ENC-1001"}]}'; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $TECH" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/results/labs")
+            echo "create with client-supplied encounterId -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          done
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TECH" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","panel":"Chemistry","label":"Now","items":[{"analyte":"W","value":5,"unit":"x","refRange":"1-2","refLow":1,"refHigh":2,"flag":"normal"}]}' "$API/api/icu/results/labs")
+          rc=$(echo "$out" | tail -1); [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "panel must be one of" || exit 1
+          echo "unknown panel -> 400 with the precise vocabulary error"
+
+      - name: Acknowledge RBAC restored to automated coverage — nurse 403, doctor 200 (token actor)
+        run: |
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/results/inbox" | LABID="$LABID" python3 -c '
+          import json,sys,os; assert os.environ["LABID"] in {i["id"] for i in json.load(sys.stdin)}
+          print("created result is in the unit inbox")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/results/labs/$LABID/acknowledge")
+          echo "nurse acknowledge -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/labs/$LABID/acknowledge" | python3 -c '
+          import json,sys; d=json.load(sys.stdin)
+          assert d["acknowledged"] is True and d["acknowledgedBy"]=="Dr. Sara Rahman"
+          assert [e["action"] for e in d["history"]] == ["resulted","acknowledged"]
+          print("doctor acknowledged; actor from token; event appended")'
+
+      - name: Un-acknowledge — nurse 403; missing reason 400; doctor+reason 200 (NEVER-DESTROY history, back in inbox); replay 404
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API/api/icu/results/labs/$LABID/unacknowledge")
+          echo "nurse un-acknowledge -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{}' "$API/api/icu/results/labs/$LABID/unacknowledge")
+          rc=$(echo "$out" | tail -1); [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "reason is required" || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"reason":"acknowledged in error — labs E2E reversal"}' "$API/api/icu/results/labs/$LABID/unacknowledge" | python3 -c '
+          import json,sys; d=json.load(sys.stdin)
+          acts=[e["action"] for e in d["history"]]
+          assert d["acknowledged"] is False and "acknowledgedBy" not in d
+          assert acts == ["resulted","acknowledged","unacknowledged"], acts
+          assert d["history"][1]["actor"] == "Dr. Sara Rahman"                       # the ORIGINAL acknowledgment, preserved
+          assert "acknowledgment by Dr. Sara Rahman" in d["history"][2]["detail"]
+          assert "labs E2E reversal" in d["history"][2]["detail"]
+          print("reversal audited with reason; original acknowledgment preserved; summary cleared")'
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/inbox" | LABID="$LABID" python3 -c '
+          import json,sys,os; assert os.environ["LABID"] in {i["id"] for i in json.load(sys.stdin)}
+          print("result RETURNED to the inbox")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API/api/icu/results/labs/$LABID/unacknowledge")
+          echo "replay un-acknowledge -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+
+      - name: THE ASYMMETRIC ENCOUNTER RULE, live — discharge; create → 409; acknowledge AND un-acknowledge on the CLOSED encounter → 200
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null && echo "discharged $EID"
+          # creating a NEW result is initiating care -> 409 at the chokepoint
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $TECH" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","panel":"CBC","label":"Now","items":[{"analyte":"W","value":5,"unit":"x","refRange":"1-2","refLow":1,"refHigh":2,"flag":"normal"}]}' "$API/api/icu/results/labs")
+          rc=$(echo "$out" | tail -1); echo "create on closed encounter -> HTTP $rc"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "has no open encounter" in e and "creating a lab result" in e, e'
+          # acknowledging / reversing is COMPLETING THE RECORD -> must succeed (the day-3-draw/day-7-result case)
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/labs/$LABID/acknowledge" >/dev/null \
+            && echo "acknowledge on the CLOSED encounter -> 200"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"reason":"post-discharge review — labs E2E"}' "$API/api/icu/results/labs/$LABID/unacknowledge" >/dev/null \
+            && echo "un-acknowledge on the CLOSED encounter -> 200"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging/$IMGID/acknowledge" >/dev/null \
+            && echo "imaging acknowledge on the CLOSED encounter -> 200"
+          # leave everything acknowledged: the run must not accumulate inbox noise
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/labs/$LABID/acknowledge" >/dev/null
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/inbox" | LABID="$LABID" IMGID="$IMGID" python3 -c '
+          import json,sys,os
+          ids={i["id"] for i in json.load(sys.stdin)}
+          assert os.environ["LABID"] not in ids and os.environ["IMGID"] not in ids
+          print("run results all acknowledged — no inbox accumulation left behind")'
+
+      - name: Failure-path cleanup — release the encounter and acknowledge the run's results (runs on failure/cancel too)
+        if: always()
+        run: |
+          # Both cleanup actions are legal on a CLOSED encounter by design:
+          # discharge releases the bed; acknowledging a result is completing
+          # the record. Asserted, not assumed.
+          if [ -z "${PID:-}" ] || [ -z "${DOC:-}" ]; then
+            echo "no patient was admitted by this run — nothing to release"; exit 0
+          fi
+          open=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID&status=open" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["encounterId"] if d else "")')
+          if [ -n "$open" ]; then
+            curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$open/discharge" >/dev/null \
+              && echo "failure-path cleanup discharged $open" \
+              || { echo "CLEANUP FAILED: could not release $open — a bed is leaked"; exit 1; }
+          else
+            echo "no open encounter remains for $PID"
+          fi
+          # acknowledge any of the run's results still in the inbox (legal on the closed encounter)
+          for entry in $(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/results/inbox" | PID="$PID" python3 -c '
+          import json,sys,os
+          items=[i["kind"]+":"+i["id"] for i in json.load(sys.stdin) if i["patientId"]==os.environ["PID"]]
+          print(" ".join(items))'); do
+            kind="${entry%%:*}"; rid="${entry##*:}"
+            path=$([ "$kind" = "lab" ] && echo labs || echo imaging)
+            curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/$path/$rid/acknowledge" >/dev/null \
+              && echo "cleanup acknowledged $rid" || { echo "CLEANUP FAILED on $rid"; exit 1; }
+          done
+          curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/results/inbox" | PID="$PID" python3 -c '
+          import json,sys,os
+          left=[i["id"] for i in json.load(sys.stdin) if i["patientId"]==os.environ["PID"]]
+          assert not left, ("cleanup left unacknowledged run results:", left)
+          print("cleanup verified: no unacknowledged run result remains in the unit inbox")'

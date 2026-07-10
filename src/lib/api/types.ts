@@ -595,9 +595,22 @@ export interface LabResultItem {
   flag: ResultFlag
 }
 
+/** append-only result audit event (results audit PR) — acknowledge /
+ *  un-acknowledge / resulted. Server-populated; absent on the mock store. */
+export interface ResultEvent {
+  time: string
+  actor: string
+  action: 'resulted' | 'acknowledged' | 'unacknowledged'
+  detail?: string
+}
+
 export interface LabDraw {
   labId: string
   patientId: string
+  /** the encounter the result was created under — SERVER-derived from the
+   *  patient's open encounter (results audit PR), never client-supplied;
+   *  absent on the mock store */
+  encounterId?: string
   /** denormalized display fields */
   bedId: string
   patientName: string
@@ -615,6 +628,9 @@ export interface LabDraw {
   acknowledged: boolean
   acknowledgedBy?: string
   acknowledgedAt?: string
+  /** never-destroy audit history: a reversed acknowledgment survives here
+   *  while the summary fields above clear (results audit PR) */
+  history?: ResultEvent[]
 }
 
 /* ---------- GET /api/icu/results/imaging?patientId ---------- */
@@ -626,6 +642,8 @@ export type ImagingStatus = 'ordered' | 'in-progress' | 'preliminary' | 'final'
 export interface ImagingStudy {
   studyId: string
   patientId: string
+  /** see LabDraw.encounterId — same server-derived scope */
+  encounterId?: string
   bedId: string
   patientName: string
   modality: ImagingModality
@@ -642,6 +660,8 @@ export interface ImagingStudy {
   acknowledged: boolean
   acknowledgedBy?: string
   acknowledgedAt?: string
+  /** see LabDraw.history — same never-destroy audit record */
+  history?: ResultEvent[]
 }
 
 /* ---------- GET /api/icu/results/inbox — unit-wide unacknowledged ---------- */

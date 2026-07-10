@@ -33,7 +33,11 @@ static class Rbac
         ["Administrator"] = ["admin.view", "patients.view", "users.manage"],
         ["Pharmacist"] = ["patients.view", "orders.view", "results.view"],
         ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],
-        ["Ancillary"] = ["patients.view", "orders.view", "results.view"],
+        /* results.create (results audit PR): entering a result is the
+           PRODUCING SERVICE's authority — lab/radiology technicians — not
+           the prescriber's (doctor/nurse tokens are 403'd on create, the
+           same polarity flip as implement/administer/transfer) */
+        ["Ancillary"] = ["patients.view", "orders.view", "results.view", "results.create"],
         ["AlliedHealth"] = ["patients.view", "results.view"],
     };
 
