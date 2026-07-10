@@ -940,6 +940,44 @@ they ride with the next touch of each file):
   patients (the diagnosis join falls back to ""), so ADT discharges do
   not break the AI suite.
 
+**2026-07-10 hardening PR (follow-up — the audit's top items, FIXED):**
+- **Stale-deployment blindness KILLED**: `/healthz` now serves the
+  deployed commit (`build` = `RENDER_GIT_COMMIT`, "dev" locally) and
+  EVERY suite's warm-up asserts it equals the SHA the workflow was
+  dispatched against — mismatch after the retry budget is a loud
+  "STALE DEPLOYMENT" failure, never a green run against an old build.
+  Corollary: suites must be dispatched on a ref whose HEAD is the
+  deployed commit (main, after Render finishes) — dispatching a
+  non-deployed ref now correctly fails.
+- **Real CI exists (`ci.yml`)** — the repo's first `pull_request`
+  trigger: `tsc -b --force` + `vite build` (frontend) and
+  `dotnet build server` (the C# server is no longer compiled by
+  nothing) on every PR and every push to main. "Green main = no
+  workflow ran" is no longer true; the deploy-pages PR-gate design
+  itself is still unchanged.
+- **Failure-path cleanup**: the ADT and users suites end with
+  `if: always()` cleanup steps (they also run on failure AND
+  cancellation) that release the run's encounter and deactivate the
+  run's accounts, ASSERTING each outcome — a mid-run failure can no
+  longer leak a bed-occupying open encounter or an active account, and
+  the cleanup step itself fails loudly if anything remains live.
+- **The swallowed-assert pattern is gone**: every
+  `read VAR <<<"$(python3 -c '…assert…')"` site (MAR order-seeding, ADT
+  bed-pick + admission, users admission) now assigns to a variable
+  first — `vals=$(python3 …)` — so a failing assert fails ITS OWN step.
+- **Sequential dispatch is structural**: all eight suites share
+  `concurrency: group: deployed-e2e` (`cancel-in-progress: false`) —
+  two suites can never RUN concurrently. Still dispatch one at a time:
+  GitHub keeps at most one PENDING run per group.
+- **Labs subset rule**: `len(d)==49` → `len(d)>=49` + lookup-by-id (the
+  positional `d[0]` check was also byte-order-brittle); stale
+  "ephemeral DB" header comments in orders/MAR/timeline updated.
+- **Still open by choice**: CORS preflight coverage, origin-regex
+  escaping, JWT `exp` assert, GITHUB_ENV/python-source injection
+  hardening, the deploy-pages PR-gate redesign, the permanently-red
+  labs acknowledge leg, and MAR/timeline clinical-write accumulation
+  on live demo patients.
+
 ## Accessibility — required on every screen from Screen 3 onward
 (Screens 1–2 have known gaps — fix opportunistically when next touched)
 - Touch targets ≥ 44×44px

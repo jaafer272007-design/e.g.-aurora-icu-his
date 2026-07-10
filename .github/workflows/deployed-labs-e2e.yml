@@ -15,6 +15,15 @@
 name: Deployed Labs E2E
 on: workflow_dispatch
 
+# STRUCTURAL serialization of the deployed suites (the recorded
+# never-dispatch-concurrently lesson, previously enforced only by memory):
+# one shared group across all eight suites means two can never RUN at
+# once. GitHub keeps at most one PENDING run per group, so still dispatch
+# one at a time — a second queued dispatch may supersede a waiting one.
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
 env:
   API: https://icu-cp49.onrender.com
   PAGES_ORIGIN: https://jaafer272007-design.github.io
@@ -23,15 +32,21 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - name: Warm up (Render free tier cold start)
+      - name: Warm up + require THIS COMMIT's build to be live (no stale deployments)
         run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
-            echo "healthz attempt $i: HTTP $code"
-            [ "$code" = "200" ] && exit 0
+          # /healthz serves the deployed commit in `build` (RENDER_GIT_COMMIT).
+          # The suite REFUSES to run against any other build, so a green run
+          # is attributable to exactly the commit it was dispatched on — a
+          # suite can never again test a stale deployment and report green
+          # (the 2026-07-10 CI-evidence audit's biggest finding). 60x10s also
+          # covers the Render cold start + a full rebuild after a merge.
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: live build=$build · dispatched commit=$GITHUB_SHA"
+            [ "$build" = "$GITHUB_SHA" ] && exit 0
             sleep 10
           done
-          echo "service never became healthy" && exit 1
+          echo "STALE DEPLOYMENT: /healthz build '$build' never matched the dispatched commit '$GITHUB_SHA' — refusing to test an old build" && exit 1
 
       - name: Login as doctor and nurse
         run: |
@@ -61,8 +76,12 @@ jobs:
           grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
           python3 -c '
           import json; d=json.load(open("/tmp/labs.json"))
-          assert len(d)==49, len(d)
-          assert d[0]["labId"]=="LAB-6001" and d[0]["panel"]=="CBC", d[0]
+          # SUBSET assertion (codified rule) — never an exact count: the
+          # durable DB legitimately grows when lab creation ships. Lookup
+          # by id, not position: future ids can sort before LAB-6xxx.
+          assert len(d)>=49, len(d)
+          byid={x["labId"]: x for x in d}
+          assert "LAB-6001" in byid and byid["LAB-6001"]["panel"]=="CBC", "seeded LAB-6001 missing/wrong"
           unacked=[x["labId"] for x in d if not x["acknowledged"]]
           print("draws:", len(d), "| unacked:", unacked)'
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging?patientId=P-1012" \

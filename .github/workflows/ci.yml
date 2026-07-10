@@ -1,0 +1,42 @@
+# CI — the repo's first pull_request-triggered checks (2026-07-10 CI
+# evidence audit: no PR event ran anything, "green main" meant no workflow
+# ran, and the C# server was compiled by NOTHING except Render's invisible
+# post-merge build). Two jobs, both mandatory-by-presence on every PR and
+# every push to main:
+#   frontend — a REAL typecheck: `tsc -b --force` against the project
+#     references (bare `tsc --noEmit` on the solution-style root tsconfig
+#     is a no-op — the recorded PR #25 lesson), then the production
+#     bundle build.
+#   server — `dotnet build`: a C# compile error can no longer merge green.
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # --force: full check, immune to any restored incremental build state
+      - run: npx tsc -b --force
+      - run: npx vite build
+
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet build server --nologo

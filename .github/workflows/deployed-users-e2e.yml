@@ -28,6 +28,15 @@
 name: Deployed Users E2E
 on: workflow_dispatch
 
+# STRUCTURAL serialization of the deployed suites (the recorded
+# never-dispatch-concurrently lesson, previously enforced only by memory):
+# one shared group across all eight suites means two can never RUN at
+# once. GitHub keeps at most one PENDING run per group, so still dispatch
+# one at a time — a second queued dispatch may supersede a waiting one.
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
 env:
   API: https://icu-cp49.onrender.com
   PAGES_ORIGIN: https://jaafer272007-design.github.io
@@ -36,16 +45,21 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     steps:
-      - name: Warm up + wait for the Layer 3 code to be LIVE (cold start + redeploy)
+      - name: Warm up + require THIS COMMIT's build to be live (no stale deployments)
         run: |
-          for i in $(seq 1 40); do
-            health=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/healthz" || true)
-            users=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/api/icu/users" || true)
-            echo "attempt $i: healthz HTTP $health · unauth /users HTTP $users"
-            [ "$health" = "200" ] && [ "$users" = "401" ] && exit 0
+          # /healthz serves the deployed commit in `build` (RENDER_GIT_COMMIT).
+          # The suite REFUSES to run against any other build, so a green run
+          # is attributable to exactly the commit it was dispatched on — a
+          # suite can never again test a stale deployment and report green
+          # (the 2026-07-10 CI-evidence audit's biggest finding). 60x10s also
+          # covers the Render cold start + a full rebuild after a merge.
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: live build=$build · dispatched commit=$GITHUB_SHA"
+            [ "$build" = "$GITHUB_SHA" ] && exit 0
             sleep 10
           done
-          echo "users endpoints never went live (healthz $health, /users $users)" && exit 1
+          echo "STALE DEPLOYMENT: /healthz build '$build' never matched the dispatched commit '$GITHUB_SHA' — refusing to test an old build" && exit 1
 
       - name: Bootstrap — seeded ADMIN login (read-only dependency) + run-unique names
         run: |
@@ -126,7 +140,10 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"mrn":"'$MRN'","name":"L3 E2E Patient","age":50,"sex":"M","allergies":"None documented","diagnosis":"users E2E authority proof","attending":"Dr. E2E Doctor","bedId":"'$FREE'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
-          read PID EID <<<"$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. E2E Doctor", d; print(d["patient"]["patientId"], d["encounter"]["encounterId"])')"
+          # standalone assignment so a failing assert FAILS THIS STEP —
+          # `read VAR <<<"$(…)"` swallowed it (2026-07-10 audit finding)
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. E2E Doctor", d; print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          read PID EID <<<"$vals"
           echo "created doctor admitted $PID ($EID) to $FREE"; { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"Layer 3 authority proof","priority":"Routine"}],"sign":true}' \
@@ -180,10 +197,32 @@ jobs:
           assert 'E2eRotated77' not in raw and 'E2eNurse99' not in raw, 'password material on the wire!'
           print('reset audited; no password material anywhere in the account list')"
 
-      - name: Cleanup — discharge the run's patient; deactivate every created account (idempotent forever)
+      - name: Cleanup — discharge the run's patient + deactivate every created account (ASSERTED; runs on failure/cancel too)
+        if: always()
         run: |
-          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null && echo "discharged $EID (bed freed)"
-          for u in $UDOC $UNUR $UPHA $UADM; do
-            curl -sf -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$u/deactivate" >/dev/null && echo "deactivated $u"
+          # The old version swallowed every failure (`curl && echo` lists +
+          # an unconditional final echo) and only ran on success — a mid-run
+          # failure leaked an open encounter and ACTIVE credentials while a
+          # green step claimed otherwise (2026-07-10 audit). Now: runs on
+          # success, failure AND cancellation, every action's outcome is
+          # asserted, and the step fails loudly if anything remains live.
+          fail=0
+          if [ -n "${EID:-}" ] && [ -n "${DOC:-}" ]; then
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+            rc=$(echo "$out" | tail -1)
+            if [ "$rc" = "200" ]; then echo "discharged $EID (bed freed)"
+            elif [ "$rc" = "400" ] && echo "$out" | head -1 | grep -q "already discharged"; then echo "$EID already discharged"
+            else echo "FAILED to discharge $EID (HTTP $rc)"; fail=1; fi
+          else
+            echo "no encounter was created by this run"
+          fi
+          for u in ${UDOC:-} ${UNUR:-} ${UPHA:-} ${UADM:-}; do
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$u/deactivate")
+            rc=$(echo "$out" | tail -1)
+            if [ "$rc" = "200" ]; then echo "deactivated $u"
+            elif [ "$rc" = "400" ] && echo "$out" | head -1 | grep -q "already deactivated"; then echo "$u already deactivated"
+            elif [ "$rc" = "404" ]; then echo "$u was never created"
+            else echo "FAILED to deactivate $u (HTTP $rc)"; fail=1; fi
           done
-          echo "no active e2e credentials remain; deactivated rows accumulate = live durability evidence"
+          [ "$fail" = "0" ] || { echo "CLEANUP INCOMPLETE — live artifacts remain, manual action required"; exit 1; }
+          echo "cleanup VERIFIED: no active e2e credentials, no open e2e encounter (deactivated rows accumulate = live durability evidence)"

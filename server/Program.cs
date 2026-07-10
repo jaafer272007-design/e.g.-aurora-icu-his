@@ -106,8 +106,14 @@ var decoyHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString(), workFa
 
 Seeder.SeedAll(app, demoPassword, dbLabel);
 
-/* health/warmup probe (also Render's health check path) */
-app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3" }));
+/* health/warmup probe (also Render's health check path). `build` carries
+   the git commit this binary was deployed from (Render injects
+   RENDER_GIT_COMMIT at runtime; "dev" outside Render) — every deployed
+   E2E suite's warm-up asserts it matches the commit the workflow was
+   dispatched against, so a suite can never again run green against a
+   STALE deployment (the 2026-07-10 CI-evidence audit's biggest finding). */
+var build = Environment.GetEnvironmentVariable("RENDER_GIT_COMMIT") ?? "dev";
+app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build }));
 
 /* endpoint groups — same registration order as the pre-split Program.cs;
    every route string is byte-identical (the /api/icu/ prefix on Core
