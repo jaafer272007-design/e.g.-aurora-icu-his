@@ -1,12 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-11 · current through the Core patient-identity
-read PR — GET /adt/patients/{id} through the shared roster resolver
-(no fork), DOB captured + age computed at read, print identity ladder's
-middle rung; both Print-Center-recorded open questions RESOLVED.
-Previous milestones: Print Center Foundation Phase 1 (PR #50), safety
-enforcement (PR #46, live-verified). Next: the remaining Print Center
-templates and environment separation (dev/staging/prod).**
+**Last updated: 2026-07-11 · current through the print live-verification
+PR — the deployed Discharge Summary now RENDER-VERIFIED for a discharged
+patient on the live Pages site (a stale-Pages-deploy live finding fixed;
+`/build.txt` frontend stamp; twelfth suite `deployed-print-e2e.yml`
+renders documents headlessly behind server + Pages freshness gates).
+Previous milestones: patient-identity read (PR #51 — both
+Print-Center-recorded open questions resolved, now including the live
+render), Print Center Foundation Phase 1 (PR #50), safety enforcement
+(PR #46). Next: the remaining Print Center templates and environment
+separation (dev/staging/prod).**
 
 *[Docs split note (2026-07-10): every unmarked line below was moved verbatim
 from the pre-split CLAUDE.md. The only additions are lines styled like this
@@ -1405,6 +1408,36 @@ to be printed after discharge — no longer renders "Patient Not Found" or
   still the locked NotFound); `deployed-adt-e2e.yml` extended (no-fork
   equality live, identity-survives-discharge, DOB leg, validation 400s,
   absence probe; cleanup releases both run encounters).
+- **LIVE FINDING (2026-07-11, hands-on — a gap the API suites are
+  structurally blind to)**: after PR #51 merged, the DEPLOYED API served
+  discharged patients' full identity (owner-verified: P-1047 → 200 with
+  MRN, age 36, allergies "Sulfa") and deployed-adt-e2e ran green
+  (29154429557) — yet the DEPLOYED Discharge Summary still rendered
+  identity dashes with the snapshot notice. CAUSE — a STALE PAGES
+  DEPLOYMENT, not a code defect: deploy-pages' deploy job was SKIPPED on
+  the #51 branch push (single push, PR created seconds later — the
+  documented push-time PR-gate trap; run 29154143554 concluded green
+  with `deploy: skipped`), and pushes to main never trigger the workflow
+  at all, so the live frontend was still PR #50's build (6e2482e). An
+  API suite can never see this class: it does not render documents.
+  RESOLUTION, all live-verified: the site was redeployed by dispatch
+  (the deploy JOB confirmed run, not just a green run); deploy-pages now
+  stamps `/build.txt` with the built commit — the `/healthz build`
+  analogue for the FRONTEND; and the TWELFTH suite,
+  `deployed-print-e2e.yml`, renders the LIVE Discharge Summary with
+  headless Chrome for its own admitted-then-discharged DOB patient,
+  behind TWO content-equality gates (server, and Pages freshness via
+  build.txt — missing/stale fails loudly naming the dispatch-deploy
+  operational step). FIRST GREEN RUN against the live site: 29155016123
+  (pre-registration slot-borrow; patient P-1048/ENC-1052) — 8/8: no
+  Patient Not Found, MRN rendered, age 40/F COMPUTED from DOB, allergies
+  matching the chart, no dashes, no snapshot notice, locked NotFound for
+  an absent id. Requirement 3 counts as live only from this run — a
+  suite passing against the API is NOT evidence about the rendered page.
+- **Display debt (recorded)**: the Print Center hub lists ROSTER
+  patients only, so a discharged patient's documents are reachable only
+  by deep link today — the hub needs a discharged-encounter picker
+  (rides with the remaining templates).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

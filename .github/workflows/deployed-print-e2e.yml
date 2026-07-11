@@ -1,0 +1,184 @@
+# Deployed Print E2E — the TWELFTH suite, and the first that verifies the
+# LIVE PAGES FRONTEND by actually RENDERING a document, not by calling the
+# API. Exists because live hands-on verification (2026-07-11) found a gap
+# the API suites structurally cannot catch: the server half of the
+# patient-identity read was correct on the deployed API while the deployed
+# Discharge Summary still rendered identity dashes — the Pages site was
+# STALE (the deploy-pages PR-gate trap: a single-push branch whose PR is
+# created after the push deploys nothing, and pushes to main never
+# deploy). An API-only suite is blind to that entire class.
+#
+# What it asserts, headlessly against the LIVE Pages site + LIVE API:
+# a Discharge Summary for a GENUINELY DISCHARGED patient renders full
+# identity — MRN, age (computed from DOB), sex, allergies — with no "—"
+# dashes and no encounter-snapshot notice (the identity ladder's middle
+# rung consumed live), and the locked NotFound pattern still renders for
+# an absent id.
+#
+# TWO freshness gates, both content-equality (the v3 rule — a gate's
+# comparison set must be exactly the inputs that determine the artifact):
+#   server gate: /healthz build's server/ tree + render.yaml blob ==
+#     the dispatched ref's (same as every other suite);
+#   PAGES gate:  /build.txt (stamped by deploy-pages since this PR) names
+#     the commit the site was built from; its FRONTEND build context
+#     (src/ tree + index.html + package-lock.json + vite.config.ts +
+#     tsconfig*.json + deploy-pages.yml) must equal the dispatched ref's.
+#     A missing build.txt or stale content fails LOUDLY with the
+#     operational step: dispatch deploy-pages on the ref.
+#
+# SELF-SUFFICIENT AND IDEMPOTENT: admits its own patient (unique MRN,
+# dateOfBirth capture, distinctive allergies), discharges it BEFORE
+# rendering (the discharged case IS the point), and `if: always()`
+# cleanup re-asserts the encounter is released.
+name: Deployed Print E2E
+on: workflow_dispatch
+
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
+env:
+  API: https://icu-cp49.onrender.com
+  PAGES: https://jaafer272007-design.github.io/e.g.-aurora-icu-his
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dispatched ref (FULL history — the gates resolve deployed commits' objects)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SERVER gate — deployed build's server content must equal this ref's
+        run: |
+          WANT_SRV=$(git rev-parse "$GITHUB_SHA:server")
+          WANT_YML=$(git rev-parse "$GITHUB_SHA:render.yaml")
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            BS=$(git rev-parse -q --verify "$build:server" 2>/dev/null || echo "<unknown-commit>")
+            BY=$(git rev-parse -q --verify "$build:render.yaml" 2>/dev/null || echo "<unknown-commit>")
+            echo "attempt $i: live build=$build"
+            [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && exit 0
+            sleep 10
+          done
+          echo "STALE SERVER DEPLOYMENT: build '$build' does not carry this ref's server content" && exit 1
+
+      - name: PAGES gate — deployed frontend's build context must equal this ref's
+        run: |
+          ctx_hash() { # commit -> one hash over the frontend build context
+            local c=$1
+            { for p in src index.html package-lock.json vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json .github/workflows/deploy-pages.yml; do
+                git rev-parse -q --verify "$c:$p" 2>/dev/null || echo "MISSING:$p"
+              done; } | sha256sum | cut -d' ' -f1
+          }
+          WANT=$(ctx_hash "$GITHUB_SHA")
+          for i in $(seq 1 30); do
+            build=$(curl -sf --max-time 30 "$PAGES/build.txt" 2>/dev/null | tr -d '[:space:]' || echo "")
+            if [ -z "$build" ]; then
+              echo "attempt $i: no /build.txt on the live site yet"
+            else
+              GOT=$(ctx_hash "$build" 2>/dev/null || echo "<unknown-commit>")
+              echo "attempt $i: pages build=$build"
+              [ "$GOT" = "$WANT" ] && { echo "pages frontend content matches this ref"; exit 0; }
+            fi
+            sleep 10
+          done
+          echo "STALE PAGES DEPLOYMENT: the live site does not serve this ref's frontend" \
+            "(no /build.txt = built before the stamp existed). Operational step: dispatch" \
+            "'Deploy to GitHub Pages' (workflow_dispatch) on this ref, wait ~2 min, re-dispatch this suite." && exit 1
+
+      - name: Login (doctor) + run-unique names
+        run: |
+          t=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
+            -d '{"username":"sara.rahman","password":"Aurora2026!"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          { echo "DOC=$t"; echo "MRN=MRN-PRINTE2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+          echo "doctor token issued"
+
+      - name: Admit THIS RUN's patient (DOB capture), then DISCHARGE — the case under test
+        run: |
+          FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
+            | python3 -c 'import json,sys; b=[x["bedId"] for x in json.load(sys.stdin) if not x.get("patientId")]; assert b, "no free beds"; print(b[0])')
+          DOBSTR=$(python3 -c '
+          import datetime
+          t = datetime.date.today()
+          try: base = t.replace(year=t.year-41)
+          except ValueError: base = t.replace(year=t.year-41, day=28)
+          print((base + datetime.timedelta(days=40)).isoformat())')
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"Print E2E Patient","dateOfBirth":"'$DOBSTR'","sex":"F","allergies":"Sulfa — rash (print e2e)","diagnosis":"print render E2E","attending":"Dr. E2E","bedId":"'$FREE'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/adm.json
+          # EXPORT BEFORE ASSERTING (leak prevention — the recorded lesson)
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          read PID EID <<<"$vals"
+          { echo "PID=$PID"; echo "EID=$EID"; echo "DOBSTR=$DOBSTR"; } >> "$GITHUB_ENV"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null
+          echo "admitted $PID ($EID) with dateOfBirth $DOBSTR and DISCHARGED — the roster no longer covers them"
+
+      - name: Install headless browser driver
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm i playwright-core@1 >/dev/null 2>&1
+          echo "playwright-core installed (uses the runner's preinstalled Chrome via channel)"
+        working-directory: /tmp
+
+      - name: RENDER the live Discharge Summary — full identity, no dashes, no snapshot notice
+        run: |
+          cat > /tmp/render-proof.mjs <<'EOF'
+          import { chromium } from 'playwright-core'
+          const { API, PAGES, DOC, PID, EID, DOBSTR } = process.env
+          const browser = await chromium.launch({ channel: 'chrome' })
+          const ctx = await browser.newContext()
+          await ctx.addInitScript(s => sessionStorage.setItem('aurora.session', JSON.stringify(s)),
+            { name: 'Dr. Sara Rahman', jobTitle: 'Consultant', token: DOC })
+          const page = await ctx.newPage()
+          let pass = 0, fail = 0
+          const check = (l, ok, x = '') => { if (ok) { pass++; console.log('ok  ', l) } else { fail++; console.log('FAIL', l, x) } }
+
+          await page.goto(`${PAGES}/print/discharge-summary/${PID}?enc=${EID}`, { waitUntil: 'networkidle', timeout: 60000 })
+          check('no Patient Not Found for the discharged patient', await page.locator('.notfound').count() === 0)
+          await page.waitForSelector('.print-doc', { timeout: 30000 })
+          const text = await page.locator('.print-doc').innerText()
+
+          /* birthday-aware expected age, RE-DERIVED at assert time in UTC
+             (the recorded suite lesson — no precomputed value to race) */
+          const dob = new Date(DOBSTR + 'T00:00:00Z'), now = new Date()
+          let age = now.getUTCFullYear() - dob.getUTCFullYear()
+          const beforeBirthday = now.getUTCMonth() < dob.getUTCMonth() ||
+            (now.getUTCMonth() === dob.getUTCMonth() && now.getUTCDate() < dob.getUTCDate())
+          if (beforeBirthday) age--
+
+          check('MRN rendered from the chart', text.includes(process.env.MRN))
+          check(`age/sex rendered computed from DOB (${age} / F)`, text.includes(`${age} / F`))
+          check('allergies rendered matching the chart', text.includes('Sulfa — rash (print e2e)'))
+          check('no dash placeholders in MRN / age-sex / allergies',
+            !/MRN\n—/.test(text) && !/AGE \/ SEX\n— \/ —/i.test(text) && !/ALLERGIES\n—\n/i.test(text))
+          check('no encounter-snapshot notice (the middle rung was consumed)',
+            !text.includes('no longer on the active roster'))
+          check('encounter scope + discharged status printed', text.includes(EID) && /discharged/i.test(text))
+
+          await page.goto(`${PAGES}/print/discharge-summary/P-GHOST-${Date.now()}`, { waitUntil: 'networkidle', timeout: 60000 })
+          await page.waitForSelector('.notfound', { timeout: 30000 })
+          check('absent id renders the locked NotFound pattern', true)
+
+          await browser.close()
+          console.log(`\nLIVE RENDER PROOF: pass=${pass} fail=${fail}`)
+          process.exit(fail ? 1 : 0)
+          EOF
+          cd /tmp && API="$API" PAGES="$PAGES" DOC="$DOC" PID="$PID" EID="$EID" DOBSTR="$DOBSTR" MRN="$MRN" node render-proof.mjs
+
+      - name: Failure-path cleanup — release THIS run's encounter (runs on failure/cancel too)
+        if: always()
+        run: |
+          if [ -z "${EID:-}" ] || [ -z "${DOC:-}" ]; then
+            echo "no encounter was created by this run — nothing to release"; exit 0
+          fi
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
+          rc=$(echo "$out" | tail -1)
+          case "$rc" in
+            200) echo "cleanup released $EID";;
+            409) echo "$out" | head -1 | grep -q "already discharged" || { echo "unexpected 409: $out"; exit 1; }
+                 echo "$EID already discharged (normal path) — nothing leaked";;
+            *)   echo "CLEANUP FAILED: could not release $EID (HTTP $rc)"; exit 1;;
+          esac
