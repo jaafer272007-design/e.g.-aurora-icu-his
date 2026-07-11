@@ -66,7 +66,17 @@ jobs:
       # freshness by CONTENT (the same v3 gate rule as the server suites).
       # Added after live hands-on verification caught a stale Pages deploy
       # the API suites structurally could not see (2026-07-11).
-      - run: echo "${GITHUB_SHA}" > dist/build.txt
+      # Line 2 is the ENVIRONMENT IDENTITY (environment-separation §11
+      # step 1): this Pages site is the STAGING frontend per the merged
+      # design. The value is configuration in THIS versioned file (inside
+      # the Pages gate's comparison set — no dashboard state), passed as
+      # an env var so the future production build carries "production"
+      # through the same mechanism (§11 step 3), no code change.
+      - run: |
+          echo "${GITHUB_SHA}"  > dist/build.txt
+          echo "${APP_ENV}"    >> dist/build.txt
+        env:
+          APP_ENV: staging
       # SPA fallback: Pages serves 404.html for unknown paths, letting the router take over
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5
