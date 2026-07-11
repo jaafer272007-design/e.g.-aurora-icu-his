@@ -18,7 +18,7 @@ const toRoundingPatient = (patientId: string): RoundingPatient => {
 
 export const ROUNDING_LIST: RoundingListResponse = {
   physician: { name: 'Dr. Sara Rahman', initials: 'SR', role: 'Intensivist · Panel: Pod A/B' },
-  patients: PANEL_PATIENT_IDS.map(toRoundingPatient),
+  patients: /* @__PURE__ */ PANEL_PATIENT_IDS.map(toRoundingPatient),
 }
 
 export const ACTION_QUEUES: ActionQueuesResponse = {

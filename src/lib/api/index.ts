@@ -11,7 +11,8 @@ import type {
   OrderSetsResponse, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
   RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse, UserAccount,
 } from './types'
-import { BEDS_RESPONSE, UNIT_SUMMARY, composeBedsResponse, mockAdtBeds } from './data/beds'
+import { composeBedsResponse } from './bedboard'
+import { BEDS_RESPONSE, UNIT_SUMMARY, mockAdtBeds } from './data/beds'
 import { allPatients, derivedAlertCount } from './data/patients'
 import { rosterFor } from './data/roster'
 import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, VENTILATOR } from './data/panels'
@@ -39,6 +40,27 @@ const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 const respond = <T>(payload: T, latencyMs: number): Promise<T> =>
   new Promise(resolve => setTimeout(() => resolve(clone(payload)), latencyMs))
 
+/* ==================== §11 step 3 — the mock layer is ABSENT in production ====================
+   Every mock/demo fallback in this module sits behind
+   `if (import.meta.env.VITE_APP_ENV !== 'production')`. Vite statically
+   replaces import.meta.env.VITE_APP_ENV at build time, so in a
+   production bundle each guard is `if ("production" !== 'production')`
+   — dead code the bundler eliminates together with the mock-store
+   modules it references. Not disabled by a flag: NOT THERE (verified by
+   bundle inspection, recorded in 02). A production data call that
+   cannot be served REFUSES loudly instead: apiUnavailable() dispatches
+   the event the full-screen overlay listens for (EnvironmentGate) and
+   the call rejects — production can never quietly render demo data,
+   because the demo data does not exist in the artifact. Domains that
+   are STILL MOCK-ONLY (Stage 11 scope: unit summary, bedside panels,
+   nursing tasks/IO, consults, notes, mission-control composite) refuse
+   the same way in production until they become real. */
+export class ApiUnavailableError extends Error {}
+function apiUnavailable(what: string): ApiUnavailableError {
+  window.dispatchEvent(new CustomEvent('aurora:api-unavailable', { detail: what }))
+  return new ApiUnavailableError(`${what}: the AURORA API is unavailable — clinical data cannot be served`)
+}
+
 /** GET /api/icu/units/4B/beds — full bed board for the unit.
  *  Layer 2: composed from the REAL ADT bed registry (layout + derived
  *  occupancy) joined with the REAL roster, so admissions, discharges and
@@ -49,12 +71,14 @@ export async function getBeds(): Promise<BedsResponse> {
     fetchRosterRecords(),
   ])
   if (adtBeds && roster) return composeBedsResponse(adtBeds, roster)
-  return respond(BEDS_RESPONSE, 850)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(BEDS_RESPONSE, 850)
+  throw apiUnavailable('bed board')
 }
 
 /** GET /api/icu/units/4B/summary — occupancy ring, KPI strip, unit alerts. */
 export function getUnitSummary(): Promise<UnitSummaryResponse> {
-  return respond(UNIT_SUMMARY, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(UNIT_SUMMARY, 120)
+  return Promise.reject(apiUnavailable('unit summary (Stage 11 scope)'))
 }
 
 /* ---------------- Stage 10 Phase 1 — REAL roster endpoint ----------------
@@ -66,7 +90,15 @@ export function getUnitSummary(): Promise<UnitSummaryResponse> {
    next load. Every OTHER adapter below remains mock until its own Stage 10
    phase. */
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+/* PRODUCTION IS SAME-ORIGIN BY CONSTRUCTION (§11 step 3): the bundle is
+   served by the API process itself and calls it with a RELATIVE base —
+   the artifact carries NO hostname to point at a wrong environment, and
+   an accidentally-present VITE_API_BASE_URL is ignored. Dev/staging keep
+   the absolute cross-origin base (Pages → Render), governed by the API's
+   CORS allowlist exactly as before. */
+const API_BASE = import.meta.env.VITE_APP_ENV === 'production'
+  ? ''
+  : (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
 const API_TIMEOUT_MS = 8000
 
 /** exposed for diagnostics/tests: 'api' after a successful live fetch */
@@ -82,7 +114,15 @@ export let patientsSource: 'mock' | 'api' = 'mock'
 
 /** false in pure mock mode (no VITE_API_BASE_URL) — the Login screen then
  *  labels sign-ins as Stage 9 local sessions up front */
-export const authApiConfigured = API_BASE !== ''
+export const authApiConfigured = import.meta.env.VITE_APP_ENV === 'production' || API_BASE !== ''
+
+/** the wired API's /healthz URL for the runtime environment cross-check
+ *  (EnvironmentGate) — null in a pure-mock dev session (no API at all,
+ *  nothing to cross-check); production is always same-origin '/healthz'. */
+export function apiHealthUrl(): string | null {
+  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return null
+  return `${API_BASE}/healthz`
+}
 
 export type LoginResult =
   | { ok: true; name: string; jobTitle: string; token: string }
@@ -90,7 +130,7 @@ export type LoginResult =
 
 /** POST /api/auth/login — real credential check (Stage 10 Phase 2). */
 export async function login(username: string, password: string): Promise<LoginResult> {
-  if (!API_BASE) return { ok: false, reason: 'unreachable' }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { ok: false, reason: 'unreachable' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -126,7 +166,7 @@ const authHeaders = (): Record<string, string> => {
  *  ANY failure — unreachable, timeout, 401 (tokenless/stale session) — so
  *  each adapter falls back to its mock, console-logged, never a broken UI. */
 async function apiGet<T>(path: string, what: string): Promise<T | null> {
-  if (!API_BASE) return null
+  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return null
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -153,7 +193,7 @@ type ApiPostResult<T> = { kind: 'ok'; data: T } | { kind: 'denied' } | { kind: '
 async function apiPost<T>(
   path: string, what: string, body?: unknown, method: 'POST' | 'PUT' = 'POST',
 ): Promise<ApiPostResult<T>> {
-  if (!API_BASE) return { kind: 'offline' }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -185,14 +225,20 @@ const toSummary = (r: RosterRecordDto): PatientSummary => ({
   diagnosis: r.diagnosis,
   flags: r.flags,
   isolation: r.isolation,
-  /* alertCount stays client-derived — see the wire-contract note in types.ts */
-  alertCount: derivedAlertCount(r.patientId, r.bedAlert.severity),
+  /* alertCount stays client-derived — see the wire-contract note in
+     types.ts. Dev/staging enrich it from the MOCK ai/results stores
+     (documented drift); production carries no mock stores, so it derives
+     from the REAL wire field alone (an active crit/high bed alert) until
+     those alert domains are real. */
+  alertCount: import.meta.env.VITE_APP_ENV !== 'production'
+    ? derivedAlertCount(r.patientId, r.bedAlert.severity)
+    : (r.bedAlert.severity === 'crit' || r.bedAlert.severity === 'high' ? 1 : 0),
 })
 
 /** shared real-roster fetch — getPatients' summaries and the Layer 2 bed
  *  board composition both read it; null = fall back to mock */
 async function fetchRosterRecords(): Promise<RosterRecordDto[] | null> {
-  if (!API_BASE) return null
+  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return null
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -218,8 +264,11 @@ async function fetchRosterRecords(): Promise<RosterRecordDto[] | null> {
 export async function getRosterRecord(patientId: string): Promise<RosterRecordDto | null> {
   const roster = await fetchRosterRecords()
   if (roster) return roster.find(r => r.patientId === patientId) ?? null
-  const rec = rosterFor(patientId)
-  return rec ? respond(rec as RosterRecordDto, 120) : null
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const rec = rosterFor(patientId)
+    return rec ? respond(rec as RosterRecordDto, 120) : null
+  }
+  throw apiUnavailable('roster record')
 }
 
 /** GET /api/icu/patients — sidebar roster for Mission Control.
@@ -230,16 +279,22 @@ export async function getPatients(): Promise<PatientSummary[]> {
     patientsSource = 'api'
     return roster.map(toSummary)
   }
-  patientsSource = 'mock'
-  const summaries: PatientSummary[] = allPatients().map(
-    ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }) =>
-      ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }),
-  )
-  return respond(summaries, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    patientsSource = 'mock'
+    const summaries: PatientSummary[] = allPatients().map(
+      ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }) =>
+        ({ patientId, bedId, name, mrn, diagnosis, flags, isolation, alertCount }),
+    )
+    return respond(summaries, 120)
+  }
+  throw apiUnavailable('roster')
 }
 
 /** GET /api/icu/patients/:patientId — full Mission Control payload for one patient. */
 export function getPatientDetail(patientId: string): Promise<PatientDetailResponse | null> {
+  /* fully mock-composed (Stage 11 absorbs the bedside snapshot) — in
+     production this screen refuses until the domain is real */
+  if (import.meta.env.VITE_APP_ENV === 'production') return Promise.reject(apiUnavailable('patient detail (Stage 11 scope)'))
   const patient = allPatients().find(p => p.patientId === patientId)
   if (!patient) return respond(null, 120)
   return respond(
@@ -265,23 +320,27 @@ export function getPatientDetail(patientId: string): Promise<PatientDetailRespon
 
 /** GET /api/icu/worklist/rounding — the signed-in physician's panel. */
 export function getRoundingList(): Promise<RoundingListResponse> {
-  return respond(ROUNDING_LIST, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(ROUNDING_LIST, 120)
+  return Promise.reject(apiUnavailable('rounding list (Stage 11 scope)'))
 }
 
 /** GET /api/icu/worklist/queues — notes due (orders/results queues are derived views). */
 export function getActionQueues(): Promise<ActionQueuesResponse> {
-  return respond(ACTION_QUEUES, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(ACTION_QUEUES, 120)
+  return Promise.reject(apiUnavailable('action queues (Stage 11 scope)'))
 }
 
 /** GET /api/icu/consults — incoming consults (shared store; the Timeline
  *  reads the same records per patient). */
 export function getConsults(): Promise<Consult[]> {
-  return respond(allConsults(), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(allConsults(), 120)
+  return Promise.reject(apiUnavailable('consults (Stage 11 scope)'))
 }
 
 /** GET /api/icu/order-sets — quick order sets by order type. */
 export function getOrderSets(): Promise<OrderSetsResponse> {
-  return respond(ORDER_SETS, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(ORDER_SETS, 120)
+  return Promise.reject(apiUnavailable('workspace order sets (Stage 11 scope)'))
 }
 
 /* ---------------- Nursing domain (Screen 4) ----------------
@@ -296,21 +355,24 @@ export function getOrderSets(): Promise<OrderSetsResponse> {
 
 /* I&O category vocabulary — re-exported so pages never import a data store
    directly (service-layer rule); becomes master data at Layer 4 */
-export { IO_CATEGORIES } from './data/nursing'
+export { IO_CATEGORIES } from './logic'
 
 /** GET /api/icu/nursing/assignment — the signed-in nurse and assigned patients. */
 export function getNurseAssignment(): Promise<NurseAssignmentResponse> {
-  return respond(NURSE_ASSIGNMENT, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(NURSE_ASSIGNMENT, 120)
+  return Promise.reject(apiUnavailable('nurse assignment (Stage 11 scope)'))
 }
 
 /** GET /api/icu/nursing/tasks — time-driven nursing task checklist. */
 export function getNursingTasks(): Promise<NursingTask[]> {
-  return respond(NURSING_TASKS, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(NURSING_TASKS, 120)
+  return Promise.reject(apiUnavailable('nursing tasks (Stage 11 scope)'))
 }
 
 /** GET /api/icu/nursing/io — intake/output entries recorded this shift. */
 export function getIoEntries(): Promise<IoEntry[]> {
-  return respond(IO_ENTRIES, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(IO_ENTRIES, 120)
+  return Promise.reject(apiUnavailable('I&O entries (Stage 11 scope)'))
 }
 
 /** POST /api/icu/nursing/tasks/:taskId/toggle — document (or undo) a task
@@ -318,14 +380,16 @@ export function getIoEntries(): Promise<IoEntry[]> {
  *  Requires notes.document (enforced here in the service layer). */
 export function toggleNursingTask(taskId: string, actor: string, jobTitle: JobTitle): Promise<NursingTask | null> {
   if (!hasPermission(jobTitle, 'notes.document')) return respond(null, 120)
-  return respond(applyTaskToggle(taskId, actor, nowHm()), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyTaskToggle(taskId, actor, nowHm()), 120)
+  return Promise.reject(apiUnavailable('nursing task documentation (Stage 11 scope)'))
 }
 
 /** POST /api/icu/nursing/io — record an intake/output entry in the store.
  *  Requires notes.document; null when the profile lacks it. */
 export function recordIoEntry(draft: NewIoEntry, jobTitle: JobTitle): Promise<IoEntry | null> {
   if (!hasPermission(jobTitle, 'notes.document')) return respond(null, 120)
-  return respond(insertIoEntry(draft, nowHm()), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(insertIoEntry(draft, nowHm()), 120)
+  return Promise.reject(apiUnavailable('I&O documentation (Stage 11 scope)'))
 }
 
 /* ---------------- Orders & Medication domain (Screen 5) ----------------
@@ -355,7 +419,8 @@ export function recordIoEntry(draft: NewIoEntry, jobTitle: JobTitle): Promise<Io
 export async function getFormulary(): Promise<FormularyDrug[]> {
   const real = await apiGet<FormularyDrug[]>('/api/icu/formulary', 'formulary')
   if (real) return real
-  return respond(FORMULARY, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(FORMULARY, 120)
+  throw apiUnavailable('formulary')
 }
 
 /** GET /api/icu/formulary/interactions — pairwise interaction rules
@@ -364,7 +429,8 @@ export async function getFormulary(): Promise<FormularyDrug[]> {
 export async function getInteractionRules(): Promise<InteractionRule[]> {
   const real = await apiGet<InteractionRule[]>('/api/icu/formulary/interactions', 'interaction rules')
   if (real) return real
-  return respond(INTERACTION_RULES, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(INTERACTION_RULES, 120)
+  throw apiUnavailable('interaction rules')
 }
 
 /** GET /api/icu/formulary/frequencies — the named frequency vocabulary
@@ -372,7 +438,8 @@ export async function getInteractionRules(): Promise<InteractionRule[]> {
 export async function getFrequencyVocabulary(): Promise<string[]> {
   const real = await apiGet<string[]>('/api/icu/formulary/frequencies', 'frequency vocabulary')
   if (real) return real
-  return respond(NAMED_FREQUENCIES, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(NAMED_FREQUENCIES, 120)
+  throw apiUnavailable('frequency vocabulary')
 }
 
 /** POST /api/icu/formulary — add a drug (Pharmacy RBAC, formulary.manage).
@@ -403,7 +470,8 @@ export function reactivateFormularyDrug(drugId: string): Promise<AdtWriteResult<
 export async function getOrderSetDefs(): Promise<OrderSetDef[]> {
   const real = await apiGet<OrderSetDef[]>('/api/icu/order-sets', 'order sets')
   if (real) return real
-  return respond(ORDER_SET_DEFS, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(ORDER_SET_DEFS, 120)
+  throw apiUnavailable('order sets')
 }
 
 /* ---------------- Layer 4 phase 2 — Lab Test Catalogue + Order Sets ----------------
@@ -418,7 +486,8 @@ export async function getOrderSetDefs(): Promise<OrderSetDef[]> {
 export async function getLabCatalog(): Promise<LabTest[]> {
   const real = await apiGet<LabTest[]>('/api/icu/lab-catalog', 'lab catalogue')
   if (real) return real
-  return respond(LAB_CATALOG, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(LAB_CATALOG, 120)
+  throw apiUnavailable('lab catalogue')
 }
 
 /** POST /api/icu/lab-catalog — add a test (Laboratory RBAC). REAL-ONLY. */
@@ -476,13 +545,17 @@ export function reactivateOrderSet(setId: string): Promise<AdtWriteResult<OrderS
 /** GET /api/icu/orders?patientId — full order list incl. audit history (REAL; mock fallback). */
 export async function getPatientOrders(patientId: string): Promise<Order[]> {
   const real = await apiGet<Order[]>(`/api/icu/orders?patientId=${encodeURIComponent(patientId)}`, 'orders')
-  return real ?? respond(allOrders().filter(o => o.patientId === patientId), 120)
+  if (real != null) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(allOrders().filter(o => o.patientId === patientId), 120)
+  throw apiUnavailable('orders')
 }
 
 /** GET /api/icu/orders?status=pending — signature queue (REAL; mock fallback). */
 export async function getPendingOrders(): Promise<Order[]> {
   const real = await apiGet<Order[]>('/api/icu/orders?status=pending', 'orders')
-  return real ?? respond(allOrders().filter(o => o.status === 'pending'), 120)
+  if (real != null) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(allOrders().filter(o => o.status === 'pending'), 120)
+  throw apiUnavailable('signature queue')
 }
 
 /** GET /api/icu/orders?implement=true — nursing implementation queue (REAL;
@@ -491,10 +564,13 @@ export async function getPendingOrders(): Promise<Order[]> {
 export async function getImplementationQueue(patientIds?: string[]): Promise<Order[]> {
   const real = await apiGet<Order[]>('/api/icu/orders?implement=true', 'orders')
   if (real) return real.filter(o => !patientIds || patientIds.includes(o.patientId))
-  const q = allOrders().filter(
-    o => o.status === 'active' && o.requiresImplementation && (!patientIds || patientIds.includes(o.patientId)),
-  )
-  return respond(q, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const q = allOrders().filter(
+      o => o.status === 'active' && o.requiresImplementation && (!patientIds || patientIds.includes(o.patientId)),
+    )
+    return respond(q, 120)
+  }
+  throw apiUnavailable('implementation queue')
 }
 
 /* The MAR is a REAL service since Stage 10 Phase 3 (MAR PR). It has no
@@ -510,7 +586,8 @@ export async function getImplementationQueue(patientIds?: string[]): Promise<Ord
 export async function getMarRows(patientIds: string[]): Promise<MarRow[]> {
   const real = await apiGet<MarRow[]>('/api/icu/mar', 'MAR')
   if (real) return real.filter(r => patientIds.includes(r.patientId))
-  return respond(deriveMarRows(patientIds), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(deriveMarRows(patientIds), 120)
+  throw apiUnavailable('MAR')
 }
 
 /** POST /api/icu/orders — create order(s); sign=true activates immediately (doctor RBAC).
@@ -525,11 +602,14 @@ export async function createOrders(drafts: NewOrderDraft[], actor: string, sign:
   const r = await apiPost<Order[]>('/api/icu/orders', 'create order', { drafts, sign, note, ...(note ? { overrideJustification: note } : {}) })
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return []
-  const created = drafts.map(d => {
-    const pt = allPatients().find(p => p.patientId === d.patientId)
-    return insertOrder(d, actor, sign, pt?.name ?? d.patientId, pt?.bedId ?? '—', note)
-  })
-  return respond(created, 150)
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const created = drafts.map(d => {
+      const pt = allPatients().find(p => p.patientId === d.patientId)
+      return insertOrder(d, actor, sign, pt?.name ?? d.patientId, pt?.bedId ?? '—', note)
+    })
+    return respond(created, 150)
+  }
+  throw apiUnavailable('create order')
 }
 
 /** POST /api/icu/orders/:orderId/sign (doctor RBAC; REAL endpoint). */
@@ -538,7 +618,8 @@ export async function signOrder(orderId: string, actor: string, jobTitle: JobTit
   const r = await apiPost<Order>(`/api/icu/orders/${encodeURIComponent(orderId)}/sign`, 'sign order')
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applySign(orderId, actor), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applySign(orderId, actor), 120)
+  throw apiUnavailable('sign order')
 }
 
 /** PUT /api/icu/orders/:orderId — modify medication fields; reason required
@@ -550,7 +631,8 @@ export async function modifyOrder(
   const r = await apiPost<Order>(`/api/icu/orders/${encodeURIComponent(orderId)}`, 'modify order', { changes, reason }, 'PUT')
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applyModify(orderId, changes, reason, actor), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyModify(orderId, changes, reason, actor), 120)
+  throw apiUnavailable('modify order')
 }
 
 /** POST /api/icu/orders/:orderId/discontinue — reason required (doctor RBAC; REAL endpoint). */
@@ -559,7 +641,8 @@ export async function discontinueOrder(orderId: string, reason: string, actor: s
   const r = await apiPost<Order>(`/api/icu/orders/${encodeURIComponent(orderId)}/discontinue`, 'discontinue order', { reason })
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applyDiscontinue(orderId, reason, actor), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyDiscontinue(orderId, reason, actor), 120)
+  throw apiUnavailable('discontinue order')
 }
 
 /** POST /api/icu/orders/:orderId/implement (nurse RBAC — mark-done only; REAL endpoint). */
@@ -568,7 +651,8 @@ export async function completeImplementation(orderId: string, actor: string, job
   const r = await apiPost<Order>(`/api/icu/orders/${encodeURIComponent(orderId)}/implement`, 'implement order')
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applyImplementation(orderId, actor), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyImplementation(orderId, actor), 120)
+  throw apiUnavailable('implement order')
 }
 
 /** POST /api/icu/mar/:orderId/administrations/:adminId — document a dose
@@ -584,7 +668,8 @@ export async function documentAdministration(
     'administer', { action, ...(reason ? { reason } : {}) })
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applyAdministration(orderId, adminId, action, actor, reason), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyAdministration(orderId, adminId, action, actor, reason), 120)
+  throw apiUnavailable('administration documentation')
 }
 
 /* ---------------- Laboratory & Imaging results domain (Screen 6) ----------------
@@ -600,20 +685,26 @@ export async function documentAdministration(
 /** GET /api/icu/results/labs?patientId — REAL endpoint; mock fallback. */
 export async function getLabDraws(patientId: string): Promise<LabDraw[]> {
   const real = await apiGet<LabDraw[]>(`/api/icu/results/labs?patientId=${encodeURIComponent(patientId)}`, 'labs')
-  return real ?? respond(labDrawsFor(patientId), 120)
+  if (real != null) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(labDrawsFor(patientId), 120)
+  throw apiUnavailable('labs')
 }
 
 /** GET /api/icu/results/imaging?patientId — REAL endpoint; mock fallback. */
 export async function getImagingStudies(patientId: string): Promise<ImagingStudy[]> {
   const real = await apiGet<ImagingStudy[]>(`/api/icu/results/imaging?patientId=${encodeURIComponent(patientId)}`, 'imaging')
-  return real ?? respond(imagingFor(patientId), 120)
+  if (real != null) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(imagingFor(patientId), 120)
+  throw apiUnavailable('imaging')
 }
 
 /** GET /api/icu/results/inbox — unit-wide unacknowledged results, DERIVED
  *  server-side at read time (REAL endpoint; mock fallback). */
 export async function getResultInbox(): Promise<ResultInboxItem[]> {
   const real = await apiGet<ResultInboxItem[]>('/api/icu/results/inbox', 'results inbox')
-  return real ?? respond(deriveResultInbox(), 120)
+  if (real != null) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(deriveResultInbox(), 120)
+  throw apiUnavailable('results inbox')
 }
 
 /** POST /api/icu/results/labs/:labId/acknowledge — REAL endpoint; requires
@@ -623,7 +714,8 @@ export async function acknowledgeLab(labId: string, actor: string, jobTitle: Job
   const r = await apiPost<LabDraw>(`/api/icu/results/labs/${encodeURIComponent(labId)}/acknowledge`, 'acknowledge')
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applyAcknowledgeLab(labId, actor, nowHm()), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyAcknowledgeLab(labId, actor, nowHm()), 120)
+  throw apiUnavailable('acknowledge result')
 }
 
 /** POST /api/icu/results/imaging/:studyId/acknowledge — REAL endpoint; same RBAC. */
@@ -632,7 +724,8 @@ export async function acknowledgeImaging(studyId: string, actor: string, jobTitl
   const r = await apiPost<ImagingStudy>(`/api/icu/results/imaging/${encodeURIComponent(studyId)}/acknowledge`, 'acknowledge')
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applyAcknowledgeImaging(studyId, actor, nowHm()), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyAcknowledgeImaging(studyId, actor, nowHm()), 120)
+  throw apiUnavailable('acknowledge result')
 }
 
 /** Convenience dispatcher for inbox items (lab or imaging). Resolves truthy on success. */
@@ -654,7 +747,8 @@ export async function unacknowledgeLab(labId: string, reason: string, jobTitle: 
     `/api/icu/results/labs/${encodeURIComponent(labId)}/unacknowledge`, 'unacknowledge', { reason })
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applyUnacknowledgeLab(labId), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyUnacknowledgeLab(labId), 120)
+  throw apiUnavailable('unacknowledge result')
 }
 
 /** POST /api/icu/results/imaging/:studyId/unacknowledge — same semantics. */
@@ -664,7 +758,8 @@ export async function unacknowledgeImaging(studyId: string, reason: string, jobT
     `/api/icu/results/imaging/${encodeURIComponent(studyId)}/unacknowledge`, 'unacknowledge', { reason })
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  return respond(applyUnacknowledgeImaging(studyId), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyUnacknowledgeImaging(studyId), 120)
+  throw apiUnavailable('unacknowledge result')
 }
 
 /* ---------------- Timeline domain (Screen 7) ----------------
@@ -689,17 +784,27 @@ const isMockTimelineCategory = (c: TimelineEvent['category']): boolean =>
  *  still-mock sources; newest first. Full mock feed on fallback. */
 export async function getTimeline(patientId: string): Promise<TimelineEvent[]> {
   const real = await apiGet<TimelineEvent[]>(`/api/icu/timeline?patientId=${encodeURIComponent(patientId)}`, 'timeline')
-  if (!real) return respond(deriveTimeline(patientId), 150)
+  if (!real) {
+    if (import.meta.env.VITE_APP_ENV !== 'production') return respond(deriveTimeline(patientId), 150)
+    throw apiUnavailable('timeline')
+  }
   /* merge: real server events (order/med/lab/imaging) + ONLY the still-mock
-     categories from the mock derivation — no overlap, so no duplication */
-  const mockPart = deriveTimeline(patientId).filter(e => isMockTimelineCategory(e.category))
-  const merged = [...real, ...mockPart].sort((a, b) => timestampMinutes(b.time) - timestampMinutes(a.time))
-  return respond(merged, 0)
+     categories from the mock derivation — no overlap, so no duplication.
+     PRODUCTION serves the server-derived categories alone: the four mock
+     feeds do not exist there (they are demo data), so the feed honestly
+     shows what the system of record actually has. */
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const mockPart = deriveTimeline(patientId).filter(e => isMockTimelineCategory(e.category))
+    const merged = [...real, ...mockPart].sort((a, b) => timestampMinutes(b.time) - timestampMinutes(a.time))
+    return respond(merged, 0)
+  }
+  return respond([...real].sort((a, b) => timestampMinutes(b.time) - timestampMinutes(a.time)), 0)
 }
 
 /** GET /api/icu/patients/:patientId/notes — freeform clinical notes. */
 export function getClinicalNotes(patientId: string): Promise<ClinicalNote[]> {
-  return respond(notesFor(patientId), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(notesFor(patientId), 120)
+  return Promise.reject(apiUnavailable('clinical notes (Stage 11 scope)'))
 }
 
 /* ---------------- AI Clinical Assistant domain (Screen 8) ----------------
@@ -722,7 +827,8 @@ export function getClinicalNotes(patientId: string): Promise<ClinicalNote[]> {
  *  endpoint serves the full set (ranking + per-patient cover the pages);
  *  kept as a mock convenience accessor. */
 export function getRiskProfiles(): Promise<PatientRiskProfile[]> {
-  return respond(allRiskProfiles(), 150)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(allRiskProfiles(), 150)
+  return Promise.reject(apiUnavailable('AI risk profiles (mock convenience accessor)'))
 }
 
 /** GET /api/icu/ai/risks?patientId — one patient's profile (REAL endpoint;
@@ -730,19 +836,23 @@ export function getRiskProfiles(): Promise<PatientRiskProfile[]> {
 export async function getRiskProfile(patientId: string): Promise<PatientRiskProfile | null> {
   const real = await apiGet<PatientRiskProfile | null>(
     `/api/icu/ai/risks?patientId=${encodeURIComponent(patientId)}`, 'AI risks')
-  return real ?? respond(riskProfileFor(patientId), 120)
+  if (real != null) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(riskProfileFor(patientId), 120)
+  throw apiUnavailable('AI risks')
 }
 
 /** GET /api/icu/ai/ranking — unit-wide ranking by highest current risk,
  *  derived server-side at read (REAL endpoint; mock fallback). */
 export async function getRiskRanking(): Promise<RiskRankingRow[]> {
   const real = await apiGet<RiskRankingRow[]>('/api/icu/ai/ranking', 'AI ranking')
-  return real ?? respond(deriveRiskRanking(), 150)
+  if (real != null) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(deriveRiskRanking(), 150)
+  throw apiUnavailable('AI ranking')
 }
 
 /* pure client-side helpers for the AI domain (trend from history, elevation
    rule) — computed at render, never stored (locked pattern) */
-export { AI_ALERT_THRESHOLD, isElevated, riskTrendOf } from './data/ai'
+export { AI_ALERT_THRESHOLD, isElevated, riskTrendOf } from './logic'
 
 /* ---------------- Layer 2 — ADT (Aurora Core) ----------------
    The first Core-native domain and the first write feature on the durable
@@ -758,7 +868,7 @@ export type AdtWriteResult<T> =
   | { kind: 'offline' }
 
 async function adtPost<T>(path: string, what: string, body?: unknown): Promise<AdtWriteResult<T>> {
-  if (!API_BASE) return { kind: 'offline' }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -787,7 +897,9 @@ async function adtPost<T>(path: string, what: string, body?: unknown): Promise<A
  *  endpoint; display-only mock fallback). */
 export async function getAdtBeds(): Promise<AdtBed[]> {
   const real = await apiGet<AdtBed[]>('/api/icu/adt/beds', 'ADT beds')
-  return real ?? respond(mockAdtBeds(), 120)
+  if (real != null) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(mockAdtBeds(), 120)
+  throw apiUnavailable('ADT beds')
 }
 
 /** GET /api/icu/adt/encounters?patientId&status — encounter list (REAL
@@ -800,16 +912,19 @@ export async function getEncounters(filter?: { patientId?: string; status?: 'ope
   const qs = params.toString()
   const real = await apiGet<Encounter[]>(`/api/icu/adt/encounters${qs ? `?${qs}` : ''}`, 'ADT encounters')
   if (real) return real
-  if (filter?.status === 'discharged') return respond([], 120)
-  const open = allPatients()
-    .filter(p => !filter?.patientId || p.patientId === filter.patientId)
-    .map((p): Encounter => ({
-      encounterId: `ENC-${p.patientId.slice(2)}`,
-      patientId: p.patientId, patientName: p.name, bedId: p.bedId,
-      diagnosis: p.diagnosis, attending: p.attending, status: 'open',
-      admittedAt: '', admittedBy: '', events: [],
-    }))
-  return respond(open, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    if (filter?.status === 'discharged') return respond([], 120)
+    const open = allPatients()
+      .filter(p => !filter?.patientId || p.patientId === filter.patientId)
+      .map((p): Encounter => ({
+        encounterId: `ENC-${p.patientId.slice(2)}`,
+        patientId: p.patientId, patientName: p.name, bedId: p.bedId,
+        diagnosis: p.diagnosis, attending: p.attending, status: 'open',
+        admittedAt: '', admittedBy: '', events: [],
+      }))
+    return respond(open, 120)
+  }
+  throw apiUnavailable('encounters')
 }
 
 /** GET /api/icu/adt/patients/:patientId — the Core PATIENT-IDENTITY read
@@ -823,7 +938,7 @@ export async function getEncounters(filter?: { patientId?: string; status?: 'ope
  *  remaining rungs (mock roster / encounter snapshot) carry the mock and
  *  offline cases with their own honest provenance. */
 export async function getPatientIdentity(patientId: string): Promise<PatientIdentity | null> {
-  if (!API_BASE) return null
+  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return null
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -863,7 +978,7 @@ export function transferEncounter(encounterId: string, bedId: string): Promise<A
    delete. */
 
 async function usersWrite<T>(path: string, what: string, body?: unknown, method: 'POST' | 'PUT' = 'POST'): Promise<AdtWriteResult<T>> {
-  if (!API_BASE) return { kind: 'offline' }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -893,13 +1008,16 @@ async function usersWrite<T>(path: string, what: string, body?: unknown, method:
 export async function getUsers(): Promise<UserAccount[]> {
   const real = await apiGet<UserAccount[]>('/api/icu/users', 'users')
   if (real) return real
-  const offline = SAMPLE_STAFF
-    .map((s): UserAccount => ({
-      username: usernameOf(s.name), name: s.name, jobTitle: s.jobTitle,
-      active: true, events: [],
-    }))
-    .sort((a, b) => (a.username < b.username ? -1 : 1))
-  return respond(offline, 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const offline = SAMPLE_STAFF
+      .map((s): UserAccount => ({
+        username: usernameOf(s.name), name: s.name, jobTitle: s.jobTitle,
+        active: true, events: [],
+      }))
+      .sort((a, b) => (a.username < b.username ? -1 : 1))
+    return respond(offline, 120)
+  }
+  throw apiUnavailable('user accounts')
 }
 
 /** POST /api/icu/users — create an account (admin-set initial password;

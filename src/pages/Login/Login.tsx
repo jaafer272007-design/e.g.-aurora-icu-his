@@ -32,7 +32,13 @@ export function Login() {
   const [busy, setBusy] = useState(false)
   const [fallbackNote, setFallbackNote] = useState(false)
 
-  const preview = useMemo(() => matchStaff(username), [username])
+  /* the live RBAC preview matches against the DEMO staff presets —
+     dev/staging only; the branch (and with it the preset directory) is
+     compiled out of production bundles */
+  const preview = useMemo(
+    () => (import.meta.env.VITE_APP_ENV !== 'production' ? matchStaff(username) : undefined),
+    [username],
+  )
 
   const enter = (name: string, jobTitle: JobTitle, token?: string) => {
     signIn(name, jobTitle, token)
@@ -55,15 +61,22 @@ export function Login() {
       setError('Invalid credentials.')
       return
     }
-    /* auth API unreachable (or not configured) → Stage 9 local-session fallback */
-    console.info('[aurora] auth API unavailable — Stage 9 local session fallback (password NOT verified)')
-    const staff = matchStaff(username)
-    if (staff) {
-      setFallbackNote(true)
-      enter(staff.name, staff.jobTitle)
-    } else {
-      setError('Invalid credentials.')
+    /* auth API unreachable (or not configured) → Stage 9 local-session
+       fallback — dev/staging ONLY. The branch is compiled out of
+       production bundles: a production sign-in is server-verified or it
+       does not happen (no path to an unverified local session exists). */
+    if (import.meta.env.VITE_APP_ENV !== 'production') {
+      console.info('[aurora] auth API unavailable — Stage 9 local session fallback (password NOT verified)')
+      const staff = matchStaff(username)
+      if (staff) {
+        setFallbackNote(true)
+        enter(staff.name, staff.jobTitle)
+      } else {
+        setError('Invalid credentials.')
+      }
+      return
     }
+    setError('Cannot reach the AURORA service — try again, or contact IT if this persists.')
   }
 
   return (
@@ -89,22 +102,29 @@ export function Login() {
                 <li><b>Permission Profile</b> — derived from the title, never stored</li>
                 <li><b>Permissions</b> — derived from the profile, enforced in the service layer</li>
               </ol>
-              <div className="lgdisclaimer" role="note">
-                <b>Prototype credentials — not production.</b> All 20 demo accounts share the
-                password <b className="num">Aurora2026!</b> (documented in the project docs); there
-                is no registration or password reset yet. If the auth service is unreachable, the
-                app falls back to a Stage 9 local session — clearly logged, password not verified.
-              </div>
-              <details className="lgdirectory">
-                <summary>Demo staff directory (usernames)</summary>
-                <ul>
-                  {SAMPLE_STAFF.map(s => (
-                    <li key={s.name}>
-                      <span className="num">{usernameOf(s.name)}</span> — {s.name} · {s.jobTitle}
-                    </li>
-                  ))}
-                </ul>
-              </details>
+              {import.meta.env.VITE_APP_ENV !== 'production' && (
+                <>
+                  {/* demo credentials + directory: dev/staging only — the
+                      block (and the preset list it renders) is compiled
+                      out of production bundles */}
+                  <div className="lgdisclaimer" role="note">
+                    <b>Prototype credentials — not production.</b> All 20 demo accounts share the
+                    password <b className="num">Aurora2026!</b> (documented in the project docs); there
+                    is no registration or password reset yet. If the auth service is unreachable, the
+                    app falls back to a Stage 9 local session — clearly logged, password not verified.
+                  </div>
+                  <details className="lgdirectory">
+                    <summary>Demo staff directory (usernames)</summary>
+                    <ul>
+                      {SAMPLE_STAFF.map(s => (
+                        <li key={s.name}>
+                          <span className="num">{usernameOf(s.name)}</span> — {s.name} · {s.jobTitle}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                </>
+              )}
             </div>
 
             <form className="lgform" onSubmit={e => { e.preventDefault(); void submit() }}>
@@ -167,7 +187,11 @@ export function Login() {
             </form>
           </div>
         </section>
-        <footer className="lgfoot">AURORA HIS v4.2 · Stage 10 Phase 2 authentication · clinical data beyond the roster is mock until later phases</footer>
+        <footer className="lgfoot">
+          {import.meta.env.VITE_APP_ENV === 'production'
+            ? 'AURORA HIS · authenticated access only'
+            : 'AURORA HIS v4.2 · Stage 10 Phase 2 authentication · clinical data beyond the roster is mock until later phases'}
+        </footer>
       </main>
     </div>
   )

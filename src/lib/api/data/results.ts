@@ -233,7 +233,7 @@ function expandSpec(spec: PatientLabSpec): LabDraw[] {
   return draws
 }
 
-const LAB_DRAWS: LabDraw[] = SPECS.flatMap(expandSpec)
+const LAB_DRAWS: LabDraw[] = /* @__PURE__ */ SPECS.flatMap(expandSpec)
 
 /* ---------------- imaging studies ---------------- */
 

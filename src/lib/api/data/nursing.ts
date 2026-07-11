@@ -21,7 +21,7 @@ const toAssignedPatient = (patientId: string): AssignedPatient => {
 
 export const NURSE_ASSIGNMENT: NurseAssignmentResponse = {
   nurse: { name: 'RN Maya Chen', initials: 'MC', role: 'ICU Nurse · Beds B-01 / B-04', shift: '07:00–19:00' },
-  patients: ASSIGNED_PATIENT_IDS.map(toAssignedPatient),
+  patients: /* @__PURE__ */ ASSIGNED_PATIENT_IDS.map(toAssignedPatient),
 }
 
 export const NURSING_TASKS: NursingTask[] = [
@@ -65,7 +65,5 @@ export const IO_ENTRIES: IoEntry[] = [
   { entryId: 'IO-5007', patientId: 'P-1004', kind: 'output', category: 'Urine', volumeMl: 20, time: '11:00' },
 ]
 
-export const IO_CATEGORIES: Record<'intake' | 'output', string[]> = {
-  intake: ['IV fluids', 'PO fluids', 'Medication infusions', 'Enteral feed', 'Blood products'],
-  output: ['Urine', 'CRRT net removal', 'Drain', 'NG aspirate', 'Emesis', 'Stool'],
-}
+import { IO_CATEGORIES } from '../logic'
+export { IO_CATEGORIES }
