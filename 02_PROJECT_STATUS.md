@@ -1252,7 +1252,30 @@ logic touched.
   printed after discharge falls back to the encounter's identity
   snapshot, renders "—" for the missing fields, and carries an explicit
   notice. A Core patient-identity read (AdtPatients is already
-  persisted) is the natural future fix; recorded as an open question.
+  persisted) is the natural future fix; recorded as its own open
+  question below.
+- **Recorded open questions (do NOT fix ad hoc)**:
+  (1) **The discharged-patient identity read gap** — persistence and
+  retrievability DIVERGE at discharge: the AdtPatients row (MRN, name,
+  age, sex, allergies) persists forever per the never-destroy principle,
+  but the ONLY demographic read — the roster — is by design a derived
+  view over OPEN encounters, and the Encounter carries only its display
+  snapshot (name, bed, diagnosis, attending). Nothing is lost; it is a
+  MISSING READ SURFACE, first hit by print because printing is the first
+  consumer to need chart data after the census stops covering the
+  patient. It does not touch the encounter-scoping invariant (which
+  governs writes; printing is pure read). FIX DIRECTION: a Core
+  patient-identity read — GET Patient by id over the persisted
+  AdtPatients row (a SERVER PR, behind patients.view). That adds a
+  middle rung to the print identity ladder (roster → patient read →
+  encounter snapshot) and removes the "—" dashes with NO template or
+  layout change.
+  (2) **Age is a static integer, not a date of birth** — AdtPatients
+  stores `age` as the integer captured at admission, so a summary
+  printed long after admission prints the ADMISSION-ERA age. Harmless
+  today; to be addressed when the identity read above is designed
+  (store/serve DOB, compute age at render — the clock-computed-state
+  rule).
 - **Honesty rules**: narrative sections with no canonical store (past
   history, assessment, plan, follow-up, procedures) print as ruled
   write-in areas — never fabricated; ventilator SETTINGS are Stage 11
