@@ -8,8 +8,11 @@ renders documents headlessly behind server + Pages freshness gates).
 Previous milestones: patient-identity read (PR #51 — both
 Print-Center-recorded open questions resolved, now including the live
 render), Print Center Foundation Phase 1 (PR #50), safety enforcement
-(PR #46). Next: the remaining Print Center templates and environment
-separation (dev/staging/prod).**
+(PR #46). Next: environment separation — a design proposal
+(`docs/design/environment-separation.md`, revision 2: production is
+ON-PREMISES/offline-first, the cloud stack is the staging tier) is
+authored and awaiting project-owner approval before any implementation;
+the remaining Print Center templates follow.**
 
 *[Docs split note (2026-07-10): every unmarked line below was moved verbatim
 from the pre-split CLAUDE.md. The only additions are lines styled like this
@@ -1528,6 +1531,29 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
    build-order item is 2 — environment separation.]*
 2. Environment separation (dev/staging/production — the missing concept
    recorded in 01_ARCHITECTURE.md § Environment separation)
+   *[2026-07-11: a DESIGN PROPOSAL for this item was authored and is
+   awaiting project-owner approval —
+   `docs/design/environment-separation.md`. Revision 2 (same day, same
+   PR) after a foundational owner correction: **production is
+   on-premises** — hospital LAN, offline-first, no cloud service in the
+   clinical serving path. Tiers: development (local/cloud) · staging
+   (the current Render + Pages stack, redesignated wholesale) ·
+   production (on-prem Docker Compose: API image that also serves the
+   frontend same-origin, on-prem PostgreSQL, backup sidecar). Separate
+   PostgreSQL / JWT secret + `aud` claim / seeds with boot tripwires;
+   git promotion via an explicit `production` branch whose only consumer
+   is a gated release-bundle workflow; on-prem updates via checksummed
+   release bundles + `aurora-update`/`aurora-verify`; environment
+   identity in `/healthz` and `build.txt` asserted by every suite before
+   write legs, with write suites having no production target. Revision 3
+   (same day, owner amendments): Compose = v1 reference deployment (HA
+   adoptable later without changing the model); formulary seeding is a
+   choosable install-time policy; bootstrap admin gets an
+   installer-generated one-time credential with forced change on first
+   login (no known credential ships in the image); the repo goes private
+   as a pre-deployment checklist step before any hospital install.
+   NOTHING is implemented — no code, config, or service changes ship
+   with the proposal; implementation starts only after approval.]*
 3. Print Center
    *[2026-07-11 per project owner: the Print Center FOUNDATION (Phase 1 —
    rendering architecture + the first three templates) was pulled forward
