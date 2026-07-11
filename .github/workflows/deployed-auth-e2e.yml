@@ -102,19 +102,23 @@ jobs:
           fi
           echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
 
-      - name: Login issues a JWT (correct credentials)
+      - name: Login issues a JWT stamped with THIS environment as its audience
         run: |
           body=$(curl -sf -X POST "$API/api/auth/login" \
             -H "Content-Type: application/json" -H "Origin: $PAGES_ORIGIN" \
             -d '{"username":"sara.rahman","password":"Aurora2026!"}')
           token=$(echo "$body" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          # aud-CLAIM RIDER: issuance must stamp aud with the running
+          # APP_ENV — asserted against the suite's declared target, the
+          # same value the environment gate already proved /healthz serves.
           echo "$body" | python3 -c '
-          import json,sys,base64
+          import json,sys,base64,os
           d=json.load(sys.stdin)
           assert d["name"]=="Dr. Sara Rahman" and d["jobTitle"]=="Consultant", d
           p=d["token"].split(".")[1]; p+="="*(-len(p)%4)
           c=json.loads(base64.urlsafe_b64decode(p))
           assert c["sub"]=="sara.rahman" and c["jobTitle"]=="Consultant", c
+          assert c["aud"]==os.environ["EXPECTED_ENV"], ("token audience", c.get("aud"), "expected", os.environ["EXPECTED_ENV"])
           print("JWT claims OK:", {k:c[k] for k in ("sub","jobTitle","iss","aud")})'
           echo "TOKEN=$token" >> "$GITHUB_ENV"
 
@@ -135,6 +139,40 @@ jobs:
             echo "auth='$auth' -> HTTP $code"
             [ "$code" = "401" ] || exit 1
           done
+
+      - name: aud RIDER — a token differing only in its audience is rejected, with NO oracle
+        run: |
+          # Build two invalid tokens from the REAL one:
+          #   T_AUD — payload's aud swapped to "production", ORIGINAL
+          #           header+signature kept (from outside: a token whose
+          #           only difference is the audience);
+          #   T_SIG — untouched payload, signature corrupted.
+          # BOTH must be a generic 401, and their WWW-Authenticate headers
+          # must be IDENTICAL — the rejection must not reveal whether the
+          # audience or the signature was the problem (no cross-environment
+          # probe oracle; IncludeErrorDetails=false on the server).
+          T_AUD=$(python3 - "$TOKEN" <<'EOF'
+          import base64, json, sys
+          h, p, s = sys.argv[1].split(".")
+          pad = p + "=" * (-len(p) % 4)
+          c = json.loads(base64.urlsafe_b64decode(pad)); c["aud"] = "production"
+          p2 = base64.urlsafe_b64encode(json.dumps(c, separators=(",", ":")).encode()).decode().rstrip("=")
+          print(".".join([h, p2, s]))
+          EOF
+          )
+          T_SIG="${TOKEN%????????}AAAAAAAA"
+          for name in T_AUD T_SIG; do
+            tok=$(eval echo "\$$name")
+            curl -s -D "/tmp/h_$name" -o /dev/null -H "Authorization: Bearer $tok" "$API/api/icu/patients"
+            code=$(sed -n '1s/.* \([0-9][0-9][0-9]\).*/\1/p' "/tmp/h_$name")
+            www=$(grep -i '^www-authenticate:' "/tmp/h_$name" | tr -d '\r')
+            echo "$name -> HTTP $code · $www"
+            [ "$code" = "401" ] || { echo "expected generic 401 for $name"; exit 1; }
+            echo "$www" | grep -qi 'error_description' && { echo "ORACLE: WWW-Authenticate carries a failure reason"; exit 1; }
+          done
+          A=$(grep -i '^www-authenticate:' /tmp/h_T_AUD | tr -d '\r'); B=$(grep -i '^www-authenticate:' /tmp/h_T_SIG | tr -d '\r')
+          [ "$A" = "$B" ] || { echo "ORACLE: audience-mismatch and bad-signature rejections differ ('$A' vs '$B')"; exit 1; }
+          echo "wrong-audience and bad-signature tokens rejected IDENTICALLY (no oracle) — and the same-environment token is proven below"
 
       - name: Roster serves the seeded records with a valid token (+ CORS header)
         run: |

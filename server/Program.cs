@@ -5,6 +5,7 @@ using Aurora.Core.Mar;
 using Aurora.Core.MasterData;
 using Aurora.Core.Orders;
 using Aurora.Core.Persistence;
+using Aurora.Core.Shared;
 using Aurora.Core.LabImaging;
 using Aurora.Core.Timeline;
 using Aurora.Modules.Icu.Roster;
@@ -79,10 +80,29 @@ builder.Services
         /* keep original claim names ("sub"/"name"/"jobTitle") — the
            server-side RBAC reads jobTitle straight off the principal */
         o.MapInboundClaims = false;
+        /* NO ORACLE (aud rider): without this, the 401's WWW-Authenticate
+           header carries error_description text that says WHY a token
+           failed ("audience is invalid" vs "signature key not found") —
+           a cross-environment probe could distinguish a right-secret/
+           wrong-audience token from garbage. Every invalid token gets the
+           same bare `Bearer error="invalid_token"`. */
+        o.IncludeErrorDetails = false;
         o.TokenValidationParameters = new TokenValidationParameters
         {
             ValidIssuer = Jwt.Issuer,
-            ValidAudience = Jwt.Audience,
+            /* THE aud-CLAIM ENVIRONMENT RIDER (§11 step 1, deferred half):
+               the token audience IS the environment. Validation requires
+               aud == this process's APP_ENV, so a staging-minted token is
+               structurally invalid on production (and vice versa) even if
+               the signing secret were somehow shared — defense in depth on
+               top of the per-environment JWT_SECRET. FAIL-CLOSED: when
+               APP_ENV is missing or unknown, the valid audience is a
+               random per-boot GUID no real token can carry — a
+               misconfigured service validates NOTHING (and issues nothing;
+               see AuthApi). Tokens minted before this rider carried the
+               old fixed audience and fail validation once — a single
+               forced re-login at deploy, recorded. */
+            ValidAudience = AppEnv.IsKnown ? AppEnv.Name : Guid.NewGuid().ToString("N"),
             IssuerSigningKey = jwtKey,
             ValidateIssuer = true,
             ValidateAudience = true,
@@ -116,14 +136,19 @@ Seeder.SeedAll(app, demoPassword, dbLabel);
    `environment` is the ENVIRONMENT IDENTITY (step 1 of the merged
    environment-separation design): the freshness-gate mechanism extended
    by one field. It is CONFIGURATION, not code — read from APP_ENV at
-   runtime (render.yaml sets "staging" for the deployed cloud tier; a
-   future production install sets "production" through the same variable,
-   no code change). Unset = a local dev process, per the design's tuple.
-   Every data-writing suite asserts this field matches its declared
-   target BEFORE running any write leg. */
+   runtime via AppEnv (render.yaml sets "staging" for the deployed cloud
+   tier; a future production install sets "production" through the same
+   variable, no code change). Since the aud rider, a missing/unknown
+   APP_ENV is reported HONESTLY ("unset" or the raw value) instead of
+   defaulting to "development" — because authentication now fails closed
+   on it (see AppEnv.cs), healthz must not claim an environment the
+   process cannot vouch for. Every data-writing suite asserts this field
+   matches its declared target BEFORE running any write leg. */
 var build = Environment.GetEnvironmentVariable("RENDER_GIT_COMMIT") ?? "dev";
-var appEnv = Environment.GetEnvironmentVariable("APP_ENV") ?? "development";
-app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build, environment = appEnv }));
+if (!AppEnv.IsKnown)
+    Console.WriteLine($"[AURORA] APP_ENV is '{AppEnv.Name}' — not a known environment (development|staging|production). " +
+        "Authentication is FAIL-CLOSED: no token will be issued or validated until APP_ENV is configured.");
+app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build, environment = AppEnv.Name }));
 
 /* endpoint groups — same registration order as the pre-split Program.cs;
    every route string is byte-identical (the /api/icu/ prefix on Core

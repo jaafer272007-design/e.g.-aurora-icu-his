@@ -14,7 +14,11 @@ namespace Aurora.Core.Identity;
 static class Jwt
 {
     public const string Issuer = "aurora-icu";
-    public const string Audience = "aurora-icu-client";
+    /* The audience is THE ENVIRONMENT (AppEnv.Name) since the aud-claim
+       rider — issuance stamps it in AuthApi, validation requires it in
+       Program.cs. The old fixed "aurora-icu-client" audience is gone;
+       tokens minted before the rider fail validation once (a single
+       forced re-login at deploy, recorded in 02). */
 
     public static SymmetricSecurityKey ResolveKey()
     {

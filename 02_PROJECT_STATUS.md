@@ -1,12 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-11 · current through the ENVIRONMENT-IDENTITY
-PR — environment-separation §11 step 1 (the approved design's first
-implementation): `/healthz` and `/build.txt` now carry an `environment`
-name (`staging` — the whole cloud stack is the staging tier per the
-merged design), and every deployed suite refuses to run any write leg
-unless the environment it reports matches the suite's in-file declared
-target (mismatch = immediate loud failure, no retry). Prior milestone:
+**Last updated: 2026-07-11 · current through the aud-claim RIDER —
+design step 1 is now COMPLETE: JWTs carry the environment as their
+`aud` at issuance and validation requires `aud == APP_ENV` (a
+staging-minted token is structurally invalid on production even with a
+shared secret; missing/unknown APP_ENV fails closed — no issuance, no
+validation; rejections are oracle-free). Prior: the ENVIRONMENT-IDENTITY
+PR — `/healthz` and `/build.txt` carry an `environment` name (`staging`)
+and every deployed suite refuses to run any write leg unless the
+environment it reports matches the suite's in-file declared target
+(mismatch = immediate loud failure, no retry); LIVE-VERIFIED 12/12. Prior milestone:
 the print live-verification PR — the deployed Discharge Summary
 RENDER-VERIFIED for a discharged patient on the live Pages site
 (`/build.txt` frontend stamp; twelfth suite `deployed-print-e2e.yml`
@@ -1481,6 +1484,11 @@ changes.]*
   environment claim. The owner's build order for this PR scoped the
   environment-identity fields + suite gates only; `aud` issuance and
   validation ride a follow-up PR before step 2.
+  *[Superseded 2026-07-11: BUILT — see "aud-claim environment rider
+  (built)" below. The rider also supersedes this record's
+  unset→"development" healthz default: /healthz now reports "unset"
+  honestly, because authentication fails closed on a missing or unknown
+  APP_ENV.]*
 - **Verification (local, old main :8081 vs branch :8080, fresh identical
   SQLite seeds)**: 46-check byte-parity sweep — every endpoint
   byte-identical except `/healthz`, which is asserted to be exactly
@@ -1515,6 +1523,50 @@ changes.]*
   8/8 render proof. Render Blueprint-synced `APP_ENV=staging`
   automatically on the merge deploy — no manual dashboard step was
   needed.
+
+### aud-claim environment rider (built) — the deferred half of §11 step 1
+*[Attributed addition 2026-07-11 — completes design step 1: the JWT
+audience IS the environment, so a token minted in one environment is
+structurally invalid in another EVEN IF the signing secret were somehow
+shared — defense in depth on top of the per-environment `JWT_SECRET`.]*
+- **Issuance stamps `aud` with the running `APP_ENV`** (AuthApi; the old
+  fixed `aurora-icu-client` audience is gone). **Validation requires
+  `aud == APP_ENV`** (Program.cs `ValidAudience`). Consequence, recorded:
+  tokens minted before the rider fail validation once — a single forced
+  re-login at the deploy that ships this.
+- **No oracle**: `IncludeErrorDetails=false` — every invalid token gets
+  the same bare `WWW-Authenticate: Bearer error="invalid_token"`; the
+  401 must not reveal whether the audience or the signature failed
+  (previously the header carried a descriptive reason — removed).
+- **Fail-closed on missing/unknown `APP_ENV`** (shared resolver
+  `Core/Shared/AppEnv.cs`, whitelist development|staging|production):
+  login returns 503 ("authentication unavailable … fail-closed",
+  config state — identical for every caller, not a credentials oracle);
+  validation's audience becomes an unmatchable per-boot GUID so NO token
+  validates; boot logs it loudly; `/healthz` reports the honest value
+  ("unset" or the raw unknown string) instead of step 1's
+  "development" default (superseded above). Local dev now sets
+  `APP_ENV=development` explicitly. Step 2 escalates unknown `APP_ENV`
+  to refuse-boot; the surface that matters — tokens — is closed already.
+- **Suite coverage** (auth suite): the issued token's decoded `aud` must
+  equal the suite's declared target (the same value the environment gate
+  proved `/healthz` serves); a token whose ONLY difference is a swapped
+  `aud` and a token with a corrupted signature are both rejected 401
+  with IDENTICAL, description-free `WWW-Authenticate` headers; the
+  same-environment token is proven by every authorized leg.
+- **Verification (local)**: 16-check matrix with five instances sharing
+  ONE deliberately identical `JWT_SECRET` — the crux: staging token
+  works on staging (200) and is REJECTED on production (401), and vice
+  versa, despite the shared secret; pre-rider (old-audience) token
+  rejected by the new build; unset and unknown (`prod`) `APP_ENV`
+  instances refuse to issue (503) and to validate (401 for a genuinely
+  valid staging token); aud-mismatch / bad-signature / wrong-environment
+  rejections carry identical headers with no `error_description` (old
+  main's descriptive header captured for contrast). 45-check byte-parity
+  sweep old main vs rider (fresh identical seeds): every endpoint
+  byte-identical including `/healthz` — the only behavioral deltas are
+  the token's `aud` value and the invalid-token 401 header, both
+  intended. No schema change → no migration simulation.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
