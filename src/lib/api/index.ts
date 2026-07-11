@@ -8,7 +8,7 @@ import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
-  OrderSetsResponse, PatientDetailResponse, PatientRiskProfile, PatientSummary, ResultInboxItem,
+  OrderSetsResponse, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
   RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse, UserAccount,
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY, composeBedsResponse, mockAdtBeds } from './data/beds'
@@ -810,6 +810,32 @@ export async function getEncounters(filter?: { patientId?: string; status?: 'ope
       admittedAt: '', admittedBy: '', events: [],
     }))
   return respond(open, 120)
+}
+
+/** GET /api/icu/adt/patients/:patientId — the Core PATIENT-IDENTITY read
+ *  (person-level identity by id; resolves whether or not the patient is
+ *  admitted — the fix for the recorded discharged-patient identity gap).
+ *  STRICTLY REAL-ONLY, deliberately: identity on a printed document must
+ *  come from the system of record or be visibly absent — a mock/offline
+ *  substitute here could print ANOTHER record's data as if it were the
+ *  chart (adversarial-review finding). Every non-200 — a genuine 404,
+ *  403/5xx, offline, or pure mock mode — resolves null, and the caller's
+ *  remaining rungs (mock roster / encounter snapshot) carry the mock and
+ *  offline cases with their own honest provenance. */
+export async function getPatientIdentity(patientId: string): Promise<PatientIdentity | null> {
+  if (!API_BASE) return null
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}/api/icu/adt/patients/${encodeURIComponent(patientId)}`,
+      { signal: ctrl.signal, headers: authHeaders() })
+    clearTimeout(timer)
+    if (res.ok) return (await res.json()) as PatientIdentity
+    console.info(`[aurora] patient identity API responded ${res.status} — no fallback (real-only read)`)
+  } catch {
+    console.info('[aurora] patient identity API unreachable — no fallback (real-only read)')
+  }
+  return null
 }
 
 /** POST /api/icu/adt/admissions — doctor RBAC (adt.admit). REAL-ONLY write. */

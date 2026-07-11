@@ -1,7 +1,7 @@
 import {
-  getEncounters, getImagingStudies, getLabDraws, getPatientOrders, getRosterRecord, getTimeline,
+  getEncounters, getImagingStudies, getLabDraws, getPatientIdentity, getPatientOrders, getRosterRecord, getTimeline,
 } from '../../lib/api'
-import type { Encounter, LabDraw, Order, RosterRecordDto } from '../../lib/api/types'
+import type { Encounter, LabDraw, Order, PatientIdentity, RosterRecordDto } from '../../lib/api/types'
 import { dayOffsetOf } from '../../lib/time'
 import type {
   AdmissionNoteData, DailyProgressData, DischargeSummaryData, PrintContext, PrintEncounterInfo,
@@ -39,10 +39,22 @@ function toIdentity(r: RosterRecordDto): PrintPatientIdentity {
   }
 }
 
-/** Discharged patients are legitimately NOT on the roster (a derived view
- *  over open encounters) — identity then comes from the encounter's own
- *  display snapshot, and the document SAYS so instead of fabricating the
- *  missing fields. */
+/** THE MIDDLE RUNG (closes the recorded discharged-patient identity gap):
+ *  person-level identity from the Core patient-identity read — the SAME
+ *  server-side resolver the roster serves — joined with the encounter's
+ *  own display fields (bed, diagnosis, attending). Code status stays
+ *  bedside state (roster-only), not identity. */
+function recordIdentity(p: PatientIdentity, e: Encounter): PrintPatientIdentity {
+  return {
+    patientId: p.patientId, name: p.name, mrn: p.mrn, age: p.age, sex: p.sex,
+    allergies: p.allergies, attending: e.attending, codeStatus: null,
+    bedId: e.bedId, diagnosis: e.diagnosis, source: 'patient-record',
+  }
+}
+
+/** Last resort — identity read unreachable AND patient off the roster:
+ *  the encounter's own display snapshot, and the document SAYS so instead
+ *  of fabricating the missing fields. */
 function snapshotIdentity(e: Encounter): PrintPatientIdentity {
   return {
     patientId: e.patientId, name: e.patientName, mrn: null, age: null, sex: null,
@@ -91,7 +103,14 @@ export async function resolveContext(patientId: string, preferredEncounterId?: s
     null
   if (!roster && !target) return null
 
-  const patient = roster ? toIdentity(roster) : snapshotIdentity(target!)
+  /* the print identity LADDER: roster record (admitted) → the Core
+     patient-identity read (by id — resolves discharged patients) →
+     encounter snapshot (last resort, offline). One rung per await:
+     the identity read is only consulted when the roster misses. */
+  const identity = roster ? null : await getPatientIdentity(patientId)
+  const patient = roster ? toIdentity(roster)
+    : identity ? recordIdentity(identity, target!)
+    : snapshotIdentity(target!)
   const scoped = !!target && allOrders.some(o => o.encounterId)
   const orders = scoped ? allOrders.filter(o => o.encounterId === target!.encounterId) : allOrders
   const hasChartedTimes =

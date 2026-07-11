@@ -59,6 +59,29 @@ static class AdtApi
                 .Select(e => e.ToDto(names.GetValueOrDefault(e.PatientId, ""))), JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* GET /api/icu/adt/patients/{patientId} — the Core PATIENT-IDENTITY
+           READ (closes the recorded discharged-patient identity gap):
+           person-level identity from the persisted AdtPatients row,
+           resolvable WHETHER OR NOT the patient has an open encounter.
+           The roster stays what it is — the open-encounter census; this is
+           "who is this patient" by id. Identity is served through the SAME
+           resolver the roster and the admissions response use
+           (Patient.ToDto — one source of truth, never a parallel
+           assembly). Gated on patients.view — the permission that already
+           means "may read who patients are"; every profile carries it.
+           FOUR-CODE: absent id → 404; a DISCHARGED patient is 200 (the
+           patient exists — they are just not admitted). RBAC answers
+           before the lookup (the generic 403 is no existence oracle). */
+        app.MapGet("/api/icu/adt/patients/{patientId}",
+            (string patientId, HttpContext ctx, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "patients.view") is IResult denied) return denied;
+            foreach (var key in ctx.Request.Query.Keys)
+                return ApiError.BadRequest($"unknown query parameter '{key}'");
+            var patient = db.AdtPatients.AsNoTracking().FirstOrDefault(p => p.PatientId == patientId);
+            return patient is null ? ApiError.NotFound() : Results.Json(patient.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* POST /api/icu/adt/admissions — DOCTOR RBAC (adt.admit). Creates
            the Patient if the MRN is new, opens an Encounter, assigns the
            bed. Every draft field is validated BEFORE anything is written. */
@@ -74,8 +97,37 @@ static class AdtApi
                 if (value.Length > AdtLogic.MaxTextLength)
                     return ApiError.BadRequest($"{name} exceeds {AdtLogic.MaxTextLength} characters");
             }
-            if (req.Age is null || req.Age is < 0 or > 130)
-                return ApiError.BadRequest("age is required and must be between 0 and 130");
+            /* IDENTITY REDESIGN: exactly ONE of dateOfBirth / age.
+               dateOfBirth ("yyyy-MM-dd") is the correct capture — age then
+               COMPUTES at read, never stored. age stays accepted for
+               estimated-age admissions (DOB genuinely unknown at the
+               bedside) and is served with its provenance. Both → 400
+               (ambiguous — the pair can drift); neither → 400. */
+            if (req.DateOfBirth is not null && req.Age is not null)
+                return ApiError.BadRequest("provide dateOfBirth or age, not both");
+            if (req.DateOfBirth is null && req.Age is null)
+                return ApiError.BadRequest("one of dateOfBirth or age is required");
+            if (req.Age is not null && req.Age is < 0 or > 130)
+                return ApiError.BadRequest("age must be between 0 and 130");
+            string? dob = null;
+            if (req.DateOfBirth is not null)
+            {
+                if (!DateTime.TryParseExact(req.DateOfBirth, "yyyy-MM-dd",
+                        null, System.Globalization.DateTimeStyles.None, out var parsed))
+                    return ApiError.BadRequest("dateOfBirth must be a valid date formatted yyyy-MM-dd");
+                /* RECORDED LIMITATION: DOB is a CIVIL date but the server
+                   has only UTC (no facility-timezone concept yet). East
+                   of UTC, between local and UTC midnight, a same-day
+                   birth is rejected as "in the future" and a computed age
+                   reads one year low for those hours. Fixing this needs a
+                   facility timezone — recorded in 02 as future scope. */
+                var today = DateTime.UtcNow.Date;
+                if (parsed.Date > today)
+                    return ApiError.BadRequest("dateOfBirth cannot be in the future");
+                if (parsed.Date < today.AddYears(-130))
+                    return ApiError.BadRequest("dateOfBirth implies an age above 130");
+                dob = parsed.ToString("yyyy-MM-dd");
+            }
             if (req.Sex is not ("M" or "F"))
                 return ApiError.BadRequest("sex must be one of: M, F");
             if (!db.Beds.AsNoTracking().Any(b => b.BedId == req.BedId))
@@ -100,13 +152,38 @@ static class AdtApi
                 if (openEnc is not null)
                     return ApiError.StateConflict(
                         $"patient '{patient.PatientId}' ({mrn}) already has an open encounter '{openEnc.EncounterId}'");
+                /* RE-ADMISSION IDENTITY RULES (adversarial-review finding
+                   — never a silent no-op):
+                   - a submitted dateOfBirth COMPLETES a legacy row that
+                     has none (the estimate becomes recorded truth; the
+                     stored age clears — it derives from DOB from now on);
+                   - a submitted dateOfBirth that CONTRADICTS the recorded
+                     one is a 409: identity corrections are not an
+                     admission side effect — they need their own audited
+                     path (recorded future scope);
+                   - a submitted AGE (an estimate) never downgrades the
+                     recorded identity of a known patient — the stored
+                     identity stands and the response returns it, so the
+                     caller SEES what is recorded. */
+                if (dob is not null)
+                {
+                    if (patient.DateOfBirth is null)
+                    {
+                        patient.DateOfBirth = dob;
+                        patient.Age = null;
+                    }
+                    else if (patient.DateOfBirth != dob)
+                        return ApiError.StateConflict(
+                            $"patient '{patient.PatientId}' ({mrn}) has recorded date of birth {patient.DateOfBirth} — "
+                            + $"the submitted {dob} differs; identity corrections are not part of admission");
+                }
             }
             else
             {
                 patient = new Patient
                 {
                     PatientId = AdtLogic.NextPatientId(),
-                    Mrn = mrn, Name = req.Name!.Trim(), Age = req.Age.Value,
+                    Mrn = mrn, Name = req.Name!.Trim(), Age = req.Age, DateOfBirth = dob,
                     Sex = req.Sex!, Allergies = req.Allergies!.Trim(),
                 };
                 db.AdtPatients.Add(patient);

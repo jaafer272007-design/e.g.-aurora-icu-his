@@ -42,7 +42,13 @@ static class RosterApi
                 .AsEnumerable()
                 .Select(e =>
                 {
-                    var p = identity[e.PatientId];
+                    /* identity via THE canonical resolver (Patient.ToDto —
+                       the no-fork rule): the same assembly GET
+                       /adt/patients/{id} and the admissions response
+                       serve; age arrives computed-at-read for DOB rows
+                       and as the recorded value for legacy rows, so the
+                       roster wire shape (int age) is unchanged. */
+                    var p = identity[e.PatientId].ToDto();
                     var b = bedside.GetValueOrDefault(e.PatientId);
                     return b is not null
                         ? b.ToDto(e.BedId, p.Name, p.Mrn, p.Age, p.Sex, e.Diagnosis, p.Allergies, e.Attending)

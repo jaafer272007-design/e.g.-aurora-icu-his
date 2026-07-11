@@ -905,12 +905,42 @@ export interface Encounter {
   events: AdtEvent[]
 }
 
+/* ---------- GET /api/icu/adt/patients/:patientId ---------- */
+
+/** The Core PATIENT-IDENTITY read — person-level identity from the
+ *  persisted AdtPatients row, resolvable whether or not the patient has
+ *  an open encounter (the fix for the recorded discharged-patient
+ *  identity gap). Identity is served by the SAME server-side resolver
+ *  the roster and the admissions response use — one source of truth. */
+export interface PatientIdentity {
+  patientId: string
+  mrn: string
+  name: string
+  /** absent/null on rows admitted before DOB capture existed (the wire
+   *  omits null fields — WhenWritingNull) — an admission-era age estimate
+   *  cannot be turned into a birth date without fabrication, so it
+   *  never is */
+  dateOfBirth?: string | null
+  /** COMPUTED at read from dateOfBirth when present (clock-computed-state
+   *  rule — never stored); otherwise the admission-era recorded value,
+   *  served plainly with its provenance */
+  age: number
+  ageSource: 'dateOfBirth' | 'recordedAtAdmission'
+  sex: Sex
+  allergies: string
+}
+
 /* ---------- POST /api/icu/adt/admissions ---------- */
 
 export interface AdmitDraft {
   mrn: string
   name: string
-  age: number
+  /** EXACTLY ONE of dateOfBirth / age. dateOfBirth ("yyyy-MM-dd") is the
+   *  correct capture — age then computes at read; age remains for
+   *  estimated-age admissions (DOB genuinely unknown at the bedside).
+   *  Both → 400, neither → 400 (server-validated). */
+  age?: number
+  dateOfBirth?: string
   sex: Sex
   allergies: string
   diagnosis: string
@@ -919,7 +949,7 @@ export interface AdmitDraft {
 }
 
 export interface AdmitResponse {
-  patient: { patientId: string; mrn: string; name: string; age: number; sex: Sex; allergies: string }
+  patient: PatientIdentity
   encounter: Encounter
 }
 

@@ -27,11 +27,41 @@ class Patient
     public string PatientId { get; set; } = "";
     public string Mrn { get; set; } = "";
     public string Name { get; set; } = "";
-    public int Age { get; set; }
+    /* IDENTITY REDESIGN (the patient-identity-read PR): exactly ONE of
+       DateOfBirth / Age is populated per row. DateOfBirth ("yyyy-MM-dd")
+       is captured on new admissions and age is COMPUTED at read (the
+       clock-computed-state rule — never stored). Age survives as the
+       LEGACY field for rows admitted before DOB capture existed: an
+       admission-era estimate that cannot be turned into a birth date
+       without fabrication, so it is served plainly with its provenance
+       (ageSource) instead — the never-fabricate discipline. */
+    public int? Age { get; set; }
+    public string? DateOfBirth { get; set; }
     public string Sex { get; set; } = "";
     public string Allergies { get; set; } = "";
 
-    public PatientDto ToDto() => new(PatientId, Mrn, Name, Age, Sex, Allergies);
+    /* THE canonical identity resolver (the no-fork rule): the roster
+       projection, the admissions response, and GET /adt/patients/{id}
+       all serve identity through THIS method — one source of truth,
+       several entry points, never a parallel assembly of these fields. */
+    public PatientDto ToDto()
+    {
+        var (age, source) = ResolveAge();
+        return new(PatientId, Mrn, Name, DateOfBirth, age, source, Sex, Allergies);
+    }
+
+    (int Age, string Source) ResolveAge()
+    {
+        if (DateOfBirth is not null && DateTime.TryParseExact(DateOfBirth, "yyyy-MM-dd",
+                null, System.Globalization.DateTimeStyles.None, out var dob))
+        {
+            var today = DateTime.UtcNow.Date;
+            var age = today.Year - dob.Year;
+            if (dob.Date > today.AddYears(-age)) age--;
+            return (age, "dateOfBirth");
+        }
+        return (Age ?? 0, "recordedAtAdmission");
+    }
 }
 
 [Table("Encounters")]
@@ -70,8 +100,13 @@ class BedRow
     public int Seq { get; set; }
 }
 
-/* wire contracts */
-record PatientDto(string PatientId, string Mrn, string Name, int Age, string Sex, string Allergies);
+/* wire contracts. PatientDto: dateOfBirth is null on legacy rows (never
+   fabricated); age is computed-at-read when dateOfBirth exists, else the
+   admission-era recorded value; ageSource names which
+   ("dateOfBirth" | "recordedAtAdmission"). */
+record PatientDto(
+    string PatientId, string Mrn, string Name, string? DateOfBirth, int Age,
+    string AgeSource, string Sex, string Allergies);
 
 record AdtEventDto(string Time, string Actor, string Action, string? Detail);
 
@@ -90,7 +125,7 @@ record BedSeedDto(string BedId, string Area);
    400, never a silent no-op (codified patient-safety rule) */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record AdmitRequest(
-    string? Mrn, string? Name, int? Age, string? Sex, string? Allergies,
+    string? Mrn, string? Name, int? Age, string? DateOfBirth, string? Sex, string? Allergies,
     string? Diagnosis, string? Attending, string? BedId);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
