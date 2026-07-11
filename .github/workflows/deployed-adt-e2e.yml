@@ -7,9 +7,16 @@
 # admission, and re-discharge → 409 state conflicts with a precise
 # {error}; never a silent 200, never a 500), and Bed-Overview reflection
 # (the roster endpoint gains the admission at its bed, moves it on
-# transfer, and drops it on discharge). Dispatch manually after merging
-# /server changes to main — SEQUENTIALLY with the other suites, never
-# concurrently (recorded lesson).
+# transfer, and drops it on discharge). Since the patient-identity-read
+# PR the suite also covers GET /adt/patients/{id}: the NO-FORK equality
+# proof (identity read == roster identity for the admitted patient),
+# IDENTITY SURVIVES DISCHARGE (byte-identical 200 after the roster drops
+# the patient — the recorded gap, closed), the DOB path (dateOfBirth
+# stored, age COMPUTED at read with birthday-aware math, ageSource
+# provenance), the exactly-one-of age/dateOfBirth validation 400s, and
+# the absence probe (unknown patient id → 404). Dispatch manually after
+# merging /server changes to main — SEQUENTIALLY with the other suites,
+# never concurrently (recorded lesson).
 #
 # IDEMPOTENT UNDER PERSISTENCE BY DESIGN: every run admits a patient with
 # a UNIQUE MRN (run id), picks FREE beds dynamically, and discharges its
@@ -122,18 +129,59 @@ jobs:
           echo "nurse admit -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"x","bogus":1}' "$API/api/icu/adt/admissions")
           echo "unknown field -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # IDENTITY REDESIGN validation: exactly ONE of age / dateOfBirth
+          # (all three probes fail validation BEFORE any insert)
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"'$MRN'-V","name":"V","age":50,"dateOfBirth":"1980-01-01","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+          rc=$(echo "$out" | tail -1); echo "age+dateOfBirth -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "not both" || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"'$MRN'-V","name":"V","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+          rc=$(echo "$out" | tail -1); echo "neither age nor dateOfBirth -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "one of dateOfBirth or age is required" || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"'$MRN'-V","name":"V","dateOfBirth":"1990-13-40","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+          rc=$(echo "$out" | tail -1); echo "malformed dateOfBirth -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
 
       - name: DOCTOR admits (actor from token) → patient on Bed Overview at the bed
         run: |
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"mrn":"'$MRN'","name":"E2E ADT Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
-          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. Sara Rahman", d; print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          # EXPORT BEFORE ASSERTING (leak-prevention, adversarial-review
+          # finding): the admission has already created an OPEN encounter
+          # — if an assert below fails first, the always() cleanup must
+          # still know the ids or the encounter leaks a bed forever.
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
           read PID EID <<<"$vals"
-          echo "admitted $PID encounter $EID by token actor"
           { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
+          python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. Sara Rahman", d'
+          echo "admitted $PID encounter $EID by token actor"
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/patients" \
             | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin) if x['patientId']=='$PID']; assert r and r[0]['bedId']=='$B1', r; print('roster shows', r[0]['patientId'], 'at', r[0]['bedId'])"
+
+      - name: PATIENT-IDENTITY READ — same resolver as the roster (no fork); 401/404/400 probes
+        run: |
+          # GET /adt/patients/{id} — the Core patient-identity read. THE
+          # NO-FORK PROOF, live: the identity it serves must equal what
+          # the roster serves for the same ADMITTED patient (allergies
+          # above all — two read paths must never drift).
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$PID" -o /tmp/idread.json
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/patients" -o /tmp/roster.json
+          PID="$PID" python3 -c '
+          import json, os
+          i = json.load(open("/tmp/idread.json"))
+          r = [x for x in json.load(open("/tmp/roster.json")) if x["patientId"] == os.environ["PID"]][0]
+          for f in ("mrn", "name", "age", "sex", "allergies"):
+              assert i[f] == r[f], (f, i[f], r[f])
+          assert i["age"] == 49 and i["ageSource"] == "recordedAtAdmission" and i.get("dateOfBirth") is None, i
+          print("NO FORK: identity read == roster identity; age 49 recordedAtAdmission, no fabricated dob")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR" "$API/api/icu/adt/patients/$PID")
+          echo "nurse identity read -> HTTP $rc (patients.view on every profile)"; [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/adt/patients/$PID")
+          echo "unauth -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          # ABSENCE PROBE (the coverage lesson): an id that resolves to nothing
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/P-GHOST-$GITHUB_RUN_ID")
+          echo "absent patient -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$PID?verbose=1")
+          echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
 
       - name: State conflicts — occupied bed / duplicate open encounter → 409 naming the conflict (four-code rule)
         run: |
@@ -180,6 +228,74 @@ jobs:
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
             | python3 -c "import json,sys; b=[x for x in json.load(sys.stdin) if x['bedId']=='$B2'][0]; assert not b.get('patientId'), b; print('$B2 freed')"
 
+      - name: IDENTITY SURVIVES DISCHARGE — 200 with the SAME fields (the recorded gap, closed live)
+        run: |
+          # THE CRUX of the identity-read PR: the roster just dropped this
+          # patient (previous step) — the identity read must still resolve
+          # them with identity IDENTICAL to the pre-discharge capture.
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$PID" -o /tmp/idread2.json
+          python3 -c '
+          import json
+          a = json.load(open("/tmp/idread.json")); b = json.load(open("/tmp/idread2.json"))
+          assert a == b, (a, b)
+          print("discharged patient resolves 200 — identity byte-identical to pre-discharge")'
+
+      - name: DOB admission — dateOfBirth stored, age COMPUTED at read (birthday-aware)
+        run: |
+          # Admit a SECOND run patient on the bed the transfer freed ($B1),
+          # capturing dateOfBirth = (today - 30y + 40d): the birthday is
+          # ~40 days ahead, so on most days the birthday-aware age (29)
+          # differs from the naive year-difference (30) and the assert
+          # discriminates a naive/stored implementation. Expected age is
+          # RE-DERIVED AT ASSERT TIME with a fresh clock (no UTC-midnight
+          # race against the server); in the ~40 days where +40d crosses
+          # the year boundary the naive value coincides — the assert stays
+          # CORRECT then, just non-discriminating (logged). Feb-29-safe:
+          # year replacement clamps to Feb 28. (Both per the
+          # adversarial-review findings on this step's first draft.)
+          vals=$(python3 -c '
+          import datetime
+          t = datetime.date.today()
+          try: base = t.replace(year=t.year-30)
+          except ValueError: base = t.replace(year=t.year-30, day=28)
+          print((base + datetime.timedelta(days=40)).isoformat())')
+          read DOBSTR <<<"$vals"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'-DOB","name":"E2E DOB Patient","dateOfBirth":"'$DOBSTR'","sex":"M","allergies":"None documented","diagnosis":"identity-read E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/admdob.json
+          # EXPORT BEFORE ASSERTING (leak prevention — see the first
+          # admission step): the encounter exists the moment the curl
+          # returns; cleanup must know EID2 even if an assert fails next.
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/admdob.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          read PID2 EID2 <<<"$vals"
+          echo "EID2=$EID2" >> "$GITHUB_ENV"
+          DOBSTR="$DOBSTR" python3 -c '
+          import datetime, json, os
+          dob = datetime.date.fromisoformat(os.environ["DOBSTR"])
+          t = datetime.date.today()
+          want = t.year - dob.year - ((t.month, t.day) < (dob.month, dob.day))
+          naive = t.year - dob.year
+          p = json.load(open("/tmp/admdob.json"))["patient"]
+          assert p["dateOfBirth"] == os.environ["DOBSTR"], p
+          assert p["age"] == want, (p, want)
+          assert p["ageSource"] == "dateOfBirth", p
+          served = p["age"]
+          print(f"age {served} computed at read"
+                + (f" — DISCRIMINATES from the naive year-difference {naive}" if naive != want
+                   else " (year-boundary window: naive coincides today; assert still correct)"))'
+          echo "admitted $PID2 ($EID2): dateOfBirth $DOBSTR, ageSource dateOfBirth"
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$PID2" \
+            | DOBSTR="$DOBSTR" python3 -c '
+          import datetime, json, os, sys
+          dob = datetime.date.fromisoformat(os.environ["DOBSTR"])
+          t = datetime.date.today()
+          want = t.year - dob.year - ((t.month, t.day) < (dob.month, dob.day))
+          i = json.load(sys.stdin)
+          assert i["age"] == want and i["ageSource"] == "dateOfBirth", (i, want)
+          print("identity read serves the computed age too")'
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID2/discharge" >/dev/null
+          echo "second encounter discharged (cleanup re-asserts)"
+
       - name: Durable record — THIS run's closed encounter is queryable (cross-run accumulation = live durability)
         run: |
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID&status=discharged" \
@@ -199,14 +315,18 @@ jobs:
           # forever (2026-07-10 audit). This step runs on success, failure
           # AND cancellation; on the success path the encounter is already
           # discharged and the 400 branch below confirms it.
-          if [ -z "${EID:-}" ] || [ -z "${DOC:-}" ]; then
-            echo "no encounter was created by this run — nothing to release"; exit 0
+          if [ -z "${DOC:-}" ]; then
+            echo "no token — nothing was created by this run"; exit 0
           fi
-          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge")
-          rc=$(echo "$out" | tail -1)
-          case "$rc" in
-            200) echo "failure-path cleanup released $EID (bed freed)";;
-            409) echo "$out" | head -1 | grep -q "already discharged" || { echo "unexpected 409: $out"; exit 1; }
-                 echo "$EID already discharged (normal path) — nothing leaked";;
-            *)   echo "CLEANUP FAILED: could not release $EID (HTTP $rc) — a bed is leaked, manual action required"; exit 1;;
-          esac
+          for enc in "${EID:-}" "${EID2:-}"; do
+            [ -n "$enc" ] || continue
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$enc/discharge")
+            rc=$(echo "$out" | tail -1)
+            case "$rc" in
+              200) echo "failure-path cleanup released $enc (bed freed)";;
+              409) echo "$out" | head -1 | grep -q "already discharged" || { echo "unexpected 409: $out"; exit 1; }
+                   echo "$enc already discharged (normal path) — nothing leaked";;
+              *)   echo "CLEANUP FAILED: could not release $enc (HTTP $rc) — a bed is leaked, manual action required"; exit 1;;
+            esac
+          done
+          [ -n "${EID:-}${EID2:-}" ] || echo "no encounter was created by this run — nothing to release"

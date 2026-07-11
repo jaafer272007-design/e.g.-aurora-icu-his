@@ -30,6 +30,12 @@ export function Admissions() {
 
   const [mrn, setMrn] = useState('')
   const [name, setName] = useState('')
+  /* IDENTITY REDESIGN: date of birth is the correct capture (age computes
+     at read — the clock-computed-state rule); the estimated-age path
+     stays for patients whose DOB is genuinely unknown at the bedside.
+     Exactly one of the two is sent (server-enforced). */
+  const [dob, setDob] = useState('')
+  const [dobUnknown, setDobUnknown] = useState(false)
   const [age, setAge] = useState('')
   const [sex, setSex] = useState<Sex>('M')
   const [allergies, setAllergies] = useState('None documented')
@@ -56,21 +62,31 @@ export function Admissions() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
-    const ageNum = Number(age)
-    if (!Number.isInteger(ageNum) || ageNum < 0 || ageNum > 130) {
-      setFormError('Age must be a whole number between 0 and 130')
-      return
+    let identity: { age: number } | { dateOfBirth: string }
+    if (dobUnknown) {
+      const ageNum = Number(age)
+      if (!Number.isInteger(ageNum) || ageNum < 0 || ageNum > 130) {
+        setFormError('Estimated age must be a whole number between 0 and 130')
+        return
+      }
+      identity = { age: ageNum }
+    } else {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob > new Date().toISOString().slice(0, 10)) {
+        setFormError('Date of birth must be a valid past date')
+        return
+      }
+      identity = { dateOfBirth: dob }
     }
     setBusy(true)
     const res = await admitPatient({
-      mrn: mrn.trim(), name: name.trim(), age: ageNum, sex,
+      mrn: mrn.trim(), name: name.trim(), ...identity, sex,
       allergies: allergies.trim(), diagnosis: diagnosis.trim(),
       attending: attending.trim(), bedId,
     })
     setBusy(false)
     if (res.kind === 'ok') {
       showToast('Admitted', `${res.data.patient.name} (${res.data.patient.patientId}) admitted to ${res.data.encounter.bedId} — encounter ${res.data.encounter.encounterId}`)
-      setMrn(''); setName(''); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
+      setMrn(''); setName(''); setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
       setAllergies('None documented')
       reload()
     } else if (res.kind === 'rejected') {
@@ -80,7 +96,7 @@ export function Admissions() {
     }
   }
 
-  const formOk = mrn.trim() && name.trim() && age.trim() && allergies.trim()
+  const formOk = mrn.trim() && name.trim() && (dobUnknown ? age.trim() : dob) && allergies.trim()
     && diagnosis.trim() && attending.trim() && bedId
 
   return (
@@ -110,8 +126,18 @@ export function Admissions() {
                   <label>Full name
                     <input value={name} onChange={e => setName(e.target.value)} placeholder="Patient name" disabled={!canAdmit} required />
                   </label>
-                  <label>Age
-                    <input value={age} onChange={e => setAge(e.target.value)} inputMode="numeric" placeholder="58" disabled={!canAdmit} required />
+                  {dobUnknown ? (
+                    <label>Estimated age
+                      <input value={age} onChange={e => setAge(e.target.value)} inputMode="numeric" placeholder="58" disabled={!canAdmit} required />
+                    </label>
+                  ) : (
+                    <label>Date of birth
+                      <input type="date" value={dob} onChange={e => setDob(e.target.value)} disabled={!canAdmit} required />
+                    </label>
+                  )}
+                  <label className="admwide admdob">
+                    <input type="checkbox" checked={dobUnknown} onChange={e => { setDobUnknown(e.target.checked); setDob(''); setAge('') }} disabled={!canAdmit} />
+                    <span>Date of birth unknown — record an estimated age (age then prints with its provenance instead of computing from DOB)</span>
                   </label>
                   <label>Sex
                     <select value={sex} onChange={e => setSex(e.target.value as Sex)} disabled={!canAdmit}>

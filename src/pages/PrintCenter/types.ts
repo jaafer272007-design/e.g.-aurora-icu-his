@@ -30,8 +30,10 @@ export interface PrintPatientIdentity {
   bedId: string
   diagnosis: string
   /** where the identity fields came from — surfaced on the document when
-   *  it is the narrower encounter snapshot */
-  source: 'roster' | 'encounter-snapshot'
+   *  it is the narrower encounter snapshot. 'patient-record' is the Core
+   *  patient-identity read (the middle rung): full person-level identity
+   *  for a patient who is no longer on the roster. */
+  source: 'roster' | 'patient-record' | 'encounter-snapshot'
 }
 
 /** The encounter the document is scoped to. */

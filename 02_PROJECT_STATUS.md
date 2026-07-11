@@ -1,11 +1,12 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-11 · current through the Print Center Foundation
-(Phase 1) PR — read-only print architecture + the first 3 of 13
-templates, formulary guarantee verified byte-stable. Previous milestone:
-PR #46 (server-side safety enforcement, merged and LIVE-VERIFIED against
-build e8f3cf56). Next: the remaining Print Center templates and
-environment separation (dev/staging/prod).**
+**Last updated: 2026-07-11 · current through the Core patient-identity
+read PR — GET /adt/patients/{id} through the shared roster resolver
+(no fork), DOB captured + age computed at read, print identity ladder's
+middle rung; both Print-Center-recorded open questions RESOLVED.
+Previous milestones: Print Center Foundation Phase 1 (PR #50), safety
+enforcement (PR #46, live-verified). Next: the remaining Print Center
+templates and environment separation (dev/staging/prod).**
 
 *[Docs split note (2026-07-10): every unmarked line below was moved verbatim
 from the pre-split CLAUDE.md. The only additions are lines styled like this
@@ -1276,6 +1277,15 @@ logic touched.
   today; to be addressed when the identity read above is designed
   (store/serve DOB, compute age at render — the clock-computed-state
   rule).
+  *[BOTH RESOLVED by the patient-identity-read PR (2026-07-11) — see
+  "Core patient-identity read (built)" below: (1) GET
+  /api/icu/adt/patients/{id} serves identity through the SAME resolver
+  the roster uses, discharged patients resolve 200, and the print
+  identity ladder gained exactly the middle rung described (no template
+  or layout change); (2) DateOfBirth is captured on new admissions with
+  age COMPUTED at read; legacy rows keep the admission-era age served
+  plainly with its provenance (ageSource) — never a fabricated birth
+  date.]*
 - **Honesty rules**: narrative sections with no canonical store (past
   history, assessment, plan, follow-up, procedures) print as ruled
   write-in areas — never fabricated; ventilator SETTINGS are Stage 11
@@ -1290,6 +1300,111 @@ logic touched.
   correctly rendered NotFound for the API-only patient — never another
   record's data); A4 PDFs of all three templates attached to the PR
   session record.
+
+### Core patient-identity read (built) — GET /adt/patients/{id} + the DOB redesign
+Closes BOTH open questions the Print Center recorded (see the supersession
+note on them above). A Discharge Summary — the document whose purpose is
+to be printed after discharge — no longer renders "Patient Not Found" or
+"—" identity dashes for a discharged patient.
+- **The read**: `GET /api/icu/adt/patients/{patientId}` (Aurora Core ADT)
+  — person-level identity (mrn, name, dateOfBirth?, age, ageSource, sex,
+  allergies) from the persisted AdtPatients row, resolvable WHETHER OR
+  NOT an open encounter exists. Gated on `patients.view` — the permission
+  that already means "may read who patients are"; ALL SEVEN profiles
+  carry it in both Rbac.cs and session.ts (verified), so no matrix
+  change. FOUR-CODE: absent id → 404; a DISCHARGED patient → 200 (they
+  exist — they are just not admitted); 403 via the generic RBAC deny
+  (before the lookup); unknown query params → 400; admissions body
+  changes fail binding on unknown fields (Disallow, unchanged).
+- **NO FORK — one resolver, three entry points**: `Patient.ToDto()` is
+  THE canonical identity assembly; the roster projection
+  (RosterApi.cs), the POST /admissions response, and the new read all
+  serve it. The roster's former direct field reads (p.Name/p.Mrn/p.Age/
+  p.Sex/p.Allergies) now go through the resolver — the roster wire shape
+  is unchanged (int age arrives computed-at-read for DOB rows, recorded
+  value for legacy rows) and the sweep proves it byte-identical.
+- **DOB, not a static age (the redesign done here, where identity
+  retrieval was being designed)**: AdtPatients gains `DateOfBirth`
+  ("yyyy-MM-dd", nullable); `Age` became nullable — EXACTLY ONE is
+  populated per row. New admissions capture dateOfBirth (the Admissions
+  form gained a date field with a "DOB unknown — record an estimated
+  age" fallback for the unconscious-trauma reality); age is COMPUTED at
+  read (clock-computed-state rule) with birthday-aware math, and the
+  wire carries `ageSource: "dateOfBirth" | "recordedAtAdmission"`.
+  EXISTING ROWS: a true DOB cannot be reconstructed from an
+  admission-era integer — so it never is (the never-fabricate
+  discipline): migration `AddPatientDateOfBirth` only adds the nullable
+  column and relaxes Age to nullable; every pre-existing row keeps its
+  recorded age, served with `recordedAtAdmission` provenance and no
+  dateOfBirth key. Admission validation: both age+dateOfBirth → 400;
+  neither → 400; malformed/future/over-130 dateOfBirth → 400.
+- **Print middle rung (no template or layout change — verified)**: the
+  identity ladder in `selectors.ts` is now roster record (admitted) →
+  `getPatientIdentity` (by id; STRICTLY REAL-ONLY — every non-200,
+  including 403/5xx/offline, resolves null so printed identity is the
+  system of record or visibly absent, never a mock substitute) →
+  encounter snapshot (honest last resort). Only the selector/adapter and
+  the `source` type union changed; PrintLayout.tsx and every template
+  are untouched.
+- **Re-admission identity rules (adversarial-review finding — never a
+  silent no-op)**: re-admitting a known MRN with a dateOfBirth COMPLETES
+  a legacy row that has none (estimate → recorded truth; stored age
+  clears); a dateOfBirth CONTRADICTING the recorded one is a 409
+  (identity corrections are not an admission side effect — an audited
+  correction path is recorded future scope); a submitted AGE estimate
+  never downgrades recorded identity — the stored identity stands and
+  the response returns it.
+- **NEW recorded limitation — DOB is a civil date, the server has only
+  UTC**: east of UTC, between local and UTC midnight, a same-day birth
+  is rejected as "in the future" and a computed age reads one year low
+  for those hours (mirrored west of UTC). Fixing this needs a facility
+  timezone concept — future scope, do not fix ad hoc.
+- **Adversarial review (find → verify, 10 confirmed findings — all fixed
+  here except the recorded limitation above)**: the scaffolded
+  migration's Down() would have DESTROYED DOBs and fabricated Age 0 on
+  rollback — hand-edited to materialize the DOB-computed age BEFORE
+  dropping the column (rollback-tested on the Postgres replica: the DOB
+  row came back Age 39, never 0); re-admission silently discarded a
+  clinician-typed DOB — the rules above; getPatientIdentity masked
+  403/5xx with the mock fallback and could label mock identity as
+  patient-record on a printed document — made strictly real-only; the
+  ADT suite's new legs had the known suite bug classes (ids exported to
+  GITHUB_ENV only AFTER asserts → a failed assert would leak an open
+  encounter past the always() cleanup; the banned
+  `read VAR <<<"$(…assert…)"` pattern; a Feb-29 ValueError; a
+  UTC-midnight race in the expected-age computation; a Dec-31 vacuous
+  discrimination window) — all reworked: export-before-assert for BOTH
+  encounters, expected age re-derived at assert time, Feb-29 clamp,
+  discrimination logged.
+- **Wire deltas (documented)**: the new route; POST /admissions response
+  patient gains `ageSource` (+ `dateOfBirth` when present); the
+  missing-identity 400 text is now "one of dateOfBirth or age is
+  required" and the out-of-range text dropped the now-wrong "is required
+  and" clause. Everything else byte-identical (44-check parity sweep,
+  incl. the roster and every error surface).
+- **Verification**: 24-check behavior matrix (RBAC all four profiles +
+  401, the no-fork equality on seeds AND on a live DOB admission, the
+  discharged-patient 200 byte-identical to pre-discharge, 404/400
+  probes, the birthday-aware age proof — born 30 years ago TOMORROW
+  serves 29, not the naive 30 — and all three re-admission identity
+  rules); migration ROLLBACK tested empirically (Down materializes the
+  computed age, then Up re-applies cleanly); 44-check byte-parity sweep
+  vs main (zero unexpected diffs; three documented deltas asserted
+  explicitly);
+  live-upgrade migration simulation on a real Postgres 16 database (old
+  binary seeds + replays writes incl. a discharged patient → new binary
+  applies exactly AddPatientDateOfBirth; all 16 pre-existing AdtPatients
+  rows byte-identical per column, DateOfBirth NULL everywhere, roster
+  byte-identical across the upgrade, the pre-migration discharged row
+  resolves with its recorded age + provenance, a post-upgrade DOB
+  admission computes correctly; second boot 0 migrations/0 reseeds);
+  10-check headless print proof (Discharge Summary for a GENUINELY
+  discharged patient: no Patient Not Found, MRN/age/sex/allergies all
+  printed and matching the chart record, no dashes, no snapshot notice,
+  formulary byte-stability still holds through the new rung, absent id
+  still the locked NotFound); `deployed-adt-e2e.yml` extended (no-fork
+  equality live, identity-survives-discharge, DOB leg, validation 400s,
+  absence probe; cleanup releases both run encounters).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

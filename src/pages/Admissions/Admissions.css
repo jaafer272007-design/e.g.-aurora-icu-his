@@ -32,3 +32,7 @@
 .adm .admlink:hover,.adm .admlink:focus-visible{background:rgba(77,163,255,.18)}
 @media(max-width:1500px){.adm .shell{grid-template-columns:64px 1fr}}
 @media(max-width:1180px){.adm.app-frame{height:auto;overflow:visible}.adm main{overflow:visible}}
+
+/* DOB-unknown toggle (identity redesign) — checkbox row inside the grid */
+.adm .admgrid .admdob { flex-direction: row; align-items: center; gap: 8px; font-size: 11px; color: #9fb1c9; }
+.adm .admgrid .admdob input { width: auto; min-height: 0; }
