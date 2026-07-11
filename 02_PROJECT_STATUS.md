@@ -1,8 +1,11 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-11 · current through PR #46 — server-side safety
-enforcement (merged and LIVE-VERIFIED against build e8f3cf56). Next
-build-order item: environment separation (dev/staging/prod).**
+**Last updated: 2026-07-11 · current through the Print Center Foundation
+(Phase 1) PR — read-only print architecture + the first 3 of 13
+templates, formulary guarantee verified byte-stable. Previous milestone:
+PR #46 (server-side safety enforcement, merged and LIVE-VERIFIED against
+build e8f3cf56). Next: the remaining Print Center templates and
+environment separation (dev/staging/prod).**
 
 *[Docs split note (2026-07-10): every unmarked line below was moved verbatim
 from the pre-split CLAUDE.md. The only additions are lines styled like this
@@ -1189,6 +1192,105 @@ consequence). No schema change — the only wire delta is the additive
     hands-on verification; a read-only ops audit confirmed no leaked
     encounters afterwards).
 
+### Print Center Foundation — Phase 1 (built) — read-only rendering, 3 of 13 templates
+The first production-ready Print Center slice: the rendering
+ARCHITECTURE (binding rules recorded in 01_ARCHITECTURE.md § Print
+Center) plus the ICU Admission Note, Daily Progress Note, and Discharge
+Summary. The remaining ten templates are LATER PRs on this foundation.
+Frontend-only: no server change, no schema, no new endpoints, no domain
+logic touched.
+- **Architecture**: `/print` hub (patient → encounter → document picker;
+  standard app chrome, route + nav guarded by `patients.view`) and
+  `/print/:templateId/:patientId?enc=` (the printable document — NO app
+  chrome at all; on-screen paper preview with a toolbar that print media
+  hides). Template registry (`registry.tsx`: id, orientation,
+  encounter scope, data builder, component) → shared `PrintLayout`
+  (hospital header + logo placeholder, identity band, encounter band,
+  title, printed-by/at, notices, footnotes, footer) + shared primitives
+  (Section/FactGrid/MedTable/WriteIn/SignatureBlock) → read-only
+  selectors composing EXISTING adapters (`getPatientOrders`,
+  `getLabDraws`, `getImagingStudies`, `getTimeline`, `getEncounters`,
+  plus new `getRosterRecord` — a read-only exposure of the SAME roster
+  fetch getPatients/getBeds already share, not a new endpoint). Adding a
+  template = one selector + one component + one registry entry.
+- **Printing**: browser-native — `window.print()`, print preview, and
+  save-as-PDF. `@page` A4 with proper margins; page numbers via `@page`
+  margin boxes (render on Chromium 131+/Firefox, silently absent
+  elsewhere — nothing else depends on them); table headers repeat per
+  page (`display: table-header-group`); predictable break rules
+  (`break-inside: avoid` on bands/signatures, `break-after: avoid` on
+  headings, orphans/widows 3); black-on-white, photocopy-friendly, no
+  color load-bearing. A print-media rule also hides the app nav/header
+  chrome globally, belt-and-braces.
+- **THE FORMULARY GUARANTEE, PROVEN not asserted**: (1) code level — the
+  print module has ZERO master-data imports (`getFormulary`/
+  `getLabCatalog` never referenced; all grep hits are the comments
+  stating the rule); (2) runtime — on a local server + headless Chromium
+  (Playwright print pipeline), a run patient was admitted, two run drugs
+  ordered (one manually discontinued with a reason, one left active),
+  the encounter discharged, and the Discharge Summary captured; BOTH
+  drugs were then deactivated in the live formulary and the document
+  re-rendered **byte-identical** (only the "Printed <timestamp>"
+  generation stamp normalized) — 15/15 checks green, A4 PDFs captured
+  for all three templates.
+- **Discharge-medication classification comes from the audit trail, not
+  a new model**: "Medications at discharge" = orders discontinued with
+  the discharge cascade's exact persisted reason ("patient discharged —
+  auto-discontinued at discharge"; still-active orders when printed
+  before discharge); "stopped during admission" = discontinued with any
+  other reason, printed with that reason; "changes" = the orders'
+  `modified` audit events. All from persisted order records.
+- **Surfaced, not buried (the two recorded open questions where print
+  makes them visible)**: (a) date-less HH:mm/"D-n HH:mm" charted times
+  print EXACTLY as charted with a † footnote explaining the recorded
+  open question — dates are never fabricated; (b) every document is
+  ENCOUNTER-scoped and says so; when other encounters exist a notice
+  names the scope and the readmission-presentation open question.
+- **NEW recorded gap (found by this work, not fixed here)**: the roster
+  is a derived view over OPEN encounters, so a discharged patient's
+  MRN/age/sex/allergies are not retrievable — the Discharge Summary
+  printed after discharge falls back to the encounter's identity
+  snapshot, renders "—" for the missing fields, and carries an explicit
+  notice. A Core patient-identity read (AdtPatients is already
+  persisted) is the natural future fix; recorded as its own open
+  question below.
+- **Recorded open questions (do NOT fix ad hoc)**:
+  (1) **The discharged-patient identity read gap** — persistence and
+  retrievability DIVERGE at discharge: the AdtPatients row (MRN, name,
+  age, sex, allergies) persists forever per the never-destroy principle,
+  but the ONLY demographic read — the roster — is by design a derived
+  view over OPEN encounters, and the Encounter carries only its display
+  snapshot (name, bed, diagnosis, attending). Nothing is lost; it is a
+  MISSING READ SURFACE, first hit by print because printing is the first
+  consumer to need chart data after the census stops covering the
+  patient. It does not touch the encounter-scoping invariant (which
+  governs writes; printing is pure read). FIX DIRECTION: a Core
+  patient-identity read — GET Patient by id over the persisted
+  AdtPatients row (a SERVER PR, behind patients.view). That adds a
+  middle rung to the print identity ladder (roster → patient read →
+  encounter snapshot) and removes the "—" dashes with NO template or
+  layout change.
+  (2) **Age is a static integer, not a date of birth** — AdtPatients
+  stores `age` as the integer captured at admission, so a summary
+  printed long after admission prints the ADMISSION-ERA age. Harmless
+  today; to be addressed when the identity read above is designed
+  (store/serve DOB, compute age at render — the clock-computed-state
+  rule).
+- **Honesty rules**: narrative sections with no canonical store (past
+  history, assessment, plan, follow-up, procedures) print as ruled
+  write-in areas — never fabricated; ventilator SETTINGS are Stage 11
+  Observation scope, so the progress note prints the roster's vent
+  support flag + a write-in, never the placeholder panel data; unknown
+  template/patient ids render the locked NotFound pattern.
+- **Verification**: `tsc -b --force` + `vite build` clean; 15/15
+  headless checks (template rendering, med classification both buckets,
+  byte-stability, footnotes/notices, toolbar hidden under print media,
+  no nav on the document route, both NotFound paths); offline behavior
+  exercised incidentally (a CORS-blocked run fell back to mock and
+  correctly rendered NotFound for the API-only patient — never another
+  record's data); A4 PDFs of all three templates attached to the PR
+  session record.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
@@ -1279,6 +1381,11 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
 2. Environment separation (dev/staging/production — the missing concept
    recorded in 01_ARCHITECTURE.md § Environment separation)
 3. Print Center
+   *[2026-07-11 per project owner: the Print Center FOUNDATION (Phase 1 —
+   rendering architecture + the first three templates) was pulled forward
+   ahead of environment separation — see "Print Center Foundation —
+   Phase 1 (built)" above. The remaining TEN templates ride later PRs on
+   that foundation; environment separation remains queued.]*
 4. Stage 11 — device integration + the Observation model (per the locked
    rule in 01_ARCHITECTURE.md; absorbs the roster's remaining
    bedside-snapshot columns)

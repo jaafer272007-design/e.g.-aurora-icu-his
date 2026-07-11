@@ -399,7 +399,7 @@ run. A render.yaml-only mismatch gets a DISTINCT message: if Render's
 Blueprint sync did not redeploy for the change, a MANUAL DEPLOY of the
 latest commit clears the gate (documented operational step).
 
-## Print Center (SPECIFIED IN PART — NOT YET BUILT)
+## Print Center (Phase 1 FOUNDATION BUILT — 3 of 13 templates; the rest pending)
 
 *[Docs split note: no Print Center build exists. In the pre-split file it
 appears only as a deferred roadmap item and as Documents/Printing in the
@@ -415,6 +415,25 @@ VERIFIED against the code: `FormularyLogic` is referenced in
 (authority 400s, inactive-drug 409, frequency vocabulary); the GET path
 serializes stored rows — confirmed on a live-upgrade replica (ORD-168's
 fictional drug still reads under enforcement).]*
+
+*[Superseded in part by the Print Center Foundation PR (2026-07-11): the
+Phase 1 foundation is BUILT — see the record in 02_PROJECT_STATUS.md.]*
+
+**Binding architecture (established by Phase 1, applies to every future
+template):** the Print Center is a READ-ONLY RENDERING SYSTEM. It owns no
+data and modifies none: PrintCenter hub → template registry → shared
+print layout/primitives → template components → read-only selectors →
+the SAME adapters/stores the application UI uses. No duplicated business
+logic, no print-specific domain model. Templates never query stores
+directly — they receive prepared view models from `selectors.ts`.
+**Historical rendering NEVER consults the live formulary**: medications
+print from the persisted order record (stored drug text, audit history,
+administrations) exactly as originally recorded; a later formulary
+deactivation or removal must not change a printed document (verified —
+byte-stable discharge summary before/after deactivation; see the 02
+record). Narrative content the system has no canonical store for prints
+as ruled write-in areas — never fabricated. Generation metadata (the
+"Printed" stamp) is the only clock-derived content on a page.
 
 ## Locked Decisions (do not re-litigate without asking)
 - RBAC: Doctor = full order/medication authority. Nurse = administer +

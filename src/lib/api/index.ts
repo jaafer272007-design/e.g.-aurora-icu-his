@@ -13,6 +13,7 @@ import type {
 } from './types'
 import { BEDS_RESPONSE, UNIT_SUMMARY, composeBedsResponse, mockAdtBeds } from './data/beds'
 import { allPatients, derivedAlertCount } from './data/patients'
+import { rosterFor } from './data/roster'
 import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, VENTILATOR } from './data/panels'
 import { ACTION_QUEUES, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
 import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
@@ -206,6 +207,19 @@ async function fetchRosterRecords(): Promise<RosterRecordDto[] | null> {
     console.info('[aurora] roster API unreachable (cold start?) — using mock roster')
   }
   return null
+}
+
+/** Print Center (read-only): the FULL roster record for one patient — the
+ *  same real roster fetch getPatients/getBeds already use, exposed so
+ *  print selectors never re-derive or duplicate it. Null = the id is not
+ *  on the active roster (roster = derived view over OPEN encounters, so
+ *  discharged patients legitimately resolve to null — the print layer
+ *  falls back to the encounter's identity snapshot and says so). */
+export async function getRosterRecord(patientId: string): Promise<RosterRecordDto | null> {
+  const roster = await fetchRosterRecords()
+  if (roster) return roster.find(r => r.patientId === patientId) ?? null
+  const rec = rosterFor(patientId)
+  return rec ? respond(rec as RosterRecordDto, 120) : null
 }
 
 /** GET /api/icu/patients — sidebar roster for Mission Control.

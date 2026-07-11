@@ -1,0 +1,232 @@
+/* ==================== Print Center — document styles ====================
+   Two contexts, one document:
+   - SCREEN: a paper preview (white A4 sheet on a neutral background) with
+     a toolbar. The preview deliberately ignores the app's dark theme —
+     what you see is what prints.
+   - PRINT (@media print / save-as-PDF): the sheet alone. No app chrome,
+     no toolbar, black-on-white, A4 with proper margins, predictable page
+     breaks, photocopy-friendly (no color is load-bearing). */
+
+/* ---------- page setup ---------- */
+
+@page {
+  size: A4;
+  margin: 16mm 14mm 18mm;
+  /* page numbers via margin boxes (Chromium 131+/Firefox render them;
+     older browsers omit them silently — nothing else depends on this) */
+  @bottom-right {
+    content: 'Page ' counter(page) ' of ' counter(pages);
+    font-size: 8pt;
+    color: #444;
+  }
+  @bottom-left {
+    content: 'Aurora HIS · Print Center';
+    font-size: 8pt;
+    color: #444;
+  }
+}
+
+/* ---------- screen preview shell ---------- */
+
+.print-screen {
+  min-height: 100vh;
+  background: #3a4150;
+  padding: 56px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.print-loading { color: #dfe5ee; font-size: 14px; margin-top: 40vh; }
+
+.print-toolbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  background: #10151f;
+  border-bottom: 1px solid rgba(130, 170, 230, .2);
+  color: #dfe5ee;
+}
+.pt-title { flex: 1; font-size: 13px; opacity: .85; }
+.pt-btn {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(130, 170, 230, .3);
+  background: transparent;
+  color: #dfe5ee;
+  cursor: pointer;
+  font-size: 13px;
+}
+.pt-btn:focus-visible { outline: 2px solid #4da3ff; outline-offset: 2px; }
+.pt-primary { background: #4da3ff; border-color: #4da3ff; color: #06121f; font-weight: 600; }
+
+.print-page {
+  width: 210mm;
+  max-width: 100%;
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .45);
+  padding: 16mm 14mm 18mm;
+  box-sizing: border-box;
+}
+
+/* ---------- the document itself (shared layout + templates) ---------- */
+
+.print-doc {
+  color: #111;
+  font: 10.5pt/1.45 'Segoe UI', Arial, Helvetica, sans-serif;
+}
+.print-doc .pd-v, .print-doc td { font-variant-numeric: tabular-nums; }
+
+.pd-head {
+  display: flex;
+  align-items: center;
+  gap: 10pt;
+  border-bottom: 2pt solid #111;
+  padding-bottom: 6pt;
+}
+.pd-logo {
+  width: 34pt; height: 34pt;
+  border: 1.5pt solid #111;
+  border-radius: 4pt;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16pt;
+  flex: 0 0 auto;
+}
+.pd-hosp { flex: 1; }
+.pd-hosp-name { font-size: 13pt; font-weight: 700; letter-spacing: .06em; }
+.pd-hosp-sub { font-size: 8.5pt; color: #333; }
+.pd-doc-meta { text-align: right; font-size: 8pt; color: #333; }
+.pd-doc-title-sm { font-weight: 700; color: #111; font-size: 8.5pt; }
+
+.pd-title {
+  font-size: 14pt;
+  margin: 8pt 0 6pt;
+  letter-spacing: .02em;
+  break-after: avoid;
+}
+
+.pd-band {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2pt 10pt;
+  border: 1pt solid #111;
+  padding: 5pt 7pt;
+  margin-bottom: 4pt;
+  break-inside: avoid;
+}
+.pd-band-enc { border-top-width: 0; }
+.pd-band-wide { grid-column: span 2; }
+.pd-k {
+  display: block;
+  font-size: 7pt;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #444;
+}
+.pd-v { display: block; font-size: 9.5pt; }
+.pd-allergy { font-weight: 700; }
+
+.pd-notice {
+  border: 1pt dashed #555;
+  padding: 4pt 7pt;
+  margin: 4pt 0;
+  font-size: 8.5pt;
+  color: #222;
+  break-inside: avoid;
+}
+.pd-notice p { margin: 2pt 0; }
+
+.pd-section { margin: 8pt 0; }
+.pd-keep { break-inside: avoid; }
+.pd-section h2 {
+  font-size: 10pt;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  border-bottom: 1pt solid #111;
+  padding-bottom: 1.5pt;
+  margin: 0 0 4pt;
+  break-after: avoid;
+}
+.pd-section p { margin: 2pt 0; }
+
+.pd-facts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3pt 10pt;
+}
+
+.pd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+  margin: 3pt 0;
+}
+.pd-table th, .pd-table td {
+  border: .75pt solid #333;
+  padding: 2.5pt 4pt;
+  text-align: left;
+  vertical-align: top;
+}
+.pd-table th {
+  background: #eee;
+  font-size: 7.5pt;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.pd-table thead { display: table-header-group; } /* repeats on every page */
+.pd-table tr { break-inside: avoid; }
+
+.pd-sub { font-size: 7.5pt; color: #444; }
+.pd-empty { color: #444; font-style: italic; }
+.pd-flag { font-weight: 700; }
+.pd-list { margin: 2pt 0 2pt 14pt; padding: 0; }
+.pd-list li { margin: 1pt 0; }
+
+.pd-writein { margin: 3pt 0; }
+.pd-prefill { margin: 0 0 2pt; }
+.pd-rule {
+  height: 14pt;
+  border-bottom: .75pt solid #555;
+}
+
+.pd-sig {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24pt;
+  margin-top: 14pt;
+}
+.pd-sig span { font-size: 7.5pt; color: #444; }
+.pd-rule-sig { height: 22pt; border-bottom-color: #111; }
+
+.pd-foot {
+  margin-top: 12pt;
+  border-top: 1pt solid #111;
+  padding-top: 4pt;
+  font-size: 7.5pt;
+  color: #333;
+}
+.pd-footnote { margin: 0 0 3pt; }
+
+/* ---------- print media ---------- */
+
+@media print {
+  /* the sheet alone: kill the preview shell */
+  .print-screen { background: #fff; padding: 0; display: block; min-height: 0; }
+  .print-toolbar { display: none !important; }
+  .print-page {
+    width: auto;
+    box-shadow: none;
+    padding: 0; /* @page margins own the whitespace */
+  }
+  body { background: #fff !important; }
+
+  /* belt-and-braces: no application chrome ever prints, from any route */
+  .nav-sidebar, .app-header, .print-toolbar { display: none !important; }
+
+  .pd-section, .pd-table { orphans: 3; widows: 3; }
+}

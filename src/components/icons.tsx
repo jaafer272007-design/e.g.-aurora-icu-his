@@ -178,3 +178,13 @@ export function IconUsers({ size = 14, stroke = 'currentColor', strokeWidth = 2 
     </svg>
   )
 }
+
+export function IconPrinter({ size = 16, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
+  return (
+    <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
+      <path d="M6 9V3h12v6" />
+      <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+      <rect x="6" y="14" width="12" height="7" />
+    </svg>
+  )
+}
