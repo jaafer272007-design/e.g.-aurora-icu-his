@@ -3,18 +3,28 @@
 **Status: PROPOSAL — awaiting project-owner approval. No code, config, or
 service changes ship with this document.**
 
+*[Revision 2, 2026-07-11, same PR: the project owner corrected a
+foundational input the first draft did not have — **production is not
+cloud**. Production runs on-premises, inside the hospital, on the
+hospital's own network, and must be offline-first. The first draft's
+"production = a second Render service + the paid cloud database" is
+withdrawn; that cloud tier is redesignated as STAGING. This revision is
+the design.]*
+
 This designs the transition from the single-environment prototype
 (recorded in 02_PROJECT_STATUS.md as the "single environment — every test
 writes to the system of record" constraint, and in 01_ARCHITECTURE.md as
 the missing architectural concept) to an operational model in which
-**testing cannot touch the system of record**.
+**testing cannot touch the system of record** — and in which the system
+of record is a hospital-resident, offline-first installation with **no
+cloud service in its clinical serving path**.
 
-The governing principle, applied throughout and audited in §12: every
+The governing principle, applied throughout and audited in §13: every
 prior problem in this project was solved by converting it into a
 **mechanism that prevents recurrence** — the tsc no-op became a mandatory
 compile check, warm-up blindness became the content-equality gate, the
 frontend/API mismatch became `build.txt` + the render suite. Environment
-separation must meet the same bar: **crossing the test/production boundary
+separation must meet the same bar: **crossing an environment boundary
 must be structurally impossible and loudly-failing, never merely
 documented.** Anywhere this design would rely on "remember to configure X
 correctly," it instead names the gate that replaces the remembering.
@@ -25,50 +35,91 @@ correctly," it instead names the gate that replaces the remembering.
 
 | # | Decision | Choice |
 |---|---|---|
-| D1 | Environment tiers | **TEST + PRODUCTION** now; staging deferred (§2) |
-| D2 | What today's stack becomes | The entire current stack (Pages site, `icu-cp49` service, current free Postgres with its accumulated artifacts) becomes **the TEST environment, wholesale**. Production is built new and starts empty of clinical data (§8) |
-| D3 | Databases | **Two separate PostgreSQL instances** — non-negotiable (§3.1). Production = the paid database; test keeps the free tier |
-| D4 | Auth isolation | Separate `JWT_SECRET` per service **and** an `aud` (environment) claim validated by the API — two independent locks (§3.2) |
-| D5 | Services | Two Render web services + one Render **static site** for the production frontend; GitHub Pages remains the test frontend (§3.3) |
-| D6 | Seeds | Seeding is **environment-moded in code**: production seeds reference data + ONE bootstrap administrator only — no demo patients, no demo staff, no `Aurora2026!` — enforced by boot-time tripwires, not convention (§3.4) |
-| D7 | Promotion | Git-based: test auto-deploys from `main`; production deploys **only from the `production` branch**, advanced by an explicit push that a promotion gate verifies (ancestor-of-main + equals-what-test-is-running) (§4) |
-| D8 | Cross-environment locks | Compiled-in API URL + per-environment CORS + runtime environment cross-check + environment-asserting suites — the full boundary matrix in §5 |
-| D9 | CI identity | `/healthz` and `build.txt` gain an `environment` field; every suite asserts the environment it intends **before any write leg**; write suites have no production target at all (§6) |
-| D10 | Config residence | **All environment wiring lives in `render.yaml` and workflow files** — versioned, reviewed, and already inside every gate's comparison set. No dashboard-only or repo-variable wiring survives this design (§5.4) |
+| D1 | Environment tiers | **DEVELOPMENT (local/cloud) · STAGING (cloud: Render + Pages) · PRODUCTION (on-premises: hospital LAN, offline-first)** (§2) |
+| D2 | What today's stack becomes | The entire current stack (Pages site, `icu-cp49` service, current free Postgres with its accumulated artifacts) becomes **the STAGING environment, wholesale**. Production is a new on-prem installation that starts empty of clinical data (§9) |
+| D3 | Offline-first, precisely | All core clinical functions (registration/ADT, medications, labs, imaging, printing, physician orders, nursing records) run entirely on the hospital LAN with no internet. Internet, when present, adds only non-critical extras — off-site backup, updates, remote support, central analytics/monitoring — each of which degrades to "paused," never to "clinical function interrupted" (§2.3) |
+| D4 | Production runtime | **One Docker Compose stack on hospital infrastructure**: the API container (which also serves the frontend bundle — one image, one origin), the PostgreSQL container with a named volume, and a backup sidecar (§4.1) |
+| D5 | Production frontend targeting | The frontend ships **inside the API image** and calls its API **same-origin with a relative base** — the production bundle contains **no API hostname at all**, so there is no URL to point at the wrong environment; frontend/API version skew is atomic-image-impossible (§4.2) |
+| D6 | Databases | **Three separate PostgreSQL instances** — dev-local, staging-cloud (the current free one), production-on-prem. Non-negotiable (§3.1); production's is additionally unreachable from the internet by network fact |
+| D7 | Auth isolation | Separate `JWT_SECRET` per environment (production's generated at install, never leaves the hospital host) **and** an `aud` environment claim validated by the API — two locks on top of the network boundary (§3.2) |
+| D8 | Seeds | Seeding is **environment-moded in code**: production seeds reference data + ONE bootstrap administrator only — no demo patients, no demo staff, no `Aurora2026!` — enforced by boot-time tripwires, not convention (§3.3). Production builds also compile the mock/demo data layer **out** (§4.2) |
+| D9 | Promotion & updates | Git-based: `main` auto-deploys staging; production receives **versioned, checksummed release bundles** cut from a `production` branch by a gated workflow (ancestor-of-main + equals-what-staging-is-running), installed on-prem by an update script that backs up first and verifies after (§5, §4.4) |
+| D10 | Prove-the-right-build, on-prem | `/healthz` + `build.txt` carry commit **and** environment in every tier; on-prem, a shipped **local verify script** replays the content-equality discipline against the release manifest — no cloud needed (§4.5, §7) |
+| D11 | CI identity | Every cloud suite asserts `environment == staging` **before any write leg**; write suites have no production target — and cloud CI cannot reach the hospital LAN at all, making that structural twice over (§7) |
+| D12 | Config residence | All cloud wiring lives in `render.yaml` + workflow files; all on-prem wiring lives in the versioned compose file + a generated-at-install local env file (secrets only, never routing). No dashboard-resident routing config survives (§6.4) |
 
 ---
 
-## 2. Environments: test + production, staging deferred
+## 2. The three tiers
 
-**Decision: two tiers.** TEST is where all development lands and all
-suites write; PRODUCTION is the system of record.
+### 2.1 Development — local or cloud, for building
 
-**Why no staging tier now.** Staging earns its cost when it answers a
-question test cannot: integrating multiple developers' work, rehearsing
-release trains, or soak-testing under production-like load. None of those
-exist today — one developer, one module, and a promotion model (§4) in
-which production deploys a **git tree that test was literally running when
-its suites passed**. Content-equality promotion means staging would
-re-verify bytes already verified; it would add a service + database + a
-third set of gates and produce no new information. Deferred, not
-rejected.
+Per-developer, disposable, no system of record. The existing local
+workflow (Vite dev server, local Postgres or the SQLite fallback, demo
+seeds, `Aurora2026!`) is the development tier — already real, now named.
+Cloud tooling (GitHub, PR CI, the compile checks) belongs to this tier.
+Nothing in development is protected; everything in it is reproducible
+from the repo.
 
-**The no-rework path to staging later.** Everything in this design is
-parameterized by an environment *name* carried in one tuple:
+### 2.2 Staging — cloud, for verification before release
+
+**The entire current deployed stack is redesignated as staging,
+wholesale**: the GitHub Pages site, the `icu-cp49` Render service, and
+the current free Postgres with every accumulated E2E artifact
+(P-1023…P-1048, suite encounters, e2e drugs, deactivated test accounts).
+Those artifacts stop being a wart and become what they always really
+were: test data in a test environment.
+
+Staging is where the project's verification machinery lives and keeps
+living: the twelve deployed suites, the content-equality gates,
+`build.txt`, the render suite, sequential dispatch, the CI-evidence
+discipline. **A release can only be cut from bytes staging is currently
+running and has verified** (§5). Staging's job is to make the on-prem
+release boring.
+
+The first draft asked whether a staging tier was warranted *in addition
+to* a cloud production; with production on-prem the question inverts and
+answers itself — the cloud tier **is** staging, it already exists, and
+it costs nothing new.
+
+### 2.3 Production — on-premises, inside the hospital, offline-first
+
+Production runs on hospital infrastructure on the hospital LAN: local
+API, local PostgreSQL, locally-served frontend. **The cloud is a
+development-and-testing tool; it is not a runtime dependency of the
+clinical system.**
+
+Offline-first, defined precisely:
+
+- **Core clinical functions** — patient registration/ADT, medication
+  orders and administration, labs, imaging, printing, physician orders,
+  nursing records, user administration, the audit trail — run entirely
+  on the internal network. No serving path touches the internet: no CDN,
+  no cloud API, no external font/script, no license phone-home, no
+  telemetry required to boot. (The frontend is already fully
+  self-contained static assets; this design keeps that a rule: **a
+  production bundle must reference no external origin**.)
+- **Internet-optional extras** — off-site backup upload (§4.3, if
+  hospital policy permits), downloading software updates (§4.4), remote
+  support, central analytics/remote monitoring (future) — are additive
+  and non-critical by construction: each is implemented as a consumer of
+  local state (backup files, the update inbox), never as a dependency of
+  a clinical write or read. Loss of internet pauses them and interrupts
+  nothing clinical.
+
+**Multi-site is the extension path.** Every mechanism below is written
+against an environment tuple `(name, code channel, runtime, database,
+origin, healthz env)`. A second hospital is not a new tier — it is a
+second **installation of the same production release artifact** with its
+own tuple row (its own LAN origin, install-generated secrets, empty
+database). Nothing redesigns.
 
 ```
-(name, git branch, Render service, database, frontend origin, healthz env)
-test        main        ICU (icu-cp49)   aurora-db (free)   github.io Pages     "test"
-production  production  ICU-prod         aurora-db-prod     Render static site  "production"
+tuple        code channel         runtime                     database              frontend origin            healthz env
+development  any branch           local dev server            local PG / SQLite     localhost:5173             "development"
+staging      main (autodeploy)    Render icu-cp49 + Pages     current free PG       github.io Pages            "staging"
+production   production releases  hospital host (Compose)     on-prem PG container  http(s)://<hospital-host>  "production"
 ```
-
-Adding staging = adding one row: a `staging` branch, one more
-service+database pair in `render.yaml`, one more origin, and the suites'
-target table (§6) gains a `staging` entry. No mechanism changes — the
-gates, the `aud` claim, the seed modes, and the promotion workflow are all
-written against the tuple, not against the pair. The single code change
-staging would ever need (accepting a third valid `APP_ENV` value) is a
-one-line whitelist.
 
 ---
 
@@ -76,317 +127,529 @@ one-line whitelist.
 
 ### 3.1 Separate PostgreSQL — non-negotiable
 
-Two independent database instances (not two schemas, not two databases on
-one instance). Three reasons, each sufficient alone:
+Three independent database instances — not schemas, not shared
+instances. Reasons, each sufficient alone:
 
 1. **Our own rules make cross-contamination permanent.** The
-   never-destroy and never-reset-the-live-database rules — correct rules —
-   mean a test row that lands in production **can never be deleted**.
+   never-destroy and never-reset-the-live-database rules — correct rules
+   — mean a test row that lands in production **can never be deleted**.
    There is no cleanup story by design, so **prevention is the only
-   control that exists**. Only a separate instance with separate
-   credentials makes a test write to production a connection failure
+   control that exists**. Only separate instances with separate
+   credentials make a staging write to production a *connection failure*
    rather than a policy violation.
-2. **Blast radius.** A migration bug, a discharge-cascade bug, or a suite
-   gone wrong on test must be physically unable to touch production rows.
-   Shared-instance separation (schemas) leaves one mis-set
-   `DATABASE_URL` between test traffic and production data; separate
-   instances make the credential itself environment-specific.
-3. **The current database is already the argument.** Today's durable DB
-   contains P-1023/P-1024/P-1034/P-1040/P-1047/P-1048, dozens of suite
-   encounters, e2e drugs, and deactivated test accounts — irreversibly,
-   per rule 1. It is a *test* database in every meaningful sense already
-   (§8 just makes that official).
+2. **Blast radius.** A migration bug or a suite gone wrong in staging
+   must be physically unable to touch production rows.
+3. **The current database is already the argument.** It is
+   test-contaminated beyond separation — which is precisely why it is
+   redesignated as staging's DB and no clinical row in it ever migrates
+   anywhere (§9).
 
-Production takes the **paid** database (no 30-day expiry — the recorded
-free-tier deletion policy is an absurd risk for a system of record). Test
-keeps the free tier; its 30-day churn becomes *acceptable by
-reclassification*: when the free DB expires, test is recreated and
-reseeded — an operational note, not an incident, because nothing in test
-is a record.
+The on-prem model makes this stronger than any cloud arrangement could:
+**production's database is not reachable from the internet at all.** The
+isolation is a fact of network topology, not a credential. Staging keeps
+the free cloud tier; its recorded 30-day expiry becomes *acceptable by
+redesignation* — when it expires, staging is recreated and reseeded, an
+operational note rather than an incident, because nothing in staging is
+a record. The first draft's "buy the paid cloud database for production"
+is withdrawn: production data lives in the hospital.
 
-### 3.2 Separate JWT secret — plus the `aud` claim (two locks)
+### 3.2 Separate JWT secret — plus the `aud` claim
 
-Each service gets its own `JWT_SECRET` (`generateValue: true` per service
-in `render.yaml` — never shared, never in the repo). A test token then
-fails signature validation on production.
+Each environment has its own `JWT_SECRET`. Staging's is
+`generateValue: true` in `render.yaml` as today; **production's is
+generated by the installer on the hospital host** (§4.4) into a local
+env file that never leaves the machine, never touches the repo, and is
+never known to the cloud. A staging token therefore fails signature
+validation on production — and cannot even be presented to it from
+outside the LAN.
 
-Secret separation alone, however, is "remember to keep them different" —
-a copy-paste away from silently collapsing. So the token also carries the
-environment as its **`aud` claim**, and validation requires
-`aud == APP_ENV`. Even with identical secrets, a test-issued token is
-structurally invalid on production. Two independent locks; both must fail
-for a cross-environment token to authenticate.
+Secret separation alone is still "remember to keep them different," so
+the token also carries the environment as its **`aud` claim**, and
+validation requires `aud == APP_ENV`. Even with identical secrets, a
+staging-issued token is structurally invalid on production. Two locks on
+top of the network boundary; all three must fail for a
+cross-environment token to authenticate.
 
-### 3.3 Separate services and frontends
+### 3.3 Seeds — environment-moded in code, enforced by tripwires
 
-- **Test API**: the existing `ICU` service (`icu-cp49.onrender.com`),
-  `branch: main`, autoDeploy — unchanged.
-- **Production API**: new Render web service, `branch: production`,
-  paid instance (a system of record should not cold-start for 60 s).
-- **Test frontend**: the existing GitHub Pages site. Its quirk —
-  work-branch pushes with open PRs redeploy it — is *re-legitimized* by
-  this design: previewing in-progress work **is** what a test frontend is
-  for, and it can only ever reach the test API (§5).
-- **Production frontend**: a Render **static site** in the same
-  blueprint, built from the `production` branch with the production API
-  URL baked in from `render.yaml`. (GitHub Pages allows one site per
-  repo, and that site is spoken for; a blueprint-managed static site also
-  keeps production's frontend wiring in the same reviewed, gated file as
-  everything else.)
-
-### 3.4 Seeds — environment-moded in code, enforced by tripwires
-
-The server gains `APP_ENV` (`test` | `production`; any other value →
-refuse to boot). Seeding splits into two classes:
+The server gains `APP_ENV` (`development` | `staging` | `production`;
+any other value → refuse to boot). Seeding splits into two classes:
 
 - **Reference seeds** (bed registry, formulary, frequencies, interaction
-  rules, lab catalogue, order sets): seeded in **both** environments —
+  rules, lab catalogue, order sets): available to **every** environment —
   a production ICU needs its bed layout and formulary as starting
   configuration, which Pharmacy/Laboratory then maintain through the
-  Layer 4 screens.
+  Layer 4 screens. *(Flagged owner decision, §9: production can instead
+  start with empty master data and be populated entirely through the
+  Layer 4 screens — decide at implementation review.)*
 - **Clinical + demo-identity seeds** (14 demo patients, encounters,
-  orders, results, AI profiles, bedside snapshots, the 20 demo staff, the
-  `system` principal's demo-era peers): seeded in **test only**.
-  **Production starts empty of clinical data.**
+  orders, results, AI profiles, bedside snapshots, the 20 demo staff):
+  **development and staging only. Production starts empty of clinical
+  data.**
 
 Production users: the seeder creates exactly **one bootstrap
-administrator** whose password comes from a required
-`ADMIN_BOOTSTRAP_PASSWORD` env var (`generateValue: true` — random, read
-once from the dashboard by the owner, rotated via Layer 3 after first
-login). Every real account is then created through the existing Layer 3
-user administration with individual credentials. The demo password never
-exists in production.
+administrator** whose password is generated by the installer at install
+time (random, shown once to the hospital administrator, rotated via the
+existing Layer 3 screens after first login). Every real account is then
+created through Layer 3 with individual credentials. The demo password
+never exists in production, in any form.
 
 Because "the seeder checks a variable" is itself configuration, two
-**boot-time tripwires** back it (loud crash, not a warning, before the
-service binds):
+**boot-time tripwires** back it (loud crash before the service binds,
+not a warning):
 
 - **T1 — demo-credential tripwire**: on production boot, verify
   `Aurora2026!` (and `DEMO_PASSWORD` if set anywhere) against every
   active account's bcrypt hash; any match → refuse to serve. This
-  catches not only seed misconfiguration but any future human setting the
-  shared password on a real account.
+  catches not only seed misconfiguration but any future human setting
+  the shared password on a real account.
 - **T2 — demo-config tripwire**: production boot with `DEMO_PASSWORD`
-  set, or with `DATABASE_URL` unset (the SQLite demo path), refuses to
-  start. The convenient dev fallback is a security hole in production, so
-  production mode simply does not have it.
+  set, or with no database configured (the SQLite demo fallback path),
+  refuses to start. The convenient dev fallback is a security hole in
+  production, so production mode simply does not have it.
 
 ---
 
-## 4. Promotion model — git-based, gated, auditable
+## 4. The on-premises production target
 
-- **Test** deploys automatically from `main` (unchanged): merge → Render
-  builds → suites dispatched sequentially per the existing discipline.
-- **Production** deploys **only** from the `production` branch. Promotion
+### 4.1 How frontend, API, and PostgreSQL run together (no cloud dependency)
+
+**Docker-based local deployment — stated as the answer.** The server is
+already a Docker image (the same Dockerfile Render builds); production
+reuses it. One versioned `docker-compose.production.yml` in the repo
+defines the whole clinical stack on a single hospital host:
+
+- **`aurora-app`** — the release image: the ASP.NET Core API, which in
+  production also serves the compiled frontend bundle as static files
+  (§4.2). One container, one origin, one exposed port on the LAN.
+- **`aurora-db`** — PostgreSQL (pinned major version) with a named
+  Docker volume for the data directory. Not published on the LAN at
+  all — reachable only on the compose-internal network by `aurora-app`
+  and the backup sidecar. The database is invisible even to the
+  hospital LAN, let alone the internet.
+- **`aurora-backup`** — a sidecar that runs the scheduled `pg_dump`
+  cycle and restore-verification (§4.3), writing to a host-mounted
+  backup directory.
+
+Nothing in the stack calls out: no image pulls at runtime, no external
+assets, no telemetry. The stack boots and serves with the building's
+uplink physically unplugged — and that exact scenario is a named test in
+the install verification (§4.5).
+
+*(Considered and rejected: a separate nginx container serving the
+frontend and reverse-proxying the API. It adds a second config file that
+must agree with reality — a "remember to configure the proxy" surface —
+and reopens the frontend/API version-skew class that `build.txt` exists
+to catch. Serving the bundle from the API process eliminates both. If
+the hospital wants TLS on the LAN, a hospital-managed reverse proxy MAY
+sit in front — that is explicitly IT-boundary territory, §10, and the
+stack is fully functional without it.)*
+
+### 4.2 Reaching the API on a hospital LAN — the build-time lock, strongest form
+
+The hospital assigns the host one LAN address — an internal DNS name
+(e.g. `aurora.hospital.local`) or a static IP. Staff browsers open that
+one origin. **The frontend does not need to know it**, because the
+production bundle is served by the API process itself and calls the API
+**same-origin with a relative base**.
+
+This is the "build-time URL, structurally impossible to point wrong"
+principle applied to a LAN — and it lands in its strongest possible
+form: **the production bundle contains no API hostname whatsoever.
+There is no URL in the artifact to be wrong.** Renaming the host,
+re-IP-ing the server, or cloning the install to a second hospital
+changes nothing in the bundle, because the bundle's API target is "where
+I was served from" by construction. Three further locks ride with it:
+
+- **Atomic versioning**: the frontend ships *inside* the API image, so
+  the deployed frontend and API are the same release by identity — the
+  stale-Pages class of incident (frontend and API at different commits)
+  is structurally impossible on-prem, not gated-against but
+  *unrepresentable*.
+- **No CORS surface**: same-origin means production configures **zero**
+  allowed cross-origins. Any cross-origin caller — including a staging
+  frontend somehow pointed at the hospital — fails preflight. (Staging
+  keeps its explicit single-origin CORS as today.)
+- **No demo fallback in the artifact**: today the frontend treats "no
+  API base configured" as mock mode. A relative base makes that
+  convention unusable, and production makes it *unrepresentable*: the
+  production build mode compiles the mock/demo data layer **out of the
+  bundle** (build-time flag → tree-shaken). A production UI that cannot
+  reach its API shows an explicit failure — it can never quietly render
+  demo patients as if they were the ward. The clinical disaster case
+  ("looks like data, is a demo") is removed at compile time, not
+  discouraged.
+- **Runtime environment cross-check** (the `build.txt` lesson one level
+  up): the bundle compiles in its *expected* environment name; on load
+  the app compares `/healthz environment` against it; any mismatch
+  replaces the app with a full-screen refusal naming both values. A
+  staging bundle copied onto the hospital host is unusable, loudly, on
+  its first pageview.
+
+### 4.3 Backup — the single-host truth, and its story
+
+A local database on one hospital machine is a single point of failure.
+The design does not pretend otherwise; it layers the story and states
+who owns each layer (§10):
+
+- **Layer B1 — automated local dumps (software provides, mandatory).**
+  The `aurora-backup` sidecar runs scheduled `pg_dump` logical backups
+  (daily full, configurable), writes them to a host-mounted backup
+  directory with rotation/retention, and — because *a backup that has
+  never been restored is theater* — runs a scheduled
+  **restore-verification**: restore the newest dump into a scratch
+  container, assert row counts and a healthz-level sanity read, record
+  the result where §4.5's verify script and the UI's admin surface can
+  see it. A dump that fails restore-verification is a loud failure the
+  same day it happens, not a discovery during a disaster.
+- **Layer B2 — off-host copies (hospital IT provides).** The backup
+  directory must leave the machine: a second machine or NAS on the LAN,
+  rotated external media — per hospital policy. The software's
+  contribution is making this trivially consumable (one directory,
+  self-describing filenames, checksums) and making staleness visible
+  (§4.5 flags "newest verified backup older than N days").
+- **Layer B3 — off-site backup (optional, internet-dependent,
+  non-critical by construction).** If hospital policy permits, an
+  optional uploader ships **encrypted** dumps off-site when the internet
+  is available. It reads finished local dumps; it is not in any clinical
+  path; internet loss pauses it and nothing else. Off-site backup is the
+  canonical example of D3's "internet adds only non-critical
+  capability."
+- **Named upgrade path, out of scope now**: WAL archiving for
+  point-in-time recovery, and a warm standby on a second hospital
+  machine, are the HA follow-ups once a production install exists —
+  recorded in §12, not designed here.
+
+The **pre-update dump** (§4.4) is a fourth, event-driven member of B1:
+no update proceeds without a fresh verified backup taken first.
+
+### 4.4 How updates reach an on-prem production system
+
+You cannot `git push` to a hospital server. Updates travel as **release
+artifacts**, and the path is:
+
+1. **Cut** — promotion stays a deliberate git action: push a validated
+   `main` commit to the `production` branch. A **release workflow** on
+   that branch (the promotion gate, §5) verifies it and then builds the
+   **release bundle**: the app image (API + embedded frontend, migration
+   set included), exported both as a registry push **and as a
+   `docker save` tarball**, plus the compose file, the update/verify
+   scripts, and a **release manifest** (release version, git commit,
+   image digests, artifact checksums). The bundle is published as a
+   GitHub Release.
+2. **Transfer** — internet-optional by design: download the bundle at
+   the hospital when internet is available, **or** carry the tarball on
+   physical media for an air-gapped install. Either way the artifact is
+   verified on arrival against the manifest checksums; the transfer
+   channel is untrusted by default.
+3. **Apply** — the shipped `aurora-update` script, run by the trained
+   operator (§10), executes a fixed order it does not allow skipping:
+   verify bundle checksums → **take and restore-verify a pre-update
+   backup (hard stop if it fails)** → load images → run EF migrations →
+   restart the stack → run post-update verification (§4.5) against the
+   new manifest. Any step failing halts with the previous images and the
+   pre-update dump still on disk.
+4. **Roll back** — re-point compose at the retained previous image and,
+   only if the update's migrations require it, restore the pre-update
+   dump. The existing migration discipline (hand-audited, empirically
+   tested `Down()` paths — the `AddPatientDateOfBirth` precedent) is
+   what keeps rollback honest; roll-forward remains the preference.
+
+Update cadence is the hospital's decision; nothing expires. An install
+that never updates keeps working — updates are capability, not
+lifeline (D3).
+
+### 4.5 "Prove the right build is running," without the cloud
+
+Staging proves it with the content-equality gates, `build.txt`, and the
+render suite — all cloud CI. Production cannot depend on cloud CI, so
+the same discipline ships **in the bundle**:
+
+- `/healthz` carries `{ status, service, build (git commit),
+  environment, version (release tag) }` in every tier; the frontend's
+  `build.txt` (served from inside the same image) carries commit +
+  environment. Same stamps, same meaning, everywhere.
+- The **release manifest is the local source of truth**: the shipped
+  `aurora-verify` script compares the *running* `/healthz` build+version
+  and the *served* `build.txt` against the manifest of the installed
+  release — the content-equality gate, replayed locally, no network
+  beyond localhost. It also asserts `environment == production`, DB
+  reachability, migration level, backup freshness and last
+  restore-verification result, and disk headroom.
+- `aurora-verify` runs automatically as the last step of every install
+  and update (a failed verify is a failed update, §4.4), and is runnable
+  any day by hospital IT as the production analogue of the smoke suite.
+  It is strictly read-only — the no-write-legs-in-production rule (§7)
+  holds on-prem too.
+- The **offline-first proof** is part of install verification: the
+  named test "disconnect the uplink, then register → order → administer
+  → result → print on the LAN" must pass before an install is accepted.
+  Offline-first is asserted behavior, not a brochure claim.
+
+---
+
+## 5. Promotion model — git-based, gated, released
+
+- **Staging** deploys automatically from `main` (unchanged today in all
+  but name): merge → Render builds → suites dispatched sequentially per
+  the existing discipline.
+- **Production** code moves **only** via the `production` branch, and
+  the branch's only consumer is the release workflow (§4.4). Promotion
   is one deliberate git action:
 
   ```
-  git push origin <validated-main-commit>:production   # or an annotated tag first
+  git push origin <validated-main-commit>:production
   ```
 
   It cannot happen as a side effect of merging a PR; it is visible in
   `git log production`, attributable, and revertible.
 
-**The promotion gate** (a workflow on `push: branches: [production]`)
-converts "promote carefully" into a mechanism. It fails the push's deploy
-readiness loudly unless:
+**The promotion gate** (the release workflow's first job) converts
+"promote carefully" into a mechanism. No release bundle is built unless:
 
-1. the pushed commit **is an ancestor of `main`** — production never runs
-   a commit that didn't go through the normal PR path (no cherry-picks,
-   no divergence); and
-2. the pushed commit's `server/` tree + `render.yaml` blob **equal what
-   the TEST environment is serving right now** (the same
+1. the pushed commit **is an ancestor of `main`** — production never
+   ships a commit that didn't go through the normal PR path (no
+   cherry-picks, no divergence); and
+2. the pushed commit's `server/` tree + frontend build context **equal
+   what the STAGING environment is serving right now** (the same
    `git rev-parse "$commit:server"` vs `/healthz build` comparison the
-   suites use, pointed at test) — you can only promote bytes that test is
-   currently running, i.e. the exact content the last green suite runs
-   validated.
+   suites use, pointed at staging, plus the Pages-gate context hash) —
+   you can only release bytes staging is currently running, i.e. the
+   exact content the last green suite runs validated.
 
-**Per-environment gates, unchanged in shape.** Every existing mechanism
-operates per environment with the same logic:
-
-- `/healthz build` + content-equality gate → each suite compares the
-  dispatched ref against *its target environment's* healthz (§6).
-- `build.txt` → both frontends stamp it; the render suite's Pages gate
-  runs against the test frontend, and a production render smoke asserts
-  the production static site's stamp against the `production` branch.
-- CONFIG MISMATCH → `render.yaml` now defines both environments, stays in
-  every comparison set, and the documented manual-deploy operational step
-  applies per service.
-
-**Rollback**: point `production` at the previous commit (a second
-deliberate git action) → Render redeploys it. Policy stays roll-forward
-by preference; schema changes complicate rollback, which is exactly why
-the migration discipline already requires hand-audited, empirically
-tested `Down()` paths (the `AddPatientDateOfBirth` precedent).
+The staging-side gates are unchanged in shape: `/healthz` +
+content-equality per suite, `build.txt` + the render suite for the
+frontend, CONFIG MISMATCH as the manual-deploy operational branch. The
+production-side equivalent is §4.5's manifest verification.
 
 ---
 
-## 5. Cross-environment safety — the boundary matrix
+## 6. Cross-environment safety — the boundary matrix
 
 Every crossing path, and the locks that make it fail structurally. No
-path relies on fewer than two independent locks.
+path relies on fewer than two independent locks — and most
+production-facing rows now start with a lock no cloud design ever had:
+**the hospital LAN is not addressable from outside**.
 
 | Crossing attempt | Lock 1 | Lock 2 | Lock 3 |
 |---|---|---|---|
-| Production frontend calls test API | API URL is **compiled into the bundle** from `render.yaml` (no runtime setting exists to repoint it) | Test API CORS allows only the test origin → preflight fails | Runtime env cross-check (below) paints the interstitial |
-| Test frontend calls production API | Same compiled-URL lock, mirrored | Production CORS allows only the production origin | Runtime env cross-check |
-| Test JWT used on production API | Different `JWT_SECRET` → signature invalid | `aud: test` ≠ `production` → rejected even with equal secrets | — |
-| Suite write-legs hit production | Write suites' target table **contains no production entry** — there is no input that selects it (§6) | Gate asserts `/healthz environment == "test"` before any write leg | Production credentials differ (demo logins don't exist there — the suites' login step itself fails) |
-| Production service attached to test DB (or vice versa) | Wiring is `fromDatabase` inside one reviewed `render.yaml` — no free-text connection strings, no dashboard edits | `render.yaml` sits in every gate's comparison set → an unreviewed/undeployed wiring change trips CONFIG MISMATCH | — |
-| Demo credentials in production | Seed mode: demo users are never seeded outside test | T1 boot tripwire: any account matching the demo password → refuse to serve | T2: `DEMO_PASSWORD` set in production → refuse to boot |
-| Human opens the wrong UI | Each build compiles in its environment name; the test frontend renders a permanent **TEST ENVIRONMENT banner** | The runtime cross-check below | Distinct origins/URLs |
+| Production frontend calls a cloud API | The production bundle **contains no API hostname** — relative, same-origin only (§4.2) | Offline-first acceptance test: the stack must serve with no uplink | Staging CORS admits only the Pages origin anyway |
+| Staging/dev frontend calls the production API | Hospital LAN unreachable from the internet | Production accepts **zero** cross-origins (no CORS surface exists) | Runtime env cross-check paints the refusal screen |
+| Staging JWT used on production | Network boundary | Different `JWT_SECRET` (production's never left the hospital) → signature invalid | `aud: staging` ≠ `production` → rejected even with equal secrets |
+| Suite write-legs hit production | Cloud CI cannot reach the LAN | Write suites' target table **contains no production entry** — no input selects it (§7) | Gate asserts `/healthz environment == "staging"` before any write leg |
+| Production attached to the wrong DB | The compose-internal network contains exactly one database, not published beyond it | `DATABASE_URL` on-prem is written once by the installer into the local env file — no free-text dashboard field exists | T2 refuses boot with no database configured |
+| Demo credentials in production | Seed mode: demo users are never seeded outside dev/staging | T1 boot tripwire: any active account matching the demo password → refuse to serve | T2: `DEMO_PASSWORD` set → refuse to boot |
+| Demo **data** shown in production | The mock/demo layer is **compiled out** of production bundles (§4.2) | APP_ENV seed mode never writes clinical seeds | — |
+| Wrong-environment build deployed on-prem | Runtime env cross-check: compiled expectation vs `/healthz` → full-screen refusal | `aurora-verify` compares running build to the installed release manifest and fails the install/update | Release bundles are the only path in; checksums bind bundle→manifest→commit |
+| Human opens the wrong UI | Staging renders a permanent **STAGING ENVIRONMENT banner** (compiled in) | Distinct origins (github.io vs the hospital host) | Runtime cross-check |
 
-**The runtime environment cross-check** (the `build.txt` lesson applied
-one level up): each frontend build compiles in its *expected* environment
-name alongside the API URL. On load, the app compares `/healthz
-environment` against the compiled expectation; a mismatch replaces the
-app with a full-screen refusal naming both values — a
-mis-wired build is unusable, not quietly wrong. (Mock/offline mode is
-unaffected: no healthz, no clinical system of record.)
+### 6.4 No dashboard state left in the wiring
 
-### 5.4 No dashboard state left in the wiring
-
-Today the test frontend's API URL comes from a **repo variable**
+Today the deployed frontend's API URL comes from a **repo variable**
 (`vars.API_BASE_URL`) — dashboard state, invisible to git and to every
-gate. This design eliminates that class: the test API URL moves into
-`deploy-pages.yml` itself (it is not a secret), and production's URL
-lives in `render.yaml`. After this, **every environment-defining value is
-in a versioned file inside the gates' comparison sets**; the only
-dashboard-resident values are secrets (`JWT_SECRET`,
-`ADMIN_BOOTSTRAP_PASSWORD`, `DATABASE_URL`), all `generateValue`/wired by
-blueprint, none of them routing.
+gate. This design eliminates the class:
+
+- staging's API URL moves into `deploy-pages.yml` itself (it is not a
+  secret);
+- staging's service wiring stays in `render.yaml`;
+- production's wiring **is** the versioned compose file — and its only
+  non-versioned values are secrets (`JWT_SECRET`, the bootstrap admin
+  password, the DB password) generated by the installer into a local
+  env file on the hospital host. Secrets, never routing.
+
+After this, every environment-defining value is either in a versioned
+file inside a gate's comparison set, or is a secret that exists in
+exactly one place.
 
 ---
 
-## 6. CI environment-identity guarantee
+## 7. CI environment-identity guarantee
 
-The freshness-gate mechanism, extended by one field:
+The freshness-gate mechanism, extended by one field, in every tier:
 
-- `/healthz` → `{ "status", "service", "build", "environment" }`.
-- `build.txt` → two lines: commit, environment.
+- `/healthz` → `{ status, service, build, environment, version }`
+- `build.txt` → commit + environment
 
-Every suite's gate asserts, in order:
+Every cloud suite's gate asserts, in order:
 
-1. **Environment identity** — `healthz.environment == the suite's
-   declared target`. Asserted FIRST and without retries: a wrong
-   environment is not a warming-up condition; it fails immediately and
-   loudly, before any login, any write, any retry loop.
+1. **Environment identity** — `healthz.environment == "staging"`.
+   Asserted FIRST and without retries: a wrong environment is not a
+   warming-up condition; it fails immediately and loudly, before any
+   login, any write, any retry loop.
 2. **Content equality** — the existing build-context comparison, against
-   that environment's healthz/build.txt.
+   staging's healthz/build.txt.
 
 **Write suites cannot name production.** The eleven data-writing suites
-declare `TARGET: test` in a per-suite table that simply has no production
-row — there is no dispatch input, variable, or URL that makes them run
-write legs elsewhere. Production gets its own **read-only smoke suite**:
-healthz environment + build assertions, unauthenticated 401s, CORS
-origin, the static site's `build.txt`, the login screen and the locked
-NotFound rendering — and structurally no write legs to mis-aim. (A
-production render check of a real clinical document is deliberately out:
-it would require production clinical data or writing some — the boundary
-this whole design exists to protect.)
+declare `TARGET: staging` in a per-suite table that has no production
+row — no dispatch input, variable, or URL makes them run write legs
+elsewhere. And even a hypothetically misconfigured suite cannot reach a
+network that isn't routable from GitHub's runners. Production's
+verification is `aurora-verify` (§4.5): read-only by construction,
+local by construction. The render suite (`deployed-print-e2e`) targets
+staging only; the on-prem analogue of "does the document actually
+render" is part of install acceptance (§4.5's offline-first proof
+includes printing).
+
+The twelve existing suites change in exactly one shared way: the gate
+gains the environment assert, and each suite reads its target tuple from
+the in-file table. Logic, sequential dispatch, and cleanup discipline
+are untouched.
 
 ---
 
-## 7. What the existing suites become
+## 8. What still runs where — summary
 
-Unchanged in logic; each gains the environment assert (one gate step
-extension shared across all twelve) and reads its target tuple from the
-in-file table. The render suite (`deployed-print-e2e`) targets test only.
-The sequential-dispatch discipline is per environment; the production
-smoke is so light it can also run on a schedule without competing for the
-`deployed-e2e` group.
+| Concern | Development | Staging (cloud) | Production (on-prem) |
+|---|---|---|---|
+| Purpose | build | verify before release | the system of record |
+| Frontend | Vite dev server | GitHub Pages (+ `build.txt`) | served by the app image, same-origin |
+| API | local | Render `icu-cp49`, autodeploy from `main` | Docker Compose on the hospital host |
+| Database | local PG / SQLite fallback | current free cloud PG (30-day churn now harmless) | on-prem PG container + named volume |
+| Seeds | reference + demo | reference + demo | reference + bootstrap admin only |
+| Auth | dev secret, `aud: development` | generated secret, `aud: staging` | install-generated secret, `aud: production` |
+| Verification | compile CI | twelve suites + gates + render suite | `aurora-verify` vs release manifest; install acceptance incl. offline proof |
+| Update path | git | merge to `main` | gated release bundle + `aurora-update` |
+| Internet | required (tooling) | required (is cloud) | **optional, non-critical** |
 
 ---
 
-## 8. What migrates, what starts fresh — honestly
+## 9. What migrates, what starts fresh — honestly
 
 - **Nothing clinical migrates to production.** The current database is
-  test-contaminated beyond separation (that is the recorded finding that
-  motivated this design), so it is *reclassified*, not cleaned: the
-  entire current stack — Pages site, `icu-cp49`, the free Postgres with
-  every accumulated artifact — becomes the test environment as-is. Zero
-  migration work, zero data loss, and the accumulated artifacts stop
-  being a wart and become what they always really were: test data.
-- **Production starts empty**: reference seeds + one bootstrap admin.
-  First real clinical row arrives through the UI by an authenticated
-  individual. (Formulary/catalogue content seeded from the current
-  reference data is a starting configuration for Pharmacy/Laboratory to
-  curate — flagged for the owner: if even that is unwanted, production
-  can start with empty master data and be populated through the Layer 4
-  screens; decide at implementation review.)
-- **The repo stays single-codebase.** No environment forks; differences
-  live entirely in env vars declared in `render.yaml` and the two
-  frontend build definitions.
+  test-contaminated beyond separation (the recorded finding that
+  motivated this design), so it is *redesignated*, not cleaned: the
+  entire current stack becomes staging as-is. Zero migration work, zero
+  data loss.
+- **Production starts empty**: reference seeds + one bootstrap admin;
+  the first real clinical row arrives through the UI by an authenticated
+  individual. *(Owner decision, flagged: whether production starts with
+  the reference/formulary seeds as curated starting configuration, or
+  with empty master data populated via the Layer 4 screens. Decide at
+  implementation review.)*
+- **The repo stays single-codebase.** No environment forks. Differences
+  live in `APP_ENV`, build-time flags, `render.yaml`, workflow files,
+  and the compose file — all versioned.
+- **Honest flag — repository visibility**: the repo (and any release
+  images pushed to a registry) is currently public. Nothing clinical or
+  secret lives in it, and this design keeps it that way; but a real
+  hospital deployment should revisit visibility/registry privacy as a
+  deliberate owner decision before the first production install.
 
-## 9. Cost — honestly
+## 10. Hospital IT vs. the software — the honest boundary
 
-- **Production database (paid)**: the whole point — no 30-day expiry.
-  Render's smallest paid Postgres tier (order of ~$6–7/month at last
-  check; confirm current pricing at purchase).
-- **Production web service**: a paid instance (order of ~$7/month) is
-  strongly recommended — a system of record that cold-sleeps 15 minutes
-  after use isn't operationally credible. (It *can* start on free tier
-  to stand the environment up, with the paid upgrade as the go-live
-  step.)
-- **Production static site**: free on Render.
-- **Test**: unchanged, free; accepts the 30-day DB churn by design
-  (reseed on recreation — now harmless).
-- Total steady state: **on the order of $13–15/month**, all of it
-  production.
+What the software provides, and what it cannot pretend to provide:
 
-## 10. Implementation order (each step lands green before the next)
+**The software provides:**
+- the complete runtime definition (compose file, images, migrations);
+- environment identity, tripwires, and every gate in this document;
+- backup automation, restore-verification, and backup-freshness
+  visibility (B1), plus the optional encrypted off-site uploader (B3);
+- the `aurora-update` / `aurora-verify` scripts and the release
+  manifest discipline;
+- install + update runbooks, the install acceptance checklist
+  (including the offline-first proof), and hardware sizing guidance.
 
-1. **Environment identity on the current single environment** —
-   `APP_ENV=test` everywhere; `/healthz` + `build.txt` gain
-   `environment`; the JWT gains/validates `aud`; all twelve suites gain
-   the environment assert. The gates exist before the boundary they
-   guard. Verification: suites green against test with the new asserts;
-   a deliberately wrong-target dispatch fails loudly.
+**Hospital IT provides (and owns):**
+- **server hardware** (and ideally a second machine or NAS for B2
+  off-host backup copies) with UPS/power protection;
+- **the network**: the LAN itself, a stable internal address or DNS
+  name for the host, physical and port-level access control, and — if
+  desired — TLS on the LAN via a hospital-managed proxy/internal CA
+  (the stack is functional without it; on-LAN TLS is policy, §10 makes
+  no pretense of deciding hospital policy);
+- **time**: a reliable local time source (NTP on the LAN) — clinical
+  timestamps depend on it, and no software gate can conjure correct
+  wall-clock time on an offline network *(connects to the recorded
+  facility-timezone question — §12)*;
+- **physical security and access** to the host;
+- **backup transport and custody** (B2): moving the backup directory
+  off-host on schedule, media rotation, off-site custody per policy;
+- **an operator**: a named, trained person who runs `aurora-update` /
+  `aurora-verify` and owns the update cadence;
+- **redundancy decisions**: warm standby, second-site failover — the
+  software names the upgrade path (§4.3) but the hardware and the
+  policy are the hospital's.
+
+Anything on the IT list that a future version can absorb into mechanism
+(e.g., standby automation) is future scope; this table is the honest
+line today.
+
+## 11. Implementation order (each step lands green before the next)
+
+1. **Environment identity on the current environment** —
+   `APP_ENV=staging` on the deployed stack; `/healthz` + `build.txt`
+   gain `environment` (+ `version`); the JWT gains/validates `aud`; all
+   twelve suites gain the environment assert and the target table. The
+   gates exist before the boundary they guard. Verification: suites
+   green with the new asserts; a deliberately wrong-target dispatch
+   fails loudly at the gate.
 2. **Seed modes + tripwires in code** — production mode (reference-only
-   seeds, bootstrap admin, T1/T2 tripwires, refuse-unknown-`APP_ENV`).
-   Verification: local Postgres boot in production mode → empty clinical
-   tables, bootstrap admin works, tripwires each proven to refuse boot
-   (set `DEMO_PASSWORD`; plant a demo-password account).
-3. **Blueprint + promotion gate** — `render.yaml` gains the production
-   service, paid DB, static site (branch `production`); per-environment
-   CORS; the repo-variable API URL moves in-file (§5.4); the promotion
-   gate workflow ships. Verification: YAML review + the gate's
-   ancestor/content checks exercised against a dry-run branch.
-4. **Stand production up** — create the `production` branch at a
-   suite-validated main commit; Blueprint sync creates the service/DB/
-   site; first promotion runs the gate; production smoke suite green;
-   owner retrieves the bootstrap credential and creates real accounts;
-   paid tiers confirmed.
-5. **Docs** — 01 gains the environment model as constitution (the tuple,
-   the boundary matrix, the promotion rule); 02 supersedes the
-   "single environment" recorded constraint and the artifact-list framing
-   (test artifacts stop being exceptional); 03 gains the promotion and
-   per-environment dispatch disciplines.
+   seeds, bootstrap admin, T1/T2, refuse-unknown-`APP_ENV`).
+   Verification: local Postgres boot in production mode → empty
+   clinical tables, bootstrap admin works, each tripwire empirically
+   proven to refuse boot.
+3. **Production build + serving mode** — same-origin static serving
+   from the API image, relative API base, mock layer compiled out,
+   runtime env cross-check, staging banner; `vars.API_BASE_URL` moves
+   in-file (§6.4). Verification: local compose boot of a
+   production-mode stack; the offline proof (no uplink) exercised
+   locally; a staging bundle against a production healthz shown to
+   refuse.
+4. **Release pipeline + on-prem tooling** — the `production` branch,
+   the promotion-gated release workflow, the bundle (image + tarball +
+   manifest + checksums), `aurora-update` / `aurora-verify`, the backup
+   sidecar with restore-verification. Verification: cut a release from
+   a suite-validated commit; **rehearse a full install on a clean local
+   VM as if it were the hospital** — install, verify, update to a
+   second release, roll back, restore a backup. The rehearsal is the
+   acceptance test of the tooling, before any real hospital is
+   involved.
+5. **First production install** — on hospital hardware with hospital
+   IT, per the §10 split: install acceptance checklist including the
+   unplugged-uplink clinical walkthrough; bootstrap admin handed over
+   and rotated; B2 backup custody agreed and observed once end-to-end.
+6. **Docs** — 01 gains the environment model as constitution (the
+   tiers, the tuple, the boundary matrix, the promotion/release rule,
+   offline-first as a binding requirement); 02 supersedes the
+   "single environment" recorded constraint and redesignates the
+   artifact list as staging data; 03 gains the promotion, release, and
+   on-prem update/verify disciplines.
 
-Steps 1–2 are pure code against today's environment and independently
-valuable (the identity gate alone would already prevent a whole class of
-mis-aimed dispatch). Step 4 is the only step that spends money.
+Steps 1–3 are pure code against today's environment, each independently
+valuable. Step 4 spends only build-time effort; **no step spends
+hospital resources until 5**, by which point every mechanism has been
+rehearsed end-to-end on a VM.
 
-## 11. Out of scope, stated
+## 12. Out of scope, stated
 
-Staging (§2); multi-region/HA; backup/restore policy for the production
-DB (needs its own short design — flagged as the immediate follow-up once
-production exists, since a system of record without tested restores is
-theater); production observability beyond healthz; the facility-timezone
-question (already recorded separately).
+Warm standby / HA and WAL-based point-in-time recovery (named as the
+backup upgrade path, §4.3 — the immediate follow-up design once a
+production install exists); central analytics / remote monitoring and
+remote support tooling (named internet-optional extras — designed later,
+under the D3 non-critical constraint); AD/LDAP or hospital SSO
+integration; the facility-timezone question (already recorded; §10
+assigns the *time source* to IT, the *timezone semantics* to that open
+question); multi-hospital fleet management (the tuple extension path in
+§2.3 is the placeholder); repository/registry visibility (§9, owner
+decision).
 
-## 12. Design-principle audit — every "remember to…" and its replacing mechanism
+## 13. Design-principle audit — every "remember to…" and its replacing mechanism
 
 | Temptation (checklist item) | Mechanism that replaces it |
 |---|---|
-| "Remember to point the frontend at the right API" | URL compiled into the bundle from reviewed files; CORS rejects the wrong origin; runtime env cross-check refuses to render |
-| "Remember to use different JWT secrets" | Per-service `generateValue` **and** the `aud` claim — validated, not remembered |
-| "Remember not to run suites against production" | Write suites have no production target to select; gate asserts environment before any write leg; demo logins don't exist on production anyway |
-| "Remember not to seed demo data in production" | Seed mode in code + T1 (demo-password scan refuses to serve) + T2 (`DEMO_PASSWORD`/SQLite mode refuses to boot) |
-| "Remember to deploy the right branch to production" | The service is bound to `production` in `render.yaml`; the branch only moves by an explicit push; the promotion gate verifies ancestry + test-content equality |
-| "Remember to update the repo variable" | Eliminated — no routing config lives outside versioned, gate-covered files |
-| "Remember which site you're looking at" | Compiled-in environment name: TEST banner + runtime cross-check |
-| "Remember the free test DB expires" | Reclassified harmless: test reseeds; production is on the paid tier where the failure mode doesn't exist |
+| "Remember to point the frontend at the right API" | Production: no API URL exists in the bundle (same-origin relative). Staging: URL compiled in from a versioned file; CORS rejects the wrong origin; runtime env cross-check refuses to render |
+| "Remember the hospital's server address when building" | Not needed at all — the bundle's API target is "where I was served from," by construction (§4.2) |
+| "Remember to keep frontend and API versions in step on-prem" | They ship in one image — skew is unrepresentable (§4.2) |
+| "Remember to use different JWT secrets" | Staging `generateValue`; production installer-generated on-host; **and** the `aud` claim — validated, not remembered |
+| "Remember not to run suites against production" | No production row in the write suites' target table; environment asserted before any write leg; and cloud CI cannot route to the LAN |
+| "Remember not to seed demo data in production" | Seed mode in code + T1 (demo-password scan refuses to serve) + T2 (demo config refuses to boot) + the mock layer compiled out of the bundle |
+| "Remember the clinical system must not need the internet" | The offline proof is an install acceptance test (unplugged-uplink walkthrough), and internet extras are consumers of local state by construction (§2.3, §4.3) |
+| "Remember to deploy the right code to the hospital" | The only path in is a checksummed release bundle whose manifest binds artifact→commit; the promotion gate binds commit→what-staging-verified; `aurora-verify` binds running-system→manifest |
+| "Remember to back up before updating" | `aurora-update` refuses to proceed without a fresh restore-verified pre-update dump — a hard stop in the script, not a step in a runbook |
+| "Remember to test the backups" | Scheduled restore-verification; staleness surfaced by `aurora-verify`; a never-restored backup is treated as no backup |
+| "Remember to update the repo variable" | Eliminated — no routing config lives outside versioned, gate-covered files (§6.4) |
+| "Remember which site you're looking at" | Compiled-in environment name: STAGING banner + runtime cross-check + distinct origins |
+| "Remember the free staging DB expires" | Redesignated harmless: staging reseeds; production data lives in the hospital where nothing expires |
 
 Anything discovered during implementation that reduces to "configure X
 correctly" gets the same treatment before it merges, per this table's
