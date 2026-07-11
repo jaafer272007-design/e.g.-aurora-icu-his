@@ -22,6 +22,11 @@ concurrency:
 
 env:
   API: https://icu-cp49.onrender.com
+  # The suite's DECLARED TARGET (environment-separation §11 step 1's
+  # per-suite target table — in-file and versioned; there is
+  # deliberately NO production entry to select). The environment gate
+  # below refuses every leg unless /healthz reports this value.
+  EXPECTED_ENV: staging
   PAGES_ORIGIN: https://jaafer272007-design.github.io
 
 jobs:
@@ -39,6 +44,28 @@ jobs:
           # useless). Full history also covers merge commits and any
           # main-ancestor the service may be serving.
           fetch-depth: 0
+
+      - name: ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+        run: |
+          # Environment-identity gate (§11 step 1 of the merged
+          # environment-separation design): the freshness-gate mechanism
+          # extended by one field. Asserted BEFORE the content gate, any
+          # login, and any write leg. Retried: an UNREACHABLE healthz
+          # (free-tier cold start) and an ABSENT field (a mid-deploy older
+          # build — the content gate next would wait for the same deploy).
+          # NOT retried: a PRESENT-but-different environment — a wrong
+          # environment is not a warming-up condition; it fails
+          # immediately and loudly, and no write leg ever runs.
+          for i in $(seq 1 60); do
+            got=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environment","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: healthz environment=$got · expected=$EXPECTED_ENV"
+            [ "$got" = "$EXPECTED_ENV" ] && exit 0
+            if [ "$got" != "<unreachable>" ] && [ "$got" != "<absent>" ]; then
+              echo "WRONG ENVIRONMENT: this suite writes test data for '$EXPECTED_ENV' but $API/healthz reports '$got' — refusing to run ANY leg." && exit 1
+            fi
+            sleep 10
+          done
+          echo "NO ENVIRONMENT IDENTITY: $API/healthz never reported an environment field (unreachable, or the deployed build predates the environment-identity PR) — refusing to run. Deploy this ref, then re-dispatch." && exit 1
 
       - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
         run: |

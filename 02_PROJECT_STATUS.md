@@ -1,9 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-11 · current through the print live-verification
-PR — the deployed Discharge Summary now RENDER-VERIFIED for a discharged
-patient on the live Pages site (a stale-Pages-deploy live finding fixed;
-`/build.txt` frontend stamp; twelfth suite `deployed-print-e2e.yml`
+**Last updated: 2026-07-11 · current through the ENVIRONMENT-IDENTITY
+PR — environment-separation §11 step 1 (the approved design's first
+implementation): `/healthz` and `/build.txt` now carry an `environment`
+name (`staging` — the whole cloud stack is the staging tier per the
+merged design), and every deployed suite refuses to run any write leg
+unless the environment it reports matches the suite's in-file declared
+target (mismatch = immediate loud failure, no retry). Prior milestone:
+the print live-verification PR — the deployed Discharge Summary
+RENDER-VERIFIED for a discharged patient on the live Pages site
+(`/build.txt` frontend stamp; twelfth suite `deployed-print-e2e.yml`
 renders documents headlessly behind server + Pages freshness gates).
 Previous milestones: patient-identity read (PR #51 — both
 Print-Center-recorded open questions resolved, now including the live
@@ -1442,6 +1448,58 @@ to be printed after discharge — no longer renders "Patient Not Found" or
   by deep link today — the hub needs a discharged-encounter picker
   (rides with the remaining templates).
 
+### Environment identity (built) — environment-separation §11 step 1
+*[Attributed addition 2026-07-11 — the first IMPLEMENTATION PR of the
+approved environment-separation design (merged as PR #53): the
+freshness-gate mechanism extended by one field, on the current cloud
+environment. No new infrastructure, no production build, no seed
+changes.]*
+- **`/healthz` carries `environment`** alongside `build`: read at runtime
+  from `APP_ENV` (configuration, not code — `render.yaml` sets
+  `staging`; a future production install sets `production` through the
+  same variable, no code change; unset = `development`, a local dev
+  process per the design's tuple). The deployed cloud tier is the
+  STAGING environment per the merged design.
+- **`/build.txt` (Pages) is now TWO lines**: commit, then environment —
+  the value lives in `deploy-pages.yml` itself (versioned, inside the
+  Pages gate's comparison set; no dashboard state), passed as an env var
+  so the production build later carries a different value through the
+  same mechanism.
+- **All twelve deployed suites gain an ENVIRONMENT GATE** before the
+  content gate, any login, and any write leg. Each suite declares
+  `EXPECTED_ENV: staging` in-file (the design's per-suite target table —
+  there is deliberately NO production entry to select). Semantics:
+  `<unreachable>` (cold start) and `<absent>` (a mid-deploy older build)
+  are retried on the same budget the content gate uses as its
+  deploy-waiter; a PRESENT-but-different environment fails IMMEDIATELY
+  and loudly — a wrong environment is not a warming-up condition. The
+  print suite additionally asserts the frontend's environment from
+  build.txt line 2 once content matches (a mismatch there is a
+  deploy-pages misconfiguration, immediate failure), and still treats a
+  legacy one-line stamp as a stale deploy to wait out.
+- **Deliberately deferred from design step 1**: the JWT `aud`
+  environment claim. The owner's build order for this PR scoped the
+  environment-identity fields + suite gates only; `aud` issuance and
+  validation ride a follow-up PR before step 2.
+- **Verification (local, old main :8081 vs branch :8080, fresh identical
+  SQLite seeds)**: 46-check byte-parity sweep — every endpoint
+  byte-identical except `/healthz`, which is asserted to be exactly
+  old + `environment: "staging"`; 11-check behavior matrix — APP_ENV
+  set/unset values, gate PASSES on staging, gate fails on absent field
+  only AFTER the full retry budget (deploy-waiter, timed), gate fails
+  IMMEDIATELY (<2 s, no retry) against a mock healthz reporting
+  `production`, the two-line stamp writes and parses, and a legacy
+  one-line body parses as `<absent>` (stale path). All 14 workflow YAMLs
+  machine-validated. No schema change → no migration simulation
+  (metadata on a health endpoint + workflow asserts only).
+- **Post-merge operational sequence (recorded)**: merging changes both
+  the `server/` tree and the `render.yaml` blob → Render redeploys (and
+  Blueprint-syncs the new `APP_ENV`); Pages needs one dispatch of
+  deploy-pages (main pushes never trigger it) since `deploy-pages.yml`
+  is inside the print suite's context hash. Then dispatch the twelve
+  suites SEQUENTIALLY as usual — each must now show the ENVIRONMENT GATE
+  step passing with `environment=staging` BEFORE its content gate.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
@@ -1554,6 +1612,10 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
    as a pre-deployment checklist step before any hospital install.
    NOTHING is implemented — no code, config, or service changes ship
    with the proposal; implementation starts only after approval.]*
+   *[Superseded 2026-07-11: the design was APPROVED (PR #53 merged by
+   the owner) and implementation began per its §11 order — step 1
+   (environment identity) is built; see "Environment identity (built)"
+   above. Remaining: the `aud` claim rider, then steps 2–6.]*
 3. Print Center
    *[2026-07-11 per project owner: the Print Center FOUNDATION (Phase 1 —
    rendering architecture + the first three templates) was pulled forward

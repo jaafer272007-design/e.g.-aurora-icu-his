@@ -112,9 +112,18 @@ Seeder.SeedAll(app, demoPassword, dbLabel);
    RENDER_GIT_COMMIT at runtime; "dev" outside Render) — every deployed
    E2E suite's warm-up asserts it matches the commit the workflow was
    dispatched against, so a suite can never again run green against a
-   STALE deployment (the 2026-07-10 CI-evidence audit's biggest finding). */
+   STALE deployment (the 2026-07-10 CI-evidence audit's biggest finding).
+   `environment` is the ENVIRONMENT IDENTITY (step 1 of the merged
+   environment-separation design): the freshness-gate mechanism extended
+   by one field. It is CONFIGURATION, not code — read from APP_ENV at
+   runtime (render.yaml sets "staging" for the deployed cloud tier; a
+   future production install sets "production" through the same variable,
+   no code change). Unset = a local dev process, per the design's tuple.
+   Every data-writing suite asserts this field matches its declared
+   target BEFORE running any write leg. */
 var build = Environment.GetEnvironmentVariable("RENDER_GIT_COMMIT") ?? "dev";
-app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build }));
+var appEnv = Environment.GetEnvironmentVariable("APP_ENV") ?? "development";
+app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build, environment = appEnv }));
 
 /* endpoint groups — same registration order as the pre-split Program.cs;
    every route string is byte-identical (the /api/icu/ prefix on Core

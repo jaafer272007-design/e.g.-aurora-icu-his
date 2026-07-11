@@ -40,6 +40,11 @@ concurrency:
 env:
   API: https://icu-cp49.onrender.com
   PAGES: https://jaafer272007-design.github.io/e.g.-aurora-icu-his
+  # The suite's DECLARED TARGET (environment-separation §11 step 1's
+  # per-suite target table — in-file and versioned; there is deliberately
+  # NO production entry to select). Asserted against BOTH halves: the
+  # API's /healthz environment AND the Pages build.txt environment line.
+  EXPECTED_ENV: staging
 
 jobs:
   e2e:
@@ -49,6 +54,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+        run: |
+          # Environment-identity gate (§11 step 1 of the merged
+          # environment-separation design) — same shape as every other
+          # suite: retried on <unreachable>/<absent> (cold start /
+          # mid-deploy), IMMEDIATE loud failure on a present-but-different
+          # environment, before any gate, login, or write leg. The Pages
+          # half of the identity is asserted inside the PAGES gate below.
+          for i in $(seq 1 60); do
+            got=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environment","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: healthz environment=$got · expected=$EXPECTED_ENV"
+            [ "$got" = "$EXPECTED_ENV" ] && exit 0
+            if [ "$got" != "<unreachable>" ] && [ "$got" != "<absent>" ]; then
+              echo "WRONG ENVIRONMENT: this suite writes test data for '$EXPECTED_ENV' but $API/healthz reports '$got' — refusing to run ANY leg." && exit 1
+            fi
+            sleep 10
+          done
+          echo "NO ENVIRONMENT IDENTITY: $API/healthz never reported an environment field (unreachable, or the deployed build predates the environment-identity PR) — refusing to run. Deploy this ref, then re-dispatch." && exit 1
 
       - name: SERVER gate — deployed build's server content must equal this ref's
         run: |
@@ -73,14 +97,25 @@ jobs:
               done; } | sha256sum | cut -d' ' -f1
           }
           WANT=$(ctx_hash "$GITHUB_SHA")
+          # build.txt is TWO lines since the environment-identity PR:
+          # line 1 = commit, line 2 = environment. Content equality is
+          # checked first (an old one-line stamp is just a stale deploy —
+          # the loop below waits it out); once content MATCHES, the
+          # environment line must equal EXPECTED_ENV — a mismatch there is
+          # a deploy-pages misconfiguration, immediate loud failure.
           for i in $(seq 1 30); do
-            build=$(curl -sf --max-time 30 "$PAGES/build.txt" 2>/dev/null | tr -d '[:space:]' || echo "")
+            body=$(curl -sf --max-time 30 "$PAGES/build.txt" 2>/dev/null || echo "")
+            build=$(printf '%s\n' "$body" | sed -n 1p | tr -d '[:space:]')
+            fenv=$(printf '%s\n' "$body" | sed -n 2p | tr -d '[:space:]')
             if [ -z "$build" ]; then
               echo "attempt $i: no /build.txt on the live site yet"
             else
               GOT=$(ctx_hash "$build" 2>/dev/null || echo "<unknown-commit>")
-              echo "attempt $i: pages build=$build"
-              [ "$GOT" = "$WANT" ] && { echo "pages frontend content matches this ref"; exit 0; }
+              echo "attempt $i: pages build=$build · environment=${fenv:-<absent>}"
+              if [ "$GOT" = "$WANT" ]; then
+                [ "$fenv" = "$EXPECTED_ENV" ] || { echo "WRONG FRONTEND ENVIRONMENT: the live site serves this ref's content but declares environment '${fenv:-<absent>}' (expected '$EXPECTED_ENV') — deploy-pages.yml is misconfigured; refusing to run." && exit 1; }
+                echo "pages frontend content matches this ref (environment $fenv)"; exit 0
+              fi
             fi
             sleep 10
           done
