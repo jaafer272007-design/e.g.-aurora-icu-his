@@ -1,7 +1,17 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
 **Last updated: 2026-07-11 · current through environment-separation
-§11 STEP 3 — production build & serving mode: the frontend is served
+§11 STEP 4 (PARTIAL) — the target-independent release + backup
+mechanisms: the `production` branch promotion model with a gate that
+only releases what staging is serving and has verified (ancestry +
+content equality + all twelve suites green on that content); the
+release bundle with manifest + checksums whose verification treats any
+mismatch as "bundle does not exist"; and the backup script whose EVERY
+run restores into a scratch database and proves the data comes back
+(strict-equality proven locally on 15 tables; failed verification is a
+loud non-zero FAILED state, never silent trust). OS-specific install
+tooling + the VM rehearsal are DEFERRED pending production server
+facts. Prior: STEP 3 — production build & serving mode: the frontend is served
 SAME-ORIGIN by the API in production with a RELATIVE base (no hostname
 in the artifact), the mock/demo layer is COMPILED OUT of production
 bundles (bundle-inspection + sourcemap proof — absent, not disabled),
@@ -1763,6 +1773,97 @@ local; no infrastructure spent.]*
   staging, no wwwroot) + dormant-serving parity (`/`,
   `/api/nonexistent`, `/beds` identical 404s). `tsc` clean; no schema
   change → no migration simulation.
+
+### Release + backup mechanisms (built) — environment-separation §11 step 4, PARTIAL
+*[Attributed addition 2026-07-11 — step 4 is deliberately PARTIAL per
+the project owner: the TARGET-INDEPENDENT pieces are built here; the
+OS-specific install tooling (`aurora-update`/`aurora-verify` against a
+concrete server) and the VM install/rollback/restore rehearsal are
+DEFERRED until the production server's shape is known (OS, backend
+on-prem vs reaching in, network path to the database). Nothing here
+assumes a target OS, deploys anywhere, or spends anything.]*
+- **The `production` branch + promotion gate**
+  (`.github/workflows/release-production.yml` +
+  `scripts/promotion-gate.sh`). A BRANCH, not a tag scheme, drives
+  production: a branch has a single mutable HEAD meaning "what
+  production should run" and rollback is pointing it back; tags are the
+  immutable RELEASE LABELS the workflow cuts (`release/r<N>`). **What a
+  human does to promote**: `git fetch origin main && git push origin
+  <validated-main-commit>:production` (the first push creates the
+  branch — which is why this PR does NOT create it; the first promotion
+  is the owner's deliberate act). The gate blocks the release unless:
+  the commit is an ANCESTOR of main; staging's `/healthz` says
+  `environment=staging`; the commit's server tree + render.yaml equal
+  the deployed staging build's; the staging Pages `build.txt` carries
+  the same frontend context; and EVERY one of the twelve suites' most
+  recent completed run concluded success ON CONTENT EQUAL to the
+  promoted commit's (a green run against different bytes is not
+  evidence). No retries — a promotion is not a warm-up condition.
+- **The release bundle: manifest + checksums**
+  (`scripts/make-release-bundle.sh` / `verify-release-bundle.sh`).
+  Manifest: `aurora-release-manifest/1` JSON — version (`r<run>`),
+  commit, environment, component identities (server tree, frontend
+  context hash, render.yaml blob — the SAME identities every gate
+  compares), and per-artifact sha256 + byte size; plus a flat
+  `SHA256SUMS`. Verification requires the bytes, the manifest, and
+  SHA256SUMS to all agree (a tampered artifact OR a tampered manifest
+  both fail), sizes to match, and optionally the commit to equal an
+  expected value — any failure is a loud "treat this bundle as
+  NONEXISTENT". The release job builds the §11-step-3 production app
+  image (server + same-origin frontend) as the bundle's artifact and
+  publishes a GitHub Release; the tooling itself is artifact-agnostic
+  and was proven locally with real frontend/server artifacts (no docker
+  in the sandbox — the image build is exercised by the first real
+  promotion). Signing is future scope; checksums + GitHub Release
+  provenance now.
+- **THE CENTERPIECE — backup WITH restore-verification**
+  (`scripts/aurora-backup.sh`). The rule it enforces: a backup that has
+  not been PROVEN restorable does not count as a backup. Every `backup`
+  run: `pg_dump -Fc` + sha256 sidecar, then RESTORES the dump into a
+  fresh scratch database and verifies — V1 checksum, V2 restorability
+  (pg_restore, exit-on-error), V3 every archived table exists in the
+  restore, V4 restored per-table counts recorded as the dump's metadata
+  and NOT LOWER than the previous verified backup's (the never-delete
+  rules make counts monotonic — shrinkage is a data-loss tripwire;
+  `RV_ALLOW_SHRINK=1` is the documented escape for a knowingly reset
+  source), V5 (quiesced sources / the proof harness) STRICT per-table
+  content equality vs the source via deterministic row-digest
+  aggregation. Outcome lands in `BACKUP_DIR/LAST_VERIFICATION` (JSON,
+  VERIFIED/FAILED) — any failure exits non-zero with "treat this backup
+  as NONEXISTENT". `reverify <dump>` re-proves an existing backup.
+  **Cadence (wired at install time — deferred tooling)**: `backup`
+  daily; `reverify` the newest dump before any software update, with
+  the updater hard-stopping on failure. Retention keeps the newest
+  `RETAIN` (default 14) verified triplets.
+- **Verification (all local, nothing spent)**: promotion gate DRY-RUN —
+  6 scenarios against mock staging endpoints + the REAL GitHub API: the
+  aligned case PASSES (16 individual checks: ancestry, identity,
+  server/frontend content, 12 suites green-on-content) and five
+  doctored states BLOCK loudly (non-ancestor commit; staging serving
+  older server content; staging reporting the wrong environment; suites
+  green on other content; stale Pages frontend). Bundle — produced from
+  real locally-built artifacts and verified 5/5: intact PASSES,
+  corrupted artifact FAILS, tampered manifest FAILS, wrong expected
+  commit FAILS. Backup — against a real local Postgres populated by the
+  actual server (migrate + seeds + a real admission), quiesced:
+  backup→restore→compare PASSED with STRICT equality on all 15 tables
+  (247 rows); a second run proved V4 non-regression; five failure paths
+  demonstrated LOUD (corrupted dump → V1; truncated-but-checksummed
+  dump → V2, proving a checksum alone is not restore-proof; planted
+  count regression → V4 naming the shrunken table; the documented
+  shrink escape; retention pruning). One empirical catch fixed during
+  proofing: the scratch database name contained uppercase — unquoted
+  `CREATE DATABASE` folds the identifier while the connection URL does
+  not, so creation and restore targeted different names; now lowercased
+  with the reason recorded in the script.
+- **Byte-parity by construction**: this PR adds `scripts/` + one new
+  workflow + this record — it touches NO runtime file (server/, src/,
+  render.yaml, existing workflows all untouched; the diff is the
+  proof). Staging behavior is unchanged.
+- **Deferred (the rest of step 4, pending server facts)**: OS-specific
+  `aurora-update`/`aurora-verify` against a concrete target, the
+  backup sidecar/cron WIRING on the production host, and the full VM
+  install/update/rollback/restore rehearsal.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
