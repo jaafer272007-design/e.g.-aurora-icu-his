@@ -1499,6 +1499,22 @@ changes.]*
   is inside the print suite's context hash. Then dispatch the twelve
   suites SEQUENTIALLY as usual — each must now show the ENVIRONMENT GATE
   step passing with `environment=staging` BEFORE its content gate.
+- **LIVE-VERIFIED (2026-07-11, merge commit 1de8a30e)**: the sequence
+  above was executed and all twelve suites ran GREEN against the live
+  staging environment, each with its ENVIRONMENT GATE step succeeding
+  (job- and step-level evidence, not run-level). deploy-pages dispatch
+  29162527528 (deploy JOB ran — not skipped — stamping the two-line
+  build.txt). Suite runs, in dispatch order: auth 29162771786, adt
+  29162794155, users 29162815199, labs 29162833335, orders 29162853620,
+  mar 29162873241, timeline 29162891787, ai 29162909300,
+  encounter-scope 29162927618, formulary 29162944542, labcatalog
+  29162966428, print 29162988331. The print run's log shows the full
+  mechanism live: `attempt 1: healthz environment=staging ·
+  expected=staging` (API half), `pages build=1de8a30e… ·
+  environment=staging` (frontend half, two-line stamp parsed), then the
+  8/8 render proof. Render Blueprint-synced `APP_ENV=staging`
+  automatically on the merge deploy — no manual dashboard step was
+  needed.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
