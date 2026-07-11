@@ -130,6 +130,22 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+/* ---- §11 step 3: SAME-ORIGIN PRODUCTION FRONTEND ----
+   When a compiled frontend bundle is present in wwwroot, this service
+   serves it — the production model: ONE origin, the bundle calling its
+   API with a RELATIVE base, no CORS surface, and frontend/API version
+   skew unrepresentable (they ship together). The staging Render image
+   carries no wwwroot, so nothing here registers there (GitHub Pages
+   remains staging's frontend) — byte-parity preserved. The SPA fallback
+   is mapped after the API endpoints, below. */
+var wwwroot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+var servesFrontend = File.Exists(Path.Combine(wwwroot, "index.html"));
+if (servesFrontend)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+
 /* Shared demo password — bcrypt-hashed once at startup, NEVER stored or
    logged in plaintext beyond this env read. Non-production by
    construction: T2 refuses production boot when DEMO_PASSWORD is set,
@@ -186,5 +202,24 @@ ResultsApi.Map(app);
 FormularyApi.Map(app);
 LabCatalogApi.Map(app);
 OrderSetsApi.Map(app);
+
+/* SPA fallback (only when this service carries the frontend): unmatched
+   non-API routes serve index.html so the router owns deep links — but
+   the /api namespace stays HONEST: an unknown API route remains a plain
+   404, never a 200 HTML page (the four-code convention would be
+   unauditable if absent endpoints answered with markup). */
+if (servesFrontend)
+{
+    app.MapFallback(async ctx =>
+    {
+        if (ctx.Request.Path.StartsWithSegments("/api"))
+        {
+            ctx.Response.StatusCode = 404;
+            return;
+        }
+        ctx.Response.ContentType = "text/html";
+        await ctx.Response.SendFileAsync(Path.Combine(wwwroot, "index.html"));
+    });
+}
 
 app.Run();

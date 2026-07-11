@@ -1,17 +1,18 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
 **Last updated: 2026-07-11 · current through environment-separation
-§11 STEP 2 — seed modes + boot tripwires: production seeding carries NO
-demo patients/staff/password (reference data + a provisioned bootstrap
-admin + the explicit FORMULARY_SEED install policy, starter content
-deactivated until Pharmacy validates); T1 refuses to serve any
-production database where an active account matches the demo password;
-T2 refuses production boot on demo config; unknown/missing APP_ENV
-refuses to boot in every tier. Proven by a 36-check local boot matrix
-(every tripwire fires AND a clean production boot serves the full
-day-one flow) + 45-check staging byte-parity. Prior: the aud-claim
-RIDER completing step 1 (aud == APP_ENV at issuance and validation,
-oracle-free, fail-closed). Prior: the ENVIRONMENT-IDENTITY
+§11 STEP 3 — production build & serving mode: the frontend is served
+SAME-ORIGIN by the API in production with a RELATIVE base (no hostname
+in the artifact), the mock/demo layer is COMPILED OUT of production
+bundles (bundle-inspection + sourcemap proof — absent, not disabled),
+a runtime environment cross-check paints a FULL-SCREEN refusal on any
+frontend/API environment mismatch, staging/dev carry an unmistakable
+banner (absent from the production artifact), and the API_BASE_URL
+repo variable is retired into deploy-pages.yml (§6.4). Prior: STEP 2 —
+seed modes + boot tripwires (T1 demo-credential scan, T2 demo-config
+refusals, refuse-unknown-APP_ENV; 36-check boot matrix). Prior: the
+aud-claim RIDER completing step 1 (aud == APP_ENV at issuance and
+validation, oracle-free, fail-closed). Prior: the ENVIRONMENT-IDENTITY
 PR — `/healthz` and `/build.txt` carry an `environment` name (`staging`)
 and every deployed suite refuses to run any write leg unless the
 environment it reports matches the suite's in-file declared target
@@ -1682,6 +1683,86 @@ repair, never a silent degradation. Mechanics in
   evidence each). Nothing in this PR runs in production until steps
   4–5 stand one up; the tripwires' own proof is the recorded 36-check
   local boot matrix.
+
+### Production build & serving mode (built) — environment-separation §11 step 3
+*[Attributed addition 2026-07-11 — the final environment-separation
+build step before the release pipeline: the frontend gains a PRODUCTION
+build/serving mode in which every guarantee is structural. All proofs
+local; no infrastructure spent.]*
+- **Same-origin serving with a relative API base.** When a compiled
+  bundle is present in `wwwroot`, the API service serves it (static
+  files + SPA fallback that deliberately EXCLUDES `/api` — an unknown
+  API route stays an honest 404, never a 200 HTML page). The production
+  bundle calls its API with a RELATIVE base: `VITE_APP_ENV=production`
+  forces `API_BASE=''` and ignores any `VITE_API_BASE_URL` — **the
+  artifact carries no hostname to point at a wrong environment**, the
+  cross-origin seam does not exist (no CORS surface used), and
+  frontend/API version skew is unrepresentable (they ship together).
+  Dev/staging serving is unchanged: Pages → Render cross-origin,
+  governed by the API's CORS allowlist; the staging Render image has no
+  `wwwroot`, so the serving code is dormant there (proven by parity).
+- **The mock/demo layer is compiled OUT of production bundles** — not
+  disabled: ABSENT. Every mock fallback in the service layer
+  (`src/lib/api/index.ts`, 54 sites) sits behind the statically-replaced
+  `import.meta.env.VITE_APP_ENV !== 'production'`; dead branches and the
+  mock-store modules they reference are eliminated. Three build findings
+  fixed to make that TRUE rather than assumed: (1) live helpers that
+  lived inside mock modules dragged demo data into the production graph
+  — extracted to real modules (`api/logic.ts`: AI threshold/trend
+  helpers + IO vocabulary; `api/bedboard.ts`: the real bed-board join);
+  (2) `toSummary`'s alertCount enriched from MOCK ai/results stores even
+  on the real path — production now derives it from the real wire field
+  alone (crit/high bed alert); (3) the mock stores' top-level demo-data
+  construction counted as module side effects that defeated
+  tree-shaking — annotated `/* @__PURE__ */` (comments only). A
+  production data call that cannot be served REFUSES loudly:
+  `apiUnavailable()` rejects and paints a full-screen overlay — never
+  demo data, because none exists in the artifact. Honest consequence:
+  the still-mock-only Stage 11 domains (unit summary, bedside panels,
+  mission-control composite, nursing tasks/I&O, consults, notes, the
+  timeline's four mock feeds) refuse in production until they become
+  real; the production timeline serves the server-derived categories
+  alone. The Stage 9 local-session fallback, the demo staff directory,
+  the demo-credentials disclaimer, and the `SAMPLE_STAFF` presets are
+  compiled out of production the same way; the bed board's physicians
+  strip derives from real attendings in production (demo list retained
+  in dev/staging for parity).
+- **Runtime environment cross-check with FULL-SCREEN refusal**
+  (`EnvironmentGate`): the bundle compiles in its expected environment;
+  on load it fetches the wired API's `/healthz` and compares the
+  step-1 `environment` field. A response naming a DIFFERENT environment
+  replaces the entire app with a refusal naming both values and the
+  serving origin — no login form, no navigation. An unreachable healthz
+  is NOT a verdict (cold start/offline ≠ wrong environment), and a
+  pure-mock dev session (no API) skips the check.
+- **Staging/dev banner** (`EnvironmentBanner`): a persistent amber
+  striped strip — "STAGING ENVIRONMENT — not the system of record;
+  everything here is test data" (or DEVELOPMENT) — driven by the same
+  compiled-in identity. Production renders nothing AND the banner is
+  absent from the production artifact (same DCE mechanism; hidden in
+  print CSS — document marking is Print Center scope).
+- **§6.4 executed**: `vars.API_BASE_URL` (dashboard state) is retired —
+  the staging API URL now lives in `deploy-pages.yml` itself alongside
+  `VITE_APP_ENV: staging`, inside the print suite's Pages-gate
+  comparison set. No dashboard-resident routing config remains.
+- **Verification (all local)**: **9-check bundle-inspection proof** —
+  eight mock-only marker strings (demo patients, demo staff, the demo
+  password, the banner text, the local-session log line, mock order
+  ids, mock AI narratives) present in the staging bundle and ABSENT
+  from production, plus a SOURCEMAP module inventory asserting NO
+  `src/lib/api/data/` module exists in the production graph (bundle:
+  467 kB staging vs 386 kB production). **18-check headless runtime
+  proof**: production served same-origin (login → real ADT data from
+  the step-2 production Postgres, every network request same-origin,
+  no banner, no demo content, SPA deep link works, `/api/nonexistent`
+  404), the artifact grep'd free of hostnames, the DELIBERATE MISMATCH
+  (production bundle served by a staging API) painting the full-screen
+  refusal naming both environments with the app unusable behind it,
+  and the staging bundle showing the banner with demo login/roster
+  unchanged. **45-check server byte-parity** (old main vs branch,
+  staging, no wwwroot) + dormant-serving parity (`/`,
+  `/api/nonexistent`, `/beds` identical 404s). `tsc` clean; no schema
+  change → no migration simulation.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

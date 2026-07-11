@@ -1,6 +1,6 @@
 import type {
   AiRisk, PatientAlert, PatientRiskProfile, RankedRisk, RiskCategory, RiskPrediction,
-  RiskRankingRow, RiskTrend,
+  RiskRankingRow,
 } from '../types'
 import { ROSTER } from './roster'
 
@@ -19,7 +19,8 @@ import { ROSTER } from './roster'
 export const AI_UPDATED_AT = '09:45'
 
 /** a risk at/above this probability raises an alert in the alert center */
-export const AI_ALERT_THRESHOLD = 65
+import { AI_ALERT_THRESHOLD, isElevated, riskTrendOf } from '../logic'
+export { AI_ALERT_THRESHOLD, isElevated, riskTrendOf }
 const AI_ALERT_CRIT = 80
 
 /* ---------------- compact seed spec, expanded into profiles ---------------- */
@@ -50,14 +51,8 @@ const clamp = (v: number) => Math.max(1, Math.min(99, v))
 const historyFor = (p: number, d: Drift): number[] => DRIFT_OFFSETS[d].map(o => clamp(p + o))
 
 /** trend from the q15min history — computed at read time (locked pattern) */
-export function riskTrendOf(history: number[]): RiskTrend {
-  const delta = history[history.length - 1] - history[0]
-  return delta >= 4 ? 'rising' : delta <= -4 ? 'falling' : 'stable'
-}
-
-/** elevated = high now, or moderate and climbing — gates suggestions & ranking chips */
-export const isElevated = (r: RiskPrediction): boolean =>
-  r.probability >= 60 || (r.probability >= 45 && riskTrendOf(r.history) === 'rising')
+/* riskTrendOf / isElevated now live in ../logic (pure, data-free) and are
+   re-exported above so existing importers keep working. */
 
 const SPECS: { patientId: string; risks: RiskSpec[] }[] = [
   {
@@ -381,7 +376,7 @@ const SPECS: { patientId: string; risks: RiskSpec[] }[] = [
 
 /* ---------------- expansion ---------------- */
 
-const PROFILES: PatientRiskProfile[] = SPECS.map(spec => {
+const PROFILES: PatientRiskProfile[] = /* @__PURE__ */ SPECS.map(spec => {
   const r = ROSTER.find(x => x.patientId === spec.patientId)!
   return {
     patientId: spec.patientId,

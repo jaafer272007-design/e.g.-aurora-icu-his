@@ -18,6 +18,7 @@ import { PrintCenter } from './pages/PrintCenter/PrintCenter'
 import { PrintDocument } from './pages/PrintCenter/PrintDocument'
 import { Login } from './pages/Login/Login'
 import { RequireSession } from './components/RequireSession'
+import { EnvironmentBanner, EnvironmentGate } from './components/EnvironmentChrome'
 import { getSession, landingRouteOf } from './lib/session'
 
 /* Route map (all except /login require a session; each route also requires
@@ -52,7 +53,12 @@ function HomeRedirect() {
 
 export default function App() {
   return (
-    <BrowserRouter basename={BASENAME}>
+    /* §11 step 3 environment chrome: the gate REPLACES the whole app on a
+       cross-environment mismatch (or a production api-unavailable state);
+       the banner marks staging/dev unmistakably and is compiled OUT of
+       production bundles. */
+    <EnvironmentGate>
+      <BrowserRouter basename={BASENAME}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<HomeRedirect />} />
@@ -79,6 +85,8 @@ export default function App() {
         <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+      </BrowserRouter>
+      <EnvironmentBanner />
+    </EnvironmentGate>
   )
 }

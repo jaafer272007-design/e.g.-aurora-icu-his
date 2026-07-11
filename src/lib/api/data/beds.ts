@@ -1,5 +1,7 @@
-import type { AdtBed, Bed, BedPatient, BedsResponse, RosterRecordDto, UnitAlert, UnitSummaryResponse } from '../types'
+import type { AdtBed, Bed, BedPatient, BedsResponse, UnitAlert, UnitSummaryResponse } from '../types'
 import { ROSTER, type UnitPatientRecord } from './roster'
+import { composeBedsResponse } from '../bedboard'
+export { composeBedsResponse }
 
 /* Bed board — Unit 4B, 16 beds. The bed LAYOUT (bed ↔ location ↔ occupant
    id) lives here; every patient field is derived from the canonical roster
@@ -36,7 +38,7 @@ const BED_LAYOUT: BedSlot[] = [
 /* RosterRecordDto (the real wire shape) and UnitPatientRecord (the mock
    record) are structurally identical for these fields — one mapper serves
    both the mock board and the Layer 2 real composition. */
-const toBedPatient = (r: UnitPatientRecord | RosterRecordDto): BedPatient => ({
+const toBedPatient = (r: UnitPatientRecord): BedPatient => ({
   patientId: r.patientId,
   name: r.name,
   age: r.age,
@@ -65,7 +67,7 @@ export const BEDS_RESPONSE: BedsResponse = {
   capacity: 16,
   physicians: DOCS,
   areas: ['Pod A', 'Pod B'],
-  beds: BED_LAYOUT.map(toBed),
+  beds: /* @__PURE__ */ BED_LAYOUT.map(toBed),
 }
 
 /* High-priority unit alerts — DERIVED from the roster's bed alerts (crit
@@ -87,7 +89,7 @@ export const UNIT_SUMMARY: UnitSummaryResponse = {
   admissionsInProgress: 3,
   dischargesPlanned: 2,
   pendingConsults: 4,
-  highPriorityAlerts: deriveHighPriorityAlerts(),
+  highPriorityAlerts: /* @__PURE__ */ deriveHighPriorityAlerts(),
   stats: [
     { label: 'Admissions Today', value: '3', delta: '+1 vs avg', trend: 'up' },
     { label: 'Discharges Today', value: '2', delta: 'on plan', trend: 'fl' },
@@ -99,25 +101,7 @@ export const UNIT_SUMMARY: UnitSummaryResponse = {
 }
 
 
-/* ---------------- Layer 2 — real bed-board composition ----------------
-   The REAL board = the ADT bed registry (layout + derived occupancy) joined
-   with the REAL roster (per-patient bedside snapshot). Admissions appear,
-   discharges drop off, and transfers move beds because both inputs derive
-   from Core encounters. The mock BEDS_RESPONSE above remains the offline
-   fallback. */
-export function composeBedsResponse(adtBeds: AdtBed[], roster: RosterRecordDto[]): BedsResponse {
-  const byId = new Map(roster.map(r => [r.patientId, r]))
-  return {
-    unitId: '4B',
-    capacity: adtBeds.length,
-    physicians: DOCS,
-    areas: [...new Set(adtBeds.map(b => b.area))],
-    beds: adtBeds.map(({ bedId, area, patientId }): Bed => {
-      const record = patientId ? byId.get(patientId) : undefined
-      return { bedId, area, patient: record ? toBedPatient(record) : null }
-    }),
-  }
-}
+
 
 /* offline fallback for the ADT bed registry — derived from the mock layout
    and roster with the SAME encounter-id convention the server seeds use

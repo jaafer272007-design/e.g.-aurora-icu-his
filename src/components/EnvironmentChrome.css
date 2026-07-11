@@ -1,0 +1,52 @@
+/* §11 step 3 — environment chrome (see EnvironmentChrome.tsx) */
+
+/* the full-screen refusal: the app is REPLACED, not decorated */
+.envrefusal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 32px;
+  text-align: center;
+  background: #2a0a0e;
+  color: #ffd9dd;
+  font-family: inherit;
+}
+.envrefusal h1 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: 0.14em;
+  color: #ff5f6e;
+}
+.envrefusal p { margin: 0; max-width: 640px; line-height: 1.5; }
+.envrefusal b { color: #ffffff; }
+.envmono { font-family: ui-monospace, monospace; }
+.envretry {
+  border: 1px solid #ff5f6e;
+  background: transparent;
+  color: #ffd9dd;
+  padding: 4px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* the staging/development strip: persistent and unmistakable */
+.envbanner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  padding: 4px 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: repeating-linear-gradient(-45deg, #b8860b, #b8860b 14px, #9a7009 14px, #9a7009 28px);
+  color: #0b0b04;
+}
+@media print { .envbanner { display: none; } }
