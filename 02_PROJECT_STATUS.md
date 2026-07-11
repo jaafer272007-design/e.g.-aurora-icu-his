@@ -1671,6 +1671,17 @@ repair, never a silent degradation. Mechanics in
   staging mode, fresh identical seeds): every endpoint byte-identical —
   the dev/staging path is untouched. No schema change → no migration
   simulation.
+- **STAGING VERIFIED LIVE (2026-07-11, merge commit fd2d334e)**: the
+  deployed staging service booted the tripwire code (its
+  `APP_ENV=staging` config passes every production-scoped guard by
+  construction) and all twelve suites ran GREEN sequentially against
+  it — auth 29165027342, adt 29165067366, users 29165087557, labs
+  29165127797, orders 29165146525, mar 29165166261, timeline
+  29165186505, ai 29165206270, encounter-scope 29165226622, formulary
+  29165245763, labcatalog 29165266601, print 29165286262 (job-level
+  evidence each). Nothing in this PR runs in production until steps
+  4–5 stand one up; the tripwires' own proof is the recorded 36-check
+  local boot matrix.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
