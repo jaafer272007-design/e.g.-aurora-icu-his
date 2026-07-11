@@ -11,6 +11,15 @@ hospital's own network, and must be offline-first. The first draft's
 withdrawn; that cloud tier is redesignated as STAGING. This revision is
 the design.]*
 
+*[Revision 3, 2026-07-11, same PR: four owner amendments — Docker
+Compose stated as the v1 reference deployment, not the architectural
+endpoint (§4.1); formulary seeding made a choosable install-time policy
+rather than a fixed decision (§3.3, §9); the bootstrap-admin credential
+story added — no known credential ships in the production image (§3.3);
+and the repository-goes-private decision recorded as a pre-deployment
+checklist step (§9, §11). The owner has stated the design is complete
+for approval after these amendments.]*
+
 This designs the transition from the single-environment prototype
 (recorded in 02_PROJECT_STATUS.md as the "single environment — every test
 writes to the system of record" constraint, and in 01_ARCHITECTURE.md as
@@ -38,11 +47,11 @@ correctly," it instead names the gate that replaces the remembering.
 | D1 | Environment tiers | **DEVELOPMENT (local/cloud) · STAGING (cloud: Render + Pages) · PRODUCTION (on-premises: hospital LAN, offline-first)** (§2) |
 | D2 | What today's stack becomes | The entire current stack (Pages site, `icu-cp49` service, current free Postgres with its accumulated artifacts) becomes **the STAGING environment, wholesale**. Production is a new on-prem installation that starts empty of clinical data (§9) |
 | D3 | Offline-first, precisely | All core clinical functions (registration/ADT, medications, labs, imaging, printing, physician orders, nursing records) run entirely on the hospital LAN with no internet. Internet, when present, adds only non-critical extras — off-site backup, updates, remote support, central analytics/monitoring — each of which degrades to "paused," never to "clinical function interrupted" (§2.3) |
-| D4 | Production runtime | **One Docker Compose stack on hospital infrastructure**: the API container (which also serves the frontend bundle — one image, one origin), the PostgreSQL container with a named volume, and a backup sidecar (§4.1) |
+| D4 | Production runtime | **One Docker Compose stack on hospital infrastructure**: the API container (which also serves the frontend bundle — one image, one origin), the PostgreSQL container with a named volume, and a backup sidecar. Compose is the **v1 reference deployment, not the architectural endpoint** — an HA topology can replace it later without changing the environment model (§4.1) |
 | D5 | Production frontend targeting | The frontend ships **inside the API image** and calls its API **same-origin with a relative base** — the production bundle contains **no API hostname at all**, so there is no URL to point at the wrong environment; frontend/API version skew is atomic-image-impossible (§4.2) |
 | D6 | Databases | **Three separate PostgreSQL instances** — dev-local, staging-cloud (the current free one), production-on-prem. Non-negotiable (§3.1); production's is additionally unreachable from the internet by network fact |
 | D7 | Auth isolation | Separate `JWT_SECRET` per environment (production's generated at install, never leaves the hospital host) **and** an `aud` environment claim validated by the API — two locks on top of the network boundary (§3.2) |
-| D8 | Seeds | Seeding is **environment-moded in code**: production seeds reference data + ONE bootstrap administrator only — no demo patients, no demo staff, no `Aurora2026!` — enforced by boot-time tripwires, not convention (§3.3). Production builds also compile the mock/demo data layer **out** (§4.2) |
+| D8 | Seeds | Seeding is **environment-moded in code**: production seeds non-hospital-specific reference data + ONE bootstrap administrator (installer-generated one-time credential, forced change on first login — no known credential ships in the image) — no demo patients, no demo staff, no `Aurora2026!` — enforced by boot-time tripwires, not convention (§3.3). The **formulary is a choosable install-time policy**, not a fixed decision (§3.3). Production builds also compile the mock/demo data layer **out** (§4.2) |
 | D9 | Promotion & updates | Git-based: `main` auto-deploys staging; production receives **versioned, checksummed release bundles** cut from a `production` branch by a gated workflow (ancestor-of-main + equals-what-staging-is-running), installed on-prem by an update script that backs up first and verifies after (§5, §4.4) |
 | D10 | Prove-the-right-build, on-prem | `/healthz` + `build.txt` carry commit **and** environment in every tier; on-prem, a shipped **local verify script** replays the content-equality discipline against the release manifest — no cloud needed (§4.5, §7) |
 | D11 | CI identity | Every cloud suite asserts `environment == staging` **before any write leg**; write suites have no production target — and cloud CI cannot reach the hospital LAN at all, making that structural twice over (§7) |
@@ -175,24 +184,57 @@ cross-environment token to authenticate.
 The server gains `APP_ENV` (`development` | `staging` | `production`;
 any other value → refuse to boot). Seeding splits into two classes:
 
-- **Reference seeds** (bed registry, formulary, frequencies, interaction
-  rules, lab catalogue, order sets): available to **every** environment —
-  a production ICU needs its bed layout and formulary as starting
-  configuration, which Pharmacy/Laboratory then maintain through the
-  Layer 4 screens. *(Flagged owner decision, §9: production can instead
-  start with empty master data and be populated entirely through the
-  Layer 4 screens — decide at implementation review.)*
+- **Reference seeds that are not hospital-specific** (lab catalogue,
+  order sets, the frequency vocabulary, interaction rules): seeded in
+  **every** environment, plus the bed registry as starting configuration
+  a hospital adjusts at install. Pharmacy/Laboratory then maintain
+  reference data through the existing Layer 4 screens.
+- **The formulary — an install-time operational policy, not a fixed
+  architectural decision.** Different hospitals will want different
+  paths, and the design forces neither. The installer offers a choice,
+  recorded in the install configuration:
+  - **starter formulary** — seed the reviewable reference formulary,
+    explicitly marked as requiring pharmacy/clinical validation before
+    clinical use (the marking is surfaced, not a footnote: it rides the
+    seeded content until Pharmacy signs it off through the Layer 4
+    screens); or
+  - **empty formulary** — start with none, for the hospital's pharmacy
+    to build or import its own.
 - **Clinical + demo-identity seeds** (14 demo patients, encounters,
   orders, results, AI profiles, bedside snapshots, the 20 demo staff):
   **development and staging only. Production starts empty of clinical
   data.**
 
-Production users: the seeder creates exactly **one bootstrap
-administrator** whose password is generated by the installer at install
-time (random, shown once to the hospital administrator, rotated via the
-existing Layer 3 screens after first login). Every real account is then
-created through Layer 3 with individual credentials. The demo password
-never exists in production, in any form.
+**The bootstrap moment — how the first admin credential is set on a
+fresh offline install.** Production compiles out the demo password and
+starts with no clinical data, but one administrator must exist so real
+users can be created. The governing principle is the install-time
+equivalent of the no-shared-demo-password guarantee: **no known
+credential ships in the production image** — nothing baked in, no
+default, no vendor password. A default in the image would be a shared
+secret across every hospital that ever installs it, which is exactly the
+`Aurora2026!` failure reborn. Chosen approach:
+
+- At install, the **installer generates a random one-time password on
+  the hospital host**, displays it exactly once to the operator, and
+  stores nothing but its bcrypt hash. The value never exists in the
+  repo, the image, the cloud, or any file — only in that single console
+  output and the operator's hands.
+- The bootstrap account is created in a **forced-change state**: until
+  the one-time password is replaced, its only permitted action is
+  setting a real password (the existing Layer 3 credential flow,
+  hardened into a must-change-before-anything gate). **The first
+  clinical act of a production install is establishing a real admin
+  credential.** Every subsequent account is then created through
+  Layer 3 with individual credentials.
+- If the one-time value is lost before first login, the installer's
+  credential step is re-run at the host console — a local, physical
+  operation. There is deliberately **no remote or cloud reset path**.
+- T1 is unaffected (a random value cannot match the demo password), and
+  the install acceptance checklist (§4.5, §11) verifies the forced
+  change actually happened before the install is accepted.
+
+The demo password never exists in production, in any form.
 
 Because "the seeder checks a variable" is itself configuration, two
 **boot-time tripwires** back it (loud crash before the service binds,
@@ -244,6 +286,19 @@ to catch. Serving the bundle from the API process eliminates both. If
 the hospital wants TLS on the LAN, a hospital-managed reverse proxy MAY
 sit in front — that is explicitly IT-boundary territory, §10, and the
 stack is fully functional without it.)*
+
+**Compose is the reference deployment for v1, not the architectural
+endpoint.** It is the baseline that makes the first production install
+simple, rehearsable, and verifiable. A more highly-available
+architecture — multiple app instances behind a load balancer,
+PostgreSQL HA/replication, container orchestration, central
+monitoring — can be adopted later **without changing the environment
+model, the Core, or any boundary in this document**: every mechanism
+here is defined against the environment tuple (§2.3), the release
+manifest (§4.5), and the same-origin/no-hostname contract (§4.2) — not
+against Compose. What §4.1 fixes is the *contract* (one origin;
+app + database + backup; no cloud in the serving path); the topology
+underneath it is upgradeable per installation.
 
 ### 4.2 Reaching the API on a hospital LAN — the build-time lock, strongest form
 
@@ -505,7 +560,7 @@ are untouched.
 | Frontend | Vite dev server | GitHub Pages (+ `build.txt`) | served by the app image, same-origin |
 | API | local | Render `icu-cp49`, autodeploy from `main` | Docker Compose on the hospital host |
 | Database | local PG / SQLite fallback | current free cloud PG (30-day churn now harmless) | on-prem PG container + named volume |
-| Seeds | reference + demo | reference + demo | reference + bootstrap admin only |
+| Seeds | reference + demo | reference + demo | non-hospital-specific reference + formulary per install policy + bootstrap admin (forced change) |
 | Auth | dev secret, `aud: development` | generated secret, `aud: staging` | install-generated secret, `aud: production` |
 | Verification | compile CI | twelve suites + gates + render suite | `aurora-verify` vs release manifest; install acceptance incl. offline proof |
 | Update path | git | merge to `main` | gated release bundle + `aurora-update` |
@@ -520,20 +575,23 @@ are untouched.
   motivated this design), so it is *redesignated*, not cleaned: the
   entire current stack becomes staging as-is. Zero migration work, zero
   data loss.
-- **Production starts empty**: reference seeds + one bootstrap admin;
-  the first real clinical row arrives through the UI by an authenticated
-  individual. *(Owner decision, flagged: whether production starts with
-  the reference/formulary seeds as curated starting configuration, or
-  with empty master data populated via the Layer 4 screens. Decide at
-  implementation review.)*
+- **Production starts empty**: non-hospital-specific reference seeds +
+  one bootstrap admin in a forced-change state (§3.3); the formulary
+  arrives by the chosen install-time policy (starter-marked-for-
+  validation, or empty for the hospital to import its own); the first
+  real clinical row arrives through the UI by an authenticated
+  individual.
 - **The repo stays single-codebase.** No environment forks. Differences
   live in `APP_ENV`, build-time flags, `render.yaml`, workflow files,
   and the compose file — all versioned.
-- **Honest flag — repository visibility**: the repo (and any release
-  images pushed to a registry) is currently public. Nothing clinical or
-  secret lives in it, and this design keeps it that way; but a real
-  hospital deployment should revisit visibility/registry privacy as a
-  deliberate owner decision before the first production install.
+- **Repository visibility — decided**: the repository (and any release
+  registry) goes **private before any real hospital install**, as a
+  deliberate pre-deployment checklist step (§11, step 5) — not during
+  development, since cloud-staging verification relies on the public
+  repo until then. Honest consequence to resolve at that step: a
+  private repo moves the staging frontend off free GitHub Pages (paid
+  plan, or a static-site host for staging) and puts the suites on
+  metered private-repo Actions minutes.
 
 ## 10. Hospital IT vs. the software — the honest boundary
 
@@ -604,10 +662,18 @@ line today.
    second release, roll back, restore a backup. The rehearsal is the
    acceptance test of the tooling, before any real hospital is
    involved.
-5. **First production install** — on hospital hardware with hospital
-   IT, per the §10 split: install acceptance checklist including the
-   unplugged-uplink clinical walkthrough; bootstrap admin handed over
-   and rotated; B2 backup custody agreed and observed once end-to-end.
+5. **First production install** — gated by the **pre-deployment
+   checklist**, then executed on hospital hardware with hospital IT per
+   the §10 split.
+   *Pre-deployment checklist (before any hospital resource is
+   touched)*: the repository and release registry made **private**
+   (§9 — resolving the staging-Pages and Actions-minutes consequences
+   at the same step); the formulary install-time policy chosen with the
+   hospital (§3.3); the VM rehearsal of step 4 signed off.
+   *Install acceptance*: the unplugged-uplink clinical walkthrough;
+   bootstrap one-time credential handed over and the forced change to a
+   real password verified (§3.3); B2 backup custody agreed and observed
+   once end-to-end.
 6. **Docs** — 01 gains the environment model as constitution (the
    tiers, the tuple, the boundary matrix, the promotion/release rule,
    offline-first as a binding requirement); 02 supersedes the
@@ -623,15 +689,15 @@ rehearsed end-to-end on a VM.
 ## 12. Out of scope, stated
 
 Warm standby / HA and WAL-based point-in-time recovery (named as the
-backup upgrade path, §4.3 — the immediate follow-up design once a
-production install exists); central analytics / remote monitoring and
-remote support tooling (named internet-optional extras — designed later,
-under the D3 non-critical constraint); AD/LDAP or hospital SSO
-integration; the facility-timezone question (already recorded; §10
-assigns the *time source* to IT, the *timezone semantics* to that open
-question); multi-hospital fleet management (the tuple extension path in
-§2.3 is the placeholder); repository/registry visibility (§9, owner
-decision).
+backup upgrade path in §4.3, and adoptable without changing the
+environment model per §4.1's reference-deployment statement — the
+immediate follow-up design once a production install exists); central
+analytics / remote monitoring and remote support tooling (named
+internet-optional extras — designed later, under the D3 non-critical
+constraint); AD/LDAP or hospital SSO integration; the facility-timezone
+question (already recorded; §10 assigns the *time source* to IT, the
+*timezone semantics* to that open question); multi-hospital fleet
+management (the tuple extension path in §2.3 is the placeholder).
 
 ## 13. Design-principle audit — every "remember to…" and its replacing mechanism
 
@@ -643,6 +709,8 @@ decision).
 | "Remember to use different JWT secrets" | Staging `generateValue`; production installer-generated on-host; **and** the `aud` claim — validated, not remembered |
 | "Remember not to run suites against production" | No production row in the write suites' target table; environment asserted before any write leg; and cloud CI cannot route to the LAN |
 | "Remember not to seed demo data in production" | Seed mode in code + T1 (demo-password scan refuses to serve) + T2 (demo config refuses to boot) + the mock layer compiled out of the bundle |
+| "Remember to change the default admin password" | No default exists — the image ships no credential; the installer generates a one-time value shown once, and the account can do nothing until a real password is set (forced-change gate, §3.3) |
+| "Remember the starter formulary needs pharmacy review" | The starter-formulary install mode marks its content as requiring validation before clinical use — the marking rides the data until Pharmacy signs it off (§3.3) |
 | "Remember the clinical system must not need the internet" | The offline proof is an install acceptance test (unplugged-uplink walkthrough), and internet extras are consumers of local state by construction (§2.3, §4.3) |
 | "Remember to deploy the right code to the hospital" | The only path in is a checksummed release bundle whose manifest binds artifact→commit; the promotion gate binds commit→what-staging-verified; `aurora-verify` binds running-system→manifest |
 | "Remember to back up before updating" | `aurora-update` refuses to proceed without a fresh restore-verified pre-update dump — a hard stop in the script, not a step in a runbook |

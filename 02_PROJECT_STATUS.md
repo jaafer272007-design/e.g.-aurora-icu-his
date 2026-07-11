@@ -1545,9 +1545,15 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
    is a gated release-bundle workflow; on-prem updates via checksummed
    release bundles + `aurora-update`/`aurora-verify`; environment
    identity in `/healthz` and `build.txt` asserted by every suite before
-   write legs, with write suites having no production target. NOTHING is
-   implemented — no code, config, or service changes ship with the
-   proposal; implementation starts only after approval.]*
+   write legs, with write suites having no production target. Revision 3
+   (same day, owner amendments): Compose = v1 reference deployment (HA
+   adoptable later without changing the model); formulary seeding is a
+   choosable install-time policy; bootstrap admin gets an
+   installer-generated one-time credential with forced change on first
+   login (no known credential ships in the image); the repo goes private
+   as a pre-deployment checklist step before any hospital install.
+   NOTHING is implemented — no code, config, or service changes ship
+   with the proposal; implementation starts only after approval.]*
 3. Print Center
    *[2026-07-11 per project owner: the Print Center FOUNDATION (Phase 1 —
    rendering architecture + the first three templates) was pulled forward
