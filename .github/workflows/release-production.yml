@@ -1,0 +1,109 @@
+# ==================== PRODUCTION RELEASE (environment-separation §11 step 4 — PARTIAL) ====================
+#
+# THE PROMOTION MODEL (approved design §4): `main` deploys STAGING
+# automatically, as today. PRODUCTION moves ONLY when a human performs
+# one deliberate, auditable git action:
+#
+#     git fetch origin main
+#     git push origin <validated-main-commit>:production
+#
+# (The first such push CREATES the production branch.) That push — and
+# nothing else — triggers this workflow. It cannot happen as a side
+# effect of merging a PR; it is visible in `git log production`,
+# attributable, and revertible (rollback = push an earlier verified
+# commit to production; the gate re-validates it the same way).
+#
+# THE GATE runs first and blocks the release unless the promoted commit
+# is EXACTLY what staging is serving and has already verified: ancestry
+# of main, staging environment identity, server + frontend content
+# equality against the live staging deployment, and every one of the
+# twelve suites green ON THIS CONTENT (a green run against different
+# bytes is not evidence). See scripts/promotion-gate.sh — the same
+# script is locally dry-runnable against mock endpoints.
+#
+# ON A PASSED GATE this builds the release BUNDLE: the production app
+# image (server + same-origin frontend in wwwroot — §11 step 3's model,
+# frontend/API skew unrepresentable), a manifest recording the release's
+# identity (commit + the exact component hashes the gates compare), and
+# SHA256SUMS — published as a GitHub Release tagged release/r<N>.
+# Whoever installs verifies FIRST (scripts/verify-release-bundle.sh);
+# the transfer channel is untrusted by default.
+#
+# DEFERRED (step 4 is PARTIAL until the production server's shape is
+# known — OS, backend location, DB network path): OS-specific install/
+# update tooling (aurora-update / aurora-verify against a target) and
+# the VM install/rollback/restore rehearsal. NOTHING here deploys to any
+# server: the output is a verified, self-describing artifact.
+name: Production Release
+on:
+  push:
+    branches: [production]
+
+permissions:
+  contents: write   # tag + release creation
+  actions: read     # the gate reads suite run conclusions
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+env:
+  STAGING_API: https://icu-cp49.onrender.com
+  STAGING_PAGES: https://jaafer272007-design.github.io/e.g.-aurora-icu-his
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # full history: the gate resolves the deployed staging commit's
+          # trees and the suite runs' commits (same reason as the suites)
+          fetch-depth: 0
+      - name: PROMOTION GATE — only what staging is serving and has verified may become a release
+        env:
+          PROMOTED_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main
+          bash scripts/promotion-gate.sh
+
+  release:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # the PRODUCTION frontend (§11 step 3): mock layer compiled out,
+      # relative API base, no banner — served same-origin by the image
+      - name: Build the production frontend into the server image context
+        run: |
+          VITE_APP_ENV=production npm run build -- --base=/
+          echo "${GITHUB_SHA}"  > dist/build.txt
+          echo "production"    >> dist/build.txt
+          rm -rf server/wwwroot && cp -r dist server/wwwroot
+      - name: Build + save the app image (server + same-origin frontend)
+        run: |
+          VERSION="r${GITHUB_RUN_NUMBER}"
+          docker build -t "aurora-app:${VERSION}" server
+          docker save "aurora-app:${VERSION}" | gzip > "aurora-app-image-${VERSION}.tar.gz"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+      - name: Assemble the bundle (manifest + SHA256SUMS) and self-verify it
+        run: |
+          bash scripts/make-release-bundle.sh out "${VERSION}" "${GITHUB_SHA}" "aurora-app-image-${VERSION}.tar.gz"
+          bash scripts/verify-release-bundle.sh out "${GITHUB_SHA}"
+      - name: Publish the GitHub Release (tag release/r<N>)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "release/${VERSION}" out/* \
+            --target "${GITHUB_SHA}" \
+            --title "AURORA production release ${VERSION}" \
+            --notes "Production release ${VERSION} — commit ${GITHUB_SHA}, gate-verified against staging. Verify before installing: scripts/verify-release-bundle.sh <bundledir> ${GITHUB_SHA}. Install tooling is deferred pending production server facts (step 4 PARTIAL)."
