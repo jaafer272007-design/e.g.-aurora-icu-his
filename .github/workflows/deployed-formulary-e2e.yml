@@ -231,6 +231,14 @@ jobs:
           echo "reactivate -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DRUG/reactivate")
           echo "re-reactivate -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          # Discontinue the run's ACTIVE order first: since the
+          # safety-enforcement PR the server screens duplicates, so
+          # re-ordering $DRUG while $OID is active is a duplicate-therapy
+          # 409 (found live, run 29131600533). This leg asserts that
+          # REACTIVATION cleared the inactive-409 — clear the duplicate
+          # so that is the only thing under test.
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"e2e — clear active duplicate before the re-order probe"}' "$API/api/icu/orders/$OID/discontinue")
+          echo "discontinue $OID -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$MED" "$API/api/icu/orders")
           echo "order after reactivation -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
 
