@@ -1,11 +1,17 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-11 · current through the aud-claim RIDER —
-design step 1 is now COMPLETE: JWTs carry the environment as their
-`aud` at issuance and validation requires `aud == APP_ENV` (a
-staging-minted token is structurally invalid on production even with a
-shared secret; missing/unknown APP_ENV fails closed — no issuance, no
-validation; rejections are oracle-free). Prior: the ENVIRONMENT-IDENTITY
+**Last updated: 2026-07-11 · current through environment-separation
+§11 STEP 2 — seed modes + boot tripwires: production seeding carries NO
+demo patients/staff/password (reference data + a provisioned bootstrap
+admin + the explicit FORMULARY_SEED install policy, starter content
+deactivated until Pharmacy validates); T1 refuses to serve any
+production database where an active account matches the demo password;
+T2 refuses production boot on demo config; unknown/missing APP_ENV
+refuses to boot in every tier. Proven by a 36-check local boot matrix
+(every tripwire fires AND a clean production boot serves the full
+day-one flow) + 45-check staging byte-parity. Prior: the aud-claim
+RIDER completing step 1 (aud == APP_ENV at issuance and validation,
+oracle-free, fail-closed). Prior: the ENVIRONMENT-IDENTITY
 PR — `/healthz` and `/build.txt` carry an `environment` name (`staging`)
 and every deployed suite refuses to run any write leg unless the
 environment it reports matches the suite's in-file declared target
@@ -1585,6 +1591,86 @@ shared — defense in depth on top of the per-environment `JWT_SECRET`.]*
   exist, schedule any change to token issuance for LOW-ACTIVITY
   windows; in the production model this belongs in the release/update
   planning of §11 steps 4–5.
+
+### Seed modes + boot tripwires (built) — environment-separation §11 step 2
+*[Attributed addition 2026-07-11 — the design principle applied at the
+boot layer: a production environment REFUSES TO RUN in any state
+acceptable in dev but dangerous in production. Not "configured not to"
+— refuses to boot, loudly. Every guard fails closed; the refusal banner
+(stderr, exit 1, process never binds) names the tripwire and the fix,
+because a refusing production instance is a configuration error to
+repair, never a silent degradation. Mechanics in
+`server/Core/Persistence/BootGuards.cs` + the mode split in Seeder.]*
+- **APP_ENV-moded seeding.** development/staging: the full demo set,
+  byte-identical to before (proven below). production: NO demo
+  patients, NO demo staff, NO shared password — boots with
+  non-hospital-specific reference data (beds as starting configuration,
+  frequency vocabulary, interaction rules, lab catalogue, order sets),
+  the formulary per the **FORMULARY_SEED install policy** (required,
+  explicit: `starter` seeds the reference formulary with EVERY drug
+  DEACTIVATED + an audit event — the existing safety enforcement
+  rejects inactive drugs, so unvalidated starter content is
+  structurally unprescribable until Pharmacy validates by reactivating
+  each drug through the Layer 4 screen; `empty` seeds none and Pharmacy
+  builds/imports its own through the same screen — that is how real
+  formulary content arrives instead of demo drugs), the reserved system
+  principal, and **ONE bootstrap administrator** whose credential comes
+  from `ADMIN_BOOTSTRAP_PASSWORD` at provision time — never hardcoded,
+  refused if missing on a first boot, refused outright if it IS the
+  demo password. Clinical tables start EMPTY. (The design's
+  forced-change-on-first-login gate needs a self-service
+  password-change surface that does not exist yet — recorded as riding
+  the bootstrap-moment/install tooling of steps 4–5; until then the
+  credential is operator-chosen, never in repo/image, rotatable via
+  Layer 3.)
+- **T1 — demo-credential tripwire.** On EVERY production boot — fresh
+  seed, migrated database, or an account a human later touched — the
+  demo password is bcrypt-verified against every ACTIVE account's hash;
+  any match refuses to serve, naming the usernames. The scan verifies
+  the compile-time constant against stored hashes in memory only —
+  nothing plaintext is stored or logged. This makes the shared demo
+  password STRUCTURALLY IMPOSSIBLE in production: a database carrying
+  it cannot be booted, however it got there.
+- **T2 — demo-config tripwire.** Production refuses to boot with:
+  `DEMO_PASSWORD` set (the knob only exists to vary the shared demo
+  seed password); no `DATABASE_URL` (the ephemeral SQLite fallback
+  forgets on restart); no `JWT_SECRET` (the per-boot random key is a
+  dev convenience and proves the secret was never provisioned);
+  `CORS_ORIGINS` missing (the built-in default includes the Vite dev
+  ports) or containing a localhost/loopback origin (a dev origin
+  against production lets any local page in a clinician's browser call
+  the system of record); `FORMULARY_SEED` missing or unknown (the
+  install decision must be explicit, never guessed).
+- **Unknown/missing `APP_ENV` refuses to BOOT, in every tier** — the
+  boot/seed-layer escalation the aud-rider record forecast, now built.
+  Consistent, not contradictory: the rider's fail-closed token layer
+  (login 503 + unmatchable validation audience) stays in place beneath
+  the boot gate as defense in depth. Local consequence: `dotnet run` /
+  `docker run` now require `APP_ENV=development` explicitly.
+- **Verification (local; no infrastructure spent — local PostgreSQL 16
+  for the production boots)**: **36-check boot matrix** — 13 refusal
+  cases each asserting exit 1 + the named banner (unknown/unset
+  APP_ENV; every T2 item; first-boot missing/demo bootstrap credential;
+  and the crux: a Postgres database seeded by a STAGING boot — demo
+  accounts and all — REFUSES to boot as production, T1); dev/staging
+  boots with demo config untouched; then the CLEAN production boot,
+  proven to matter as much as the refusals: serves
+  `environment=production`, T1 logs clean, bootstrap admin logs in with
+  the provisioned credential (token `aud=production`), demo logins 401,
+  roster/encounters EMPTY, 16 beds free, users = exactly admin + the
+  inactive system principal, 19 starter drugs all deactivated with the
+  validation event, reference data present — followed by the DAY-ONE
+  FLOW: admin creates a doctor (individual credential, clinical-title
+  justification per the Layer 3 safeguard), the doctor admits the first
+  real patient into a seeded bed, ordering an UNVALIDATED starter drug
+  is REJECTED, a pharmacist validates it by reactivation, the same
+  order then succeeds; a second production boot without
+  `ADMIN_BOOTSTRAP_PASSWORD` serves (idempotent) with data intact; and
+  the `FORMULARY_SEED=empty` variant boots with no formulary but full
+  reference data. **45-check byte-parity sweep** (old main vs branch,
+  staging mode, fresh identical seeds): every endpoint byte-identical —
+  the dev/staging path is untouched. No schema change → no migration
+  simulation.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

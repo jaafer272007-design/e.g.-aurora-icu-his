@@ -36,8 +36,20 @@ using Microsoft.IdentityModel.Tokens;
    string lives ONLY in the environment, never the repo) with EF Core
    migrations — writes survive restarts and redeploys. Without
    DATABASE_URL the service falls back to the ORIGINAL ephemeral SQLite
-   demo mode (rebuilt + reseeded every boot, loudly logged) so a plain
-   local `docker run` still works. See Core/Persistence. */
+   demo mode (rebuilt + reseeded every boot, loudly logged) so a local
+   `docker run -e APP_ENV=development` still works — since §11 step 2
+   every boot must name its environment, and production refuses the
+   SQLite fallback outright (BootGuards T2). See Core/Persistence. */
+
+/* ---- BOOT GATES (environment-separation §11 step 2) — BEFORE anything
+   binds: an unknown or missing APP_ENV refuses to boot in every tier
+   (the boot/seed-layer escalation of the aud rider, whose fail-closed
+   token layer stays beneath this as defense in depth), and a production
+   process refuses a dev configuration outright (T2). T1 — the
+   demo-credential scan — runs after seeding, before serving (below).
+   See Core/Persistence/BootGuards.cs for every tripwire's rationale. */
+BootGuards.RefuseUnknownEnvironment();
+BootGuards.ProductionConfigTripwire();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -119,13 +131,21 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 /* Shared demo password — bcrypt-hashed once at startup, NEVER stored or
-   logged in plaintext beyond this env read. Non-production, documented. */
-var demoPassword = Environment.GetEnvironmentVariable("DEMO_PASSWORD") ?? "Aurora2026!";
+   logged in plaintext beyond this env read. Non-production by
+   construction: T2 refuses production boot when DEMO_PASSWORD is set,
+   the production seed path never uses this value, and T1 refuses to
+   serve a production database where any active account matches it. The
+   constant itself lives in BootGuards (the one place it is known). */
+var demoPassword = Environment.GetEnvironmentVariable("DEMO_PASSWORD") ?? BootGuards.DemoPassword;
 /* verified against when the username doesn't exist, so unknown-user and
    wrong-password take the same time (no user enumeration via timing) */
 var decoyHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString(), workFactor: 10);
 
 Seeder.SeedAll(app, demoPassword, dbLabel);
+/* [T1] the demo-credential tripwire — after seeding (covers a fresh
+   seed, a migrated database, and any account a human later touched),
+   before the process ever serves. */
+BootGuards.DemoCredentialTripwire(app);
 
 /* health/warmup probe (also Render's health check path). `build` carries
    the git commit this binary was deployed from (Render injects
