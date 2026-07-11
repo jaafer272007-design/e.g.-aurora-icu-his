@@ -21,6 +21,15 @@ static class AuthApi
     {
         app.MapPost("/api/auth/login", (LoginRequest req, AuroraDb db) =>
         {
+            /* FAIL-CLOSED (aud rider): a service whose APP_ENV is missing
+               or unknown must not mint tokens — it cannot stamp an
+               audience it can vouch for. 503 (config state, identical for
+               every caller — not a credentials oracle), and validation is
+               equally closed via the unmatchable audience in Program.cs.
+               Step 2 escalates this to refuse-boot. */
+            if (!AppEnv.IsKnown)
+                return Results.Json(new { error = "authentication unavailable — APP_ENV is missing or unknown (fail-closed)" }, JsonOpts.Web, statusCode: 503);
+
             var input = (req.Username ?? "").Trim().ToLowerInvariant();
             var user = input.Length == 0 ? null : db.Users.AsNoTracking()
                 .AsEnumerable()
@@ -34,9 +43,13 @@ static class AuthApi
                 return Results.Json(new { error = "Invalid credentials" }, JsonOpts.Web, statusCode: 401);
 
             var now = DateTime.UtcNow;
+            /* aud IS the environment (the rider): a token minted here is
+               valid ONLY where APP_ENV matches — staging tokens are
+               structurally invalid on production even with a shared
+               secret. */
             var token = new JwtSecurityTokenHandler().WriteToken(new JwtSecurityToken(
                 issuer: Jwt.Issuer,
-                audience: Jwt.Audience,
+                audience: AppEnv.Name,
                 claims:
                 [
                     new Claim(JwtRegisteredClaimNames.Sub, user.Username),
