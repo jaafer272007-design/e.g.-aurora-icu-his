@@ -1567,6 +1567,24 @@ shared — defense in depth on top of the per-environment `JWT_SECRET`.]*
   byte-identical including `/healthz` — the only behavioral deltas are
   the token's `aud` value and the invalid-token 401 header, both
   intended. No schema change → no migration simulation.
+- **LIVE-VERIFIED (2026-07-11, merge commit 611293aa)**: all twelve
+  suites dispatched sequentially and GREEN against the deployed rider
+  (auth 29163847159, adt 29163879241, users 29163899918, labs
+  29163919440, orders 29163939023, mar 29163958588, timeline
+  29163976791, ai 29163995982, encounter-scope 29164015570, formulary
+  29164036734, labcatalog 29164056395, print 29164076069 — job-level
+  evidence each). The auth run's log carries the rider live: the issued
+  token's decoded `aud` equals `staging`, and both crafted invalid
+  tokens rejected identically with the bare header — `T_AUD -> HTTP 401
+  · www-authenticate: Bearer` / `T_SIG -> HTTP 401 · www-authenticate:
+  Bearer` — no reason disclosed. Every suite's login+write legs are the
+  same-environment positive path.
+- **Operational rule (recorded per project owner)**: token-issuance
+  changes force a re-authentication of every logged-in user (as this
+  deploy did — pre-rider tokens fail validation). Once real users
+  exist, schedule any change to token issuance for LOW-ACTIVITY
+  windows; in the production model this belongs in the release/update
+  planning of §11 steps 4–5.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
