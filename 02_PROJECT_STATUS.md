@@ -1,5 +1,9 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**Last updated: 2026-07-11 · current through PR #46 — server-side safety
+enforcement (merged and LIVE-VERIFIED against build e8f3cf56). Next
+build-order item: environment separation (dev/staging/prod).**
+
 *[Docs split note (2026-07-10): every unmarked line below was moved verbatim
 from the pre-split CLAUDE.md. The only additions are lines styled like this
 one and the three subsections explicitly marked "Attributed addition"
@@ -103,6 +107,11 @@ then Stage 11 device + AI integration per the
 locked rules above (Stage 11 also absorbs the roster's remaining
 bedside-snapshot columns). The Timeline's four still-mock sources
 (Consults/Notes/Nursing/I&O) migrate with that later work, not Phase 3.
+
+*[Superseded 2026-07-11 per project owner: safety enforcement is merged
+AND LIVE-VERIFIED (see the record below), and the NEXT build-order item
+is ENVIRONMENT SEPARATION (dev/staging/prod), then the Print Center —
+see "Remaining build order".]*
 
 ## Screen Roadmap
 1. ICU Bed Overview — ✅ approved (`/reference/icu-bed-overview.html`)
@@ -1152,6 +1161,33 @@ consequence). No schema change — the only wire delta is the additive
   drug per the precedence note); live-upgrade replica (zero migrations,
   the ORD-168 confirmation above); suites: orders/MAR/formulary/
   labcatalog/labs migrated as described, all eleven YAML-validated.
+- **LIVE-VERIFIED (2026-07-11, deployed build e8f3cf56 — post-merge)**:
+  - **Hands-on before/after (project owner)**: an order with an unknown
+    drugId flipped from **200 on build 9ac4624** (the escape hatch —
+    exactly the recorded ORD-168 gap) to **400 on build e8f3cf56** (the
+    formulary is now authoritative for ordering; the gap is closed). A
+    HARD allergy block returns **409 and is NOT cleared by an
+    `overrideJustification`**. A cross-reactivity WARNING returns **409
+    without a justification and 200 with one**, appending the audited
+    "safety override" event carrying the actor, the acknowledged
+    warning, and the reason. All three parts of the work item are done:
+    formulary/catalogue-authoritative ordering, safety.ts moved
+    server-side, and the block/warn asymmetry with audited override.
+  - **Deployed suites (sequential, per the discipline)**: orders
+    (29131534519 — incl. the full SAFETY step), MAR (29131571293),
+    labcatalog (29131655282) and labs (29131689581) all green on first
+    dispatch with every assertion step executed. The FORMULARY suite's
+    first run (29131600533) failed on its OWN final leg — the
+    "order after reactivation" probe re-orders the run drug while the
+    run's signed order for the same drug is still active, which is now
+    a duplicate-therapy 409 — the server behaving exactly as specified;
+    suite-only fix (discontinue the run order before the re-order probe)
+    validated GREEN on its branch (run 29132008305, 14/14 steps — the
+    content-equality gate passes a workflow-only branch by design). One
+    retry also surfaced a TRANSIENT "no free beds" (16 beds, 14 seeded
+    encounters — the two free beds were briefly held by concurrent
+    hands-on verification; a read-only ops audit confirmed no leaked
+    encounters afterwards).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
@@ -1218,7 +1254,9 @@ Master Data**, and **the server-side safety-enforcement work item is
 DONE — the formulary and catalogue are authoritative at ordering and
 medication safety is server-enforced** (see "Server-side safety
 enforcement (built)"). **Next: the deferred Print
-Center** → Stage 11 (device
+Center** *[Superseded 2026-07-11 per project owner: next is ENVIRONMENT
+SEPARATION, then the Print Center — see "Remaining build order" below]*
+→ Stage 11 (device
 integration + the Observation model per the locked rule above; Stage
 11 also absorbs the remaining bedside-snapshot half of the roster).
 The full architectural review + Core-extraction inventory ran before
@@ -1234,6 +1272,10 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
 1. Server-side safety enforcement — IN FLIGHT (draft PR #46, below)
    *[Superseded in the safety-enforcement PR itself: this item is BUILT —
    see "Server-side safety enforcement (built)" above.]*
+   *[Superseded again 2026-07-11: DONE — merged (PR #46) and
+   LIVE-VERIFIED against build e8f3cf56 (hands-on before/after evidence
+   + four suites green; see the LIVE-VERIFIED record above). The NEXT
+   build-order item is 2 — environment separation.]*
 2. Environment separation (dev/staging/production — the missing concept
    recorded in 01_ARCHITECTURE.md § Environment separation)
 3. Print Center
@@ -1265,6 +1307,11 @@ mechanical re-home of #46's new section into these files.]*
   full record is "Server-side safety enforcement (built)" above. Live
   suite validation (orders → MAR → formulary → labcatalog → labs,
   sequential) runs after merge + deploy.]*
+  *[Superseded again 2026-07-11: COMPLETED AND LIVE-VERIFIED — PR #46
+  merged; hands-on before/after evidence + the suite runs are recorded
+  under "Server-side safety enforcement (built) → LIVE-VERIFIED" above.
+  The only work now in flight is the formulary-suite duplicate-leg fix
+  (suite-only, validated green on its branch, own PR).]*
 
 ## CI Evidence — skipped/no-op checks (incident + codified rule + 2026-07-10 audit)
 Recorded after PR #27 incidentally discovered that PR #25 shipped real

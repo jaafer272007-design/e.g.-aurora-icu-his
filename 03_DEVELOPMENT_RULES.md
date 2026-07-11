@@ -38,6 +38,14 @@ each cites where the underlying claim is recorded.]*
 - Seed files under `server/Data/` are GENERATED from the mock stores —
   never hand-edit them (stated on every seeded domain's record in
   02_PROJECT_STATUS.md).
+- **02_PROJECT_STATUS.md is updated AS PART OF completing each
+  significant piece of work** (a feature, a fix-set, a verification
+  round) — the status record rides the same PR, or an immediate
+  follow-up docs PR when the verification happens post-merge — so the
+  file never drifts from the live state. Completing work without
+  recording it is incomplete work. *(Codified 2026-07-11 per project
+  owner; the "Last updated / current through" marker at the top of 02
+  is refreshed with each such update.)*
 
 ## CI evidence — skipped ≠ passed (codified rule)
 
