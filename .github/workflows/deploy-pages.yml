@@ -60,6 +60,13 @@ jobs:
       - run: npm run build -- --base=/e.g.-aurora-icu-his/
         env:
           VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+      # BUILD IDENTIFIER (the /healthz `build` analogue for the FRONTEND):
+      # the deployed site serves the commit it was built from at
+      # /build.txt, so render-verification suites can gate on Pages
+      # freshness by CONTENT (the same v3 gate rule as the server suites).
+      # Added after live hands-on verification caught a stale Pages deploy
+      # the API suites structurally could not see (2026-07-11).
+      - run: echo "${GITHUB_SHA}" > dist/build.txt
       # SPA fallback: Pages serves 404.html for unknown paths, letting the router take over
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5
