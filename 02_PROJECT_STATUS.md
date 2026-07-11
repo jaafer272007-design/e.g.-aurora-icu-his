@@ -8,8 +8,10 @@ renders documents headlessly behind server + Pages freshness gates).
 Previous milestones: patient-identity read (PR #51 — both
 Print-Center-recorded open questions resolved, now including the live
 render), Print Center Foundation Phase 1 (PR #50), safety enforcement
-(PR #46). Next: the remaining Print Center templates and environment
-separation (dev/staging/prod).**
+(PR #46). Next: environment separation — a design proposal
+(`docs/design/environment-separation.md`) is authored and awaiting
+project-owner approval before any implementation; the remaining Print
+Center templates follow.**
 
 *[Docs split note (2026-07-10): every unmarked line below was moved verbatim
 from the pre-split CLAUDE.md. The only additions are lines styled like this
@@ -1528,6 +1530,16 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
    build-order item is 2 — environment separation.]*
 2. Environment separation (dev/staging/production — the missing concept
    recorded in 01_ARCHITECTURE.md § Environment separation)
+   *[2026-07-11: a DESIGN PROPOSAL for this item was authored and is
+   awaiting project-owner approval —
+   `docs/design/environment-separation.md` (test + production tiers,
+   staging deferred with a stated no-rework path; separate PostgreSQL /
+   JWT secret / Render service / seeds; git-based promotion via an
+   explicit `production` branch; boundary matrix with ≥2 locks per
+   crossing; environment identity in `/healthz` and `build.txt` asserted
+   by every suite before write legs). NOTHING is implemented — no code,
+   config, or service changes ship with the proposal; implementation
+   starts only after approval.]*
 3. Print Center
    *[2026-07-11 per project owner: the Print Center FOUNDATION (Phase 1 —
    rendering architecture + the first three templates) was pulled forward
