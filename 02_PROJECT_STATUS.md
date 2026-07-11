@@ -1763,6 +1763,20 @@ local; no infrastructure spent.]*
   staging, no wwwroot) + dormant-serving parity (`/`,
   `/api/nonexistent`, `/beds` identical 404s). `tsc` clean; no schema
   change → no migration simulation.
+- **STAGING VERIFIED LIVE (2026-07-11, merge commit 9eb4d53f)**:
+  deploy-pages dispatch 29166358985 (deploy job RAN) shipped the new
+  staging bundle — banner, cross-check, and the in-file API URL — and
+  all twelve suites ran GREEN sequentially against the deployed pair:
+  auth 29166387094, adt 29166412514, users 29166435052, labs
+  29166453461, orders 29166474397, mar 29166492899, timeline
+  29166512907, ai 29166531545, encounter-scope 29166551588, formulary
+  29166570931, labcatalog 29166589657, print 29166609180 (job-level
+  evidence each). The print run renders a live document FROM the new
+  bundle — the environment chrome coexists with the locked print
+  output, and the retired `API_BASE_URL` repo variable is proven
+  unnecessary (the deployed site now builds its API target from
+  deploy-pages.yml alone). The live staging site now displays the
+  STAGING banner to every user — the intended, visible outcome.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
