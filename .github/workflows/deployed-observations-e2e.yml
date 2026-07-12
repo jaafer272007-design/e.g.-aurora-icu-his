@@ -113,7 +113,7 @@ jobs:
           print("catalog:", len(groups), "groups /", len(types), "types — §1 taxonomy shape verified")
           PY
 
-      - name: Enablement RBAC — nurse/Specialist 403; HARD CONSTRAINT: Hospital Administrator AND Receptionist 403; unauth 401
+      - name: "Enablement RBAC — nurse/Specialist 403; HARD CONSTRAINT: Hospital Administrator AND Receptionist 403; unauth 401"
         run: |
           # state-aware: probe against the devices group's CURRENT state
           CUR=$(python3 -c 'import json; print([g["enabled"] for g in json.load(open("/tmp/cat.json")) if g["groupCode"]=="devices"][0])')
