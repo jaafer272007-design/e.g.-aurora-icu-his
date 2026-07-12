@@ -1,6 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through the PRINT CENTER HUB
+**Last updated: 2026-07-12 · current through the STAGE 11 DESIGN
+RECORD (the validator's complete Observation Model design is now the
+versioned repo artifact `docs/design/stage11-observation-model.md`,
+with the F1/F2/F3 RBAC decisions baked in; the fragment-built draft
+PR #67 is marked SUPERSEDED — DO NOT MERGE, its correct engineering
+salvaged into the §12 rework; the pre-build verification report's
+code-vs-design findings are recorded, incl. the TWO bedside fake
+sources; the F4 mechanism question — how the three-layer RBAC model
+expresses "Consultant-tier" — is FLAGGED and awaiting the owner
+before §12 step 1 wires permissions). Prior: the PRINT CENTER HUB
 DISCHARGED-ENCOUNTER PICKER (the recorded display debt resolved: the
 hub's patient picker now lists discharged patients from the REAL
 closed-encounter read — `GET /adt/encounters?status=discharged`, the
@@ -2062,6 +2071,63 @@ the patient-identity-read record above.]*
   locators scoped by patientId. The step-3 production bundle proof
   re-ran 9/9 after the frontend change; `tsc -b` and `vite build`
   clean.
+
+### Stage 11 — the Observation Model DESIGN recorded; PR #67 superseded
+
+*[Attributed addition 2026-07-12 — records the design hand-off, the
+pre-build verification, and the state of the fragment build.]*
+
+- **The design is the spec**: `docs/design/stage11-observation-model.md`
+  — the validator's complete Observation Model design (clinical source:
+  the ICU physician), recorded verbatim per the versioned-artifact rule,
+  WITH the three RBAC decisions baked in: **F1** `observations.record`
+  on the Doctor + Nurse profiles (no junior/senior split); **F2**
+  `observations.correct` (tier-2 retrospective correction) is
+  Consultant-tier / senior-clinical — NEVER the office Administrator
+  profile; **F3** v1 ships the Type Catalogue seeded read-only with only
+  group enable/disable live, held by the same Consultant-tier authority.
+  Hard constraint: no observation-touching permission on the office
+  Administrator profile.
+- **PR #67 (the fragment build) is SUPERSEDED — DO NOT MERGE** (title
+  and body marked). Built from a one-sentence fragment before the design
+  existed: a closed server-side vocabulary where the design requires the
+  data-driven Type Catalogue + generic `(typeCode → value)` record
+  (a different database design), ~2 of the 8 clinical categories, and
+  corrections without the two-tier model or a recorded corrector actor.
+  Its correct engineering is salvaged into the rework per §9:
+  source-agnostic fields, server-owned provenance (claimed provenance →
+  400, set and entry level), closed-encounter 409 / correct-after-
+  discharge 200, atomic all-or-nothing sets, the byte-parity +
+  production-bundle-absence proof harnesses, panels.ts untouched.
+- **Pre-build verification (the design was written without repo
+  access; assumptions checked against the code, per the owner's
+  instruction)**: §9's reading of #67 CONFIRMED accurate in full. §5's
+  bedside-tile assumption corrected — there are TWO fake sources, not
+  one: the server-side roster bedside-snapshot table
+  (`MonitorVitalsJson` — vitals/NIBP monitor tiles; honest zeros +
+  "baseline observations pending" for fresh real patients) AND the
+  frontend `panels.ts` (ventilator/hemodynamics/infusions/alerts/goals,
+  identical for every patient). The §12 step-4 read-swap replaces BOTH
+  (recorded as a build-time note inside the design artifact). Context:
+  in production TODAY neither fake source can reach a screen (panels.ts
+  is compiled out; the MC detail read's production arm refuses) — the
+  read-swap makes Mission Control WORK in production.
+- **FLAGGED — F4, the Consultant-tier mechanism (awaiting the owner
+  before §12 step 1 wires permissions)**: the locked three-layer RBAC
+  model computes permissions from the PROFILE, and all five doctor
+  titles map to ONE Doctor profile — "Consultant-tier" is currently
+  inexpressible without either a new profile row (map the Consultant
+  title to a SeniorDoctor profile = Doctor's superset +
+  observations.correct + the enablement permission) or a title-level
+  check inside the permission lookup (which would violate the locked
+  "roles are NEVER bound to permissions directly" rule). Also
+  unspecified: whether "Consultant-tier" is the Consultant title alone
+  or Consultant + Specialist. Recorded; not silently decided.
+- **Build sequencing ahead (design §12, each its own draft PR)**:
+  1 Model + Catalogue + config → 2 Observation Service + Manual
+  endpoint → 3 /observations screen (timed round + ad-hoc) → 4 the
+  two-source bedside read-swap → then the 3 deferred print templates,
+  and later the Device Adapter.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
