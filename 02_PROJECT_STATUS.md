@@ -1,10 +1,16 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through the MISSION-CONTROL
-FRESH-PATIENT FIX (the detail page resolves identity from the REAL
-roster first — a freshly-admitted patient no longer renders "Patient
-Not Found"; 8/8 headless repro + the production bundle proof re-ran
-9/9). Prior: environment-separation §11 STEP 4 (PARTIAL) — the target-independent release + backup
+**Last updated: 2026-07-12 · current through the PRINT CENTER
+CONTRACT v1.0 + THE BUILDABLE BATCH (the validator-confirmed 13-template
+list is now a versioned repo artifact — `docs/print-center-contract.md`
+— and the 8 genuinely-remaining buildable templates are built on the
+Phase-1 pattern; 28-check headless proof incl. fresh-patient orders,
+byte-stability across a live formulary deactivation, a discharged
+face-sheet via the identity read, and a 2-page A4 pagination proof with
+the repeating table header; the 3 Stage-11 templates remain deferred per
+contract). Prior: the Mission-Control fresh-patient fix (the detail
+page resolves identity from the REAL roster first; 8/8 headless repro).
+Before that: environment-separation §11 STEP 4 (PARTIAL) — the target-independent release + backup
 mechanisms: the `production` branch promotion model with a gate that
 only releases what staging is serving and has verified (ancestry +
 content equality + all twelve suites green on that content); the
@@ -1910,6 +1916,68 @@ detail page (`/patients/:id`) said "Patient Not Found", even though
   production bundles; sourcemap inventory still shows ZERO mock
   modules). `tsc` clean.
 
+### Print Center Contract v1.0 + the buildable batch (built) — 8 new templates
+*[Attributed addition 2026-07-12 — the template list is now a VERSIONED
+CONTRACT in the repository: `docs/print-center-contract.md`, confirmed
+by the project's clinical validator (the ICU physician) and recorded
+verbatim from the owner's instruction. It can never again live only in
+conversation.]*
+- **Reconciliation (stated before building)**: contract #10 (Discharge
+  Summary) and #2 (ICU Daily Progress Sheet) were already implemented by
+  Phase 1 (`discharge-summary`; `daily-progress`). Phase 1's ICU
+  Admission Note is NOT in the contract's enumeration — retained as an
+  implemented additional document, flagged in the contract for the
+  validator's next review. Genuinely remaining and BUILT HERE (8):
+  #1 `face-sheet`, #3 `active-orders`, #4 `medication-orders`,
+  #5 `lab-report`, #6 `imaging-report`, #7 `sbar`, #8 `consult-report`,
+  #9 `transfer-summary`. NOT built (3, per contract): the MAR, the
+  Vital Signs/Observation Flowsheet, and the Ventilator & Device Report
+  — Stage 11 Observation-model scope.
+- **Pattern held exactly**: one selector + one component + one registry
+  entry per document; read-only rendering from persisted records through
+  the SAME `resolveContext` identity ladder (roster record → Core
+  patient-identity read → labeled encounter snapshot — the PR #63-era
+  canonical path, no fork, no mock store); the live formulary is never
+  consulted (zero master-data imports — the byte-stability guarantee);
+  shared A4 `PrintLayout` + primitives; missing data prints as a dash;
+  charted times carry the † footnote; unsigned orders/prescriptions
+  print under their own "awaiting signature — NOT in force" heading,
+  never mixed into active lists.
+- **Honest-source rule applied** (recorded in the contract): the
+  canonical nursing-notes and consultation stores do not exist yet
+  (the Timeline's still-mock feeds) — `sbar` and `consult-report`
+  render real identity/encounter/medication context plus whatever the
+  aggregated feed carries, with ruled write-ins; in production those
+  sections legitimately render "none recorded", never fabrication. The
+  Face Sheet's next-of-kin/payer fields are write-ins labeled "not
+  recorded by the system".
+- **Verification**: 28-check headless proof against a dev SQLite server
+  + built-bundle preview (real API, real auth, playwright): (A) all 8
+  new templates render for the seeded admitted P-1001 with per-document
+  content asserts (identity + encounter + write-in headings; order rows;
+  prescription detail; analytes + acknowledgment state; imaging
+  status/impression; S/B/A/R structure; consult chronology;
+  transfer-summary reason/condition write-ins). (B) a FRESH patient
+  admitted through the real ADT write path with a signed Vancomycin
+  prescription + a signed nursing order — face-sheet shows the real
+  admitted event and the DOB-computed age, active-orders shows BOTH
+  categories, medication-orders shows the full prescription detail.
+  (C) BYTE-STABILITY: deactivating Vancomycin in the live formulary
+  (pharmacist authority) and re-rendering medication-orders produced
+  normalized-identical output (then reactivated — store left as found).
+  (D) after a real discharge, the face-sheet renders via the identity
+  read (MRN present, Discharged row, NO snapshot notice) and the
+  lab-report renders the honest empty state. (E) print CSS proven on a
+  45-order Active Orders Sheet: the page.pdf A4 render spans 2 pages
+  (`pdfinfo`), and `pdftotext -f 2` shows the table HEADER REPEATED on
+  page 2 above continued rows (assert is case-insensitive — print CSS
+  uppercases `th`, the recorded Phase-1 lesson). (F) an absent id
+  renders the locked NotFound. One initial failure was that
+  case-sensitivity artifact, corrected and re-asserted against the
+  produced PDF — 28/28 effective. The step-3 production bundle proof
+  re-ran clean after the frontend change (marker strings + sourcemap
+  module inventory: zero mock modules in the production bundle);
+  `tsc -b` and `vite build` clean.
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature

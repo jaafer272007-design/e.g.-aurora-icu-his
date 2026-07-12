@@ -1,8 +1,20 @@
 import type { ComponentType } from 'react'
+import { ActiveOrdersSheet } from './templates/ActiveOrdersSheet'
 import { AdmissionNote } from './templates/AdmissionNote'
+import { ConsultReport } from './templates/ConsultReport'
 import { DailyProgressNote } from './templates/DailyProgressNote'
 import { DischargeSummary } from './templates/DischargeSummary'
-import { buildAdmissionNote, buildDailyProgress, buildDischargeSummary } from './selectors'
+import { FaceSheet } from './templates/FaceSheet'
+import { ImagingReport } from './templates/ImagingReport'
+import { LabReport } from './templates/LabReport'
+import { MedicationOrdersSheet } from './templates/MedicationOrdersSheet'
+import { SbarSheet } from './templates/SbarSheet'
+import { TransferSummary } from './templates/TransferSummary'
+import {
+  buildActiveOrders, buildAdmissionNote, buildConsultReport, buildDailyProgress,
+  buildDischargeSummary, buildFaceSheet, buildImagingReport, buildLabReport,
+  buildMedicationOrders, buildSbar, buildTransferSummary,
+} from './selectors'
 import type { PrintContext } from './types'
 
 /* ==================== Template registry ====================
@@ -36,6 +48,19 @@ const def = <T extends { context: PrintContext }>(t: {
 }): PrintTemplateDef => t as unknown as PrintTemplateDef
 
 export const PRINT_TEMPLATES: PrintTemplateDef[] = [
+  /* ---- Print Center Contract v1.0 (docs/print-center-contract.md) ----
+     hub order follows the contract enumeration; the Phase-1 ICU
+     Admission Note is retained as an implemented additional document
+     (flagged in the contract for the validator's next review). */
+  def({
+    id: 'face-sheet',
+    title: 'Patient Face Sheet',
+    description: 'Registration-style identity and encounter summary — the file-open / transfer banner document; next-of-kin and payer as write-ins (not recorded by the system).',
+    orientation: 'portrait',
+    encounterScope: 'any',
+    load: buildFaceSheet,
+    Component: FaceSheet,
+  }),
   def({
     id: 'admission-note',
     title: 'ICU Admission Note',
@@ -53,6 +78,69 @@ export const PRINT_TEMPLATES: PrintTemplateDef[] = [
     encounterScope: 'open',
     load: buildDailyProgress,
     Component: DailyProgressNote,
+  }),
+  def({
+    id: 'active-orders',
+    title: 'Active Orders Sheet',
+    description: 'All active physician orders, every category, from the persisted order record; pending-signature orders labeled separately as not in force.',
+    orientation: 'portrait',
+    encounterScope: 'open',
+    load: buildActiveOrders,
+    Component: ActiveOrdersSheet,
+  }),
+  def({
+    id: 'medication-orders',
+    title: 'Medication Orders',
+    description: 'Current medication prescriptions in full detail (dose, route, frequency, duration, PRN) from the persisted orders — never the live formulary.',
+    orientation: 'portrait',
+    encounterScope: 'open',
+    load: buildMedicationOrders,
+    Component: MedicationOrdersSheet,
+  }),
+  def({
+    id: 'lab-report',
+    title: 'Laboratory Report',
+    description: 'All laboratory results this encounter with reference ranges, flags, and acknowledgment status.',
+    orientation: 'portrait',
+    encounterScope: 'any',
+    load: buildLabReport,
+    Component: LabReport,
+  }),
+  def({
+    id: 'imaging-report',
+    title: 'Imaging Report',
+    description: 'All imaging studies this encounter with report and impression text as persisted, status progression, and acknowledgment status.',
+    orientation: 'portrait',
+    encounterScope: 'any',
+    load: buildImagingReport,
+    Component: ImagingReport,
+  }),
+  def({
+    id: 'sbar',
+    title: 'Nursing Notes / SBAR',
+    description: 'Nursing handoff sheet: S/B/A/R write-ins with real identity, active-medication context, and the nursing documentation the feed carries.',
+    orientation: 'portrait',
+    encounterScope: 'open',
+    load: buildSbar,
+    Component: SbarSheet,
+  }),
+  def({
+    id: 'consult-report',
+    title: 'Consultation Report',
+    description: 'Specialist consultations in chronological order as the record carries them, plus a write-in for paper-documented consultations.',
+    orientation: 'portrait',
+    encounterScope: 'any',
+    load: buildConsultReport,
+    Component: ConsultReport,
+  }),
+  def({
+    id: 'transfer-summary',
+    title: 'Transfer / Referral Summary',
+    description: 'For moving the patient to another unit or hospital: identity, ADT record, active medications at transfer, latest labs, and handover write-ins.',
+    orientation: 'portrait',
+    encounterScope: 'open',
+    load: buildTransferSummary,
+    Component: TransferSummary,
   }),
   def({
     id: 'discharge-summary',

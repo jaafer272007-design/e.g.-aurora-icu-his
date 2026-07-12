@@ -4,8 +4,10 @@ import {
 import type { Encounter, LabDraw, Order, PatientIdentity, RosterRecordDto } from '../../lib/api/types'
 import { dayOffsetOf } from '../../lib/time'
 import type {
-  AdmissionNoteData, DailyProgressData, DischargeSummaryData, PrintContext, PrintEncounterInfo,
-  PrintMedLine, PrintPatientIdentity, PrintVitals,
+  ActiveOrdersData, AdmissionNoteData, ConsultReportData, DailyProgressData, DischargeSummaryData,
+  FaceSheetData, ImagingReportData, LabReportData, MedicationOrdersData, PrintContext,
+  PrintEncounterInfo, PrintMedLine, PrintOrderLine, PrintPatientIdentity, PrintVitals,
+  SbarData, TransferSummaryData,
 } from './types'
 
 /* ==================== Print Center selectors ====================
@@ -238,5 +240,124 @@ export async function buildDischargeSummary(patientId: string, encounterId?: str
     imagingCount: imaging.length,
     medOrderCount: meds.length,
     encounterEvents: rc.encounter?.events ?? [],
+  }
+}
+
+/* ==================== Contract v1.0 batch — one builder per document ====================
+   Same rules as Phase 1: compose EXISTING adapters through the SAME
+   resolveContext identity ladder (roster record → Core patient-identity
+   read → encounter snapshot); persisted records only, never the live
+   formulary; nothing here writes. */
+
+/** One printable order line from ONE persisted order — any category;
+ *  the summary is the order's own stored text. */
+function toOrderLine(o: Order): PrintOrderLine {
+  return {
+    orderId: o.orderId, category: o.category, summary: o.summary,
+    priority: o.priority, status: o.status,
+    orderedBy: o.orderedBy, orderedTime: o.orderedTime,
+    requiresImplementation: !!o.requiresImplementation,
+  }
+}
+
+/* ---------------- Contract #1 — Patient Face Sheet ---------------- */
+
+export async function buildFaceSheet(patientId: string, encounterId?: string): Promise<FaceSheetData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  return { context: rc.context, adtEvents: rc.encounter?.events ?? [] }
+}
+
+/* ---------------- Contract #3 — Active Orders Sheet ---------------- */
+
+export async function buildActiveOrders(patientId: string, encounterId?: string): Promise<ActiveOrdersData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  return {
+    context: rc.context,
+    activeOrders: rc.orders.filter(o => o.status === 'active').map(toOrderLine),
+    pendingOrders: rc.orders.filter(o => o.status === 'pending').map(toOrderLine),
+  }
+}
+
+/* ---------------- Contract #4 — Medication Orders ---------------- */
+
+export async function buildMedicationOrders(patientId: string, encounterId?: string): Promise<MedicationOrdersData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  const meds = medOrders(rc.orders)
+  return {
+    context: rc.context,
+    activeMeds: meds.filter(o => o.status === 'active').map(toMedLine),
+    pendingMeds: meds.filter(o => o.status === 'pending').map(toMedLine),
+  }
+}
+
+/* ---------------- Contract #5 — Laboratory Report ---------------- */
+
+export async function buildLabReport(patientId: string, encounterId?: string): Promise<LabReportData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  const draws = await getLabDraws(patientId)
+  const scoped = rc.encounter && draws.some(d => d.encounterId)
+    ? draws.filter(d => d.encounterId === rc.encounter!.encounterId)
+    : draws
+  return { context: rc.context, draws: scoped }
+}
+
+/* ---------------- Contract #6 — Imaging Report ---------------- */
+
+export async function buildImagingReport(patientId: string, encounterId?: string): Promise<ImagingReportData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  const studies = await getImagingStudies(patientId)
+  const scoped = rc.encounter && studies.some(x => x.encounterId)
+    ? studies.filter(x => x.encounterId === rc.encounter!.encounterId)
+    : studies
+  return { context: rc.context, studies: scoped }
+}
+
+/* ---------------- Contract #7 — Nursing Notes / SBAR ---------------- */
+
+export async function buildSbar(patientId: string, encounterId?: string): Promise<SbarData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  const timeline = await getTimeline(patientId)
+  return {
+    context: rc.context,
+    activeMeds: medOrders(rc.orders).filter(o => o.status === 'active').map(toMedLine),
+    /* the canonical nursing store is future scope (contract note) — the
+       feed's task/io/note categories are what the system has today */
+    nursingEvents: timeline.filter(e => e.category === 'task' || e.category === 'io' || e.category === 'note').slice(0, 20),
+  }
+}
+
+/* ---------------- Contract #8 — Consultation Report ---------------- */
+
+export async function buildConsultReport(patientId: string, encounterId?: string): Promise<ConsultReportData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  const timeline = await getTimeline(patientId)
+  /* chronological (oldest first) — a consultation record reads forward */
+  const consults = timeline.filter(e => e.category === 'consult').reverse()
+  return { context: rc.context, consultEvents: consults }
+}
+
+/* ---------------- Contract #9 — Transfer / Referral Summary ---------------- */
+
+export async function buildTransferSummary(patientId: string, encounterId?: string): Promise<TransferSummaryData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  const draws = await getLabDraws(patientId)
+  const scoped = rc.encounter && draws.some(d => d.encounterId)
+    ? draws.filter(d => !d.encounterId || d.encounterId === rc.encounter!.encounterId)
+    : draws
+  const latestByPanel = new Map<string, LabDraw>()
+  for (const d of scoped) latestByPanel.set(d.panel, d)
+  return {
+    context: rc.context,
+    activeMeds: medOrders(rc.orders).filter(o => o.status === 'active').map(toMedLine),
+    latestLabs: [...latestByPanel.values()],
+    adtEvents: rc.encounter?.events ?? [],
   }
 }
