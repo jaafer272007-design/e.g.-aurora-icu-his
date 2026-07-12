@@ -1,6 +1,14 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through the WORKING-SESSION
+**Last updated: 2026-07-12 · current through the PRINT CENTER HUB
+DISCHARGED-ENCOUNTER PICKER (the recorded display debt resolved: the
+hub's patient picker now lists discharged patients from the REAL
+closed-encounter read — `GET /adt/encounters?status=discharged`, the
+existing Layer 2 read, no new source — in a clearly-distinguished
+group below the unchanged roster group; 18/18 headless proof incl. a
+genuine admit→discharge flow rendering the Discharge Summary with full
+identity, byte-parity on the admitted flow, and the 9/9 production
+bundle proof re-run). Prior: the WORKING-SESSION
 DECISIONS RECORD (docs-only): the PROJECT VISION is recorded in
 01_ARCHITECTURE.md § Project Vision (Scenario C, confirmed by the
 project owner — a modular HIS whose Core operates independently, with
@@ -1494,6 +1502,8 @@ to be printed after discharge — no longer renders "Patient Not Found" or
   patients only, so a discharged patient's documents are reachable only
   by deep link today — the hub needs a discharged-encounter picker
   (rides with the remaining templates).
+  *[RESOLVED 2026-07-12 — the picker is built; see "Print Center hub —
+  discharged-encounter picker (built)" below.]*
 
 ### Environment identity (built) — environment-separation §11 step 1
 *[Attributed addition 2026-07-11 — the first IMPLEMENTATION PR of the
@@ -1996,6 +2006,63 @@ conversation.]*
   re-ran clean after the frontend change (marker strings + sourcemap
   module inventory: zero mock modules in the production bundle);
   `tsc -b` and `vite build` clean.
+### Print Center hub — discharged-encounter picker (built) — the display debt resolved
+
+*[Attributed addition 2026-07-12 — resolves the display debt recorded in
+the patient-identity-read record above.]*
+
+- **The sourcing question, answered before building (per instruction)**:
+  a real read for discharged patients / closed encounters EXISTS —
+  `GET /api/icu/adt/encounters?status=discharged`, the Layer 2 ADT
+  encounter list ("open census, discharge history, per-patient lookup"),
+  already consumed by the live /discharges screen through the real
+  `getEncounters` adapter. No gap to flag; NO new or parallel data
+  source was created — the picker is populated from that read alone.
+- **The build (frontend-only, hub column 1)**: the roster group renders
+  UNCHANGED; below it, a clearly-labeled "Discharged — not on the
+  active roster" group lists one row per discharged patient (distinct
+  patients grouped from their closed encounters), each with a neutral
+  "Discharged" tag (the fixed severity palette is never reassigned),
+  patientId, last discharged time, and closed-encounter count, sorted
+  most-recent-first (by encounterId — the ADT `HH:mm` charted times are
+  not date-sortable). A patient currently on the roster never appears
+  in the discharged group (a readmitted patient is found under the
+  roster; step 2 already lists their past encounters), and the group is
+  gated on the roster read having loaded so an admitted patient is
+  never momentarily presented as discharged. Selection flows into the
+  EXISTING patient → encounter → document steps: step 2 already listed
+  closed encounters and step 3 already blocked open-scope templates —
+  closed-encounter rows now also show the discharged time. Search
+  filters both groups; a no-match query hides the discharged group
+  entirely. In pure-mock dev the discharged read honestly returns
+  empty (recorded adapter behavior — historical encounters exist only
+  server-side), so the group is simply absent. Document identity is
+  untouched — rendering still resolves through the canonical resolver
+  path (selectors unchanged).
+- **Stale hub copy corrected in passing** (UI copy, not a record): the
+  hub note claimed "Ten further templates arrive in later phases" —
+  superseded by the Contract v1.0 batch; it now points at the contract
+  with three documents awaiting Stage 11.
+- **Verification (18/18 headless, dev SQLite server + built preview,
+  real API + real auth)**: a GENUINELY discharged patient (real admit →
+  signed order → discharge) appears in the discharged group, visually
+  distinguished, absent from the roster group; selecting them shows the
+  closed encounter default-selected with its discharged time and the
+  open-scope templates honestly blocked; opening the Discharge Summary
+  renders with FULL identity via the identity read (name, MRN, age
+  computed from DOB — no dashes, no Patient Not Found) including the
+  signed medication. Byte-parity on the admitted flow: seeded P-1001
+  still lists in the roster group with bed+MRN meta, its OPEN encounter
+  default-selects with no discharged suffix, and its document still
+  renders. Search behaves honestly in both groups. Two proof-side
+  corrections during the run (neither a UI defect): a wrong bed-id
+  regex in an assert, and duplicate same-name rows from a PRIOR run's
+  patient persisting in the durable dev DB — correct behavior (distinct
+  patientIds rendered, newer first, confirming the recency sort);
+  locators scoped by patientId. The step-3 production bundle proof
+  re-ran 9/9 after the frontend change; `tsc -b` and `vite build`
+  clean.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
