@@ -7,8 +7,8 @@
 import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
-  NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
-  OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
+  NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Observation, ObservationTypeDef, Order, OrderSetDef,
+  OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, RecordObservationsDraft, ResultInboxItem,
   RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse, UserAccount,
 } from './types'
 import { composeBedsResponse } from './bedboard'
@@ -1081,4 +1081,41 @@ export function reactivateUser(username: string): Promise<AdtWriteResult<UserAcc
  *  the old one is never revealed or transmitted. REAL-ONLY write. */
 export function resetUserPassword(username: string, newPassword: string): Promise<AdtWriteResult<UserAccount>> {
   return usersWrite<UserAccount>(`/api/icu/users/${encodeURIComponent(username)}/reset-password`, 'password reset', { newPassword })
+}
+
+/* ---------------- Observations (Stage 11 — first half: Manual) ----------------
+   REAL-ONLY domain: no mock store exists or will exist — the Observation
+   model is born server-side (the locked one-way flow: writer → Observation
+   Service → Clinical Store → derived views). In pure-mock dev the reads
+   resolve empty/absent and the screen states that honestly. */
+
+/** GET /api/icu/observations/types — the closed type vocabulary (ONE
+ *  source of truth; the frontend never duplicates it). REAL-ONLY read. */
+export async function getObservationTypes(): Promise<ObservationTypeDef[] | null> {
+  return apiGet<ObservationTypeDef[]>('/api/icu/observations/types', 'observation types')
+}
+
+/** GET /api/icu/observations?patientId — the chart, oldest first.
+ *  REAL-ONLY read: null means the API is unreachable (never fabricated). */
+export async function getObservations(
+  patientId: string, filter?: { type?: string; encounterId?: string }): Promise<Observation[] | null> {
+  const params = new URLSearchParams({ patientId })
+  if (filter?.type) params.set('type', filter.type)
+  if (filter?.encounterId) params.set('encounterId', filter.encounterId)
+  return apiGet<Observation[]>(`/api/icu/observations?${params}`, 'observations')
+}
+
+/** POST /api/icu/observations — chart a manual observation SET (validated
+ *  whole, persisted atomically; source is SERVER-stamped 'manual').
+ *  observations.record RBAC (doctor + nurse). REAL-ONLY write. */
+export function recordObservations(draft: RecordObservationsDraft): Promise<AdtWriteResult<Observation[]>> {
+  return adtPost<Observation[]>('/api/icu/observations', 'observations record', draft)
+}
+
+/** POST /api/icu/observations/:id/override — correct a mis-charted value
+ *  with a REQUIRED reason; the original value is never rewritten
+ *  (never-destroy). REAL-ONLY write. */
+export function overrideObservation(observationId: string, value: string, reason: string): Promise<AdtWriteResult<Observation>> {
+  return adtPost<Observation>(`/api/icu/observations/${encodeURIComponent(observationId)}/override`,
+    'observation override', { value, reason })
 }

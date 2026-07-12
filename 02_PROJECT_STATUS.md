@@ -1,6 +1,18 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through the PRINT CENTER HUB
+**Last updated: 2026-07-12 · current through STAGE 11 FIRST HALF — THE
+OBSERVATION MODEL + MANUAL ENTRY (the locked 01 model built
+field-for-field in Aurora Core: manual charting fully working —
+/observations screen, `observations.record` on Doctor + Nurse, atomic
+validated sets, override-with-reason preserving the original — and
+DEVICE-READY BY STRUCTURE: source/deviceId/verifiedBy + the override
+triplet exist in the table and on the wire now, provenance is
+server-owned so the manual path cannot claim device origin; 49-check
+server matrix + 12/12 UI proof + 17/17 byte-parity sweep + 9/9 bundle
+proof; the thirteenth suite added and the promotion gate extended to
+require it; panels.ts and the device half remain untouched — the
+recorded second half. An override-actor gap in the locked model is
+FLAGGED for the owner). Prior: the PRINT CENTER HUB
 DISCHARGED-ENCOUNTER PICKER (the recorded display debt resolved: the
 hub's patient picker now lists discharged patients from the REAL
 closed-encounter read — `GET /adt/encounters?status=discharged`, the
@@ -2063,6 +2075,98 @@ the patient-identity-read record above.]*
   re-ran 9/9 after the frontend change; `tsc -b` and `vite build`
   clean.
 
+### Stage 11 first half (built) — the Observation model + fully-working MANUAL entry
+
+*[Attributed addition 2026-07-12 — Stage 11 implementation began per the
+project owner's instruction: "Build the Observation model so that Manual
+entry works fully today, AND so that a Device source can be added later
+WITHOUT changing the model."]*
+
+- **The locked model, field-for-field**: `server/Core/Observations/`
+  implements exactly the 01 § Stage 11 shape — value/unit, source
+  ('manual' | 'device' | 'hybrid'), deviceId?, capturedAt, recordedBy,
+  verifiedBy?, isOverridden/overrideValue/overrideReason — plus the
+  persistence keys the rule assumes (ObservationId, PatientId,
+  server-derived EncounterId, Type). New table via EF migration
+  `AddObservations` (Postgres; the SQLite dev path materializes it from
+  the model as always). Value is stored as text so numeric readings and
+  categorical settings (ventilator mode) share ONE model; units are
+  DENORMALIZED from the vocabulary at write time (audit snapshot).
+- **Device-ready WITHOUT model change — a structural guarantee, not a
+  promise**: every device-era field exists in the table and on the wire
+  NOW. Provenance is SERVER-OWNED: the manual endpoint stamps
+  source='manual', deviceId=null, verifiedBy=null, and a payload
+  attempting to claim source/deviceId/unit/verifiedBy/recordedBy fails
+  binding (Disallow → 400) at both the set and entry level — proven in
+  the matrix. Adding the Device source later is a second caller of the
+  same service writing source='device' — no schema, DTO, or display
+  change (the chart's source badge already renders all three).
+- **The type vocabulary** (closed server-side list, the
+  frequency-vocabulary precedent; served by
+  GET /api/icu/observations/types — one source of truth, the frontend
+  never duplicates it): exactly the validator-required bedside set —
+  vitals (hr, temp, rr, spo2), NIBP (sys/dia), hemodynamics (abp
+  sys/dia, map, cvp), ventilator settings (vent_mode choice list, fio2,
+  peep, vt, vent_rate). Numeric types carry wide PLAUSIBILITY ranges
+  (typo-catching, never clinical judgement); adding a type is a
+  vocabulary row, never a model change.
+- **Endpoints**: GET types · GET /api/icu/observations?patientId&type&
+  encounterId (both roles read, oldest-first, collation-pinned) ·
+  POST /api/icu/observations — a bedside SET charted atomically (every
+  entry validated before anything is written; proven: a mixed
+  valid+invalid set writes NOTHING) under the new `observations.record`
+  permission (Doctor + Nurse — "a nurse or doctor must be able to chart
+  what they measured"; pharmacist 403, unauth 401) ·
+  POST /api/icu/observations/{id}/override — correct a mis-charted
+  value with a REQUIRED reason; the original value is NEVER rewritten
+  (never-destroy); replay → 409 (the single override slot), absent id
+  → 404.
+- **Encounter rule (the results-creation precedent)**: charting is
+  initiating care → EncounterGuard 409 on a closed episode; an override
+  is completing the record → allowed after discharge. Both directions
+  proven live-shaped in the matrix.
+- **Frontend**: /observations(/:patientId) — new routed screen (nav item
+  for every clinical viewer; the charting form and Correct actions
+  render only with observations.record): grouped entry form from the
+  server vocabulary, capturedAt defaulting to now-UTC (charting may lag
+  measurement), the chart table with source badges, corrected values
+  shown with the original struck through + reason. REAL-ONLY adapters —
+  no mock store exists or will exist for this domain (nothing new to
+  compile out of production); pure-mock dev states honestly that the
+  live API is required.
+- **The thirteenth suite** (`deployed-observations-e2e.yml`,
+  self-sufficient, environment+content gated, if:always() cleanup) and
+  the PROMOTION GATE's suite list extended to include it (a suite the
+  gate ignores would be a verification hole).
+- **FLAGGED for the owner (locked-model gap found while building)**: the
+  locked Observation model has no `overrideBy`/`overriddenAt` — an
+  override's actor is currently only in the server log, not on the
+  record. Not silently added (the model is a locked decision); decide
+  before the device era leans on overrides (model v2 candidate).
+- **Verification**: 49-check server matrix (RBAC all directions,
+  server-owned provenance incl. entry-level, per-type validation with
+  precise errors, SET ATOMICITY, reads/filters/unknown-param 400s,
+  override never-destroy + replay 409 + absent 404, encounter rule both
+  directions) — one initial swallowed-assert in the HARNESS itself
+  (the codified CI-evidence bug class: an `echo | python3` assert whose
+  failure didn't gate) was found and fixed, surfacing the nurse actor
+  name 'RN Maya Chen'; re-run clean 49/49 with fatal asserts. 12/12
+  headless UI proof (nurse charts a 6-value set through the real form;
+  precise 400 surfaced in the UI; correction via UI with original
+  struck through; doctor charts through the same form; pharmacist gets
+  the chart READ-ONLY; absent id → locked NotFound). Byte-parity sweep:
+  17/17 pre-existing read endpoints BYTE-IDENTICAL between old-main and
+  this branch (fresh-seeded twins), the only delta the new
+  /observations routes (404 → live). Production bundle proof re-ran
+  9/9; `tsc -b`, `vite build`, and the server build clean. Deployed
+  suite runs post-merge (sequential, after deploy).
+- **Remaining (Stage 11 second half, deliberately untouched here)**:
+  device adapters (source='device'/'hybrid', deviceId, the verifiedBy
+  verify path), `panels.ts` absorption and the MC monitor migration to
+  real Observations, the roster's bedside-snapshot columns, and the 3
+  deferred print templates (MAR sheet, Vitals Flowsheet, Ventilator &
+  Device Report) that render from this store once populated.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
@@ -2188,6 +2292,11 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
 4. Stage 11 — device integration + the Observation model (per the locked
    rule in 01_ARCHITECTURE.md; absorbs the roster's remaining
    bedside-snapshot columns)
+   *[FIRST HALF BUILT 2026-07-12 per owner instruction: the Observation
+   model + fully-working MANUAL entry — see "Stage 11 first half
+   (built)" above. Remaining: device adapters, verify path, panels.ts
+   absorption, the bedside-snapshot migration, and the 3 deferred print
+   templates.]*
    *[Clinical requirement recorded 2026-07-12 — source: the clinical
    validator (the ICU physician), identified while testing the Mission
    Control monitor, which currently shows only auto-fed/simulated

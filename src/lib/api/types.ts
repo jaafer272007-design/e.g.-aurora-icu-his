@@ -999,3 +999,56 @@ export interface EditUserDraft {
   jobTitle?: string
   justification?: string
 }
+
+/* ---------- Observations (Stage 11 — first half: Manual) ----------
+   THE locked Observation model (01_ARCHITECTURE.md § Stage 11),
+   field-for-field. source/deviceId/verifiedBy and the override triplet
+   exist on the wire NOW — a Device source later is a new writer, never
+   a shape change. Manual entries always arrive with source='manual',
+   deviceId/verifiedBy absent. */
+
+export interface Observation {
+  observationId: string
+  patientId: string
+  /** the encounter the value was charted under — server-derived */
+  encounterId: string
+  /** vocabulary code (see ObservationTypeDef) */
+  type: string
+  /** as charted; numeric types validated server-side, choice types from
+   *  the vocabulary's allowed set */
+  value: string
+  /** denormalized from the vocabulary at write time (audit snapshot) */
+  unit: string
+  source: 'manual' | 'device' | 'hybrid'
+  deviceId?: string
+  /** when MEASURED (dated UTC "yyyy-MM-dd HH:mm") — charting may lag */
+  capturedAt: string
+  recordedBy: string
+  verifiedBy?: string
+  /** a correction NEVER rewrites value — the original survives */
+  isOverridden: boolean
+  overrideValue?: string
+  overrideReason?: string
+}
+
+/* ---------- GET /api/icu/observations/types ---------- */
+
+export interface ObservationTypeDef {
+  type: string
+  label: string
+  unit: string
+  kind: 'numeric' | 'choice'
+  group: string
+  min?: number
+  max?: number
+  choices?: string[]
+}
+
+/* ---------- POST /api/icu/observations ---------- */
+
+export interface RecordObservationsDraft {
+  patientId: string
+  /** dated UTC "yyyy-MM-dd HH:mm" */
+  capturedAt: string
+  entries: { type: string; value: string }[]
+}

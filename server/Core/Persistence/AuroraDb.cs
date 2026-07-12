@@ -42,6 +42,9 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
        layer) and order sets (clinical bundles referencing both) */
     public DbSet<LabTestRow> LabTests => Set<LabTestRow>();
     public DbSet<OrderSetRow> OrderSets => Set<OrderSetRow>();
+    /* Stage 11 (first half): the locked Observation model — manual
+       entries today; device/hybrid rows later through the SAME table */
+    public DbSet<Aurora.Core.Observations.ObservationRow> Observations => Set<Aurora.Core.Observations.ObservationRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -67,6 +70,10 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
             b.Entity<Encounter>().Property(e => e.EncounterId).UseCollation("C");
             b.Entity<Encounter>().Property(e => e.PatientId).UseCollation("C");
             b.Entity<BedRow>().Property(x => x.BedId).UseCollation("C");
+            /* Stage 11: the chart is ordered by CapturedAt then
+               ObservationId in SQL — both pinned */
+            b.Entity<Aurora.Core.Observations.ObservationRow>().Property(o => o.ObservationId).UseCollation("C");
+            b.Entity<Aurora.Core.Observations.ObservationRow>().Property(o => o.CapturedAt).UseCollation("C");
         }
     }
 }

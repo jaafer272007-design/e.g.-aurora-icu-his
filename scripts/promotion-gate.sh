@@ -22,7 +22,7 @@
 #                      build context equals the promoted commit's (the
 #                      print suite's ctx_hash, same 8 paths), and its
 #                      environment line reads staging.
-#   5. SUITES GREEN ON THIS CONTENT — for each of the twelve deployed
+#   5. SUITES GREEN ON THIS CONTENT — for each of the thirteen deployed
 #                      suites: the most recent completed run concluded
 #                      SUCCESS and ran against content equal to the
 #                      promoted commit's (server tree; the print suite
@@ -109,7 +109,8 @@ fi
 # ---- 5. every suite green ON THIS CONTENT ----------------------------------
 SUITES="deployed-auth-e2e.yml deployed-adt-e2e.yml deployed-users-e2e.yml deployed-labs-e2e.yml \
 deployed-orders-e2e.yml deployed-mar-e2e.yml deployed-timeline-e2e.yml deployed-ai-e2e.yml \
-deployed-encounter-scope-e2e.yml deployed-formulary-e2e.yml deployed-labcatalog-e2e.yml deployed-print-e2e.yml"
+deployed-encounter-scope-e2e.yml deployed-formulary-e2e.yml deployed-labcatalog-e2e.yml deployed-print-e2e.yml \
+deployed-observations-e2e.yml"
 for wf in $SUITES; do
   run=$(gh_get "actions/workflows/$wf/runs?status=completed&per_page=1")
   read -r R_SHA R_CONC <<<"$(echo "$run" | python3 -c '

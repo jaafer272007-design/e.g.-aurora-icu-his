@@ -81,6 +81,7 @@ export type Permission =
   | 'formulary.manage'     // Layer 4: maintain the drug formulary (Pharmacy authority)
   | 'labcatalog.manage'    // Layer 4 phase 2: maintain the lab test catalogue (Laboratory authority)
   | 'ordersets.manage'     // Layer 4 phase 2: author order sets (stewarded with the formulary)
+  | 'observations.record'  // Stage 11: chart a bedside value manually (bedside clinicians — doctor + nurse)
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -91,12 +92,13 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'notes.document', 'ai.view',
-    'adt.admit', 'adt.discharge',
+    'adt.admit', 'adt.discharge', 'observations.record',
   ],
   /* administer + document only — cannot originate orders (locked decision) */
   Nurse: [
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
     'notes.document', 'results.view', 'ai.view', 'adt.transfer',
+    'observations.record',
   ],
   /* administrative landing view + census-level board + user administration */
   Administrator: ['admin.view', 'patients.view', 'users.manage'],
