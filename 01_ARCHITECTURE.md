@@ -249,7 +249,8 @@ stage — these tables are provisional.
 JobTitle → PermissionProfile:
 | PermissionProfile    | JobTitles |
 |---|---|
-| Doctor               | Consultant, Specialist, Senior Resident, Resident, Intern |
+| SeniorDoctor         | Consultant *(Stage 11 F4 decision: Doctor's SUPERSET + the Consultant-tier observation authorities; v1 maps Consultant alone — widening is a row edit)* |
+| Doctor               | Specialist, Senior Resident, Resident, Intern |
 | Nurse                | Staff Nurse, Charge Nurse, Head Nurse |
 | Pharmacist           | Pharmacist, Clinical Pharmacist |
 | RespiratoryTherapist | Respiratory Therapist |
@@ -260,8 +261,9 @@ JobTitle → PermissionProfile:
 PermissionProfile → Permissions (and Dashboard landing view):
 | Profile | Permissions | Landing |
 |---|---|---|
-| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge | /workspace |
-| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer | /nurse |
+| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge, observations.record (Stage 11 §4 F1) | /workspace |
+| SeniorDoctor         | everything Doctor has + observations.correct (Stage 11 §8 F2 — tier-2 retrospective correction) + observations.configure (Stage 11 §3 F3 — group enablement). HARD CONSTRAINT (§4): these two NEVER sit on the office Administrator profile | /workspace |
+| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer, observations.record (Stage 11 §4 F1) | /nurse |
 | Administrator        | admin.view, patients.view, users.manage | /admin |
 | Pharmacist           | patients.view, orders.view, results.view, formulary.manage, ordersets.manage (Layer 4 — maintain the formulary + author order sets) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
@@ -286,6 +288,21 @@ retired — the login screen replaces it.
 *[Docs split note — status label: the Observation model below is SPECIFIED,
 NOT YET BUILT. Implementation is Stage 11 scope per the rule's own final
 bullet.]*
+
+*[Superseded 2026-07-12 — the Stage 11 SPECIFICATION now lives in
+`docs/design/stage11-observation-model.md` (the clinical validator's
+complete design, F1–F4 decisions baked in). It KEEPS this rule's
+one-way flow, the three interchangeable sources, and the never-destroy
+override principle, and SUPERSEDES the inline record sketch below: the
+built model is GENERIC and catalogue-driven (`typeCode → value` against
+the Observation Type Catalogue — types and groups are data, never
+schema), `capturedAt` becomes `clinicalTime` + a separate `enteredAt`
+audit stamp, and the isOverridden/overrideValue/overrideReason triplet
+is superseded by the `amendments[]` audit array which ALWAYS records
+the correcting actor (the two-tier §8 model). `verifiedBy` is retained
+for the device era. Implementation began per the design's §12: step 1
+(model + catalogue + group enablement) is BUILT — see
+02_PROJECT_STATUS.md.]*
 
 ## Stage 11 — Interchangeable Clinical Data Sources (locked architecture rule)
 Every clinical observation — vitals, ventilator settings/readings,

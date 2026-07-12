@@ -28,14 +28,16 @@ export const JOB_TITLES = [
 
 export type JobTitle = (typeof JOB_TITLES)[number]
 
-/* ---------------- Layer 2 — PermissionProfile (7, independent) ---------------- */
+/* ---------------- Layer 2 — PermissionProfile (8, independent) ---------------- */
 
 export type PermissionProfile =
-  | 'Doctor' | 'Nurse' | 'Administrator' | 'Pharmacist'
+  | 'Doctor' | 'SeniorDoctor' | 'Nurse' | 'Administrator' | 'Pharmacist'
   | 'RespiratoryTherapist' | 'Ancillary' | 'AlliedHealth'
 
 const TITLE_PROFILE: Record<JobTitle, PermissionProfile> = {
-  Consultant: 'Doctor',
+  /* Stage 11 F4 decision: Consultant derives SeniorDoctor — Doctor's
+     superset plus the Consultant-tier observation authorities */
+  Consultant: 'SeniorDoctor',
   Specialist: 'Doctor',
   'Senior Resident': 'Doctor',
   Resident: 'Doctor',
@@ -81,6 +83,9 @@ export type Permission =
   | 'formulary.manage'     // Layer 4: maintain the drug formulary (Pharmacy authority)
   | 'labcatalog.manage'    // Layer 4 phase 2: maintain the lab test catalogue (Laboratory authority)
   | 'ordersets.manage'     // Layer 4 phase 2: author order sets (stewarded with the formulary)
+  | 'observations.record'  // Stage 11 §4 (F1): chart a bedside observation (any doctor or nurse)
+  | 'observations.correct' // Stage 11 §8 (F2): tier-2 retrospective correction (Consultant-tier ONLY — never office admin)
+  | 'observations.configure' // Stage 11 §3 (F3): group enablement (same Consultant-tier home)
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -91,12 +96,23 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'notes.document', 'ai.view',
-    'adt.admit', 'adt.discharge',
+    'adt.admit', 'adt.discharge', 'observations.record',
+  ],
+  /* Stage 11 F4: Doctor's SUPERSET + the Consultant-tier observation
+     authorities (correct/configure). HARD CONSTRAINT: these never sit
+     on the office Administrator profile. */
+  SeniorDoctor: [
+    'patients.view', 'orders.view', 'orders.create', 'orders.sign',
+    'orders.modify', 'orders.discontinue', 'results.view',
+    'results.acknowledge', 'notes.document', 'ai.view',
+    'adt.admit', 'adt.discharge', 'observations.record',
+    'observations.correct', 'observations.configure',
   ],
   /* administer + document only — cannot originate orders (locked decision) */
   Nurse: [
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
     'notes.document', 'results.view', 'ai.view', 'adt.transfer',
+    'observations.record',
   ],
   /* administrative landing view + census-level board + user administration */
   Administrator: ['admin.view', 'patients.view', 'users.manage'],
@@ -117,6 +133,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
 /* profile landing view — what "Dashboard" resolves to */
 const PROFILE_LANDING: Record<PermissionProfile, string> = {
   Doctor: '/workspace',
+  SeniorDoctor: '/workspace',
   Nurse: '/nurse',
   Administrator: '/admin',
   Pharmacist: '/beds',

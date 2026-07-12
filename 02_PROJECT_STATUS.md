@@ -1,6 +1,17 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through the STAGE 11 DESIGN
+**Last updated: 2026-07-12 · current through STAGE 11 §12 STEP 1 (the
+generic catalogue-driven Observation model built per the recorded
+design: the `(typeCode → value)` record with the amendments[] audit
+carrying the corrector actor; the Observation Type Catalogue seeded
+from §1 — all 8 groups, 51 types as data, derived values flagged,
+devices group disabled by default; group enablement behind the new
+`observations.configure`; the SeniorDoctor profile per the owner's F4
+answer — Consultant = Doctor superset + correct/configure, office
+Administrator carries NOTHING observation-related; 17/17 matrix incl.
+the hard-constraint probes + 5/5 frontend smoke + 17/17 parity + 9/9
+bundle proof; the thirteenth suite added and the promotion gate
+extended; write paths are step 2). Prior: the STAGE 11 DESIGN
 RECORD (the validator's complete Observation Model design is now the
 versioned repo artifact `docs/design/stage11-observation-model.md`,
 with the F1/F2/F3 RBAC decisions baked in; the fragment-built draft
@@ -2128,6 +2139,85 @@ pre-build verification, and the state of the fragment build.]*
   endpoint → 3 /observations screen (timed round + ad-hoc) → 4 the
   two-source bedside read-swap → then the 3 deferred print templates,
   and later the Device Adapter.
+
+### Stage 11 §12 step 1 (built) — the generic model, the Type Catalogue, group enablement
+
+*[Attributed addition 2026-07-12 — the first rework PR per the recorded
+design (`docs/design/stage11-observation-model.md`), F4 answered by the
+owner: mechanism 1, Consultant alone for v1.]*
+
+- **The generic Observation record (Pillar 2)**: `server/Core/
+  Observations/` + migration `AddObservationModel` — one row stores
+  `(typeCode → value)` against the catalogue: observationId, patientId,
+  server-derived encounterId, typeCode, value (numeric/enum as text,
+  compound as a JSON object), catalogue-derived unit, clinicalTime,
+  source (manual|device|hybrid), deviceId?, recordedBy, enteredAt,
+  verifiedBy? (device era, §2), and `amendments[]` ({previousValue,
+  newValue, amendedBy, amendedAt, reason, amenderRole} — the §8
+  supersede-don't-erase audit WITH the actor, fixing the gap #67
+  flagged). NOT a column-per-vital table; expanding the vocabulary is
+  data, never schema. No write endpoints yet (step 2) — the table is
+  the foundation.
+- **The Observation Type Catalogue, seeded from §1 — all 8 groups, 51
+  types as DATA**: vitals (8, incl. Cardiac Rhythm enum), neuro (GCS
+  compound eye/verbal/motor + derived total, RASS −5..+4, pain NRS,
+  pupils compound size+reaction per side), ventilator (12 —
+  set-vs-measured kept separate: rr_set/rr_measured, vt_set/vt_exhaled;
+  Driving Pressure DERIVED from [pplat, peep]), hemodynamics (8, the
+  if-applicable ones marked optional), fluid balance (10 — totals and
+  net balance DERIVED, never charted), POC lab (glucose + lactate ONLY —
+  the LIS boundary), devices (pump_rate; group ships DISABLED — its
+  entries are device-displayed/future; ECMO/CRRT/ICP arrive as
+  catalogue data with the device era), nursing assessment (5 enum/
+  numeric scales). Derived types are catalogue-flagged with their
+  derivation inputs and are rejected by the charting path (step 2).
+  Seeded in ALL environments (non-hospital-specific clinical reference,
+  the lab-catalogue precedent), idempotent. v1 catalogue is READ-ONLY
+  (F3) — no management endpoints exist. FLAGGED for the validator: the
+  numeric plausibility ranges and enum member lists (rhythms, pupil
+  reactions, vent modes, I:E ratios, nursing scales) are build-authored
+  from standard practice — the design names the types, not these lists;
+  they are catalogue data, amendable without schema change.
+- **Group enablement (F3)**: GET /api/icu/observations/catalog (any
+  authenticated profile; disabled groups included with honest flags) +
+  POST /api/icu/observations/groups/{code}/enable|/disable — the new
+  `observations.configure` permission; unknown group 404, replay 409,
+  toggles stamped (token actor) with an append-only event history.
+- **The SeniorDoctor profile (F4, mechanism 1)**: the Consultant title
+  now derives `SeniorDoctor` — Doctor's strict SUPERSET plus
+  `observations.correct` + `observations.configure`; `observations.
+  record` sits on Doctor + Nurse (+ the superset) per F1. The
+  three-layer model is unchanged (permissions still computed from the
+  profile; no title-level binding). Every profile-comparison site was
+  audited and updated: the Users-domain clinical-grant justification
+  (server + UI derivation chain) treats SeniorDoctor as clinical, and
+  the AI screen's view-only banner exempts it. The HARD CONSTRAINT
+  holds: the office Administrator profile carries NO observation
+  permission.
+- **The thirteenth suite** (`deployed-observations-e2e.yml`, step-1
+  scope, STATE-AWARE: reads the devices group's current state, toggles
+  opposite, restores — if:always() restore; extended by later steps) and
+  the promotion gate now requires all thirteen.
+- **Verification**: 17/17 step-1 matrix (catalog 401/shape asserts on
+  the full taxonomy incl. derived flags, compound components, POC
+  boundary, optional markers; enablement RBAC in all six directions —
+  nurse/Specialist/Intern/Hospital-Administrator/Receptionist 403 (the
+  hard-constraint probes) and unauth 401; consultant toggle 200 with
+  token actor + append-only history, replay 409, unknown 404; the
+  SeniorDoctor superset non-regression incl. the users-domain
+  justification rule; POST /api/icu/observations still 404 — step 2
+  scope). 5/5 frontend smoke (Consultant lands /workspace with the
+  SeniorDoctor profile shown, NO view-only regression on the AI screen,
+  Specialist unchanged, Users Admin derivation chain marks SeniorDoctor
+  clinical). 17/17 byte-parity sweep old-main vs branch (fresh-seeded
+  twins; the only delta the new /observations routes). Production
+  bundle proof 9/9; server build, `tsc -b`, `vite build` clean.
+  Deployed suite runs post-merge (sequential).
+- **Remaining (§12)**: step 2 the Observation Service write paths
+  (manual charting — timed round + ad-hoc, §7 time semantics with
+  server-stamped clinicalTime, the two-tier §8 corrections), step 3 the
+  /observations screen, step 4 the TWO-SOURCE bedside read-swap, then
+  the 3 deferred print templates and (later) the Device Adapter.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

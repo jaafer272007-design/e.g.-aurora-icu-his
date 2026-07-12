@@ -17,7 +17,7 @@
 # is EXACTLY what staging is serving and has already verified: ancestry
 # of main, staging environment identity, server + frontend content
 # equality against the live staging deployment, and every one of the
-# twelve suites green ON THIS CONTENT (a green run against different
+# thirteen suites green ON THIS CONTENT (a green run against different
 # bytes is not evidence). See scripts/promotion-gate.sh — the same
 # script is locally dry-runnable against mock endpoints.
 #
