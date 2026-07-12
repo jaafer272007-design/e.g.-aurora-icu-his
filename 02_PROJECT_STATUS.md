@@ -1,7 +1,10 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-11 · current through environment-separation
-§11 STEP 4 (PARTIAL) — the target-independent release + backup
+**Last updated: 2026-07-12 · current through the MISSION-CONTROL
+FRESH-PATIENT FIX (the detail page resolves identity from the REAL
+roster first — a freshly-admitted patient no longer renders "Patient
+Not Found"; 8/8 headless repro + the production bundle proof re-ran
+9/9). Prior: environment-separation §11 STEP 4 (PARTIAL) — the target-independent release + backup
 mechanisms: the `production` branch promotion model with a gate that
 only releases what staging is serving and has verified (ancestry +
 content equality + all twelve suites green on that content); the
@@ -1878,6 +1881,34 @@ assumes a target OS, deploys anywhere, or spends anything.]*
   `aurora-update`/`aurora-verify` against a concrete target, the
   backup sidecar/cron WIRING on the production host, and the full VM
   install/update/rollback/restore rehearsal.
+
+### Mission Control fresh-patient fix (built) — detail page resolves REAL admissions
+*[Attributed addition 2026-07-12 — owner-reported bug from local
+testing: a freshly-admitted patient rendered on the bed board but their
+detail page (`/patients/:id`) said "Patient Not Found", even though
+`GET /api/icu/adt/patients/:id` and the roster both returned the record
+(server confirmed correct).]*
+- **Root cause (frontend)**: `getPatientDetail` resolved the patient
+  ONLY from the MOCK store (`allPatients()`), which by definition never
+  contains a real admission — the recorded Mission-Control drift biting
+  for the first time on a real write. The route, the bed-board link, and
+  the backend were all correct.
+- **Fix**: identity now resolves from the REAL roster wire record first
+  (`fetchRosterRecords` → new `rosterToPatient` projection — the same
+  record the bed board renders, so any ADMITTED patient, seeded or
+  fresh, resolves identically), with the mock store as the offline/
+  pure-mock fallback. The composite's per-patient derived views (AI
+  risks, lab trends, timeline card) legitimately resolve EMPTY for a
+  fresh admission — "no data", never "no patient". The bedside PANELS
+  remain Stage 11 mock scope; production's refusal arm is unchanged.
+- **Verification**: faithful 8/8 headless repro in dev SQLite mode —
+  doctor login → admit via the Admissions UI → patient on the bed
+  board → CLICK → detail renders with name and the DOB-computed age
+  (2007 → 19); seeded P-1001 regression intact; absent id still the
+  locked NotFound. The step-3 production bundle proof re-ran 9/9
+  (the new mock-referencing helper is confirmed eliminated from
+  production bundles; sourcemap inventory still shows ZERO mock
+  modules). `tsc` clean.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
