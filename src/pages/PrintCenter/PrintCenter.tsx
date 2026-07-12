@@ -12,16 +12,32 @@ import { PRINT_TEMPLATES } from './registry'
 /** Print Center hub (/print) — pick a patient, an encounter where the
  *  template allows historical ones, and a document. Strictly read-only:
  *  the only action leads to the printable document route. */
+
+/* one picker row per DISCHARGED patient (not on the active roster),
+ * derived from the real closed-encounter read — never the mock store */
+interface DischargedPick {
+  patientId: string
+  name: string
+  lastDischargedAt: string
+  lastEncounterId: string
+  encounterCount: number
+}
+
 export function PrintCenter() {
   const navigate = useNavigate()
   const session = getSession()!
   const [patients, setPatients] = useState<PatientSummary[]>([])
+  const [rosterLoaded, setRosterLoaded] = useState(false)
+  const [closedEncounters, setClosedEncounters] = useState<Encounter[]>([])
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [encounters, setEncounters] = useState<Encounter[]>([])
   const [encounterId, setEncounterId] = useState<string>('')
 
-  useEffect(() => { getPatients().then(setPatients) }, [])
+  useEffect(() => {
+    getPatients().then(p => { setPatients(p); setRosterLoaded(true) })
+    getEncounters({ status: 'discharged' }).then(setClosedEncounters)
+  }, [])
   useEffect(() => {
     if (!selected) return
     setEncounters([])
@@ -39,6 +55,38 @@ export function PrintCenter() {
     return patients.filter(p =>
       p.name.toLowerCase().includes(q) || p.patientId.toLowerCase().includes(q) || p.mrn.toLowerCase().includes(q))
   }, [patients, query])
+
+  /* discharged patients = distinct patients across closed encounters,
+   * EXCLUDING anyone currently on the roster (a readmitted patient is
+   * found under the roster group; their past encounters are already
+   * listed in step 2). Gated on the roster having loaded so an admitted
+   * patient is never momentarily presented as discharged. */
+  const dischargedShown = useMemo(() => {
+    if (!rosterLoaded) return []
+    const onRoster = new Set(patients.map(p => p.patientId))
+    const byPatient = new Map<string, DischargedPick>()
+    for (const e of closedEncounters) {
+      if (onRoster.has(e.patientId)) continue
+      const cur = byPatient.get(e.patientId)
+      if (!cur) {
+        byPatient.set(e.patientId, {
+          patientId: e.patientId, name: e.patientName,
+          lastDischargedAt: e.dischargedAt ?? '', lastEncounterId: e.encounterId, encounterCount: 1,
+        })
+      } else {
+        cur.encounterCount++
+        if (e.encounterId > cur.lastEncounterId) {
+          cur.lastEncounterId = e.encounterId
+          cur.lastDischargedAt = e.dischargedAt ?? ''
+          if (e.patientName) cur.name = e.patientName
+        }
+      }
+    }
+    const q = query.trim().toLowerCase()
+    return [...byPatient.values()]
+      .filter(d => !q || d.name.toLowerCase().includes(q) || d.patientId.toLowerCase().includes(q))
+      .sort((a, b) => b.lastEncounterId.localeCompare(a.lastEncounterId))
+  }, [rosterLoaded, patients, closedEncounters, query])
 
   const chosenEncounter = encounters.find(e => e.encounterId === encounterId)
 
@@ -75,6 +123,30 @@ export function PrintCenter() {
               ))}
               {shown.length === 0 && <p className="pc-empty">No matching patients on the roster.</p>}
             </div>
+            {dischargedShown.length > 0 && (
+              <>
+                <p className="pc-dhead" id="pc-dhead">Discharged — not on the active roster</p>
+                <div className="pc-plist" role="listbox" aria-labelledby="pc-dhead">
+                  {dischargedShown.map(d => (
+                    <button
+                      key={d.patientId}
+                      className={`pc-prow pc-drow${selected === d.patientId ? ' on' : ''}`}
+                      role="option"
+                      aria-selected={selected === d.patientId}
+                      onClick={() => setSelected(d.patientId)}
+                    >
+                      <span className="pc-pname">
+                        {d.name || d.patientId} <span className="pc-dtag">Discharged</span>
+                      </span>
+                      <span className="pc-pmeta">
+                        {d.patientId} · discharged {d.lastDischargedAt || '—'} ·{' '}
+                        {d.encounterCount} closed encounter{d.encounterCount === 1 ? '' : 's'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </Card>
 
           <Card className="pc-col" title="2 · Encounter">
@@ -92,7 +164,10 @@ export function PrintCenter() {
                     />
                     <span>
                       <strong>{e.encounterId}</strong> · {e.status}
-                      <br /><span className="pc-pmeta">{e.diagnosis} · admitted {e.admittedAt || '—'}</span>
+                      <br /><span className="pc-pmeta">
+                        {e.diagnosis} · admitted {e.admittedAt || '—'}
+                        {e.status === 'discharged' && ` · discharged ${e.dischargedAt || '—'}`}
+                      </span>
                     </span>
                   </label>
                 ))}
@@ -122,8 +197,8 @@ export function PrintCenter() {
             })}
             <p className="pc-note">
               Documents render the clinical record as persisted — read-only, printed through the
-              browser (print / save as PDF). Ten further templates arrive in later phases on this
-              same foundation.
+              browser (print / save as PDF). The template list is governed by the Print Center
+              Contract (v1.0); three further documents await Stage 11&apos;s Observation model.
             </p>
           </Card>
         </main>
