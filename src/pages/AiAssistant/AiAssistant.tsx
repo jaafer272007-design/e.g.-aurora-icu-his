@@ -173,7 +173,8 @@ export function AiAssistant() {
                 ]}
               >
                 <span className="ptbardx">{patient.diagnosis}</span>
-                {sessionProfile !== 'Doctor' && <span className="ptbarviewonly">View only — advisory screen</span>}
+                {sessionProfile !== 'Doctor' && sessionProfile !== 'SeniorDoctor' &&
+                  <span className="ptbarviewonly">View only — advisory screen</span>}
               </PatientBar>
               <div className="aacards">
                 {[...profile.risks].sort((a, b) => b.probability - a.probability).map(r => (

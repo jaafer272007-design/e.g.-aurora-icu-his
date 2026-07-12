@@ -31,9 +31,13 @@ import {
 const titleProfileOf = (title: string): PermissionProfile | null =>
   (JOB_TITLES as readonly string[]).includes(title) ? profileOf(title as JobTitle) : null
 
+/* Doctor / SeniorDoctor / Nurse (SeniorDoctor added by Stage 11's F4
+   decision — the Consultant title's profile, a Doctor superset) */
+const CLINICAL_PROFILES: readonly PermissionProfile[] = ['Doctor', 'SeniorDoctor', 'Nurse']
+
 const isClinical = (title: string): boolean => {
   const p = titleProfileOf(title)
-  return p === 'Doctor' || p === 'Nurse'
+  return p !== null && CLINICAL_PROFILES.includes(p)
 }
 
 /** the JobTitle → Profile → Permissions chain, live for the selected title —
@@ -46,7 +50,7 @@ function DerivationChain({ title }: { title: string }) {
       <div className="uachainrow">
         <span className="uastep">{title}</span>
         <span className="uaarrow" aria-hidden>→</span>
-        <span className={`uastep uaprof ${prof === 'Doctor' || prof === 'Nurse' ? 'clinical' : ''}`}>{prof} profile</span>
+        <span className={`uastep uaprof ${CLINICAL_PROFILES.includes(prof) ? 'clinical' : ''}`}>{prof} profile</span>
       </div>
       <div className="uaperms">
         {permissionsOf(title as JobTitle).map(p => <span className="uaperm num" key={p}>{p}</span>)}
@@ -202,7 +206,7 @@ export function UsersAdmin() {
                         </span>
                         <span className="uarole">
                           <span>{u.jobTitle}</span>
-                          <small className={`uaprofile${prof === 'Doctor' || prof === 'Nurse' ? ' clinical' : ''}`}>
+                          <small className={`uaprofile${prof !== null && CLINICAL_PROFILES.includes(prof) ? ' clinical' : ''}`}>
                             {prof ?? 'unknown title'} profile · derived
                           </small>
                         </span>

@@ -245,10 +245,12 @@ static class UserLogic
         u.Username, u.Name, u.JobTitle, u.Active,
         JsonSerializer.Deserialize<List<UserEventDto>>(u.EventsJson, JsonOpts.Web)!);
 
-    /** clinical = ordering or administering authority (Doctor / Nurse
-        profile) — granting it requires an explicit justification */
+    /** clinical = ordering or administering authority (Doctor / Nurse /
+        SeniorDoctor profile — SeniorDoctor added by Stage 11's F4
+        decision for the Consultant title) — granting it requires an
+        explicit justification */
     public static bool RequiresJustification(string jobTitle) =>
-        Rbac.ProfileOf(jobTitle) is "Doctor" or "Nurse";
+        Rbac.ProfileOf(jobTitle) is "Doctor" or "Nurse" or "SeniorDoctor";
 
     public static bool OtherActiveAdminExists(AuroraDb db, string exceptUsername) =>
         db.Users.AsNoTracking().Where(u => u.Active && u.Username != exceptUsername)

@@ -42,6 +42,12 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
        layer) and order sets (clinical bundles referencing both) */
     public DbSet<LabTestRow> LabTests => Set<LabTestRow>();
     public DbSet<OrderSetRow> OrderSets => Set<OrderSetRow>();
+    /* Stage 11 (design §12 step 1): the GENERIC Observation record plus
+       the data-driven Type Catalogue and group enablement — types and
+       groups are DATA, never schema */
+    public DbSet<Aurora.Core.Observations.ObservationRow> Observations => Set<Aurora.Core.Observations.ObservationRow>();
+    public DbSet<Aurora.Core.Observations.ObservationTypeRow> ObservationTypes => Set<Aurora.Core.Observations.ObservationTypeRow>();
+    public DbSet<Aurora.Core.Observations.ObservationGroupRow> ObservationGroups => Set<Aurora.Core.Observations.ObservationGroupRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -67,6 +73,10 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
             b.Entity<Encounter>().Property(e => e.EncounterId).UseCollation("C");
             b.Entity<Encounter>().Property(e => e.PatientId).UseCollation("C");
             b.Entity<BedRow>().Property(x => x.BedId).UseCollation("C");
+            /* Stage 11: the chart is ordered by ClinicalTime then
+               ObservationId in SQL — both pinned */
+            b.Entity<Aurora.Core.Observations.ObservationRow>().Property(o => o.ObservationId).UseCollation("C");
+            b.Entity<Aurora.Core.Observations.ObservationRow>().Property(o => o.ClinicalTime).UseCollation("C");
         }
     }
 }

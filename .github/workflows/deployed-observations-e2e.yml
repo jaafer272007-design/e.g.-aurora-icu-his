@@ -1,0 +1,165 @@
+# Deployed Observations E2E — Stage 11 §12 step 1 surface: the Observation
+# Type Catalogue read + group enablement. Extended by later steps (manual
+# charting, corrections, the /observations screen). SELF-SUFFICIENT and
+# STATE-AWARE: the enablement legs read the group's CURRENT state, toggle
+# to the opposite, assert, and restore — no dependence on seed state, no
+# finite resource consumed, if:always() restore. Covers: catalog 401 +
+# CORS + the §1 taxonomy shape (8 groups in clinical order, derived types
+# flagged with inputs, set-vs-measured separate, compound GCS/pupils,
+# devices group present); enablement RBAC in ALL directions — SeniorDoctor
+# (Consultant) 200, Doctor-profile Specialist 403, nurse 403, and the §4
+# HARD CONSTRAINT probes: Hospital Administrator 403 AND Receptionist 403
+# (office admin must never touch clinical configuration); replay 409;
+# unknown group 404; toggle audit (changedBy from token, append-only
+# events). Dispatch manually after merging /server changes to main —
+# SEQUENTIALLY with the other suites.
+name: Deployed Observations E2E
+on: workflow_dispatch
+
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
+env:
+  API: https://icu-cp49.onrender.com
+  EXPECTED_ENV: staging
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objects)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+        run: |
+          for i in $(seq 1 60); do
+            got=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environment","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: healthz environment=$got · expected=$EXPECTED_ENV"
+            [ "$got" = "$EXPECTED_ENV" ] && exit 0
+            if [ "$got" != "<unreachable>" ] && [ "$got" != "<absent>" ]; then
+              echo "WRONG ENVIRONMENT: this suite writes test config for '$EXPECTED_ENV' but $API/healthz reports '$got' — refusing to run ANY leg." && exit 1
+            fi
+            sleep 10
+          done
+          echo "NO ENVIRONMENT IDENTITY: $API/healthz never reported an environment field — refusing to run." && exit 1
+
+      - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+        run: |
+          WANT_SRV=$(git rev-parse "$GITHUB_SHA:server")
+          WANT_YML=$(git rev-parse "$GITHUB_SHA:render.yaml")
+          echo "expected build context: server tree $WANT_SRV · render.yaml blob $WANT_YML"
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            BS=$(git rev-parse -q --verify "$build:server" 2>/dev/null || echo "<unknown-commit>")
+            BY=$(git rev-parse -q --verify "$build:render.yaml" 2>/dev/null || echo "<unknown-commit>")
+            echo "attempt $i: live build=$build · its server tree=$BS"
+            [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && exit 0
+            sleep 10
+          done
+          if [ "$BS" = "$WANT_SRV" ] && [ "$BY" != "$WANT_YML" ]; then
+            echo "CONFIG MISMATCH: server/ trees are EQUAL but render.yaml differs — if Render's Blueprint sync did not redeploy, trigger a MANUAL DEPLOY of the latest commit." && exit 1
+          fi
+          echo "STALE DEPLOYMENT: the deployed build '$build' does not carry this ref's server content — refusing to run." && exit 1
+
+      - name: Login as Consultant (SeniorDoctor), Specialist (Doctor), nurse, Hospital Administrator, Receptionist
+        run: |
+          for u in sara.rahman liam.osei maya.chen yusuf.karim huda.nasser; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "SEN=$t"   >> "$GITHUB_ENV";;
+              liam.osei)   echo "SPEC=$t"  >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR=$t"   >> "$GITHUB_ENV";;
+              yusuf.karim) echo "ADMIN=$t" >> "$GITHUB_ENV";;
+              huda.nasser) echo "RECEP=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+
+      - name: Catalog — unauth 401; authenticated read (+ CORS) carries the §1 taxonomy
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/observations/catalog")
+          echo "unauth catalog -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          curl -sf -D /tmp/h -H "Authorization: Bearer $NUR" -H "Origin: $PAGES_ORIGIN" \
+            "$API/api/icu/observations/catalog" -o /tmp/cat.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 - <<'PY'
+          import json
+          groups = json.load(open("/tmp/cat.json"))
+          codes = [g["groupCode"] for g in groups]
+          assert codes == ["vitals","neuro","ventilator","hemodynamics","fluid","poc_lab","devices","nursing"], codes
+          types = {t["typeCode"]: t for g in groups for t in g["types"]}
+          # derived values are catalogue-flagged with their inputs (computed, never charted)
+          assert types["driving_pressure"]["isDerived"] and types["driving_pressure"]["derivationInputs"] == ["pplat","peep"]
+          assert types["net_balance"]["isDerived"] and set(types["net_balance"]["derivationInputs"]) == {"total_input","total_output"}
+          assert types["gcs_total"]["isDerived"]
+          # set-vs-measured kept SEPARATE (§1 note)
+          assert "rr_set" in types and "rr_measured" in types and "vt_set" in types and "vt_exhaled" in types
+          # compound types carry components
+          gcs = {c["code"]: c for c in types["gcs"]["components"]}
+          assert gcs["eye"]["max"] == 4 and gcs["verbal"]["max"] == 5 and gcs["motor"]["max"] == 6
+          assert any(c["kind"] == "enum" for c in types["pupils"]["components"])
+          # POC-vs-LIS boundary: only the two POC types
+          poc = [t for t in types.values() if t["groupCode"] == "poc_lab"]
+          assert {t["typeCode"] for t in poc} == {"glucose_cap","lactate_poc"}
+          # enum vocabularies present
+          assert "Sinus Rhythm" in types["cardiac_rhythm"]["allowedValues"]
+          assert "PSV" in types["vent_mode"]["allowedValues"]
+          print("catalog:", len(groups), "groups /", len(types), "types — §1 taxonomy shape verified")
+          PY
+
+      - name: Enablement RBAC — nurse/Specialist 403; HARD CONSTRAINT: Hospital Administrator AND Receptionist 403; unauth 401
+        run: |
+          # state-aware: probe against the devices group's CURRENT state
+          CUR=$(python3 -c 'import json; print([g["enabled"] for g in json.load(open("/tmp/cat.json")) if g["groupCode"]=="devices"][0])')
+          ACT=$([ "$CUR" = "True" ] && echo disable || echo enable)
+          echo "devices group currently enabled=$CUR — the RBAC probes attempt '$ACT'"
+          echo "CUR=$CUR" >> "$GITHUB_ENV"; echo "ACT=$ACT" >> "$GITHUB_ENV"
+          for tok_name in NUR SPEC ADMIN RECEP; do
+            tok=$(eval echo "\$$tok_name")
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $tok" "$API/api/icu/observations/groups/devices/$ACT")
+            echo "$tok_name $ACT -> HTTP $rc"; [ "$rc" = "403" ] || { echo "$tok_name must NOT hold observations.configure"; exit 1; }
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/observations/groups/devices/$ACT")
+          echo "unauth $ACT -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+
+      - name: Consultant toggles — 200 with token actor + audited event; replay 409; unknown group 404; RESTORE
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$ACT" | python3 - <<'PY'
+          import json, sys
+          d = json.load(sys.stdin)
+          assert d["changedBy"] == "Dr. Sara Rahman", d.get("changedBy")     # token actor
+          assert d["events"] and d["events"][-1]["actor"] == "Dr. Sara Rahman"
+          print("consultant toggled devices ->", d["enabled"], "| audited:", d["events"][-1]["action"])
+          PY
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$ACT")
+          rc=$(echo "$out" | tail -1); echo "replay $ACT -> HTTP $rc (state conflict, not a silent no-op)"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already" in e, e'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/telepathy/enable")
+          echo "unknown group -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          # restore the initial state (the config is durable staging state)
+          UNDO=$([ "$ACT" = "enable" ] && echo disable || echo enable)
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$UNDO" >/dev/null
+          echo "restored devices to enabled=$CUR"
+
+      - name: Failure-path cleanup — restore the devices group to its recorded initial state (runs on failure/cancel too)
+        if: always()
+        run: |
+          if [ -z "${SEN:-}" ] || [ -z "${CUR:-}" ]; then
+            echo "no toggle was attempted — nothing to restore"; exit 0
+          fi
+          WANT=$([ "$CUR" = "True" ] && echo true || echo false)
+          NOW=$(curl -s -H "Authorization: Bearer $SEN" "$API/api/icu/observations/catalog" | python3 -c 'import json,sys; print([g["enabled"] for g in json.load(sys.stdin) if g["groupCode"]=="devices"][0])' | tr 'TF' 'tf')
+          if [ "$NOW" = "$WANT" ]; then
+            echo "devices group already at its initial state (enabled=$CUR)"; exit 0
+          fi
+          FIX=$([ "$WANT" = "true" ] && echo enable || echo disable)
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$FIX" >/dev/null \
+            && echo "cleanup restored devices to enabled=$CUR" \
+            || { echo "CLEANUP FAILED: devices group left at enabled=$NOW (expected $CUR)"; exit 1; }

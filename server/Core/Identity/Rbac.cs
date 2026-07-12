@@ -11,7 +11,11 @@ static class Rbac
 {
     static readonly Dictionary<string, string> TitleProfile = new()
     {
-        ["Consultant"] = "Doctor", ["Specialist"] = "Doctor", ["Senior Resident"] = "Doctor",
+        /* Stage 11 F4 decision: the Consultant title derives the
+           SeniorDoctor profile — Doctor's SUPERSET plus the Consultant-
+           tier observation authorities (correct/configure). v1 maps
+           Consultant alone; widening (e.g. Specialist) is a row edit. */
+        ["Consultant"] = "SeniorDoctor", ["Specialist"] = "Doctor", ["Senior Resident"] = "Doctor",
         ["Resident"] = "Doctor", ["Intern"] = "Doctor",
         ["Pharmacist"] = "Pharmacist", ["Clinical Pharmacist"] = "Pharmacist",
         ["Staff Nurse"] = "Nurse", ["Charge Nurse"] = "Nurse", ["Head Nurse"] = "Nurse",
@@ -25,11 +29,24 @@ static class Rbac
 
     static readonly Dictionary<string, string[]> ProfilePermissions = new()
     {
+        /* observations.record (Stage 11 §4, F1): charting a bedside value
+           is BEDSIDE CLINICIAN authority — any doctor or nurse. */
         ["Doctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "notes.document", "ai.view", "adt.admit", "adt.discharge"],
+            "notes.document", "ai.view", "adt.admit", "adt.discharge", "observations.record"],
+        /* SeniorDoctor (Stage 11 F4): Doctor's SUPERSET — everything a
+           doctor may do, plus the Consultant-tier observation authorities:
+           observations.correct (tier-2 retrospective correction, §8) and
+           observations.configure (group enablement, §3). HARD CONSTRAINT
+           (§4): these NEVER sit on the office Administrator profile —
+           clinical data and clinical configuration are clinically
+           governed. */
+        ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
+            "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
+            "notes.document", "ai.view", "adt.admit", "adt.discharge", "observations.record",
+            "observations.correct", "observations.configure"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
-            "notes.document", "results.view", "ai.view", "adt.transfer"],
+            "notes.document", "results.view", "ai.view", "adt.transfer", "observations.record"],
         ["Administrator"] = ["admin.view", "patients.view", "users.manage"],
         /* formulary.manage (Layer 4): maintaining the drug formulary is
            PHARMACY's authority — the same polarity flip as results.create

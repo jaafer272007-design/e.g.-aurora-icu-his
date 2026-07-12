@@ -100,6 +100,7 @@ static class Seeder
         OrderLogic.InitializeCounters(db);
         AdtLogic.InitializeCounters(db);
         ResultsLogic.InitializeCounters(db);
+        Aurora.Core.Observations.ObservationCatalog.InitializeCounters(db);
     }
 
     /* ---- development / staging: the full demo set, unchanged ---- */
@@ -206,6 +207,7 @@ static class Seeder
         SeedInteractions(app, db);
         SeedLabCatalog(app, db);
         SeedOrderSets(app, db);
+        SeedObservationCatalog(app, db);
     }
 
     /* ---- production: reference data + bootstrap admin ONLY ---- */
@@ -218,9 +220,24 @@ static class Seeder
         SeedInteractions(app, db);
         SeedLabCatalog(app, db);
         SeedOrderSets(app, db);
+        SeedObservationCatalog(app, db);
         SeedProductionFormulary(app, db);
         SeedSystemPrincipal(app, db);
         SeedBootstrapAdmin(app, db);
+    }
+
+    /* Stage 11 §12 step 1: the Observation Type Catalogue — the §1
+       clinical taxonomy as DATA (both modes: non-hospital-specific
+       clinical reference, the lab-catalogue precedent). Idempotent
+       seed-if-empty per table; the Devices group ships disabled. */
+    static void SeedObservationCatalog(WebApplication app, AuroraDb db)
+    {
+        var hadGroups = db.ObservationGroups.Any();
+        Aurora.Core.Observations.ObservationCatalog.Seed(db);
+        if (!hadGroups)
+            app.Logger.LogInformation(
+                "Seeded the Observation Type Catalogue: {Groups} groups, {Types} types (Devices group disabled by default)",
+                db.ObservationGroups.Count(), db.ObservationTypes.Count());
     }
 
     /* the FORMULARY_SEED install policy (validated by T2 before seeding
