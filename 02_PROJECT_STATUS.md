@@ -1,16 +1,26 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through STAGE 11 §12 STEP 2 (the
-Observation Service write paths: manual charting as timed rounds /
-ad-hoc entries with SERVER-stamped clinicalTime+enteredAt — no
-back-dating by construction; catalogue-driven validation with derived
-types rejected, compound components, disabled-group 409, and round
-atomicity; the §8 two-tier corrections — tier-1 self within 5 min
-without reason per the owner's Q1 answer, tier-2 Consultant-tier with
-required reason, amend-not-erase with the actor always recorded; 59/59
-matrix incl. SQLite-aged window expiry + 18/18 parity; the suite
-extended to steps 1+2 with the window-expiry path honestly recorded as
-local-only). Prior: STEP 1 (the
+**Last updated: 2026-07-12 · current through STAGE 11 §12 STEP 3 (the
+/observations screen: the entry form is RENDERED FROM the Type
+Catalogue — enabled groups only, no observation vocabulary in frontend
+code; both §10 entry modes as ONE staged submission — many values are a
+timed round, one value is an ad-hoc entry, the server stamps the time
+either way; the chart read view groups by timepoint with the §8
+amendment history always visible (original struck-through, actor + role
++ reason layers) and derived values computed at render from catalogue
+inputs; the two-tier correction UI — tier-1 self-amend shows NO reason
+field per Q1, tier-2 shows the required reason; profiles without
+observations.record get the read-only chart; the domain is REAL-ONLY in
+the adapters — no mock observations exist, unreachable-API states say
+so honestly; 41/41 headless UI proof on a live local server). Prior:
+STEP 2 (the Observation Service write paths: server-stamped rounds,
+catalogue-driven validation incl. derived-rejection + compound
+components + disabled-group 409 + round atomicity, the §8 two-tier
+corrections with the actor always recorded; 59/59 matrix incl.
+SQLite-aged window expiry + 18/18 parity; POST-MERGE the full
+thirteen-suite sequential pass ran GREEN on merge commit c6d7b61 —
+13/13, incl. the extended observations suite's first live run with
+every step's exact text executed). Prior: STEP 1 (the
 generic catalogue-driven Observation model built per the recorded
 design: the `(typeCode → value)` record with the amendments[] audit
 carrying the corrector actor; the Observation Type Catalogue seeded
@@ -2312,6 +2322,104 @@ value, new value, timestamp); tier-2 unchanged (reason required).]*
 - **Remaining (§12)**: step 3 the /observations screen, step 4 the
   two-source bedside read-swap, then the 3 deferred print templates
   and (later) the Device Adapter.
+- *[Attributed addition 2026-07-12, post-merge]* **The full
+  thirteen-suite sequential pass ran GREEN on the step-2 merge commit
+  `c6d7b61` (13/13)** — adt, ai, auth, encounter-scope, formulary,
+  labcatalog, labs, mar, orders, print, timeline, users, observations.
+  The observations run (29212356852) was the extended steps-1+2 suite's
+  FIRST live execution: job-level evidence confirms every substantive
+  step ran `completed/success` (logins, catalog taxonomy, enablement
+  RBAC incl. the hard-constraint probes, the consultant toggle+restore,
+  the step-2 round/no-back-dating/validation/atomicity legs, both §8
+  tiers, the §6 closed-encounter rule, and the always-runs cleanup) —
+  no skipped legs (a skipped check and a passed check are visually
+  identical; this pass was verified at step level).
+
+### Stage 11 §12 step 3 (built) — the /observations entry+chart screen
+
+*[Attributed addition 2026-07-12 — the third rework PR per the design's
+§12 sequencing ("3. /observations screen: grouped entry: timed round +
+ad-hoc; chart read view; read-only without permission; RBAC per §4").]*
+
+- **Route + nav**: `/observations(/:patientId)` behind `patients.view`
+  (every clinical viewer reads — §4's read rule); a new "Observations"
+  nav item (same permission). Screen structure mirrors the other
+  patient-scoped screens (header KPIs, rail, PatientBar); patient
+  identity comes from the REAL roster read (`getRosterRecord`), not the
+  mock-composite detail.
+- **The entry form is data, not code (Pillar 2)**: groups and fields
+  render FROM `GET /observations/catalog` — enabled groups as tabs,
+  numeric types with unit + plausibility placeholder, enum types as
+  selects, compound types (GCS, pupils) as component sub-inputs, and
+  DERIVED types shown as un-enterable "computed at read time" rows.
+  There is NO observation vocabulary in the frontend: enabling a group
+  or (v2) adding a catalogue type appears here with zero code change.
+  Disabled groups are named in a muted note and not offered (charting
+  UIs filter on enabled; the server's 409 stays the authority).
+- **Both §10 entry modes, one mechanism**: values staged across group
+  tabs accumulate into ONE submission — many staged values chart as a
+  timed ROUND sharing the server-stamped clinicalTime, a single value
+  is an AD-HOC entry (the button renames itself). No time input exists
+  anywhere (§7 — no back-dating by construction). A partially-filled
+  compound blocks submission with a precise client message; every other
+  validation verdict is the SERVER's, surfaced verbatim (unknown type,
+  range, disabled group 409, closed encounter 409). Writes are
+  REAL-ONLY (never applied to mock state) and the whole domain has no
+  mock store: an unreachable API renders an explicit unavailable state,
+  never simulated observations (honest data, §5).
+- **The chart read view**: newest timepoint first; each round shows the
+  server-stamped time, recorder, and source badge (manual today;
+  device/hybrid styles exist for the later adapter). Amended entries
+  show the EFFECTIVE value plus an "amended ×n" tag with the full §8
+  history — the original struck-through-but-present, each layer's
+  newValue/amendedBy/amenderRole/amendedAt, and the reason when one
+  exists (tier-1 layers legitimately have none, per Q1).
+- **Derived values computed at RENDER, never stored**: GCS Total from
+  the compound's components; Driving Pressure = Pplat − PEEP at the
+  same timepoint; fluid totals sum EVERY per-interval entry of the
+  catalogue-listed input types at the timepoint (a repeated Urine
+  Output sums, it does not replace — caught hands-on during
+  verification and fixed); Net Balance derives from the derived totals.
+  The INPUT lists come from the catalogue rows (`derivationInputs`);
+  the arithmetic itself is a small per-type render map — a derived type
+  with no renderer shows nothing rather than a guessed number.
+- **The two-tier correction UI (§8, server-decided)**: on an own entry
+  inside the 5-minute window the row offers "Amend (self · n min left)"
+  with NO reason field (Q1); otherwise holders of
+  `observations.correct` get "Correct" with the required-reason field.
+  The client tier hint is display only — the server re-decides on
+  submit, and its verdict (window expired, reason required, nothing to
+  correct 409) is shown verbatim. Profiles with neither permission see
+  no buttons; without `observations.record` the entry card is absent
+  and the PatientBar says "Read-only chart" (the office-Administrator
+  profile reads, never touches — the hard constraint).
+- **Verification (hands-on, local server + built preview)**: 41/41
+  headless UI proof — catalogue-rendered chips (7/8, Devices absent +
+  named as disabled), cross-group staging, partial-compound block,
+  round charting with server-stamped header, GCS compound + computed
+  Total 12, tier-1 amend without reason + amend-not-erase history,
+  fluid totals incl. the repeated-type sum (300+150 → Total Output 450,
+  Net 250), ad-hoc mode, Specialist sees entry but NO correct
+  affordance on another's entry, Consultant tier-2 with reason recorded
+  (role SeniorDoctor on the layer), Receptionist read-only (no entry
+  card, no correct buttons, marked read-only), nav + KPIs; screenshots
+  reviewed. `tsc` + production build clean. No server change in this
+  step — endpoint byte-parity is structural.
+- **Flagged, not silently decided**: (1) NO group-enablement UI was
+  built — F3 makes enable/disable live in v1 (it is, via the API,
+  suite-proven) but §12 step 3 does not list a config UI and the design
+  defers management UI; whether a small Consultant-tier enablement
+  panel belongs in v1 is the owner's call. (2) The screen is
+  roster-scoped (open encounters): §6-legitimate corrections on a
+  DISCHARGED patient's chart are server-supported but have no picker
+  here yet — recorded as a display gap (the Print-hub precedent).
+  (3) Same-minute rounds by the same recorder display as one timepoint
+  group (a round IS a shared clinicalTime; repeated types within it
+  each show). (4) Derived-value arithmetic lives client-side in the
+  render map for now; if step 4's bedside projection needs the same
+  computations server-side, formula ownership should consolidate there.
+- **Remaining (§12)**: step 4 the two-source bedside read-swap, then
+  the 3 deferred print templates and (later) the Device Adapter.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
