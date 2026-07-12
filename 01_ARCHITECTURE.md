@@ -399,7 +399,18 @@ run. A render.yaml-only mismatch gets a DISTINCT message: if Render's
 Blueprint sync did not redeploy for the change, a MANUAL DEPLOY of the
 latest commit clears the gate (documented operational step).
 
-## Print Center (Phase 1 FOUNDATION BUILT — 3 of 13 templates; the rest pending)
+## Print Center (Contract v1.0: 10 of 10 buildable templates BUILT; 3 deferred to Stage 11)
+
+**The template list is a versioned contract**: see
+`docs/print-center-contract.md` (Print Center Contract v1.0 — confirmed
+by the project's clinical validator, the ICU physician; recorded
+2026-07-12). The contract enumerates the 10 buildable documents (all
+implemented), the 3 Stage-11-deferred ones (MAR, Vital Signs/Observation
+Flowsheet, Ventilator & Device Report — they depend on the real
+Observation model and are never rendered from placeholder data), and the
+noted future extension (Medication Reconciliation). Template changes are
+new contract versions in that file — the list never again lives only in
+memory or conversation.
 
 *[Docs split note: no Print Center build exists. In the pre-split file it
 appears only as a deferred roadmap item and as Documents/Printing in the

@@ -1,5 +1,5 @@
 import type {
-  BedCardVitals, Encounter, LabDraw, MonitorVitals, Order, OrganName, OrganStatus, SupportFlag, TimelineEvent,
+  BedCardVitals, Encounter, ImagingStudy, LabDraw, MonitorVitals, Order, OrganName, OrganStatus, SupportFlag, TimelineEvent,
 } from '../../lib/api/types'
 
 /* ==================== Print Center view models ====================
@@ -129,4 +129,77 @@ export interface DischargeSummaryData {
   imagingCount: number
   medOrderCount: number
   encounterEvents: Encounter['events']
+}
+
+/* ==================== Contract v1.0 batch (docs/print-center-contract.md) ==================== */
+
+/** One NON-medication (or any) order line — persisted order fields only. */
+export interface PrintOrderLine {
+  orderId: string
+  category: Order['category']
+  summary: string
+  priority: Order['priority']
+  status: Order['status']
+  orderedBy: string
+  orderedTime: string
+  requiresImplementation: boolean
+}
+
+export interface FaceSheetData {
+  context: PrintContext
+  /** ADT lifecycle events of the target encounter (admitted / transferred /
+   *  discharged), exactly as persisted */
+  adtEvents: Encounter['events']
+}
+
+export interface ActiveOrdersData {
+  context: PrintContext
+  /** ALL active orders on the encounter, every category */
+  activeOrders: PrintOrderLine[]
+  /** pending-signature orders, marked separately — a printed order sheet
+   *  must not present unsigned orders as in force */
+  pendingOrders: PrintOrderLine[]
+}
+
+export interface MedicationOrdersData {
+  context: PrintContext
+  activeMeds: PrintMedLine[]
+  /** unsigned prescriptions — printed under their own heading, never mixed
+   *  into the active list */
+  pendingMeds: PrintMedLine[]
+}
+
+export interface LabReportData {
+  context: PrintContext
+  /** encounter-scoped draws, oldest → newest, acknowledgment status per draw */
+  draws: LabDraw[]
+}
+
+export interface ImagingReportData {
+  context: PrintContext
+  studies: ImagingStudy[]
+}
+
+export interface SbarData {
+  context: PrintContext
+  activeMeds: PrintMedLine[]
+  /** nursing task/documentation events the aggregated feed carries — the
+   *  canonical nursing-notes store is future scope (contract note); in
+   *  production this is legitimately empty until it exists */
+  nursingEvents: TimelineEvent[]
+}
+
+export interface ConsultReportData {
+  context: PrintContext
+  /** consultation events the aggregated feed carries, chronological —
+   *  the canonical consultation store is future scope (contract note) */
+  consultEvents: TimelineEvent[]
+}
+
+export interface TransferSummaryData {
+  context: PrintContext
+  activeMeds: PrintMedLine[]
+  /** latest resulted draw per panel (same derivation as the progress sheet) */
+  latestLabs: LabDraw[]
+  adtEvents: Encounter['events']
 }
