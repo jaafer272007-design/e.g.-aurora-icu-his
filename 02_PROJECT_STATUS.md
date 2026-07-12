@@ -2213,6 +2213,18 @@ owner: mechanism 1, Consultant alone for v1.]*
   twins; the only delta the new /observations routes). Production
   bundle proof 9/9; server build, `tsc -b`, `vite build` clean.
   Deployed suite runs post-merge (sequential).
+  *[Superseded in part 2026-07-12 — the post-merge run: deploy-pages +
+  the first twelve suites all green on the merge commit; the NEW
+  observations suite FAILED its first live run on a HARNESS bug (curl
+  piped into `python3 -` with a heredoc — the heredoc becomes python's
+  script and stdin is empty; the local matrix used the file-based
+  pattern, so this exact step had never executed). The server behaved
+  correctly throughout, and the if:always() restore proved itself on
+  its first failure — the devices group was put back to disabled.
+  Fixed (response → file, then parse) in the follow-up suite-only PR;
+  the re-run's result is recorded there. Lesson consistent with the
+  CI-evidence rule: a suite leg only counts as validated once the
+  EXACT step text has executed somewhere.]*
 - **Remaining (§12)**: step 2 the Observation Service write paths
   (manual charting — timed round + ad-hoc, §7 time semantics with
   server-stamped clinicalTime, the two-tier §8 corrections), step 3 the

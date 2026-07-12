@@ -130,9 +130,13 @@ jobs:
 
       - name: Consultant toggles — 200 with token actor + audited event; replay 409; unknown group 404; RESTORE
         run: |
-          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$ACT" | python3 - <<'PY'
-          import json, sys
-          d = json.load(sys.stdin)
+          # response to a FILE, then parse — piping curl into `python3 -`
+          # with a heredoc hands the heredoc to python as its SCRIPT and
+          # leaves sys.stdin empty (the first live run's failure)
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$ACT" -o /tmp/tog.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("/tmp/tog.json"))
           assert d["changedBy"] == "Dr. Sara Rahman", d.get("changedBy")     # token actor
           assert d["events"] and d["events"][-1]["actor"] == "Dr. Sara Rahman"
           print("consultant toggled devices ->", d["enabled"], "| audited:", d["events"][-1]["action"])
