@@ -59,6 +59,14 @@ ON-PREMISES/offline-first, the cloud stack is the staging tier) is
 authored and awaiting project-owner approval before any implementation;
 the remaining Print Center templates follow.**
 
+*[Superseded — contradiction found while refreshing this marker
+(2026-07-12), flagged per the doc rule rather than silently rewritten:
+the "Next:" tail above is stale. As this same paragraph's newer
+entries record, the environment-separation design was APPROVED (PR
+#53 merged by the owner) with §11 steps 1–4 since built, and the
+buildable Print Center templates are built (Contract v1.0). The
+current ordering lives in "Remaining build order" below.]*
+
 *[Docs split note (2026-07-10): every unmarked line below was moved verbatim
 from the pre-split CLAUDE.md. The only additions are lines styled like this
 one and the three subsections explicitly marked "Attributed addition"
@@ -2355,6 +2363,16 @@ instruction, source stated per the documentation rule.]*
   types), an order draft flowing through the EXISTING order-creation
   path (never a bypass), and the ordered study appearing in Imaging
   Studies with status "Ordered".
+  *[Doc-vs-code contradiction FLAGGED for the project owner (per the
+  03 rule — flagged, never silently fixed; the code is untouched by
+  this docs PR): two pre-existing code comments claim the opposite —
+  `src/lib/api/data/results.ts` ("Screen 5 places lab/imaging ORDERS;
+  this store holds what comes back") and `src/lib/api/types.ts`
+  ("Screen 5 (Orders & Medication) places lab/imaging orders …").
+  Those comments are stale on the imaging half — Screen 5 places lab
+  orders only, as this entry records; the existing Layer 4 record
+  corroborates ("Modalities stay a closed union until the
+  imaging-order workflow exists").]*
 
 ## Known Deferred Debt (documented, intentionally not yet unified)
 - `panels.ts` attaches the same VENTILATOR/HEMODYNAMICS/INFUSIONS/
