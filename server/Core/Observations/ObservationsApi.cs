@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using Aurora.Core.Adt;
 using Aurora.Core.Identity;
+using Aurora.Core.Orders;
 using Aurora.Core.Persistence;
 using Aurora.Core.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -47,6 +49,134 @@ static class ObservationsApi
         app.MapPost("/api/icu/observations/groups/{groupCode}/disable",
             (string groupCode, ClaimsPrincipal user, AuroraDb db) => Toggle(groupCode, false, user, db))
             .RequireAuthorization();
+
+        /* ---------------- §12 step 2 — the write paths ---------------- */
+
+        /* GET /api/icu/observations?patientId&typeCode&encounterId — the
+           chart, oldest first (clinicalTime then id). Every clinical
+           viewer reads. */
+        app.MapGet("/api/icu/observations", (HttpContext ctx, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "patients.view") is IResult denied) return denied;
+            foreach (var key in ctx.Request.Query.Keys)
+                if (key is not ("patientId" or "typeCode" or "encounterId"))
+                    return ApiError.BadRequest($"unknown query parameter '{key}'");
+            var patientId = ctx.Request.Query["patientId"].ToString();
+            if (patientId.Length == 0) return ApiError.BadRequest("patientId is required");
+            var typeCode = ctx.Request.Query["typeCode"].ToString();
+            var encounterId = ctx.Request.Query["encounterId"].ToString();
+            var q = db.Observations.AsNoTracking().Where(o => o.PatientId == patientId);
+            if (typeCode.Length > 0) q = q.Where(o => o.TypeCode == typeCode);
+            if (encounterId.Length > 0) q = q.Where(o => o.EncounterId == encounterId);
+            return Results.Json(q.OrderBy(o => o.ClinicalTime).ThenBy(o => o.ObservationId)
+                .AsEnumerable().Select(o => o.ToDto()), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* POST /api/icu/observations — chart a MANUAL round/ad-hoc set.
+           observations.record (any doctor or nurse — §4 F1). clinicalTime
+           and enteredAt are SERVER-stamped (§7: live charting, no
+           back-dating). Every entry is validated against the CATALOGUE
+           before anything is written; the set persists atomically.
+           A type whose GROUP is disabled is a 409 (deployment state —
+           enable the group and the same request succeeds); a DERIVED
+           type is a 400 (shape — derived values are computed, never
+           charted, ever). Charting is initiating care → EncounterGuard
+           (409 on a closed episode). */
+        app.MapPost("/api/icu/observations", (ChartObservationsRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "observations.record") is IResult denied) return denied;
+            if (string.IsNullOrWhiteSpace(req.PatientId))
+                return ApiError.BadRequest("patientId is required");
+            if (!db.AdtPatients.AsNoTracking().Any(p => p.PatientId == req.PatientId))
+                return ApiError.BadRequest($"patientId '{req.PatientId}' does not match any patient");
+            if (req.Entries is null || req.Entries.Count == 0)
+                return ApiError.BadRequest("at least one observation entry is required (entries[])");
+            var types = db.ObservationTypes.AsNoTracking().ToDictionary(t => t.TypeCode);
+            var groups = db.ObservationGroups.AsNoTracking().ToDictionary(g => g.GroupCode);
+            var seen = new HashSet<string>();
+            var normalized = new List<(ObservationTypeRow Type, string Value)>();
+            foreach (var e in req.Entries)
+            {
+                var code = e.TypeCode?.Trim() ?? "";
+                if (!types.TryGetValue(code, out var t))
+                    return ApiError.BadRequest($"typeCode '{code}' is not in the Observation Type Catalogue");
+                if (t.IsDerived)
+                    return ApiError.BadRequest($"'{t.TypeCode}' is a DERIVED value — it is computed from its inputs at read time, never charted");
+                if (!seen.Add(t.TypeCode))
+                    return ApiError.BadRequest($"duplicate typeCode '{t.TypeCode}' in one round — repeat measurements are separate rounds");
+                if (!groups[t.GroupCode].Enabled)
+                    return ApiError.StateConflict(
+                        $"observation group '{t.GroupCode}' is disabled in this deployment's configuration — '{t.TypeCode}' is not charted here (a Consultant-tier user can enable the group)");
+                var v = ObservationService.Normalize(t, e.Value, out var problem);
+                if (problem is not null) return ApiError.BadRequest(problem);
+                normalized.Add((t, v!));
+            }
+            if (EncounterGuard.RequireOpenForPatient(db, req.PatientId!, "charting an observation", out var enc) is IResult conflict)
+                return conflict;
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var now = DateTime.UtcNow;
+            var rows = normalized.Select(x => new ObservationRow
+            {
+                ObservationId = ObservationCatalog.NextId(),
+                PatientId = req.PatientId!, EncounterId = enc!.EncounterId,
+                TypeCode = x.Type.TypeCode, Value = x.Value, Unit = x.Type.Unit,
+                ClinicalTime = now.ToString("yyyy-MM-dd HH:mm"),
+                Source = "manual", DeviceId = null,
+                RecordedBy = actor,
+                EnteredAt = now.ToString("yyyy-MM-dd HH:mm:ss"),
+                VerifiedBy = null, AmendmentsJson = "[]",
+            }).ToList();
+            db.Observations.AddRange(rows);
+            db.SaveChanges();
+            return Results.Json(rows.Select(r => r.ToDto()), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* POST /api/icu/observations/{id}/correct — the two-tier §8
+           amendment. TIER 1 (self): the recorder, within the flat
+           5-minute window from ENTRY — needs observations.record, reason
+           OPTIONAL (recorded when given; the Q1 decision). TIER 2
+           (everything else — another's entry, or the window closed) —
+           needs observations.correct (Consultant-tier), reason REQUIRED.
+           BOTH tiers amend-not-erase: the stored value is NEVER
+           rewritten; the amendment appends {previousValue, newValue,
+           amendedBy, amendedAt, reason, amenderRole}. Corrections are
+           completing the record → allowed on a CLOSED encounter (§6),
+           no EncounterGuard. RBAC ordering keeps 403 oracle-free: the
+           weakest gate (observations.record — held by every possible
+           corrector) answers BEFORE the lookup; the tier gate answers
+           after, on a record the caller may read anyway. */
+        app.MapPost("/api/icu/observations/{observationId}/correct",
+            (string observationId, CorrectObservationRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "observations.record") is IResult denied) return denied;
+            var o = db.Observations.FirstOrDefault(x => x.ObservationId == observationId);
+            if (o is null) return ApiError.NotFound();
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var now = DateTime.UtcNow;
+            var selfTier = ObservationService.IsSelfTier(o, actor, now);
+            if (!selfTier)
+            {
+                if (Rbac.Deny(user, "observations.correct") is IResult deniedTier) return deniedTier;
+                if (string.IsNullOrWhiteSpace(req.Reason))
+                    return ApiError.BadRequest("reason is required for a Consultant-tier correction (outside the 5-minute self-correction window or on another clinician's entry)");
+            }
+            if (req.Reason is not null && req.Reason.Length > OrderLogic.MaxTextLength)
+                return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
+            var t = db.ObservationTypes.AsNoTracking().First(x => x.TypeCode == o.TypeCode);
+            var newValue = ObservationService.Normalize(t, req.Value, out var problem);
+            if (problem is not null) return ApiError.BadRequest(problem);
+            var amendments = JsonSerializer.Deserialize<List<AmendmentDto>>(o.AmendmentsJson, JsonOpts.Web)!;
+            var previous = amendments.Count > 0 ? amendments[^1].NewValue : o.Value;
+            if (newValue == previous)
+                return ApiError.StateConflict(
+                    $"observation '{observationId}' already reads {previous}{(t.Unit == "" ? "" : $" {t.Unit}")} — there is nothing to correct");
+            var role = Rbac.ProfileOf(user.FindFirst("jobTitle")?.Value ?? "") ?? "Unknown";
+            amendments.Add(new(previous, newValue!, actor,
+                now.ToString("yyyy-MM-dd HH:mm"), req.Reason?.Trim() ?? "", role));
+            o.AmendmentsJson = JsonSerializer.Serialize(amendments, JsonOpts.Web);
+            db.SaveChanges();
+            return Results.Json(o.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
     }
 
     static IResult Toggle(string groupCode, bool enable, ClaimsPrincipal user, AuroraDb db)

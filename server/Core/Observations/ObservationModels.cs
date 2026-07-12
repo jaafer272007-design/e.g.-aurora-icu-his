@@ -146,3 +146,30 @@ record ObservationDto(
     string ObservationId, string PatientId, string EncounterId, string TypeCode,
     string Value, string Unit, string ClinicalTime, string Source, string? DeviceId,
     string RecordedBy, string EnteredAt, string? VerifiedBy, List<AmendmentDto> Amendments);
+
+/* ---------- REQUEST DTOs (§12 step 2) ----------
+   [Disallow] per the codified rule: unrecognized fields fail binding →
+   400. Deliberately ABSENT and structurally impossible to supply:
+   clinicalTime/enteredAt (SERVER-stamped — §7 live charting, no
+   back-dating), source/deviceId/verifiedBy (server-owned provenance,
+   §2), unit (catalogue-derived), encounterId (server-derived from the
+   open encounter), recordedBy (token), amendments (the audit record).
+   A timed ROUND is one request with many entries sharing the stamped
+   clinicalTime; an AD-HOC entry is the same request with one entry
+   (§10 — a round is just many observations sharing a timepoint).
+   Entry values are JsonElement: numeric types accept a number (or
+   numeric string), enum types a string, compound types an object of
+   components. */
+
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record NewObservationEntryDto(string? TypeCode, JsonElement Value);
+
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record ChartObservationsRequest(string? PatientId, List<NewObservationEntryDto>? Entries);
+
+/* the §8 correction: tier-1 (own entry, 5-min window) sends only the
+   corrected value — reason OPTIONAL (recorded when given); tier-2
+   (Consultant-tier) REQUIRES the reason. The amendment record always
+   captures actor/original/new/timestamp/amenderRole. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record CorrectObservationRequest(JsonElement Value, string? Reason);

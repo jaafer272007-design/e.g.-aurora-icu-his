@@ -1,6 +1,16 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through STAGE 11 §12 STEP 1 (the
+**Last updated: 2026-07-12 · current through STAGE 11 §12 STEP 2 (the
+Observation Service write paths: manual charting as timed rounds /
+ad-hoc entries with SERVER-stamped clinicalTime+enteredAt — no
+back-dating by construction; catalogue-driven validation with derived
+types rejected, compound components, disabled-group 409, and round
+atomicity; the §8 two-tier corrections — tier-1 self within 5 min
+without reason per the owner's Q1 answer, tier-2 Consultant-tier with
+required reason, amend-not-erase with the actor always recorded; 59/59
+matrix incl. SQLite-aged window expiry + 18/18 parity; the suite
+extended to steps 1+2 with the window-expiry path honestly recorded as
+local-only). Prior: STEP 1 (the
 generic catalogue-driven Observation model built per the recorded
 design: the `(typeCode → value)` record with the amendments[] audit
 carrying the corrector actor; the Observation Type Catalogue seeded
@@ -2230,6 +2240,78 @@ owner: mechanism 1, Consultant alone for v1.]*
   server-stamped clinicalTime, the two-tier §8 corrections), step 3 the
   /observations screen, step 4 the TWO-SOURCE bedside read-swap, then
   the 3 deferred print templates and (later) the Device Adapter.
+
+### Stage 11 §12 step 2 (built) — the Observation Service write paths
+
+*[Attributed addition 2026-07-12 — the second rework PR per the design;
+the owner answered §11 Q1: NO reason required on tier-1
+self-corrections (the amendment still always records actor, original
+value, new value, timestamp); tier-2 unchanged (reason required).]*
+
+- **Charting** (`POST /api/icu/observations`, `observations.record` —
+  any doctor or nurse per F1): a timed ROUND is one request whose
+  entries share ONE server-stamped `clinicalTime`; an ad-hoc entry is
+  the same request with one entry (§10). **§7 time semantics are
+  structural: clinicalTime and enteredAt are SERVER-stamped — the
+  request has no time field, and a payload claiming
+  clinicalTime/enteredAt (or source/deviceId/verifiedBy/recordedBy/
+  unit/encounterId) fails binding → 400. No back-dating by
+  construction.** enteredAt carries seconds (the tier-1 window needs
+  them); clinicalTime keeps the charted-time convention.
+- **Catalogue-driven validation (Pillar 2, data not code)**: unknown
+  typeCode → 400 naming the catalogue; **DERIVED types are rejected**
+  ("computed from its inputs at read time, never charted"); numeric
+  plausibility ranges; enum allowed-sets; **compound values validated
+  component-by-component** (GCS eye/verbal/motor ranges; missing/extra
+  component → precise 400) and stored normalized; duplicate-in-round →
+  400; **a type whose GROUP is disabled → 409** (deployment state — the
+  inactive-drug precedent: enable the group and the same request
+  succeeds). ROUND ATOMICITY: every entry validated before anything is
+  written — a mixed valid+invalid round writes NOTHING.
+- **The §8 two-tier correction** (`POST .../{id}/correct`): TIER 1 —
+  the recorder amending their OWN entry within the flat 5-minute
+  window from ENTRY time: needs only `observations.record`, **no
+  reason (Q1)**; TIER 2 — anyone else's entry or after the window:
+  needs `observations.correct` (Consultant-tier), reason REQUIRED
+  (precise 400 naming the tier rule). BOTH tiers amend-not-erase: the
+  stored value is NEVER rewritten; amendments append {previousValue,
+  newValue, amendedBy, amendedAt, reason, amenderRole} — the actor is
+  ALWAYS on the record (the gap #67 flagged, closed). Re-correction
+  layers (append-only; previous = the last effective value);
+  correcting to the current effective value → 409 ("nothing to
+  correct"); corrected values re-validated against the catalogue.
+  Corrections are completing the record → allowed on a CLOSED
+  encounter (no EncounterGuard); charting on a closed episode stays
+  409. RBAC ordering keeps 403 oracle-free: the weakest gate
+  (`observations.record`, held by every possible corrector) answers
+  before the lookup; the tier gate answers after.
+- **Reads**: GET /api/icu/observations?patientId&typeCode&encounterId —
+  oldest first (clinicalTime, id — collation-pinned), unknown param /
+  missing patientId → 400.
+- **The suite extended to steps 1+2** (three new steps, all file-based
+  parsing — the PR #70 lesson applied): charting RBAC, the round +
+  ad-hoc, no-back-dating probes, catalogue validation incl. derived
+  rejection + compound components, round atomicity, a STATE-AWARE
+  disabled-group probe (409 when disabled / honest 200 path when an
+  operator enabled it — never a silent skip), both correction tiers
+  with roles asserted, same-value 409, absent 404, and the §6 rule
+  live; cleanup restores config AND releases the encounter. **The
+  5-minute WINDOW-EXPIRY path is deliberately not live-tested** (clock
+  manipulation) — covered by the local matrix via direct SQLite aging
+  of EnteredAt (local-only), recorded here per the CI-evidence rule.
+- **Verification**: 59/59 step-2 matrix (all of the above incl. the
+  window expiry: the recorder 403 on their own aged entry, the
+  consultant then correcting it with reason, the second amendment
+  layering on the first; two proof-side fixes during the run — a
+  unicode-escaped en-dash in one grep and the absent sqlite3 CLI
+  (replaced with python stdlib) — neither a server defect). 18/18
+  byte-parity sweep vs main (now incl. the step-1 catalog read; the
+  only delta the new chart read/write/correct routes). Server build
+  clean; no frontend change in this step (adapters + screen are
+  step 3), so no bundle re-proof was needed.
+- **Remaining (§12)**: step 3 the /observations screen, step 4 the
+  two-source bedside read-swap, then the 3 deferred print templates
+  and (later) the Device Adapter.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
