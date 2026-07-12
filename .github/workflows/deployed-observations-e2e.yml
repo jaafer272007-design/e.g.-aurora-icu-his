@@ -1,18 +1,30 @@
-# Deployed Observations E2E — Stage 11 §12 step 1 surface: the Observation
-# Type Catalogue read + group enablement. Extended by later steps (manual
-# charting, corrections, the /observations screen). SELF-SUFFICIENT and
-# STATE-AWARE: the enablement legs read the group's CURRENT state, toggle
-# to the opposite, assert, and restore — no dependence on seed state, no
-# finite resource consumed, if:always() restore. Covers: catalog 401 +
-# CORS + the §1 taxonomy shape (8 groups in clinical order, derived types
-# flagged with inputs, set-vs-measured separate, compound GCS/pupils,
-# devices group present); enablement RBAC in ALL directions — SeniorDoctor
-# (Consultant) 200, Doctor-profile Specialist 403, nurse 403, and the §4
-# HARD CONSTRAINT probes: Hospital Administrator 403 AND Receptionist 403
-# (office admin must never touch clinical configuration); replay 409;
-# unknown group 404; toggle audit (changedBy from token, append-only
-# events). Dispatch manually after merging /server changes to main —
-# SEQUENTIALLY with the other suites.
+# Deployed Observations E2E — Stage 11 §12 steps 1+2: the Type Catalogue
+# read + group enablement (step 1) and the Observation Service write
+# paths (step 2: manual charting + the two-tier corrections).
+# SELF-SUFFICIENT and STATE-AWARE: the enablement legs read the group's
+# CURRENT state, toggle to the opposite, assert, and restore; the
+# charting legs admit THIS RUN's patient; if:always() restores config
+# and releases the encounter. Step-1 coverage: catalog 401 + CORS + the
+# §1 taxonomy shape; enablement RBAC in ALL directions incl. the §4
+# HARD CONSTRAINT probes (Hospital Administrator AND Receptionist 403);
+# replay 409; unknown group 404; audited toggles. Step-2 coverage:
+# charting RBAC; a timed ROUND (shared server-stamped clinicalTime,
+# manual provenance, token actor, compound GCS normalized) + an AD-HOC
+# entry; NO BACK-DATING (payloads claiming clinicalTime/enteredAt/
+# provenance → 400 binding); catalogue-driven validation (unknown type,
+# DERIVED rejected, range/enum/compound component errors, duplicate-in-
+# round, unknown patient) with ROUND ATOMICITY (mixed valid+invalid
+# writes NOTHING); disabled-group charting handled STATE-AWARE (409
+# when disabled / 200 when an operator enabled it); the §8 tiers —
+# tier-1 self-correct without reason (amendment still carries
+# actor/original/new/timestamp/role), other-clinician 403, tier-2
+# reason-required 400 then 200 with the SeniorDoctor role recorded,
+# same-value 409, absent id 404; and the §6 rule live: charting on the
+# CLOSED encounter 409 while a tier-2 correction stays 200. The 5-min
+# WINDOW-EXPIRY path is deliberately NOT live-tested (it needs clock
+# manipulation) — it is covered by the local matrix via direct SQLite
+# aging, recorded in 02. Dispatch manually after merging /server
+# changes to main — SEQUENTIALLY with the other suites.
 name: Deployed Observations E2E
 on: workflow_dispatch
 
@@ -65,21 +77,24 @@ jobs:
           fi
           echo "STALE DEPLOYMENT: the deployed build '$build' does not carry this ref's server content — refusing to run." && exit 1
 
-      - name: Login as Consultant (SeniorDoctor), Specialist (Doctor), nurse, Hospital Administrator, Receptionist
+      - name: Login as Consultant (SeniorDoctor), Specialist (Doctor), two nurses, Hospital Administrator, Receptionist, pharmacist
         run: |
-          for u in sara.rahman liam.osei maya.chen yusuf.karim huda.nasser; do
+          for u in sara.rahman liam.osei maya.chen priya.patel yusuf.karim huda.nasser samir.qassem; do
             t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
               -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
             case $u in
-              sara.rahman) echo "SEN=$t"   >> "$GITHUB_ENV";;
-              liam.osei)   echo "SPEC=$t"  >> "$GITHUB_ENV";;
-              maya.chen)   echo "NUR=$t"   >> "$GITHUB_ENV";;
-              yusuf.karim) echo "ADMIN=$t" >> "$GITHUB_ENV";;
-              huda.nasser) echo "RECEP=$t" >> "$GITHUB_ENV";;
+              sara.rahman)  echo "SEN=$t"   >> "$GITHUB_ENV";;
+              liam.osei)    echo "SPEC=$t"  >> "$GITHUB_ENV";;
+              maya.chen)    echo "NUR=$t"   >> "$GITHUB_ENV";;
+              priya.patel)  echo "NUR2=$t"  >> "$GITHUB_ENV";;
+              yusuf.karim)  echo "ADMIN=$t" >> "$GITHUB_ENV";;
+              huda.nasser)  echo "RECEP=$t" >> "$GITHUB_ENV";;
+              samir.qassem) echo "PHARM=$t" >> "$GITHUB_ENV";;
             esac
             echo "$u: token issued"
           done
+          echo "MRN=MRN-OBS-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
 
       - name: Catalog — unauth 401; authenticated read (+ CORS) carries the §1 taxonomy
         run: |
@@ -152,18 +167,151 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$UNDO" >/dev/null
           echo "restored devices to enabled=$CUR"
 
-      - name: Failure-path cleanup — restore the devices group to its recorded initial state (runs on failure/cancel too)
+      - name: "Step 2 — admit THIS RUN's patient; nurse charts a timed ROUND (compound GCS, server-stamped time, manual provenance); consultant ad-hoc"
+        run: |
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/adt/beds" -o /tmp/beds.json
+          B1=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert free, "no free beds — discharge stale encounters"; print(free[0])')
+          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"E2E Observations Patient","age":61,"sex":"M","allergies":"None documented","diagnosis":"observations E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/adm.json
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          read PID EID <<<"$vals"
+          echo "admitted $PID on $EID (bed $B1)"
+          { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
+          ROUND='{"patientId":"'$PID'","entries":[{"typeCode":"hr","value":118},{"typeCode":"sbp","value":92},{"typeCode":"spo2","value":91},{"typeCode":"gcs","value":{"eye":3,"verbal":4,"motor":5}}]}'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHARM" -H 'Content-Type: application/json' -d "$ROUND" "$API/api/icu/observations")
+          echo "pharmacist chart -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$ROUND" "$API/api/icu/observations" -o /tmp/round.json
+          EID="$EID" python3 - <<'PY'
+          import json, os
+          rows = json.load(open("/tmp/round.json")); assert len(rows) == 4
+          assert len({r["clinicalTime"] for r in rows}) == 1                 # ONE timepoint = a round
+          for r in rows:
+              assert r["source"] == "manual" and "deviceId" not in r and "verifiedBy" not in r
+              assert r["recordedBy"] == "RN Maya Chen" and r["amendments"] == []
+              assert r["encounterId"] == os.environ["EID"]
+          by = {r["typeCode"]: r for r in rows}
+          assert by["hr"]["unit"] == "bpm" and by["hr"]["value"] == "118"
+          assert json.loads(by["gcs"]["value"]) == {"eye": 3, "verbal": 4, "motor": 5}
+          print("round of 4 charted: shared server-stamped clinicalTime, manual provenance, token actor")
+          PY
+          python3 -c 'import json; rows=json.load(open("/tmp/round.json")); print("OBS_HR=" + [r["observationId"] for r in rows if r["typeCode"]=="hr"][0])' >> "$GITHUB_ENV"
+          python3 -c 'import json; rows=json.load(open("/tmp/round.json")); print("OBS_SPO2=" + [r["observationId"] for r in rows if r["typeCode"]=="spo2"][0])' >> "$GITHUB_ENV"
+          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","entries":[{"typeCode":"cvp","value":12}]}' "$API/api/icu/observations" -o /tmp/adhoc.json
+          python3 -c 'import json; d=json.load(open("/tmp/adhoc.json"))[0]; assert d["recordedBy"]=="Dr. Sara Rahman"; print("ad-hoc CVP by the consultant (superset charts)")'
+
+      - name: "Step 2 — NO BACK-DATING + catalogue validation + ROUND ATOMICITY + state-aware disabled-group probe"
+        run: |
+          for extra in '"clinicalTime":"2020-01-01 10:00"' '"enteredAt":"2020-01-01 10:00:00"' '"source":"device"' '"recordedBy":"X"'; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+              -d '{"patientId":"'$PID'","entries":[{"typeCode":"hr","value":80}],'"$extra"'}' "$API/api/icu/observations")
+            echo "payload claiming $extra -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          done
+          probe() {
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$1" "$API/api/icu/observations")
+            rc=$(echo "$out" | tail -1); echo "$2 -> HTTP $rc"; [ "$rc" = "$4" ] || { echo "$out"; exit 1; }
+            echo "$out" | head -1 | grep -q "$3" || { echo "expected error naming: $3"; echo "$out"; exit 1; }
+          }
+          probe '{"patientId":"'$PID'","entries":[{"typeCode":"telepathy","value":5}]}' "unknown typeCode" "not in the Observation Type Catalogue" 400
+          probe '{"patientId":"'$PID'","entries":[{"typeCode":"driving_pressure","value":14}]}' "DERIVED type" "computed from its inputs" 400
+          probe '{"patientId":"'$PID'","entries":[{"typeCode":"spo2","value":120}]}' "out-of-range spo2" "outside the plausible range" 400
+          probe '{"patientId":"'$PID'","entries":[{"typeCode":"vent_mode","value":"MAGIC"}]}' "bad enum" "must be one of" 400
+          probe '{"patientId":"'$PID'","entries":[{"typeCode":"gcs","value":{"eye":3,"verbal":4}}]}' "GCS missing component" "missing component" 400
+          probe '{"patientId":"'$PID'","entries":[{"typeCode":"hr","value":80},{"typeCode":"hr","value":82}]}' "duplicate in round" "duplicate typeCode" 400
+          probe '{"patientId":"P-9999","entries":[{"typeCode":"hr","value":80}]}' "unknown patient" "does not match any patient" 400
+          # atomicity: valid + invalid in ONE round writes NOTHING
+          before=$(curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/observations?patientId=$PID" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          probe '{"patientId":"'$PID'","entries":[{"typeCode":"hr","value":77},{"typeCode":"spo2","value":999}]}' "mixed valid+invalid round" "outside the plausible range" 400
+          after=$(curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/observations?patientId=$PID" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          echo "rows before=$before after=$after"; [ "$before" = "$after" ] || { echo "ATOMICITY VIOLATED"; exit 1; }
+          # STATE-AWARE disabled-group probe: devices was restored to its
+          # initial state above — assert the honest outcome for THAT state
+          DEVEN=$(curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/observations/catalog" | python3 -c 'import json,sys; print([g["enabled"] for g in json.load(sys.stdin) if g["groupCode"]=="devices"][0])')
+          if [ "$DEVEN" = "False" ]; then
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+              -d '{"patientId":"'$PID'","entries":[{"typeCode":"pump_rate","value":25}]}' "$API/api/icu/observations")
+            rc=$(echo "$out" | tail -1); echo "devices DISABLED: charting pump_rate -> HTTP $rc"
+            [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+            echo "$out" | head -1 | grep -q "disabled in this deployment" || exit 1
+          else
+            echo "devices group is ENABLED on this deployment (operator choice) — asserting the 200 path instead"
+            curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+              -d '{"patientId":"'$PID'","entries":[{"typeCode":"pump_rate","value":25}]}' "$API/api/icu/observations" >/dev/null
+          fi
+
+      - name: "Step 2 — the §8 tiers live: self-correct without reason; other-clinician 403; Consultant reason-required; closed-encounter rule"
+        run: |
+          # TIER 1: the recorder, inside the window, NO reason (Q1 decision)
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"value":96}' "$API/api/icu/observations/$OBS_HR/correct" -o /tmp/t1.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("/tmp/t1.json"))
+          assert d["value"] == "118"                                # amend-not-erase
+          a = d["amendments"]; assert len(a) == 1
+          assert a[0]["previousValue"] == "118" and a[0]["newValue"] == "96"
+          assert a[0]["amendedBy"] == "RN Maya Chen" and a[0]["amenderRole"] == "Nurse"
+          assert a[0]["reason"] == "" and a[0]["amendedAt"]
+          print("tier-1 self-correction: no reason, actor/original/new/time all on the record")
+          PY
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"value":96}' "$API/api/icu/observations/$OBS_HR/correct")
+          rc=$(echo "$out" | tail -1); echo "same-value correction -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          # TIER boundary: another clinician (even inside the window) -> 403
+          for tok_name in NUR2 SPEC; do
+            tok=$(eval echo "\$$tok_name")
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' -d '{"value":95,"reason":"x"}' "$API/api/icu/observations/$OBS_SPO2/correct")
+            echo "$tok_name correcting another's entry -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          done
+          # TIER 2: Consultant — reason REQUIRED, role recorded
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{"value":94}' "$API/api/icu/observations/$OBS_SPO2/correct")
+          rc=$(echo "$out" | tail -1); [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "reason is required for a Consultant-tier correction" || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"value":94,"reason":"probe repositioned — observations E2E"}' "$API/api/icu/observations/$OBS_SPO2/correct" -o /tmp/t2.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("/tmp/t2.json"))
+          assert d["value"] == "91"
+          a = d["amendments"][-1]
+          assert a["amendedBy"] == "Dr. Sara Rahman" and a["amenderRole"] == "SeniorDoctor"
+          assert "probe repositioned" in a["reason"]
+          print("tier-2 correction: consultant actor + SeniorDoctor role + reason on the record")
+          PY
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{"value":97,"reason":"x"}' "$API/api/icu/observations/OBS-0/correct")
+          echo "absent id -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          # §6 live: discharge -> charting 409, tier-2 correction 200
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null && echo "discharged $EID"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","entries":[{"typeCode":"hr","value":80}]}' "$API/api/icu/observations")
+          rc=$(echo "$out" | tail -1); echo "charting on CLOSED encounter -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{"value":97,"reason":"post-discharge review"}' "$API/api/icu/observations/$OBS_HR/correct")
+          echo "tier-2 correction on the CLOSED encounter -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+
+      - name: Failure-path cleanup — restore the devices group and release the encounter (runs on failure/cancel too)
         if: always()
         run: |
-          if [ -z "${SEN:-}" ] || [ -z "${CUR:-}" ]; then
-            echo "no toggle was attempted — nothing to restore"; exit 0
+          if [ -n "${SEN:-}" ] && [ -n "${CUR:-}" ]; then
+            WANT=$([ "$CUR" = "True" ] && echo true || echo false)
+            NOW=$(curl -s -H "Authorization: Bearer $SEN" "$API/api/icu/observations/catalog" | python3 -c 'import json,sys; print([g["enabled"] for g in json.load(sys.stdin) if g["groupCode"]=="devices"][0])' | tr 'TF' 'tf')
+            if [ "$NOW" != "$WANT" ]; then
+              FIX=$([ "$WANT" = "true" ] && echo enable || echo disable)
+              curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$FIX" >/dev/null \
+                && echo "cleanup restored devices to enabled=$CUR" \
+                || { echo "CLEANUP FAILED: devices group left at enabled=$NOW (expected $CUR)"; exit 1; }
+            else
+              echo "devices group already at its initial state (enabled=$CUR)"
+            fi
+          else
+            echo "no toggle was attempted — nothing to restore"
           fi
-          WANT=$([ "$CUR" = "True" ] && echo true || echo false)
-          NOW=$(curl -s -H "Authorization: Bearer $SEN" "$API/api/icu/observations/catalog" | python3 -c 'import json,sys; print([g["enabled"] for g in json.load(sys.stdin) if g["groupCode"]=="devices"][0])' | tr 'TF' 'tf')
-          if [ "$NOW" = "$WANT" ]; then
-            echo "devices group already at its initial state (enabled=$CUR)"; exit 0
+          if [ -n "${PID:-}" ] && [ -n "${SEN:-}" ]; then
+            open=$(curl -s -H "Authorization: Bearer $SEN" "$API/api/icu/adt/encounters?patientId=$PID&status=open" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["encounterId"] if d else "")')
+            if [ -n "$open" ]; then
+              curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/adt/encounters/$open/discharge" >/dev/null \
+                && echo "failure-path cleanup discharged $open" \
+                || { echo "CLEANUP FAILED: could not release $open — a bed is leaked"; exit 1; }
+            else
+              echo "no open encounter remains for ${PID}"
+            fi
           fi
-          FIX=$([ "$WANT" = "true" ] && echo enable || echo disable)
-          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$FIX" >/dev/null \
-            && echo "cleanup restored devices to enabled=$CUR" \
-            || { echo "CLEANUP FAILED: devices group left at enabled=$NOW (expected $CUR)"; exit 1; }
