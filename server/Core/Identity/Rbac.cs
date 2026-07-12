@@ -25,11 +25,15 @@ static class Rbac
 
     static readonly Dictionary<string, string[]> ProfilePermissions = new()
     {
+        /* observations.record (Stage 11 first half): charting a bedside
+           value is BEDSIDE CLINICIAN authority — the clinical validator's
+           requirement is "a nurse or doctor must be able to chart what
+           they measured"; both profiles carry it, other profiles read */
         ["Doctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "notes.document", "ai.view", "adt.admit", "adt.discharge"],
+            "notes.document", "ai.view", "adt.admit", "adt.discharge", "observations.record"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
-            "notes.document", "results.view", "ai.view", "adt.transfer"],
+            "notes.document", "results.view", "ai.view", "adt.transfer", "observations.record"],
         ["Administrator"] = ["admin.view", "patients.view", "users.manage"],
         /* formulary.manage (Layer 4): maintaining the drug formulary is
            PHARMACY's authority — the same polarity flip as results.create

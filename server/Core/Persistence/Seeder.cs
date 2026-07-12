@@ -100,6 +100,7 @@ static class Seeder
         OrderLogic.InitializeCounters(db);
         AdtLogic.InitializeCounters(db);
         ResultsLogic.InitializeCounters(db);
+        Aurora.Core.Observations.ObservationLogic.InitializeCounters(db);
     }
 
     /* ---- development / staging: the full demo set, unchanged ---- */

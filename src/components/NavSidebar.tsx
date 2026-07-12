@@ -5,7 +5,7 @@ import {
 } from './icons'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 
-export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'formulary' | 'labcatalog' | 'ordersets' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'orders' | 'labs' | 'timeline' | 'observations' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'formulary' | 'labcatalog' | 'ordersets' | 'alerts' | 'statistics' | 'settings'
 
 interface NavItem {
   key: NavKey
@@ -39,6 +39,7 @@ export function NavSidebar({ active, alertCount = 0, footerLines }: NavSidebarPr
     { key: 'orders', label: 'Orders & Meds', icon: <IconPill />, to: '/orders', perm: 'orders.view' },
     { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: '/labs', perm: 'results.view' },
     { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: '/timeline', perm: 'patients.view' },
+    { key: 'observations', label: 'Observations', icon: <IconStats />, to: '/observations', perm: 'patients.view' },
     { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: '/ai', perm: 'ai.view' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge />, to: '/discharges', perm: 'patients.view' },

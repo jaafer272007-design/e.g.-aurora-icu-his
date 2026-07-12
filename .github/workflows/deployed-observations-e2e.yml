@@ -1,0 +1,264 @@
+# Deployed Observations E2E — verifies the LIVE Stage 11 Observation
+# service (first half: MANUAL). SELF-SUFFICIENT per the codified
+# finite-seeded-resources rule: the suite admits its own patient and
+# charts the observations it reads. Covers: the vocabulary read + 401s +
+# CORS; charting RBAC in all directions (nurse 200, doctor 200,
+# pharmacist 403, unauth 401); SERVER-OWNED PROVENANCE (a payload
+# claiming source/deviceId/unit fails binding → 400 — the structural
+# device-readiness guarantee); per-type validation (unknown type, out of
+# range, bad choice, future/bad capturedAt, duplicate-in-set, unknown
+# patientId) incl. SET ATOMICITY (one invalid entry → nothing written);
+# reads (order, type filter, unknown param, missing patientId); override
+# (required reason, original value preserved — never-destroy, replay
+# 409, absent id 404, pharmacist 403); and the ENCOUNTER RULE live:
+# charting on a closed encounter → 409 (initiating care) while an
+# override on that same closed encounter → 200 (completing the record).
+# Dispatch manually after merging /server changes to main — SEQUENTIALLY
+# with the other suites.
+name: Deployed Observations E2E
+on: workflow_dispatch
+
+# STRUCTURAL serialization of the deployed suites (the recorded
+# never-dispatch-concurrently lesson): one shared group across all the
+# suites means two can never RUN at once.
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
+env:
+  API: https://icu-cp49.onrender.com
+  # The suite's DECLARED TARGET (environment-separation §11 step 1) —
+  # in-file and versioned; deliberately NO production entry to select.
+  EXPECTED_ENV: staging
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objects)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+        run: |
+          for i in $(seq 1 60); do
+            got=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environment","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: healthz environment=$got · expected=$EXPECTED_ENV"
+            [ "$got" = "$EXPECTED_ENV" ] && exit 0
+            if [ "$got" != "<unreachable>" ] && [ "$got" != "<absent>" ]; then
+              echo "WRONG ENVIRONMENT: this suite writes test data for '$EXPECTED_ENV' but $API/healthz reports '$got' — refusing to run ANY leg." && exit 1
+            fi
+            sleep 10
+          done
+          echo "NO ENVIRONMENT IDENTITY: $API/healthz never reported an environment field — refusing to run." && exit 1
+
+      - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+        run: |
+          # Content-equality gate (the v3 invariant): tree/blob hashes of
+          # the server build context (server/ + render.yaml) must be equal
+          # between the dispatched ref and the commit /healthz reports.
+          WANT_SRV=$(git rev-parse "$GITHUB_SHA:server")
+          WANT_YML=$(git rev-parse "$GITHUB_SHA:render.yaml")
+          echo "expected build context: server tree $WANT_SRV · render.yaml blob $WANT_YML"
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            BS=$(git rev-parse -q --verify "$build:server" 2>/dev/null || echo "<unknown-commit>")
+            BY=$(git rev-parse -q --verify "$build:render.yaml" 2>/dev/null || echo "<unknown-commit>")
+            echo "attempt $i: live build=$build · its server tree=$BS"
+            [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && exit 0
+            sleep 10
+          done
+          if [ "$BS" = "$WANT_SRV" ] && [ "$BY" != "$WANT_YML" ]; then
+            echo "CONFIG MISMATCH: server/ trees are EQUAL but render.yaml differs — if Render's Blueprint sync did not redeploy, trigger a MANUAL DEPLOY of the latest commit." && exit 1
+          fi
+          echo "STALE DEPLOYMENT: the deployed build '$build' does not carry this ref's server content — refusing to run." && exit 1
+
+      - name: Login as doctor, nurse, and pharmacist
+        run: |
+          for u in sara.rahman maya.chen samir.qassem; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman)  echo "DOC=$t"    >> "$GITHUB_ENV";;
+              maya.chen)    echo "NUR=$t"    >> "$GITHUB_ENV";;
+              samir.qassem) echo "PHARM=$t"  >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+          echo "MRN=MRN-OBS-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
+          echo "TS=$(date -u +'%Y-%m-%d %H:%M')" >> "$GITHUB_ENV"
+
+      - name: Vocabulary — unauth 401; authenticated read (+ CORS) carries the closed type list
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/observations/types")
+          echo "unauth types -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/observations?patientId=P-1001")
+          echo "unauth chart read -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          curl -sf -D /tmp/h -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" \
+            "$API/api/icu/observations/types" -o /tmp/types.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c '
+          import json; d={t["type"]:t for t in json.load(open("/tmp/types.json"))}
+          assert "hr" in d and d["hr"]["unit"]=="bpm" and d["hr"]["kind"]=="numeric"
+          assert "vent_mode" in d and d["vent_mode"]["kind"]=="choice" and "PSV" in d["vent_mode"]["choices"]
+          assert "cvp" in d and "nibp_sys" in d and "spo2" in d and "peep" in d
+          print("vocabulary:", len(d), "types (vitals/NIBP/hemodynamics/ventilator present)")'
+
+      - name: Admit THIS RUN's patient (unique MRN, dynamic free bed)
+        run: |
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds.json
+          B1=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert free, "no free beds — discharge stale encounters"; print(free[0])')
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"E2E Observations Patient","age":61,"sex":"M","allergies":"None documented","diagnosis":"observations E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/adm.json
+          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
+          read PID EID <<<"$vals"
+          echo "admitted $PID on $EID (bed $B1)"
+          { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
+
+      - name: Charting RBAC — pharmacist 403, unauth 401; NURSE charts a vitals+vent set (server-stamped manual provenance)
+        run: |
+          body='{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"hr","value":"118"},{"type":"nibp_sys","value":"92"},{"type":"nibp_dia","value":"54"},{"type":"spo2","value":"91"},{"type":"vent_mode","value":"PSV"},{"type":"peep","value":"8"}]}'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHARM" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/observations")
+          echo "pharmacist chart -> HTTP $rc"; [ "$rc" = "403" ] || { echo "charting must be bedside-clinician authority"; exit 1; }
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "$body" "$API/api/icu/observations")
+          echo "unauth chart -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/observations" -o /tmp/set1.json
+          EID="$EID" TS="$TS" python3 -c '
+          import json, os
+          rows = json.load(open("/tmp/set1.json"))
+          assert len(rows) == 6, len(rows)
+          by = {r["type"]: r for r in rows}
+          for r in rows:
+              # SERVER-OWNED PROVENANCE + SCOPE — the device-ready model, manual arm
+              assert r["source"] == "manual", r
+              assert "deviceId" not in r and "verifiedBy" not in r, r
+              assert r["isOverridden"] is False and "overrideValue" not in r, r
+              assert r["encounterId"] == os.environ["EID"], r
+              assert r["capturedAt"] == os.environ["TS"], r
+              assert r["recordedBy"] == "RN Maya Chen", r    # token actor
+          assert by["hr"]["unit"] == "bpm" and by["peep"]["unit"] == "cmH₂O"   # vocabulary-derived units
+          assert by["vent_mode"]["value"] == "PSV" and by["vent_mode"]["unit"] == ""
+          print("nurse charted 6 manual observations by", by["hr"]["recordedBy"])'
+          python3 -c 'import json; print("OBSID=" + json.load(open("/tmp/set1.json"))[0]["observationId"])' >> "$GITHUB_ENV"
+
+      - name: DOCTOR charts too (both bedside profiles; token actor)
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"cvp","value":"12"},{"type":"map","value":"63"}]}' \
+            "$API/api/icu/observations" | python3 -c '
+          import json,sys; rows=json.load(sys.stdin)
+          assert {r["type"] for r in rows} == {"cvp","map"}
+          assert all(r["recordedBy"] == "Dr. Sara Rahman" and r["source"] == "manual" for r in rows)
+          print("doctor charted CVP + MAP; actor from token")'
+
+      - name: PROVENANCE IS SERVER-OWNED — a payload claiming source/deviceId/unit fails binding (400)
+        run: |
+          # The structural device-readiness guarantee: the fields EXIST in
+          # the model, and the manual path cannot set them.
+          for extra in '"source":"device"' '"deviceId":"MON-7"' '"unit":"bpm"' '"verifiedBy":"Dr. X"' '"recordedBy":"Someone Else"'; do
+            body='{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"hr","value":"80"}],'"$extra"'}'
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/observations")
+            echo "chart claiming $extra -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          done
+          # entry-level too
+          body='{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"hr","value":"80","source":"device"}]}'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/observations")
+          echo "entry claiming source -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
+      - name: Per-type validation + SET ATOMICITY — one invalid entry writes NOTHING
+        run: |
+          count_before=$(curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/observations?patientId=$PID" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          probe() {
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$1" "$API/api/icu/observations")
+            rc=$(echo "$out" | tail -1); msg=$(echo "$out" | head -1)
+            echo "$2 -> HTTP $rc: $msg"; [ "$rc" = "400" ] || exit 1
+            echo "$msg" | grep -q "$3" || { echo "expected error naming: $3"; exit 1; }
+          }
+          probe '{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"telepathy","value":"5"}]}' "unknown type" "type must be one of"
+          probe '{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"spo2","value":"120"}]}' "out-of-range spo2" "outside the plausible range"
+          probe '{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"vent_mode","value":"MAGIC"}]}' "unknown vent mode" "must be one of"
+          probe '{"patientId":"'$PID'","capturedAt":"2031-01-01 10:00","entries":[{"type":"hr","value":"80"}]}' "future capturedAt" "in the future"
+          probe '{"patientId":"'$PID'","capturedAt":"today","entries":[{"type":"hr","value":"80"}]}' "malformed capturedAt" "must be formatted"
+          probe '{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"hr","value":"80"},{"type":"hr","value":"82"}]}' "duplicate type in set" "duplicate type"
+          probe '{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[]}' "empty set" "at least one observation entry"
+          probe '{"patientId":"P-9999","capturedAt":"'"$TS"'","entries":[{"type":"hr","value":"80"}]}' "unknown patient" "does not match any patient"
+          # ATOMICITY: valid hr + invalid spo2 in ONE set -> 400 and the hr must NOT have been written
+          probe '{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"hr","value":"77"},{"type":"spo2","value":"999"}]}' "mixed valid+invalid set" "outside the plausible range"
+          count_after=$(curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/observations?patientId=$PID" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          echo "chart rows before=$count_before after=$count_after"
+          [ "$count_before" = "$count_after" ] || { echo "ATOMICITY VIOLATED: a rejected set left rows behind"; exit 1; }
+
+      - name: Reads — order, type filter, unknown param 400, missing patientId 400
+        run: |
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/observations?patientId=$PID" | python3 -c '
+          import json,sys; rows=json.load(sys.stdin)
+          assert len(rows) == 8, len(rows)                       # 6 nurse + 2 doctor
+          caps=[r["capturedAt"] for r in rows]
+          assert caps == sorted(caps), "chart must be oldest first"
+          print("chart reads", len(rows), "rows, oldest first")'
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/observations?patientId=$PID&type=hr" | python3 -c '
+          import json,sys; rows=json.load(sys.stdin)
+          assert len(rows) == 1 and rows[0]["type"] == "hr"
+          print("type filter OK")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/observations?patientId=$PID&sort=asc")
+          echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/observations")
+          echo "missing patientId -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
+      - name: Override — reason required; original PRESERVED (never-destroy); replay 409; absent id 404; pharmacist 403
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHARM" -H 'Content-Type: application/json' -d '{"value":"96","reason":"x"}' "$API/api/icu/observations/$OBSID/override")
+          echo "pharmacist override -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"value":"96"}' "$API/api/icu/observations/$OBSID/override")
+          rc=$(echo "$out" | tail -1); [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "reason is required" || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"value":"9999","reason":"typo"}' "$API/api/icu/observations/$OBSID/override")
+          rc=$(echo "$out" | tail -1); echo "out-of-range override -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"value":"96","reason":"mis-keyed at the bedside — observations E2E"}' "$API/api/icu/observations/$OBSID/override" | python3 -c '
+          import json,sys; d=json.load(sys.stdin)
+          assert d["isOverridden"] is True
+          assert d["value"] == "118", d["value"]                  # the ORIGINAL, preserved
+          assert d["overrideValue"] == "96" and "mis-keyed" in d["overrideReason"]
+          print("override recorded; original value preserved on the record")'
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"value":"97","reason":"again"}' "$API/api/icu/observations/$OBSID/override")
+          rc=$(echo "$out" | tail -1); echo "replay override -> HTTP $rc (state conflict, not absence)"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already overridden" in e, e'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"value":"96","reason":"x"}' "$API/api/icu/observations/OBS-0/override")
+          echo "override of a NONEXISTENT id -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+
+      - name: THE ENCOUNTER RULE, live — discharge; chart → 409 (initiating care); override on the CLOSED encounter → 200 (completing the record)
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null && echo "discharged $EID"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","capturedAt":"'"$TS"'","entries":[{"type":"hr","value":"80"}]}' "$API/api/icu/observations")
+          rc=$(echo "$out" | tail -1); echo "chart on closed encounter -> HTTP $rc"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "has no open encounter" in e and "charting an observation" in e, e'
+          # correcting an already-charted value stays legal after discharge
+          SECOND=$(curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/observations?patientId=$PID&type=spo2" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["observationId"])')
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"value":"93","reason":"post-discharge chart review — observations E2E"}' "$API/api/icu/observations/$SECOND/override" >/dev/null \
+            && echo "override on the CLOSED encounter -> 200 (completing the record)"
+
+      - name: Failure-path cleanup — release the encounter (runs on failure/cancel too)
+        if: always()
+        run: |
+          if [ -z "${PID:-}" ] || [ -z "${DOC:-}" ]; then
+            echo "no patient was admitted by this run — nothing to release"; exit 0
+          fi
+          open=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID&status=open" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["encounterId"] if d else "")')
+          if [ -n "$open" ]; then
+            curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$open/discharge" >/dev/null \
+              && echo "failure-path cleanup discharged $open" \
+              || { echo "CLEANUP FAILED: could not release $open — a bed is leaked"; exit 1; }
+          else
+            echo "no open encounter remains for $PID"
+          fi
+          # observations themselves persist by design (never-delete) — they
+          # belong to this run's own patient and consume no finite resource

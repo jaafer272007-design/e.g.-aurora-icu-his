@@ -1,0 +1,134 @@
+/* Observations — Stage 11 manual charting. Standard app chrome; the
+   entry form groups the vocabulary; the chart is a plain audit table. */
+
+.obs-body {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  gap: 14px;
+  padding: 14px;
+  align-items: start;
+}
+@media (max-width: 1100px) { .obs-body { grid-template-columns: 1fr; } }
+
+.obs-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.obs-entry, .obs-chart { padding: 14px; }
+
+.obs-when { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.obs-when label { font-size: 12px; color: #9fb1c9; }
+.obs-when input {
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(130, 170, 230, .25);
+  background: rgba(8, 15, 26, .6);
+  color: #dfe5ee;
+  font-family: "SF Mono", "Cascadia Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+  width: 170px;
+}
+.obs-hint { font-size: 11px; color: #9fb1c9; }
+
+.obs-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+.obs-group {
+  border: 1px solid rgba(130, 170, 230, .13);
+  border-radius: 12px;
+  padding: 10px 12px 12px;
+  margin: 0;
+}
+.obs-group legend {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #9fb1c9;
+  padding: 0 6px;
+}
+.obs-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.obs-field label { font-size: 12px; color: #dfe5ee; }
+.obs-field input, .obs-field select {
+  min-height: 44px;
+  width: 130px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(130, 170, 230, .25);
+  background: rgba(8, 15, 26, .6);
+  color: #dfe5ee;
+  font-family: "SF Mono", "Cascadia Mono", "JetBrains Mono", ui-monospace, monospace;
+  font-size: 13px;
+}
+.obs-field input:focus-visible, .obs-field select:focus-visible,
+.obs-when input:focus-visible { outline: 2px solid #4da3ff; outline-offset: 1px; }
+
+.obs-submit {
+  margin-top: 12px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 9px;
+  border: 1px solid #4da3ff;
+  background: #4da3ff;
+  color: #06121f;
+  font-weight: 600;
+  cursor: pointer;
+}
+.obs-submit:disabled { opacity: .35; cursor: not-allowed; }
+.obs-submit:focus-visible { outline: 2px solid #dfe5ee; outline-offset: 2px; }
+
+.obs-error { color: #ff5d6c; font-size: 12px; margin: 10px 0 0; }
+.obs-ok { color: #3de8a0; font-size: 12px; margin: 10px 0 0; }
+.obs-empty { color: #9fb1c9; font-size: 12px; }
+.obs-note { color: #9fb1c9; font-size: 11px; margin-top: 10px; }
+
+.obs-table { width: 100%; border-collapse: collapse; font-size: 13px; color: #dfe5ee; }
+.obs-table th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #9fb1c9;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(130, 170, 230, .2);
+}
+.obs-table td { padding: 7px 8px; border-bottom: 1px solid rgba(130, 170, 230, .09); vertical-align: top; }
+.obs-mono { font-family: "SF Mono", "Cascadia Mono", "JetBrains Mono", ui-monospace, monospace; }
+.obs-table s { color: #9fb1c9; }
+.obs-ovreason { font-size: 11px; color: #9fb1c9; }
+
+.obs-src {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(159, 177, 201, .45);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #9fb1c9;
+}
+.obs-src-device, .obs-src-hybrid { border-color: rgba(77, 163, 255, .5); color: #4da3ff; }
+
+.obs-linkbtn {
+  min-height: 44px;
+  padding: 4px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(130, 170, 230, .25);
+  background: transparent;
+  color: #4da3ff;
+  font-size: 12px;
+  cursor: pointer;
+}
+.obs-linkbtn:focus-visible { outline: 2px solid #4da3ff; outline-offset: 1px; }
+.obs-ovform { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.obs-ovform input {
+  min-height: 44px;
+  width: 140px;
+  padding: 4px 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(130, 170, 230, .25);
+  background: rgba(8, 15, 26, .6);
+  color: #dfe5ee;
+  font-size: 12px;
+}

@@ -3,17 +3,20 @@ using System;
 using Aurora.Core.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace Aurora.Core.Persistence.Migrations
+namespace AuroraIcu.Api.Core.Persistence.Migrations
 {
     [DbContext(typeof(AuroraDb))]
-    partial class AuroraDbModelSnapshot : ModelSnapshot
+    [Migration("20260712193950_AddObservations")]
+    partial class AddObservations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

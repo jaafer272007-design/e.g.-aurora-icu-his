@@ -202,6 +202,7 @@ ResultsApi.Map(app);
 FormularyApi.Map(app);
 LabCatalogApi.Map(app);
 OrderSetsApi.Map(app);
+Aurora.Core.Observations.ObservationsApi.Map(app);
 
 /* SPA fallback (only when this service carries the frontend): unmatched
    non-API routes serve index.html so the router owns deep links — but

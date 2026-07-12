@@ -260,8 +260,8 @@ JobTitle → PermissionProfile:
 PermissionProfile → Permissions (and Dashboard landing view):
 | Profile | Permissions | Landing |
 |---|---|---|
-| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge | /workspace |
-| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer | /nurse |
+| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge, observations.record (Stage 11 — chart a bedside value manually) | /workspace |
+| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer, observations.record (Stage 11 — chart a bedside value manually) | /nurse |
 | Administrator        | admin.view, patients.view, users.manage | /admin |
 | Pharmacist           | patients.view, orders.view, results.view, formulary.manage, ordersets.manage (Layer 4 — maintain the formulary + author order sets) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
@@ -274,6 +274,9 @@ Route guards: /workspace = orders.sign · /nurse = meds.administer ·
 /lab-catalog = labcatalog.manage (Layer 4 — Laboratory) ·
 /order-sets = ordersets.manage (Layer 4 — Pharmacy) ·
 /beds & /patients & /timeline = patients.view ·
+/observations = patients.view (the charting FORM and corrections
+additionally need observations.record — read stays open to every
+clinical viewer) ·
 /orders = orders.view (mutating UI additionally needs the prescriber
 permissions) · /labs = results.view · /ai = ai.view · /admissions &
 /discharges = patients.view (the admit action additionally needs
@@ -286,6 +289,19 @@ retired — the login screen replaces it.
 *[Docs split note — status label: the Observation model below is SPECIFIED,
 NOT YET BUILT. Implementation is Stage 11 scope per the rule's own final
 bullet.]*
+
+*[Superseded in part 2026-07-12 — Stage 11 implementation BEGAN per the
+project owner's instruction: the Observation model below is BUILT
+field-for-field in Aurora Core (`server/Core/Observations/`) with the
+MANUAL source fully working (charting UI at /observations, RBAC
+`observations.record` on Doctor + Nurse, per-type validation, atomic
+sets, override-with-reason preserving the original). The model is
+device-ready by structure: source/deviceId/verifiedBy and the override
+triplet exist in the table and on the wire NOW, and the manual endpoint
+cannot claim device provenance (server-stamped; payload attempts fail
+binding). The DEVICE/HYBRID sources, the verify path, panels.ts
+absorption, and the bedside-snapshot migration remain the Stage 11
+second half — see the build record in 02_PROJECT_STATUS.md.]*
 
 ## Stage 11 — Interchangeable Clinical Data Sources (locked architecture rule)
 Every clinical observation — vitals, ventilator settings/readings,
@@ -318,6 +334,10 @@ Rules:
 - Implementation is Stage 11 scope, NOT before — do not build the
   Observation model or touch `panels.ts`, vitals, ventilator,
   hemodynamics, or infusion code until then.
+  *[Stage 11 began 2026-07-12 (owner instruction): the model + Manual
+  source are built; `panels.ts` and the existing vitals/ventilator/
+  hemodynamics/infusion display code remain UNTOUCHED until the device
+  half migrates them.]*
 
 ## Cross-cutting server conventions
 
