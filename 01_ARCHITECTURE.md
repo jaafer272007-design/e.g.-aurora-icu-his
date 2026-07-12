@@ -5,6 +5,30 @@ from the pre-split CLAUDE.md. Lines styled like this one are organizational
 additions, never new claims. Build/verification records live in
 02_PROJECT_STATUS.md; working discipline in 03_DEVELOPMENT_RULES.md.]*
 
+## Project Vision (Scenario C — the guiding statement)
+
+*[Attributed addition 2026-07-12 — recorded per the project owner's
+instruction. Source: Scenario C, confirmed by the project owner. Not
+moved from the pre-split file.]*
+
+> **"Aurora is a modular Hospital Information System whose Core operates
+> independently and whose integration layer allows interoperability with
+> external healthcare systems (FHIR/HL7) when required."**
+
+This resolves the standalone-vs-integrated question. Aurora is a
+COMPLETE HIS that begins with the ICU module — Identity, ADT, Orders,
+MAR, Labs, Imaging, Timeline, and AI are the heart of an HIS, not
+accessories to one. It can BE a hospital's system; or it can later
+integrate with an existing HIS through an added **Integration Layer**
+(Patient Demographics, ADT messages, Lab/Radiology interfaces,
+FHIR/HL7) — with the Core unchanged, because the Core must not know
+whether it runs alone or integrates. This is why Core independence has
+been enforced throughout the build. The Integration Layer is a "when
+required" FUTURE phase, deliberately not built now; if it becomes
+needed, it is a real project in its own right (not a trivial final
+step) — the architecture makes it a clean added layer rather than a
+rewrite.
+
 ## Platform Direction — Aurora Core + Modules
 
 *[Docs split note: this heading existed in the pre-split file only as a
