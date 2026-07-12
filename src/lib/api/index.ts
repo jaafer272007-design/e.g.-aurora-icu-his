@@ -8,7 +8,7 @@ import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
-  OrderSetsResponse, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
+  OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
   RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse, UserAccount,
 } from './types'
 import { composeBedsResponse } from './bedboard'
@@ -291,11 +291,45 @@ export async function getPatients(): Promise<PatientSummary[]> {
 }
 
 /** GET /api/icu/patients/:patientId — full Mission Control payload for one patient. */
+/** Mission Control's `Patient` from the REAL roster wire record — the
+ *  SAME record the bed board renders, so any ADMITTED patient (seeded or
+ *  freshly admitted through ADT) resolves identically. Fixes the recorded
+ *  defect where a fresh admission showed on the bed board but its detail
+ *  page said "Patient Not Found": the detail lookup consulted only the
+ *  MOCK store, which by definition never contains a real admission. */
+const rosterToPatient = (r: RosterRecordDto): Patient => ({
+  ...toSummary(r),
+  age: r.age,
+  sex: r.sex,
+  los: r.los,
+  allergies: r.allergies,
+  attending: r.attending,
+  codeStatus: r.codeStatus,
+  rhythm: r.rhythm,
+  vitals: r.monitorVitals,
+  organs: r.organs,
+})
+
 export function getPatientDetail(patientId: string): Promise<PatientDetailResponse | null> {
-  /* fully mock-composed (Stage 11 absorbs the bedside snapshot) — in
-     production this screen refuses until the domain is real */
+  /* the composite's PANELS are still mock-composed (Stage 11 absorbs the
+     bedside snapshot) — in production this screen refuses until the
+     domain is real; the identity fix below is the dev/staging path */
   if (import.meta.env.VITE_APP_ENV === 'production') return Promise.reject(apiUnavailable('patient detail (Stage 11 scope)'))
-  const patient = allPatients().find(p => p.patientId === patientId)
+  return getPatientDetailMock(patientId)
+}
+
+async function getPatientDetailMock(patientId: string): Promise<PatientDetailResponse | null> {
+  /* IDENTITY comes from the REAL roster first (the system of record for
+     who is admitted where) and only falls back to the mock store when
+     the live roster is unreachable or doesn't know the id (pure-mock
+     dev, or a seeded-only mock session). The per-patient derived views
+     below legitimately resolve EMPTY for a fresh admission — the mock
+     ai/results stores have no entry for it — which renders as "no data",
+     never as "no patient". */
+  const roster = await fetchRosterRecords()
+  const real = roster?.find(r => r.patientId === patientId)
+  const patient = real ? rosterToPatient(real)
+    : allPatients().find(p => p.patientId === patientId)
   if (!patient) return respond(null, 120)
   return respond(
     {
