@@ -1,6 +1,16 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through the PRINT CENTER
+**Last updated: 2026-07-12 · current through the WORKING-SESSION
+DECISIONS RECORD (docs-only): the PROJECT VISION is recorded in
+01_ARCHITECTURE.md § Project Vision (Scenario C, confirmed by the
+project owner — a modular HIS whose Core operates independently, with
+a "when required" future Integration Layer for FHIR/HL7
+interoperability); the IMAGING-ORDERING feature gap is recorded under
+"Known Feature Gaps" (imaging results are built, ordering a study is
+not — validator-identified); and the Stage 11 MANUAL-ENTRY clinical
+requirement (bedside vitals/NIBP/ventilator/CVP/hemodynamics must
+support manual charting, not only device feeds — validator-identified)
+is recorded under the Stage 11 build-order item. Prior: the PRINT CENTER
 CONTRACT v1.0 + THE BUILDABLE BATCH (the validator-confirmed 13-template
 list is now a versioned repo artifact — `docs/print-center-contract.md`
 — and the 8 genuinely-remaining buildable templates are built on the
@@ -48,6 +58,14 @@ render), Print Center Foundation Phase 1 (PR #50), safety enforcement
 ON-PREMISES/offline-first, the cloud stack is the staging tier) is
 authored and awaiting project-owner approval before any implementation;
 the remaining Print Center templates follow.**
+
+*[Superseded — contradiction found while refreshing this marker
+(2026-07-12), flagged per the doc rule rather than silently rewritten:
+the "Next:" tail above is stale. As this same paragraph's newer
+entries record, the environment-separation design was APPROVED (PR
+#53 merged by the owner) with §11 steps 1–4 since built, and the
+buildable Print Center templates are built (Contract v1.0). The
+current ordering lives in "Remaining build order" below.]*
 
 *[Docs split note (2026-07-10): every unmarked line below was moved verbatim
 from the pre-split CLAUDE.md. The only additions are lines styled like this
@@ -2103,6 +2121,18 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
 4. Stage 11 — device integration + the Observation model (per the locked
    rule in 01_ARCHITECTURE.md; absorbs the roster's remaining
    bedside-snapshot columns)
+   *[Clinical requirement recorded 2026-07-12 — source: the clinical
+   validator (the ICU physician), identified while testing the Mission
+   Control monitor, which currently shows only auto-fed/simulated
+   values with no manual-entry path. Bedside values — vitals (HR, BP,
+   temp, SpO₂, RR), NIBP, ventilator settings, CVP, and hemodynamics —
+   must support MANUAL entry by clinicians, not only device feeds: a
+   nurse or doctor must be able to chart what they measured at the
+   bedside. This is the "Manual" source of the Observation model's
+   Manual/Device/Hybrid design (01_ARCHITECTURE.md § Stage 11), and it
+   is a REQUIRED capability, not optional. It reinforces why Stage 11 —
+   which replaces `panels.ts` with real Observations — is the top
+   architectural priority after the operational work.]*
 5. Architecture Freeze
 6. Module #2
 
@@ -2315,6 +2345,34 @@ deploy after a config-only change — loud and recoverable; if the set
 were a subset (render.yaml dropped but semantic changes DO alter the
 artifact), a stale server would pass the gate silently. A recoverable
 loud failure beats an unrecoverable silent pass.
+
+## Known Feature Gaps (recorded, not yet built)
+
+*[Attributed addition 2026-07-12 — recorded per the project owner's
+instruction, source stated per the documentation rule.]*
+
+- **Imaging ordering is not implemented.** Source: identified by the
+  project's clinical validator (the ICU physician) during hands-on
+  testing. Imaging RESULTS are fully built — Labs & Imaging shows
+  Imaging Studies with the status lifecycle, reports, impressions, and
+  acknowledgment — but there is no way to ORDER a new imaging study:
+  the Orders page offers New Medication Order, Order Lab Test, and
+  Order Sets, with no Order Imaging path. A real ICU requires imaging
+  ordering. To build (future): an imaging-order path parallel to the
+  existing lab-order path — an imaging catalogue (modalities/study
+  types), an order draft flowing through the EXISTING order-creation
+  path (never a bypass), and the ordered study appearing in Imaging
+  Studies with status "Ordered".
+  *[Doc-vs-code contradiction FLAGGED for the project owner (per the
+  03 rule — flagged, never silently fixed; the code is untouched by
+  this docs PR): two pre-existing code comments claim the opposite —
+  `src/lib/api/data/results.ts` ("Screen 5 places lab/imaging ORDERS;
+  this store holds what comes back") and `src/lib/api/types.ts`
+  ("Screen 5 (Orders & Medication) places lab/imaging orders …").
+  Those comments are stale on the imaging half — Screen 5 places lab
+  orders only, as this entry records; the existing Layer 4 record
+  corroborates ("Modalities stay a closed union until the
+  imaging-order workflow exists").]*
 
 ## Known Deferred Debt (documented, intentionally not yet unified)
 - `panels.ts` attaches the same VENTILATOR/HEMODYNAMICS/INFUSIONS/
