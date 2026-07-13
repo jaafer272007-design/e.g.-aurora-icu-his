@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -948,13 +948,14 @@ export type AdtWriteResult<T> =
   | { kind: 'rejected'; error: string }
   | { kind: 'offline' }
 
-async function adtPost<T>(path: string, what: string, body?: unknown): Promise<AdtWriteResult<T>> {
+async function adtPost<T>(path: string, what: string, body?: unknown,
+  method: 'POST' | 'PUT' = 'POST'): Promise<AdtWriteResult<T>> {
   if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
     const res = await fetch(`${API_BASE}${path}`, {
-      method: 'POST',
+      method,
       signal: ctrl.signal,
       headers: { ...authHeaders(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -1032,6 +1033,17 @@ export async function getPatientIdentity(patientId: string): Promise<PatientIden
     console.info('[aurora] patient identity API unreachable — no fallback (real-only read)')
   }
   return null
+}
+
+/** PUT /api/icu/adt/patients/:patientId/measurements — Weight & Height
+ *  capture: add when omitted at admission, correct a wrong value —
+ *  amend-not-erase server-side (who/when/prior on the patient's
+ *  measurement history). RBAC patients.measure (doctor/nurse). REAL-ONLY
+ *  write; returns the updated PatientIdentity. */
+export function updatePatientMeasurements(patientId: string, draft: MeasureDraft): Promise<AdtWriteResult<PatientIdentity>> {
+  return adtPost<PatientIdentity>(
+    `/api/icu/adt/patients/${encodeURIComponent(patientId)}/measurements`,
+    'ADT measurements', draft, 'PUT')
 }
 
 /** POST /api/icu/adt/admissions — doctor RBAC (adt.admit). REAL-ONLY write. */

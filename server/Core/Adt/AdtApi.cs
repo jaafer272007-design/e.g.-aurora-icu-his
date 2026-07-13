@@ -82,6 +82,40 @@ static class AdtApi
             return patient is null ? ApiError.NotFound() : Results.Json(patient.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* PUT /api/icu/adt/patients/{patientId}/measurements — Patient
+           Weight & Height Capture: ADD when omitted at admission, CORRECT
+           a wrong value (the 70-vs-07-kg typo) — always amend-not-erase
+           (who/when/prior recorded on the row's measurement history;
+           values are never cleared, only corrected). Units fixed: kg/cm.
+           RBAC patients.measure — BEDSIDE CLINICIAN authority (Doctor /
+           SeniorDoctor / Nurse; the office Administrator and every
+           non-bedside profile are 403). RBAC answers BEFORE the lookup
+           (the generic 403 is no existence oracle).
+           NO EncounterGuard, deliberately: correcting the person-level
+           record is completing/repairing the record of care — not
+           initiating new care — so a discharged patient's wrong weight
+           stays fixable (the same asymmetry as result acknowledgment).
+           FOUR-CODE: absent patient → 404; both fields absent, an
+           out-of-bounds value, or values equal to the record → 400 (a
+           no-change PUT is a malformed request against this resource,
+           the formulary/catalogue "no field change" precedent). */
+        app.MapPut("/api/icu/adt/patients/{patientId}/measurements",
+            (string patientId, MeasureRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "patients.measure") is IResult denied) return denied;
+            if (req.WeightKg is null && req.HeightCm is null)
+                return ApiError.BadRequest("at least one of weightKg or heightCm is required");
+            if (AdtLogic.MeasurementError(req.WeightKg, req.HeightCm) is string mErr)
+                return ApiError.BadRequest(mErr);
+            var patient = db.AdtPatients.FirstOrDefault(p => p.PatientId == patientId);
+            if (patient is null) return ApiError.NotFound();
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            if (!AdtLogic.ApplyMeasurements(patient, req.WeightKg, req.HeightCm, actor, atAdmission: false))
+                return ApiError.BadRequest("no change — the provided values match the recorded weight/height");
+            db.SaveChanges();
+            return Results.Json(patient.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* POST /api/icu/adt/admissions — DOCTOR RBAC (adt.admit). Creates
            the Patient if the MRN is new, opens an Encounter, assigns the
            bed. Every draft field is validated BEFORE anything is written. */
@@ -130,6 +164,10 @@ static class AdtApi
             }
             if (req.Sex is not ("M" or "F"))
                 return ApiError.BadRequest("sex must be one of: M, F");
+            /* Weight & Height capture — OPTIONAL admission fields (kg/cm);
+               bounds-validated when provided, addable later when omitted */
+            if (AdtLogic.MeasurementError(req.WeightKg, req.HeightCm) is string mErr)
+                return ApiError.BadRequest(mErr);
             if (!db.Beds.AsNoTracking().Any(b => b.BedId == req.BedId))
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
             /* FOUR-CODE RULE (state-conflict PR): an occupied bed and a
@@ -190,6 +228,15 @@ static class AdtApi
             }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            /* Weight & Height at admission — applies to the NEW patient and
+               to a RE-ADMITTED one alike: a re-admission that supplies a
+               different weight UPDATES the recorded value WITH an amend
+               event (weight is correctable clinical data whose history is
+               kept — deliberately unlike DOB above, which 409s on
+               contradiction, because weight legitimately changes between
+               admissions while identity does not). Omitted fields never
+               clear a recorded value; an equal value appends nothing. */
+            AdtLogic.ApplyMeasurements(patient, req.WeightKg, req.HeightCm, actor, atAdmission: true);
             var time = DateTime.UtcNow.ToString("HH:mm");
             var enc = new Encounter
             {
@@ -307,5 +354,55 @@ static class AdtLogic
         var events = JsonSerializer.Deserialize<List<AdtEventDto>>(eventsJson, JsonOpts.Web)!;
         events.Add(evt);
         return JsonSerializer.Serialize(events, JsonOpts.Web);
+    }
+
+    /* ---- Weight & Height capture (kg/cm — fixed units) ---- */
+
+    /** shared bounds for BOTH capture paths (admission + the later
+        add/correct): weight 0.5–500 kg, height 30–260 cm — wide enough
+        for any ICU patient, tight enough to reject unit mistakes (a
+        weight in grams, a height in metres). null = not provided (valid:
+        both fields are optional at admission; the PUT endpoint separately
+        requires at least one). */
+    public static string? MeasurementError(double? weightKg, double? heightCm)
+    {
+        if (weightKg is double w && (!double.IsFinite(w) || w is < 0.5 or > 500))
+            return "weightKg must be a number between 0.5 and 500 (kg)";
+        if (heightCm is double h && (!double.IsFinite(h) || h is < 30 or > 260))
+            return "heightCm must be a number between 30 and 260 (cm)";
+        return null;
+    }
+
+    /** applies provided values to the patient row, appending one
+        amend-not-erase history event per CHANGED field (who / when /
+        prior value — the design's traceability rule). An omitted field
+        is untouched; an equal value appends nothing. Returns whether
+        anything changed. Event times carry the date (UTC
+        "yyyy-MM-dd HH:mm") — measurement history spans encounters, like
+        the Layer-3 user audit, unlike the same-shift ADT bedside events. */
+    public static bool ApplyMeasurements(Patient patient, double? weightKg, double? heightCm,
+        string actor, bool atAdmission)
+    {
+        var events = JsonSerializer.Deserialize<List<MeasurementEventDto>>(patient.MeasurementsJson, JsonOpts.Web)!;
+        var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+        var changed = false;
+        if (weightKg is double w && patient.WeightKg != w)
+        {
+            events.Add(new(time, actor, "weight",
+                atAdmission ? "recorded at admission" : patient.WeightKg is null ? "added" : "corrected",
+                patient.WeightKg, w));
+            patient.WeightKg = w;
+            changed = true;
+        }
+        if (heightCm is double h && patient.HeightCm != h)
+        {
+            events.Add(new(time, actor, "height",
+                atAdmission ? "recorded at admission" : patient.HeightCm is null ? "added" : "corrected",
+                patient.HeightCm, h));
+            patient.HeightCm = h;
+            changed = true;
+        }
+        if (changed) patient.MeasurementsJson = JsonSerializer.Serialize(events, JsonOpts.Web);
+        return changed;
     }
 }

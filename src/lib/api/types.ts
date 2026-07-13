@@ -1055,6 +1055,30 @@ export interface PatientIdentity {
   ageSource: 'dateOfBirth' | 'recordedAtAdmission'
   sex: Sex
   allergies: string
+  /** Weight & Height capture — PERSON-LEVEL attributes (kg / cm), NOT
+   *  observations (the validator's decision: ICU patients aren't weighed
+   *  daily — this is the recorded reference weight for dosing/SOFA).
+   *  Absent until captured (the wire omits nulls). BMI/IBW/BSA are NEVER
+   *  on the wire — derived at render (src/lib/anthropometrics.ts) and
+   *  hidden when an input is missing. */
+  weightKg?: number
+  heightCm?: number
+  /** amend-not-erase history — every set/change with who/when/prior;
+   *  absent until the first measurement is recorded */
+  measurements?: MeasurementEvent[]
+}
+
+/** one weight/height history entry (who / when / prior value preserved —
+ *  a value that drives dosing is never silently overwritten) */
+export interface MeasurementEvent {
+  /** UTC "yyyy-MM-dd HH:mm" — spans encounters, so it carries the date */
+  time: string
+  actor: string
+  field: 'weight' | 'height'
+  action: 'recorded at admission' | 'added' | 'corrected'
+  /** the previous value whenever one existed (kg or cm per field) */
+  prior?: number | null
+  value: number
 }
 
 /* ---------- POST /api/icu/adt/admissions ---------- */
@@ -1073,11 +1097,24 @@ export interface AdmitDraft {
   diagnosis: string
   attending: string
   bedId: string
+  /** Weight & Height capture — OPTIONAL at admission (kg / cm); if
+   *  omitted, a clinician adds them later on the patient record */
+  weightKg?: number
+  heightCm?: number
 }
 
 export interface AdmitResponse {
   patient: PatientIdentity
   encounter: Encounter
+}
+
+/* ---------- PUT /api/icu/adt/patients/:patientId/measurements ---------- */
+
+/** add-if-omitted / correct-with-history — at least one field required;
+ *  RBAC patients.measure (doctor/nurse — never office admin) */
+export interface MeasureDraft {
+  weightKg?: number
+  heightCm?: number
 }
 
 /* ================= Layer 3 — User Administration (Aurora Core) =================

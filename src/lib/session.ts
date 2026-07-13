@@ -88,6 +88,7 @@ export type Permission =
   | 'observations.record'  // Stage 11 §4 (F1): chart a bedside observation (any doctor or nurse)
   | 'observations.correct' // Stage 11 §8 (F2): tier-2 retrospective correction (Consultant-tier ONLY — never office admin)
   | 'observations.configure' // Stage 11 §3 (F3): group enablement (same Consultant-tier home)
+  | 'patients.measure'     // Weight & Height capture: record/correct the reference weight & height (any doctor or nurse — never office admin)
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -98,7 +99,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'results.document', 'notes.document', 'ai.view',
-    'adt.admit', 'adt.discharge', 'observations.record',
+    'adt.admit', 'adt.discharge', 'observations.record', 'patients.measure',
   ],
   /* Stage 11 F4: Doctor's SUPERSET + the Consultant-tier observation
      authorities (correct/configure). HARD CONSTRAINT: these never sit
@@ -113,7 +114,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'results.acknowledge', 'results.document', 'results.correct',
     'labcatalog.manage', 'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record',
-    'observations.correct', 'observations.configure',
+    'observations.correct', 'observations.configure', 'patients.measure',
   ],
   /* administer + document only — cannot originate orders (locked decision).
      results.document (Lab Result-Entry): the ICU bedside team transcribes
@@ -122,7 +123,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   Nurse: [
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
     'notes.document', 'results.view', 'results.document', 'ai.view', 'adt.transfer',
-    'observations.record',
+    'observations.record', 'patients.measure',
   ],
   /* administrative landing view + census-level board + user administration */
   Administrator: ['admin.view', 'patients.view', 'users.manage'],
