@@ -4,14 +4,15 @@
      clinical validator). This file is the permanent versioned artifact for the
      specification — per the project rule that specs never live only in memory
      or conversation. Built from this design (see 02_PROJECT_STATUS "Patient
-     Weight & Height Capture (built)"), with ONE flagged modelling resolution:
-     open item #1 said "patient/encounter record" — resolved to the PATIENT
-     (person-level) row per the design's own §0 ("a patient attribute … simply
-     the patient's recorded weight"; height is inherently person-level), with a
-     re-admission that supplies a different weight UPDATING the value WITH an
-     amend event (weight is correctable clinical data, deliberately unlike DOB
-     which 409s on contradiction); an encounter-scoped reference weight is the
-     recorded alternative. Open item #2 resolved as: units FIXED kg/cm; IBW =
+     Weight & Height Capture (built)"). Open item #1 said "patient/encounter
+     record" — the choice was FLAGGED (initially resolved patient-level with
+     the encounter-scoped alternative recorded) and the PROJECT OWNER DECIDED
+     ENCOUNTER-SCOPED before merge: each admission keeps ITS OWN weight/height
+     (a patient re-admitted a year later may genuinely differ), a re-admission
+     STARTS FRESH — never inherits, never overwrites a prior admission's
+     values — and corrections are audited amend-not-erase WITHIN the
+     encounter. DateOfBirth stays person-level identity (age already computes
+     at read, correctly per-time). Open item #2 resolved as: units FIXED kg/cm; IBW =
      DEVINE (1974), computed only within its ≥152.4 cm domain; BSA = Mosteller;
      BMI = kg/m². Deferred per §6: serial/daily weight as an observation, and
      the SOFA cardiovascular consumers (structured vasopressor dose + current

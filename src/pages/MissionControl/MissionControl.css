@@ -267,3 +267,4 @@
 .mc .whev s{color:var(--faint)}
 .mc .whev b{color:var(--text)}
 .mc .whev i{color:var(--faint);font-style:italic;font-size:9.5px}
+.mc .whscope{font-size:9.5px;color:var(--faint);margin-top:8px;letter-spacing:.2px}

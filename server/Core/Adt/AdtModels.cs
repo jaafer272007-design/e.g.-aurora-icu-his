@@ -39,41 +39,17 @@ class Patient
     public string? DateOfBirth { get; set; }
     public string Sex { get; set; } = "";
     public string Allergies { get; set; } = "";
-    /* WEIGHT & HEIGHT (Patient Weight & Height Capture — the clinical
-       validator's design): PERSON-LEVEL attributes, not observations —
-       ICU patients are not weighed daily, so this is the patient's
-       recorded reference weight (dosing, SOFA µg/kg/min), captured at
-       admission and addable/correctable later. Units are FIXED: kg / cm.
-       FLAGGED MODELLING RESOLUTION (design open item #1 said "patient/
-       encounter"): the fields sit on the PATIENT row — the design's own
-       §0 calls weight "a patient attribute … simply the patient's
-       recorded weight", and height is inherently person-level. A
-       re-admission that supplies a different weight UPDATES it with an
-       amend event (weight is correctable clinical data — deliberately
-       unlike DateOfBirth above, which 409s, because a patient's weight
-       legitimately changes between admissions while identity does not).
-       Encounter-scoped reference weight is the recorded alternative.
-       MeasurementsJson is the amend-not-erase history: every set/change
-       records who, when (UTC "yyyy-MM-dd HH:mm" — spans encounters, so
-       it carries the date like the Layer-3 user audit), and the prior
-       value. Values are never cleared — only corrected. */
-    public double? WeightKg { get; set; }
-    public double? HeightCm { get; set; }
-    public string MeasurementsJson { get; set; } = "[]";
 
     /* THE canonical identity resolver (the no-fork rule): the roster
        projection, the admissions response, and GET /adt/patients/{id}
        all serve identity through THIS method — one source of truth,
-       several entry points, never a parallel assembly of these fields. */
+       several entry points, never a parallel assembly of these fields.
+       Weight/height are deliberately NOT here — they are ENCOUNTER
+       attributes (see Encounter below, the project owner's decision). */
     public PatientDto ToDto()
     {
         var (age, source) = ResolveAge();
-        var measurements = JsonSerializer.Deserialize<List<MeasurementEventDto>>(MeasurementsJson, JsonOpts.Web)!;
-        return new(PatientId, Mrn, Name, DateOfBirth, age, source, Sex, Allergies,
-            WeightKg, HeightCm,
-            /* empty history serves as ABSENT (WhenWritingNull) — rows
-               without measurements keep their pre-feature wire bytes */
-            measurements.Count == 0 ? null : measurements);
+        return new(PatientId, Mrn, Name, DateOfBirth, age, source, Sex, Allergies);
     }
 
     (int Age, string Source) ResolveAge()
@@ -105,14 +81,42 @@ class Encounter
     public string? DischargedAt { get; set; }
     public string? DischargedBy { get; set; }
     public string EventsJson { get; set; } = "[]";
+    /* WEIGHT & HEIGHT (Patient Weight & Height Capture — the clinical
+       validator's design): ENCOUNTER-SCOPED attributes, not observations —
+       ICU patients are not weighed daily, so this is THE ADMISSION's
+       recorded reference weight (dosing, SOFA µg/kg/min), captured at
+       admission and addable/correctable later within the encounter.
+       Units are FIXED: kg / cm.
+       MODELLING (design open item #1, decided by the project owner on
+       the flagged choice): each admission keeps ITS OWN weight/height —
+       a patient re-admitted a year later may genuinely differ, so a new
+       encounter STARTS FRESH (never inherits, never overwrites a prior
+       admission's values). DateOfBirth stays person-level identity (age
+       already computes at read, correctly per-time); weight/height are
+       per-episode clinical data.
+       MeasurementsJson is the amend-not-erase history WITHIN this
+       encounter: every set/change records who, when (UTC
+       "yyyy-MM-dd HH:mm" — dated like the Layer-3 user audit), and the
+       prior value. Values are never cleared — only corrected. */
+    public double? WeightKg { get; set; }
+    public double? HeightCm { get; set; }
+    public string MeasurementsJson { get; set; } = "[]";
 
     /* patientName is a denormalized DISPLAY snapshot supplied by the caller
        (same precedent as orders' name/bed snapshots) — identity is never
        redefined here */
-    public EncounterDto ToDto(string patientName) => new(
-        EncounterId, PatientId, patientName, BedId, Diagnosis, Attending, Status,
-        AdmittedAt, AdmittedBy, DischargedAt, DischargedBy,
-        JsonSerializer.Deserialize<List<AdtEventDto>>(EventsJson, JsonOpts.Web)!);
+    public EncounterDto ToDto(string patientName)
+    {
+        var measurements = JsonSerializer.Deserialize<List<MeasurementEventDto>>(MeasurementsJson, JsonOpts.Web)!;
+        return new(
+            EncounterId, PatientId, patientName, BedId, Diagnosis, Attending, Status,
+            AdmittedAt, AdmittedBy, DischargedAt, DischargedBy,
+            JsonSerializer.Deserialize<List<AdtEventDto>>(EventsJson, JsonOpts.Web)!,
+            WeightKg, HeightCm,
+            /* empty history serves as ABSENT (WhenWritingNull) — rows
+               without measurements keep their pre-feature wire bytes */
+            measurements.Count == 0 ? null : measurements);
+    }
 }
 
 /* a bed is a PLACE — occupancy is derived from open encounters at read
@@ -129,32 +133,33 @@ class BedRow
 /* wire contracts. PatientDto: dateOfBirth is null on legacy rows (never
    fabricated); age is computed-at-read when dateOfBirth exists, else the
    admission-era recorded value; ageSource names which
-   ("dateOfBirth" | "recordedAtAdmission").
-   weightKg/heightCm/measurements are the Weight & Height capture —
-   ADDITIVE nullable tail (WhenWritingNull: rows without them keep their
-   pre-feature wire bytes). BMI/IBW/BSA are NEVER served — they are
-   derived at render from weight+height (the derived-values discipline:
-   Net Balance, GCS Total), and never shown when an input is missing. */
+   ("dateOfBirth" | "recordedAtAdmission"). */
 record PatientDto(
     string PatientId, string Mrn, string Name, string? DateOfBirth, int Age,
-    string AgeSource, string Sex, string Allergies,
-    double? WeightKg = null, double? HeightCm = null,
-    List<MeasurementEventDto>? Measurements = null);
+    string AgeSource, string Sex, string Allergies);
 
 /* one amend-not-erase history entry for a weight/height set/change:
    field "weight" | "height"; action "recorded at admission" | "added" |
    "corrected"; prior carries the PREVIOUS value whenever one existed
-   (the design's who/when/prior rule — a value that drives dosing is
-   never silently overwritten). */
+   within the encounter (the design's who/when/prior rule — a value that
+   drives dosing is never silently overwritten). */
 record MeasurementEventDto(
     string Time, string Actor, string Field, string Action, double? Prior, double Value);
 
 record AdtEventDto(string Time, string Actor, string Action, string? Detail);
 
+/* weightKg/heightCm/measurements are the Weight & Height capture —
+   ENCOUNTER-SCOPED, ADDITIVE nullable tail (WhenWritingNull: encounters
+   without them keep their pre-feature wire bytes). BMI/IBW/BSA are NEVER
+   served — they are derived at render from weight+height (the
+   derived-values discipline: Net Balance, GCS Total), and never shown
+   when an input is missing. */
 record EncounterDto(
     string EncounterId, string PatientId, string PatientName, string BedId, string Diagnosis,
     string Attending, string Status, string AdmittedAt, string AdmittedBy, string? DischargedAt,
-    string? DischargedBy, List<AdtEventDto> Events);
+    string? DischargedBy, List<AdtEventDto> Events,
+    double? WeightKg = null, double? HeightCm = null,
+    List<MeasurementEventDto>? Measurements = null);
 
 /* bed registry row incl. derived occupancy — feeds the admission form's
    free-bed picker, transfer target picker, and the bed board layout */
@@ -175,7 +180,8 @@ record AdmitRequest(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record TransferRequest(string? BedId);
 
-/* PUT /adt/patients/{id}/measurements — add-if-omitted / correct-with-
-   history; at least one field required (server-validated) */
+/* PUT /adt/encounters/{id}/measurements — add-if-omitted / correct-with-
+   history within the encounter; at least one field required
+   (server-validated) */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record MeasureRequest(double? WeightKg, double? HeightCm);

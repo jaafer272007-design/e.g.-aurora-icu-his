@@ -1,29 +1,34 @@
 import { useEffect, useState } from 'react'
 import { Card } from '../../components/Card'
-import { getPatientIdentity, updatePatientMeasurements } from '../../lib/api'
-import type { PatientIdentity } from '../../lib/api/types'
+import { getEncounters, getPatientIdentity, updateEncounterMeasurements } from '../../lib/api'
+import type { Encounter, Sex } from '../../lib/api/types'
 import { bmi, bsaMostellerM2, ibwDevineKg } from '../../lib/anthropometrics'
 import { getSession, hasPermission } from '../../lib/session'
 
-/** Patient Weight & Height (the clinical validator's design) — PERSON-LEVEL
- *  attributes on the patient record, NOT observations: ICU patients aren't
- *  weighed daily, so this is the recorded reference weight (kg) / height
- *  (cm) used for dosing and SOFA (µg/kg/min). Captured at admission,
- *  addable here when omitted, correctable here with amend-not-erase
- *  history (who/when/prior — a value that drives dosing is never silently
- *  overwritten). BMI / IBW (Devine) / BSA (Mosteller) are DERIVED AT
- *  RENDER from weight+height and hidden while an input is missing —
- *  honest-data, no fabricated BMI.
+/** Patient Weight & Height (the clinical validator's design) —
+ *  ENCOUNTER-SCOPED attributes (the project owner's decision on the
+ *  flagged modelling choice), NOT observations: ICU patients aren't
+ *  weighed daily, so this is THIS ADMISSION's recorded reference weight
+ *  (kg) / height (cm) for dosing and SOFA (µg/kg/min). Each admission
+ *  keeps its own values — a re-admission starts fresh, never inheriting
+ *  or overwriting a prior episode's. Captured at admission, addable here
+ *  when omitted, correctable here with amend-not-erase history within
+ *  the encounter (who/when/prior — a value that drives dosing is never
+ *  silently overwritten). BMI / IBW (Devine) / BSA (Mosteller) are
+ *  DERIVED AT RENDER from the encounter's weight+height and hidden while
+ *  an input is missing — honest-data, no fabricated BMI.
  *
- *  Reads the REAL patient-identity endpoint (real-only, like the print
- *  selectors): in pure mock/offline mode the card renders nothing — there
- *  is no mock store behind this domain, and inventing one would fabricate
- *  clinical data. */
+ *  Gated on the REAL patient-identity read (real-only, like the print
+ *  selectors — it also supplies the sex Devine needs): in pure
+ *  mock/offline mode the card renders nothing — there is no mock store
+ *  behind this domain, and inventing one would fabricate clinical data.
+ *  The measurements themselves come from the patient's OPEN encounter. */
 export function WeightHeightCard({ patientId }: { patientId: string }) {
   const session = getSession()
   const canMeasure = session != null && hasPermission(session.jobTitle, 'patients.measure')
 
-  const [identity, setIdentity] = useState<PatientIdentity | null>(null)
+  const [sex, setSex] = useState<Sex | null>(null)
+  const [enc, setEnc] = useState<Encounter | null>(null)
   const [editing, setEditing] = useState(false)
   const [wInput, setWInput] = useState('')
   const [hInput, setHInput] = useState('')
@@ -33,53 +38,62 @@ export function WeightHeightCard({ patientId }: { patientId: string }) {
 
   useEffect(() => {
     let stale = false
-    setIdentity(null)
+    setSex(null)
+    setEnc(null)
     setEditing(false)
     setShowHistory(false)
     setErr(null)
     if (!patientId) return
-    getPatientIdentity(patientId).then(p => { if (!stale) setIdentity(p) })
+    /* identity is the real-server gate + the sex for Devine; the open
+       encounter carries this admission's measurements */
+    getPatientIdentity(patientId).then(p => {
+      if (stale || !p) return
+      setSex(p.sex)
+      getEncounters({ patientId, status: 'open' })
+        .then(list => { if (!stale) setEnc(list[0] ?? null) })
+        .catch(() => {})
+    })
     return () => { stale = true }
   }, [patientId])
 
-  if (!identity) return null
+  if (!sex || !enc) return null
 
-  const derivedBmi = bmi(identity.weightKg, identity.heightCm)
-  const derivedIbw = ibwDevineKg(identity.sex, identity.heightCm)
-  const derivedBsa = bsaMostellerM2(identity.weightKg, identity.heightCm)
-  const history = identity.measurements ?? []
-  const hasAny = identity.weightKg != null || identity.heightCm != null
+  const derivedBmi = bmi(enc.weightKg, enc.heightCm)
+  const derivedIbw = ibwDevineKg(sex, enc.heightCm)
+  const derivedBsa = bsaMostellerM2(enc.weightKg, enc.heightCm)
+  const history = enc.measurements ?? []
+  const hasAny = enc.weightKg != null || enc.heightCm != null
 
   function openEditor() {
-    setWInput(identity?.weightKg != null ? String(identity.weightKg) : '')
-    setHInput(identity?.heightCm != null ? String(identity.heightCm) : '')
+    setWInput(enc?.weightKg != null ? String(enc.weightKg) : '')
+    setHInput(enc?.heightCm != null ? String(enc.heightCm) : '')
     setErr(null)
     setEditing(true)
   }
 
   async function save() {
-    if (!identity) return
+    if (!enc) return
     setErr(null)
     const draft: { weightKg?: number; heightCm?: number } = {}
     if (wInput.trim()) {
       const w = Number(wInput)
       if (!Number.isFinite(w) || w < 0.5 || w > 500) { setErr('Weight must be a number between 0.5 and 500 kg'); return }
-      if (w !== identity.weightKg) draft.weightKg = w
+      if (w !== enc.weightKg) draft.weightKg = w
     }
     if (hInput.trim()) {
       const h = Number(hInput)
       if (!Number.isFinite(h) || h < 30 || h > 260) { setErr('Height must be a number between 30 and 260 cm'); return }
-      if (h !== identity.heightCm) draft.heightCm = h
+      if (h !== enc.heightCm) draft.heightCm = h
     }
     if (draft.weightKg == null && draft.heightCm == null) {
-      setErr('Nothing to save — the values match the recorded weight/height')
+      setErr("Nothing to save — the values match this encounter's recorded weight/height")
       return
     }
     setBusy(true)
-    const res = await updatePatientMeasurements(identity.patientId, draft)
+    const res = await updateEncounterMeasurements(enc.encounterId, draft)
     setBusy(false)
     if (res.kind === 'ok') {
-      setIdentity(res.data)
+      setEnc(res.data)
       setEditing(false)
       setShowHistory(true)
     } else if (res.kind === 'rejected') {
@@ -99,14 +113,19 @@ export function WeightHeightCard({ patientId }: { patientId: string }) {
       title="Weight & Height"
       aside={canMeasure
         ? <button className="whedit" onClick={() => (editing ? setEditing(false) : openEditor())}>{editing ? 'Cancel' : hasAny ? '✎ Correct' : '+ Add'}</button>
-        : 'reference values · kg / cm'}
+        : 'this admission · kg / cm'}
     >
       <div className="whvals">
-        <div className="whv"><span className="k">Weight</span>{val(identity.weightKg, 'kg')}</div>
-        <div className="whv"><span className="k">Height</span>{val(identity.heightCm, 'cm')}</div>
+        <div className="whv"><span className="k">Weight</span>{val(enc.weightKg, 'kg')}</div>
+        <div className="whv"><span className="k">Height</span>{val(enc.heightCm, 'cm')}</div>
         <div className="whv"><span className="k">BMI</span>{derivedBmi != null ? <b className="num">{derivedBmi} <i>kg/m²</i></b> : <span className="whmissing">—</span>}</div>
         <div className="whv"><span className="k">IBW · Devine</span>{derivedIbw != null ? <b className="num">{derivedIbw} <i>kg</i></b> : <span className="whmissing">—</span>}</div>
         <div className="whv"><span className="k">BSA · Mosteller</span>{derivedBsa != null ? <b className="num">{derivedBsa} <i>m²</i></b> : <span className="whmissing">—</span>}</div>
+      </div>
+
+      <div className="whscope">
+        Recorded for THIS admission ({enc.encounterId}) — each encounter keeps its own
+        weight/height; a re-admission starts fresh.
       </div>
 
       {(derivedBmi == null || derivedBsa == null) && (

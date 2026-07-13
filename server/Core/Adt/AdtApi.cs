@@ -82,38 +82,44 @@ static class AdtApi
             return patient is null ? ApiError.NotFound() : Results.Json(patient.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* PUT /api/icu/adt/patients/{patientId}/measurements — Patient
-           Weight & Height Capture: ADD when omitted at admission, CORRECT
-           a wrong value (the 70-vs-07-kg typo) — always amend-not-erase
-           (who/when/prior recorded on the row's measurement history;
-           values are never cleared, only corrected). Units fixed: kg/cm.
+        /* PUT /api/icu/adt/encounters/{encounterId}/measurements — Patient
+           Weight & Height Capture, ENCOUNTER-SCOPED (the project owner's
+           decision): ADD when omitted at admission, CORRECT a wrong value
+           (the 70-vs-07-kg typo) — always amend-not-erase (who/when/prior
+           recorded on THIS encounter's measurement history; values are
+           never cleared, only corrected). Each admission keeps its own
+           values — this endpoint never touches another encounter's.
+           Units fixed: kg/cm.
            RBAC patients.measure — BEDSIDE CLINICIAN authority (Doctor /
            SeniorDoctor / Nurse; the office Administrator and every
            non-bedside profile are 403). RBAC answers BEFORE the lookup
            (the generic 403 is no existence oracle).
-           NO EncounterGuard, deliberately: correcting the person-level
-           record is completing/repairing the record of care — not
-           initiating new care — so a discharged patient's wrong weight
-           stays fixable (the same asymmetry as result acknowledgment).
-           FOUR-CODE: absent patient → 404; both fields absent, an
+           NO closed-encounter 409, deliberately: correcting the episode's
+           recorded weight is completing/repairing the record of care —
+           not initiating new care — so a DISCHARGED encounter's wrong
+           weight stays fixable (the same asymmetry as result
+           acknowledgment; the state machine only blocks transitions that
+           initiate care).
+           FOUR-CODE: absent encounter → 404; both fields absent, an
            out-of-bounds value, or values equal to the record → 400 (a
            no-change PUT is a malformed request against this resource,
            the formulary/catalogue "no field change" precedent). */
-        app.MapPut("/api/icu/adt/patients/{patientId}/measurements",
-            (string patientId, MeasureRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        app.MapPut("/api/icu/adt/encounters/{encounterId}/measurements",
+            (string encounterId, MeasureRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "patients.measure") is IResult denied) return denied;
             if (req.WeightKg is null && req.HeightCm is null)
                 return ApiError.BadRequest("at least one of weightKg or heightCm is required");
             if (AdtLogic.MeasurementError(req.WeightKg, req.HeightCm) is string mErr)
                 return ApiError.BadRequest(mErr);
-            var patient = db.AdtPatients.FirstOrDefault(p => p.PatientId == patientId);
-            if (patient is null) return ApiError.NotFound();
+            var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
+            if (enc is null) return ApiError.NotFound();
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            if (!AdtLogic.ApplyMeasurements(patient, req.WeightKg, req.HeightCm, actor, atAdmission: false))
-                return ApiError.BadRequest("no change — the provided values match the recorded weight/height");
+            if (!AdtLogic.ApplyMeasurements(enc, req.WeightKg, req.HeightCm, actor, atAdmission: false))
+                return ApiError.BadRequest("no change — the provided values match the encounter's recorded weight/height");
             db.SaveChanges();
-            return Results.Json(patient.ToDto(), JsonOpts.Web);
+            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).Name;
+            return Results.Json(enc.ToDto(name), JsonOpts.Web);
         }).RequireAuthorization();
 
         /* POST /api/icu/adt/admissions — DOCTOR RBAC (adt.admit). Creates
@@ -228,15 +234,6 @@ static class AdtApi
             }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            /* Weight & Height at admission — applies to the NEW patient and
-               to a RE-ADMITTED one alike: a re-admission that supplies a
-               different weight UPDATES the recorded value WITH an amend
-               event (weight is correctable clinical data whose history is
-               kept — deliberately unlike DOB above, which 409s on
-               contradiction, because weight legitimately changes between
-               admissions while identity does not). Omitted fields never
-               clear a recorded value; an equal value appends nothing. */
-            AdtLogic.ApplyMeasurements(patient, req.WeightKg, req.HeightCm, actor, atAdmission: true);
             var time = DateTime.UtcNow.ToString("HH:mm");
             var enc = new Encounter
             {
@@ -247,6 +244,15 @@ static class AdtApi
                 EventsJson = JsonSerializer.Serialize(
                     new List<AdtEventDto> { new(time, actor, "admitted", $"to {req.BedId}") }, JsonOpts.Web),
             };
+            /* Weight & Height at admission — ENCOUNTER-SCOPED (the project
+               owner's decision on the flagged modelling choice): the values
+               land on THIS admission's encounter. A re-admission therefore
+               STARTS FRESH — it never inherits and never overwrites a prior
+               admission's recorded weight/height (a patient re-admitted a
+               year later may genuinely differ; each episode keeps its own).
+               DateOfBirth above stays person-level identity — age already
+               computes at read, correctly per-time. */
+            AdtLogic.ApplyMeasurements(enc, req.WeightKg, req.HeightCm, actor, atAdmission: true);
             db.Encounters.Add(enc);
             db.SaveChanges();
             return Results.Json(new { patient = patient.ToDto(), encounter = enc.ToDto(patient.Name) }, JsonOpts.Web);
@@ -373,36 +379,37 @@ static class AdtLogic
         return null;
     }
 
-    /** applies provided values to the patient row, appending one
+    /** applies provided values to the ENCOUNTER row, appending one
         amend-not-erase history event per CHANGED field (who / when /
         prior value — the design's traceability rule). An omitted field
         is untouched; an equal value appends nothing. Returns whether
         anything changed. Event times carry the date (UTC
-        "yyyy-MM-dd HH:mm") — measurement history spans encounters, like
-        the Layer-3 user audit, unlike the same-shift ADT bedside events. */
-    public static bool ApplyMeasurements(Patient patient, double? weightKg, double? heightCm,
+        "yyyy-MM-dd HH:mm") — a correction can land days after admission,
+        so the audit stamp is dated like the Layer-3 user audit, unlike
+        the same-shift ADT bedside events. */
+    public static bool ApplyMeasurements(Encounter enc, double? weightKg, double? heightCm,
         string actor, bool atAdmission)
     {
-        var events = JsonSerializer.Deserialize<List<MeasurementEventDto>>(patient.MeasurementsJson, JsonOpts.Web)!;
+        var events = JsonSerializer.Deserialize<List<MeasurementEventDto>>(enc.MeasurementsJson, JsonOpts.Web)!;
         var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
         var changed = false;
-        if (weightKg is double w && patient.WeightKg != w)
+        if (weightKg is double w && enc.WeightKg != w)
         {
             events.Add(new(time, actor, "weight",
-                atAdmission ? "recorded at admission" : patient.WeightKg is null ? "added" : "corrected",
-                patient.WeightKg, w));
-            patient.WeightKg = w;
+                atAdmission ? "recorded at admission" : enc.WeightKg is null ? "added" : "corrected",
+                enc.WeightKg, w));
+            enc.WeightKg = w;
             changed = true;
         }
-        if (heightCm is double h && patient.HeightCm != h)
+        if (heightCm is double h && enc.HeightCm != h)
         {
             events.Add(new(time, actor, "height",
-                atAdmission ? "recorded at admission" : patient.HeightCm is null ? "added" : "corrected",
-                patient.HeightCm, h));
-            patient.HeightCm = h;
+                atAdmission ? "recorded at admission" : enc.HeightCm is null ? "added" : "corrected",
+                enc.HeightCm, h));
+            enc.HeightCm = h;
             changed = true;
         }
-        if (changed) patient.MeasurementsJson = JsonSerializer.Serialize(events, JsonOpts.Web);
+        if (changed) enc.MeasurementsJson = JsonSerializer.Serialize(events, JsonOpts.Web);
         return changed;
     }
 }

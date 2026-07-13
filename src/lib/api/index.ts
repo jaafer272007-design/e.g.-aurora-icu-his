@@ -1035,14 +1035,15 @@ export async function getPatientIdentity(patientId: string): Promise<PatientIden
   return null
 }
 
-/** PUT /api/icu/adt/patients/:patientId/measurements — Weight & Height
- *  capture: add when omitted at admission, correct a wrong value —
- *  amend-not-erase server-side (who/when/prior on the patient's
- *  measurement history). RBAC patients.measure (doctor/nurse). REAL-ONLY
- *  write; returns the updated PatientIdentity. */
-export function updatePatientMeasurements(patientId: string, draft: MeasureDraft): Promise<AdtWriteResult<PatientIdentity>> {
-  return adtPost<PatientIdentity>(
-    `/api/icu/adt/patients/${encodeURIComponent(patientId)}/measurements`,
+/** PUT /api/icu/adt/encounters/:encounterId/measurements — Weight & Height
+ *  capture, ENCOUNTER-SCOPED: add when omitted at admission, correct a
+ *  wrong value — amend-not-erase server-side (who/when/prior on THIS
+ *  encounter's measurement history; other admissions' values are never
+ *  touched). RBAC patients.measure (doctor/nurse). REAL-ONLY write;
+ *  returns the updated Encounter. */
+export function updateEncounterMeasurements(encounterId: string, draft: MeasureDraft): Promise<AdtWriteResult<Encounter>> {
+  return adtPost<Encounter>(
+    `/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/measurements`,
     'ADT measurements', draft, 'PUT')
 }
 

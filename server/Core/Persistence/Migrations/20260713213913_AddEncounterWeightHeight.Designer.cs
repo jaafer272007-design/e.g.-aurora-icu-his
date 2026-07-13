@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AuroraIcu.Api.Core.Persistence.Migrations
 {
     [DbContext(typeof(AuroraDb))]
-    [Migration("20260713202855_AddPatientWeightHeight")]
-    partial class AddPatientWeightHeight
+    [Migration("20260713213913_AddEncounterWeightHeight")]
+    partial class AddEncounterWeightHeight
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -79,6 +79,13 @@ namespace AuroraIcu.Api.Core.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<double?>("HeightCm")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("MeasurementsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("PatientId")
                         .IsRequired()
                         .HasColumnType("text")
@@ -87,6 +94,9 @@ namespace AuroraIcu.Api.Core.Persistence.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<double?>("WeightKg")
+                        .HasColumnType("double precision");
 
                     b.HasKey("EncounterId");
 
@@ -109,13 +119,6 @@ namespace AuroraIcu.Api.Core.Persistence.Migrations
                     b.Property<string>("DateOfBirth")
                         .HasColumnType("text");
 
-                    b.Property<double?>("HeightCm")
-                        .HasColumnType("double precision");
-
-                    b.Property<string>("MeasurementsJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("Mrn")
                         .IsRequired()
                         .HasColumnType("text");
@@ -127,9 +130,6 @@ namespace AuroraIcu.Api.Core.Persistence.Migrations
                     b.Property<string>("Sex")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<double?>("WeightKg")
-                        .HasColumnType("double precision");
 
                     b.HasKey("PatientId");
 

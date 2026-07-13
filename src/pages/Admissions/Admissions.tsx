@@ -45,7 +45,9 @@ export function Admissions() {
   /* Weight & Height capture (kg/cm) — OPTIONAL at admission by design:
      if omitted, a clinician adds them later on the patient record
      (Mission Control), so a hectic admission is never blocked on a
-     scale. Values are person-level attributes, not observations. */
+     scale. ENCOUNTER-SCOPED (the owner's decision): the values land on
+     THIS admission's encounter — a re-admission starts fresh, never
+     inheriting or overwriting a prior episode's. Not observations. */
   const [weight, setWeight] = useState('')
   const [height, setHeight] = useState('')
 

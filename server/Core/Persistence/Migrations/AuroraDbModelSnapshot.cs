@@ -76,6 +76,13 @@ namespace Aurora.Core.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<double?>("HeightCm")
+                        .HasColumnType("double precision");
+
+                    b.Property<string>("MeasurementsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("PatientId")
                         .IsRequired()
                         .HasColumnType("text")
@@ -84,6 +91,9 @@ namespace Aurora.Core.Persistence.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<double?>("WeightKg")
+                        .HasColumnType("double precision");
 
                     b.HasKey("EncounterId");
 
@@ -106,13 +116,6 @@ namespace Aurora.Core.Persistence.Migrations
                     b.Property<string>("DateOfBirth")
                         .HasColumnType("text");
 
-                    b.Property<double?>("HeightCm")
-                        .HasColumnType("double precision");
-
-                    b.Property<string>("MeasurementsJson")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("Mrn")
                         .IsRequired()
                         .HasColumnType("text");
@@ -124,9 +127,6 @@ namespace Aurora.Core.Persistence.Migrations
                     b.Property<string>("Sex")
                         .IsRequired()
                         .HasColumnType("text");
-
-                    b.Property<double?>("WeightKg")
-                        .HasColumnType("double precision");
 
                     b.HasKey("PatientId");
 
