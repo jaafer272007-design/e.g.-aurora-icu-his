@@ -54,12 +54,17 @@ export function PrintDocument() {
   const T = template.Component
   return (
     <div className="print-screen">
+      {/* ADAPTIVE orientation (Stage 11, design P1): a landscape template
+          overrides the global @page — the registry's orientation field is
+          the layout-driving fact the future Print Center Engine (P2) will
+          expose as a user setting. */}
+      {template.orientation === 'landscape' && <style>{'@page { size: A4 landscape; }'}</style>}
       <div className="print-toolbar">
         <button className="pt-btn" onClick={() => navigate('/print')}>← Print Center</button>
         <span className="pt-title">{template.title} · {patientId}</span>
         <button className="pt-btn pt-primary" onClick={() => window.print()}>Print / Save as PDF</button>
       </div>
-      <div className="print-page">
+      <div className={`print-page${template.orientation === 'landscape' ? ' landscape' : ''}`}>
         <PrintLayout
           title={template.title}
           context={state.context}

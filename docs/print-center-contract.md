@@ -25,19 +25,37 @@ binding rendering architecture every template must follow is in
 | 9 | **Transfer / Referral Summary** | For moving the patient to another unit or hospital | implemented (`transfer-summary`) |
 | 10 | **Discharge Summary** | Final discharge summary | implemented (`discharge-summary`, Phase 1) |
 
-## Deferred to Stage 11 (3) — depend on the real Observation Model
+## Stage 11 templates (3) — IMPLEMENTED (2026-07-13)
 
-| # | Document | Why deferred |
-|---|----------|--------------|
-| 11 | **Medication Administration Record (MAR)** | Depends on actual dose-administration data — the printed MAR is a legal administration record and must render real administrations, which the Stage 11 Observation model owns |
-| 12 | **Vital Signs / Observation Flowsheet** | Temp, BP, HR, RR, etc. over time — depends on the Observation model (the current bedside snapshot is a single point-in-time roster view; a flowsheet without stored observations would be fabrication) |
-| 13 | **Ventilator & Device Report** | Ventilator, infusion pumps, hemodynamics, devices — device data arrives with Stage 11 device integration; the placeholder `panels.ts` data is never printed (locked rule) |
+*[Contract update, source: the owner's Stage 11 print-templates design
+document (`docs/design/stage11-print-templates.md`, recorded with this
+build) — the Observation model (§12 steps 1–4) and the persisted
+administration record these documents depend on now exist. The
+implemented set is complete: 13 of 13 contract documents plus the
+retained Admission Note.]*
+
+| # | Document | Content intent | Status |
+|---|----------|----------------|--------|
+| 11 | **Medication Administration Record (MAR)** | Doses ADMINISTERED (distinct from ordered): each medication's own scheduled slots; cells carry given/held/refused, actual time, administering nurse, reason when not given — all from the persisted administration events on the orders (shape verified before building) | implemented (`mar`) |
+| 12 | **Vital Signs / Observation Flowsheet** | 24 h of charted observations as an hourly grid — the traditional split (Vital Signs + Neurological Assessment + Fluid Balance; ventilator detail lives on #13); derived rows (GCS Total, Total I/O, Net Balance) compute per column at render; ADAPTIVE landscape layout | implemented (`vitals-flowsheet`) |
+| 13 | **Ventilator & Device Report** | Current ventilator SNAPSHOT from the latest charted settings (derived Driving Pressure; Minute Ventilation charted-or-computed, labelled); device sections (pumps/ECMO/CRRT/ICP) laid out now, honestly empty until device observations exist | implemented (`ventilator-device-report`) |
 
 ## Future Extensions (noted, not scheduled)
 
 - **Medication Reconciliation** — deferred by clinical decision: most
   relevant at admission/discharge/transfer; may become its own document
   or fold into the Discharge Summary in a later contract version.
+- **Print Center Engine** (recorded 2026-07-13, design P2 — the
+  validator's vision): Print Center as an ENGINE with templates as
+  layouts — an interactive print preview where the user sets paper size
+  (A4/Letter/Legal), orientation, margins, font size, section toggles
+  (QR/signature/logo), and the flowsheet's columns/time-window, then
+  prints or saves PDF. A distinct, substantial future feature —
+  deliberately NOT built with the Stage 11 templates; they are built as
+  adaptive layouts (orientation/pagination driven by data; layout knobs
+  isolated) so the engine can wrap them later without rework. To be
+  designed in its own session. Also recorded in `02` under Known
+  Feature Gaps.
 
 ## Reconciliation with Phase 1 (recorded 2026-07-12)
 

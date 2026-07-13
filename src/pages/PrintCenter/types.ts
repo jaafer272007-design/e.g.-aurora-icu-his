@@ -204,3 +204,119 @@ export interface TransferSummaryData {
   latestLabs: LabDraw[]
   adtEvents: Encounter['events']
 }
+
+/* ==================== Stage 11 print templates (contract #12/#13/#11) ====================
+   These three consume the REAL Observation/administration record (the
+   Stage 11 chart-read path and the orders' persisted administrations) —
+   never panels.ts, never the live formulary. All values render as
+   persisted; derived values compute at render (never stored); missing →
+   an honest dash. ADAPTIVE LAYOUTS (design P1): the shapes below carry
+   layout-driving facts (column count, window) so the future Print Center
+   Engine (P2, recorded feature) can wrap them without rework. */
+
+/** one flowsheet grid column — an hour of the 24 h window */
+export interface FlowsheetColumn {
+  /** "HH:00" */
+  hourLabel: string
+  /** "yyyy-MM-dd" — rendered once per day boundary in the header */
+  date: string
+}
+
+export interface FlowsheetRow {
+  typeCode: string
+  label: string
+  unit: string
+  /** derived rows compute per column at render (never charted) */
+  derived: boolean
+  /** one entry per column; null = honestly nothing charted that hour;
+   *  multiple same-hour charted values join with ' / ' (each real) */
+  cells: (string | null)[]
+}
+
+export interface FlowsheetSection {
+  title: string
+  rows: FlowsheetRow[]
+}
+
+export interface FlowsheetData {
+  context: PrintContext
+  /** null when the observations/catalogue reads are unreachable — the
+   *  document says so; it never renders a fabricated grid */
+  grid: {
+    columns: FlowsheetColumn[]
+    sections: FlowsheetSection[]
+    /** the window is anchored to the LATEST charted observation of the
+     *  encounter (works identically for discharged patients) */
+    windowStart: string
+    windowEnd: string
+    /** any effective value on the sheet came through an amendment —
+     *  rendered as a footnote (amend-not-erase upstream) */
+    amendedCount: number
+  } | null
+  /** true = reads unreachable (vs an empty charted record) */
+  unavailable: boolean
+}
+
+/** one snapshot line of the ventilator report — latest charted value of
+ *  one catalogue type, with its own clinical time (values may legitimately
+ *  come from different timepoints; each is attributed) */
+export interface VentSnapshotLine {
+  typeCode: string
+  label: string
+  unit: string
+  /** null = not charted this encounter */
+  value: string | null
+  clinicalTime: string | null
+  /** 'derived' = computed at render (ΔP); 'computed' = the MV fallback
+   *  computed from same-timepoint inputs when the type was not charted */
+  provenance: 'charted' | 'derived' | 'computed' | null
+}
+
+export interface VentDeviceData {
+  context: PrintContext
+  ventilator: VentSnapshotLine[] | null
+  /** the one chartable devices-group type today (infusion pump rate) */
+  pumpRate: VentSnapshotLine | null
+  /** whether the Devices observation group is enabled in this deployment
+   *  (context line — the sections render regardless, honestly empty) */
+  devicesGroupEnabled: boolean | null
+  unavailable: boolean
+}
+
+/** one MAR cell — one administration slot of one medication order, as
+ *  persisted on the order (documentedBy/reason come from the orders read;
+ *  the /mar projection omits them) */
+export interface MarCell {
+  adminId: string
+  /** "HH:MM" scheduled slot; '' = PRN availability */
+  scheduledTime: string
+  status: 'scheduled' | 'given' | 'held' | 'refused'
+  documentedTime?: string
+  documentedBy?: string
+  /** server-required for held/refused — absent on given (not a gap) */
+  reason?: string
+}
+
+export interface MarMedRow {
+  orderId: string
+  drug: string
+  dose: string
+  route: string
+  frequency: string
+  prn: boolean
+  prnIndication?: string
+  status: string
+  /** recorded when the order was discontinued (its documented doses stay) */
+  stoppedReason?: string
+  cells: MarCell[]
+}
+
+export interface MarSheetData {
+  context: PrintContext
+  /** medication orders of this encounter that carry a dose schedule
+   *  (signed orders); pending prescriptions have no administrations and
+   *  belong on the Medication Orders sheet instead */
+  meds: MarMedRow[]
+  /** signed med orders whose schedule list is absent (nothing to chart) */
+  unscheduledCount: number
+}

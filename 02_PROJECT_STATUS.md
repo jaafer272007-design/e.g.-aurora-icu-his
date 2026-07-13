@@ -1,6 +1,20 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through STAGE 11 §12 STEP 4 (the
+**Last updated: 2026-07-13 · current through the STAGE 11 PRINT
+TEMPLATES (the 3 contract documents deferred until Observations existed,
+built from the owner's recorded design —
+`docs/design/stage11-print-templates.md`: the ADAPTIVE landscape 24-hour
+Vital Signs / Observation Flowsheet with the traditional
+vitals+neuro+fluids split and per-column computed rows; the Ventilator &
+Device Report snapshot with derived ΔP, labelled charted-or-computed
+Minute Ventilation, and always-present-honestly-empty device sections;
+and the MAR rendered from the VERIFIED persisted administration events —
+status/actual time/nurse/server-required reason on held/refused. The
+Print Center Contract's implemented set is COMPLETE at 13/13 (+ the
+retained Admission Note); the PRINT CENTER ENGINE is recorded as a
+future feature, deliberately not built (design P2); 28/28 headless
+render proof incl. discharged-patient re-renders and a locally
+time-spread multi-hour grid). Prior: §12 STEP 4 (the
 bedside READ-SWAP, built to the owner's six recorded decisions F5–F10:
 every bedside vitals surface — roster/bed board/Mission Control — now
 projects the LATEST charted Observations of the OPEN encounter, per-type
@@ -2519,6 +2533,101 @@ own operational instruction and the re-run went green.]*
   Flowsheet, Ventilator & Device Report), then (later) the Device
   Adapter. The §12 model sequence (steps 1–4) is COMPLETE.
 
+### Stage 11 print templates (built) — the contract's deferred three
+
+*[Attributed addition 2026-07-13 — built from the owner's design
+document, recorded verbatim as
+`docs/design/stage11-print-templates.md` (clinical source: the
+validator). The Print Center Contract is updated: implemented set
+COMPLETE at 13/13 contract documents (+ the retained Admission Note).]*
+
+- **Pre-build verification (the design's Q4)**: the MAR's
+  administration-EVENT dependency was verified against the real code
+  before building — `MedAdministration`/`AdminDto` persist on the
+  orders store with status (given/held/refused), documentedTime, the
+  administering nurse from the token (documentedBy), and a
+  SERVER-REQUIRED reason for held/refused
+  (`server/Core/Mar/MarApi.cs`). Every design cell field exists — no
+  gap to flag; the MAR builds fully from real administration data. The
+  print selector reads the ORDERS read (which carries
+  documentedBy/reason), not the `/mar` projection (which omits them).
+- **#12 Vital Signs / Observation Flowsheet** (`vitals-flowsheet`,
+  LANDSCAPE — the first landscape document; the registry's previously
+  dormant orientation field is now consumed: an `@page` override + a
+  wide preview sheet): observations × 24 hourly timepoints, the window
+  ANCHORED to the latest charted observation (identical for admitted
+  and discharged patients), real date spans in the header (charted
+  clinical times are real UTC datetimes). TRADITIONAL SPLIT per the
+  validator: Vital Signs + Neurological Assessment + Fluid Balance
+  sections rendered FROM the catalogue's own groups/types — ventilator
+  detail deliberately lives on #13. Derived rows (GCS Total, Total
+  Input, Total Output, Net Balance) compute PER COLUMN at render from
+  that hour's charted entries — never charted, never stored. Repeat
+  same-hour values print together ("/"); corrected entries print their
+  effective value with an amendment-count footnote; empty cells are
+  honestly blank. GCS prints as E/V/M; pupils compact (size +
+  reaction initial) with a legend.
+- **#13 Ventilator & Device Report** (`ventilator-device-report`):
+  a point-in-time SNAPSHOT — the latest charted value per
+  ventilator-group catalogue type, each attributed to its OWN charted
+  time; Driving Pressure derives at render (Pplat − PEEP, one shared
+  timepoint only); Minute Ventilation prints charted-when-charted,
+  else computes VT(exhaled) × RR(measured) from one shared timepoint,
+  explicitly labelled "computed". Device sections are LAID OUT NOW and
+  honestly empty (the validator's always-present decision): infusion
+  pumps (the one devices-group catalogue type, with a
+  group-disabled context line), ECMO / CRRT / ICP ("not monitored — no
+  chartable parameters exist yet").
+- **#11 MAR** (`mar`): rows = the encounter's medication orders that
+  carry a dose schedule; each medication's OWN scheduled times are its
+  columns (q8h → its slots; PRN slots labelled — no uniform grid, per
+  the validator). Cells render the persisted event: GIVEN/HELD/REFUSED,
+  actual documented time, the administering nurse, and the recorded
+  reason when a dose was not given; an undocumented slot on an ACTIVE
+  order prints "not documented" (never assumed given), and a
+  discontinued order keeps its documented doses with its stop reason
+  (the discharge cascade included). Unsigned prescriptions are counted
+  and pointed at the Medication Orders sheet.
+- **Cross-cutting**: all three on the Phase-1 pattern (one selector +
+  one component + one registry entry; the shared layout/identity
+  ladder/honest-data/† conventions). The observations read gained an
+  optional encounterId (episode-scoped documents — a readmission's
+  flowsheet never carries a prior stay). The OBSERVATION TYPE CATALOGUE
+  read supplies the printed vocabulary (labels/units/groups) — unlike
+  the formulary it is v1 read-only reference data, and group enablement
+  is deliberately IGNORED for historical rendering (a disabled group
+  must not erase a printed flowsheet — the ORD-168 principle); values
+  and units still render from each persisted observation itself.
+  ADAPTIVE layouts per design P1: orientation/pagination/density are
+  data-driven and the layout knobs are isolated, so the future PRINT
+  CENTER ENGINE (P2 — recorded under Known Feature Gaps) can wrap
+  these templates without rework.
+- **Verification**: 28/28 headless render proof against a live local
+  server — three charted rounds (multi-hour spread via LOCAL SQLite
+  aging of ClinicalTime only; the live API has no back-dating, by
+  design — the window-expiry precedent, recorded), a signed q8h order
+  with a GIVEN dose and a HELD dose (reason), all three documents
+  asserted for an ADMITTED and then a DISCHARGED patient (identity
+  ladder; documented doses survive discharge, undocumented slots drop
+  with the discontinued order; the last charted vent setup still
+  renders). Screenshots reviewed; tsc + production build clean.
+  Two real-behavior notes surfaced during the proof: the server
+  generates only the REMAINING scheduled slots for today on a new
+  order, and safety enforcement blocked a cross-reactive test drug
+  against a documented allergy — both correct system behavior, worked
+  with, not around.
+- **Flagged, not silently decided** (design §5): (1) POC labs and
+  Nursing Clinical Assessment are NOT on the flowsheet — the primary
+  three groups are built per the validator's traditional split; adding
+  either is a template data-list change awaiting the validator's call.
+  (2) Device sections are ALWAYS-PRESENT-honestly-empty (the design's
+  stated reading, restated in the owner's build instruction);
+  hidden-when-empty remains the recorded alternative. (3) Minute
+  Ventilation is CHARTABLE in the catalogue while the design lists it
+  among computed values — built as charted-wins / computed-fallback
+  (labelled); if the validator prefers compute-only, that is a
+  one-line change.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
@@ -2896,6 +3005,22 @@ instruction, source stated per the documentation rule.]*
   orders only, as this entry records; the existing Layer 4 record
   corroborates ("Modalities stay a closed union until the
   imaging-order workflow exists").]*
+
+- **Print Center Engine (design P2, recorded 2026-07-13).** Source: the
+  owner's Stage 11 print-templates design document
+  (`docs/design/stage11-print-templates.md`, §0/P2 — the validator's
+  vision). Print Center as an ENGINE (like an Office print system):
+  templates are layouts; an interactive Print Preview lets the user set
+  paper size (A4/Letter/Legal), orientation, margins, font size,
+  show/hide sections (QR code / signature / logo), and the flowsheet's
+  columns/time-window — then print or save PDF. A distinct, substantial
+  future feature, DELIBERATELY NOT built with the Stage 11 templates
+  (it would balloon "3 templates" into "a print platform"); the three
+  templates are built as adaptive layouts with their layout knobs
+  isolated so the engine can wrap them later without rework (the same
+  discipline as the Observation model being device-ready without the
+  Device Adapter). To be designed in its own session when it is its
+  turn.
 
 - **Derived Clinical Scores — compute SOFA, EWS, etc. from charted
   observations + labs (enabled by Stage 11).** Source: the owner's

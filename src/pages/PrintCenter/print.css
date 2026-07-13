@@ -230,3 +230,50 @@
 
   .pd-section, .pd-table { orphans: 3; widows: 3; }
 }
+
+/* ---------- Stage 11 templates (contract #11/#12/#13) ---------- */
+
+/* landscape preview sheet (the @page override handles the printed page) */
+.print-page.landscape { width: 297mm; padding: 14mm 16mm; }
+
+/* the 24-hour flowsheet grid — dense by design; landscape carries it.
+   Cell type sizes are the ADAPTIVE knob the future Print Center Engine
+   (P2) will expose. */
+.pd-flow { table-layout: fixed; font-size: 6.5pt; }
+.pd-flow th, .pd-flow td { padding: 1.5pt 1pt; text-align: center; overflow: hidden; }
+.pd-flow .pd-flow-label { width: 34mm; text-align: left; padding-left: 3pt; }
+.pd-flow .pd-flow-date { font-size: 6pt; letter-spacing: .4pt; }
+.pd-flow .pd-flow-hour { font-size: 6pt; }
+.pd-flow-section td {
+  text-align: left !important;
+  font-weight: 700;
+  font-size: 7pt;
+  letter-spacing: .5pt;
+  text-transform: uppercase;
+  background: #efefef;
+  padding-left: 3pt !important;
+}
+.pd-flow-derived td { font-style: italic; color: #222; background: #f7f7f7; }
+.pd-flow-cell { font-variant-numeric: tabular-nums; word-break: break-all; }
+
+/* the MAR — one block per medication; that medication's own scheduled
+   slots are its cells (no uniform grid — the validator's decision) */
+.pd-mar-med { margin: 0 0 8pt; }
+.pd-mar-head { font-size: 9pt; margin: 0 0 3pt; }
+.pd-mar-stopped { color: #444; font-style: italic; }
+.pd-mar-cells { display: flex; flex-wrap: wrap; gap: 4pt; }
+.pd-mar-cell {
+  border: 1pt solid #333;
+  border-radius: 2pt;
+  padding: 2pt 4pt;
+  min-width: 26mm;
+  font-size: 7.5pt;
+  break-inside: avoid;
+}
+.pd-mar-slot { font-weight: 700; font-variant-numeric: tabular-nums; }
+.pd-mar-status { letter-spacing: .5pt; }
+.pd-mar-given .pd-mar-status { font-weight: 700; }
+.pd-mar-held .pd-mar-status, .pd-mar-refused .pd-mar-status { font-weight: 700; text-decoration: underline; }
+.pd-mar-scheduled { border-style: dashed; color: #444; }
+.pd-mar-meta { color: #333; }
+.pd-mar-reason { font-style: italic; color: #222; margin-top: 1pt; }
