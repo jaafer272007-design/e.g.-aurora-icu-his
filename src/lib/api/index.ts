@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -741,6 +741,15 @@ export async function getLabDraws(patientId: string): Promise<LabDraw[]> {
  *  stamps source=manual. RBAC is results.document, re-enforced server-side. */
 export function documentLabResult(draft: DocumentLabDraft): Promise<AdtWriteResult<LabDraw>> {
   return usersWrite<LabDraw>('/api/icu/results/labs/document', 'lab result documentation', draft)
+}
+
+/** POST /api/icu/results/labs/document-custom — document a CUSTOM / OTHER lab
+ *  test (Custom Lab Test design): a free-text, UNSTRUCTURED, UNFLAGGED result
+ *  for a test the catalogue lacks. Same results.document authority and
+ *  REAL-ONLY discipline as the structured path; the server stamps provenance
+ *  + source=manual and stores it tagged custom with NO clinical flag. */
+export function documentCustomLabResult(draft: DocumentCustomLabDraft): Promise<AdtWriteResult<LabDraw>> {
+  return usersWrite<LabDraw>('/api/icu/results/labs/document-custom', 'custom lab result documentation', draft)
 }
 
 /** GET /api/icu/results/imaging?patientId — REAL endpoint; mock fallback. */

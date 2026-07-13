@@ -43,6 +43,19 @@ class LabDrawRow
        (absent on the wire) for pre-existing rows and the producing-service
        create path, which predate the field — a source is never invented. */
     public string Source { get; set; } = "";
+    /* Custom / Other Lab Test design — an UNSTRUCTURED, UNFLAGGED result for
+       a test the catalogue does not have. When Custom is true the row has NO
+       catalogue analyte link and NO computed flag (Flag stays ""): the system
+       must never fabricate a clinical judgment it cannot justify. The
+       free-text value/unit/reference-range live in their own columns (the
+       numeric ItemsJson stays "[]") so no numeric consumer misparses them;
+       the test NAME is Label and the note is Note. RefRange is DISPLAY-ONLY
+       context — it never drives a flag. Absent on the wire for every
+       structured result (nullable → WhenWritingNull), so byte-parity holds. */
+    public bool Custom { get; set; }
+    public string? CustomValue { get; set; }
+    public string? CustomUnit { get; set; }
+    public string? CustomRefRange { get; set; }
     public string? Note { get; set; }
     public bool Acknowledged { get; set; }
     public string? AcknowledgedBy { get; set; }
@@ -60,6 +73,8 @@ class LabDrawRow
         Panel = d.Panel, Label = d.Label, CollectedAt = d.CollectedAt, ResultedAt = d.ResultedAt,
         ItemsJson = JsonSerializer.Serialize(d.Items, JsonOpts.Web),
         Flag = d.Flag, Source = d.Source ?? "", Note = d.Note, Acknowledged = d.Acknowledged,
+        Custom = d.Custom ?? false, CustomValue = d.CustomValue,
+        CustomUnit = d.CustomUnit, CustomRefRange = d.CustomRefRange,
         AcknowledgedBy = d.AcknowledgedBy, AcknowledgedAt = d.AcknowledgedAt,
         EventsJson = d.History is null ? "[]" : JsonSerializer.Serialize(d.History, JsonOpts.Web),
     };
@@ -72,7 +87,8 @@ class LabDrawRow
             Panel, Label, CollectedAt, ResultedAt,
             JsonSerializer.Deserialize<JsonElement>(ItemsJson, JsonOpts.Web),
             Flag, Note, Acknowledged, AcknowledgedBy, AcknowledgedAt,
-            events.Count == 0 ? null : events, OrderId, Source == "" ? null : Source);
+            events.Count == 0 ? null : events, OrderId, Source == "" ? null : Source,
+            Custom ? true : null, CustomValue, CustomUnit, CustomRefRange);
     }
 }
 
@@ -131,7 +147,8 @@ record LabDrawDto(
     string LabId, string PatientId, string? EncounterId, string BedId, string PatientName, string Panel,
     string Label, string CollectedAt, string ResultedAt, JsonElement Items, string Flag,
     string? Note, bool Acknowledged, string? AcknowledgedBy, string? AcknowledgedAt,
-    List<ResultEventDto>? History, string? OrderId = null, string? Source = null);
+    List<ResultEventDto>? History, string? OrderId = null, string? Source = null,
+    bool? Custom = null, string? CustomValue = null, string? CustomUnit = null, string? CustomRefRange = null);
 
 record ImagingStudyDto(
     string StudyId, string PatientId, string? EncounterId, string BedId, string PatientName, string Modality,
@@ -188,6 +205,19 @@ record DocumentLabItemDto(string? Analyte, double? Value);
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record DocumentLabRequest(
     string? PatientId, string? Panel, string? Note, List<DocumentLabItemDto>? Items);
+
+/* ---------- CUSTOM / OTHER DOCUMENTATION REQUEST (Custom Lab Test design) ----------
+   The UNSTRUCTURED escape hatch for a test the catalogue does not have.
+   Free-text testName + value (both REQUIRED), optional unit / reference
+   range / note. The value is FREE TEXT (numeric like "2.5" OR descriptive
+   like "positive") — never parsed as a number. RefRange is DISPLAY-ONLY: it
+   is NOT validated as bounds and NEVER drives a flag (the safety choice — a
+   hand-typed range must not produce an authoritative-looking auto-flag). As
+   with the structured path, provenance (clinician + time), source=manual and
+   the encounter are all server-owned; a payload claiming them fails binding. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record DocumentCustomLabRequest(
+    string? PatientId, string? TestName, string? Value, string? Unit, string? RefRange, string? Note);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CreateImagingRequest(

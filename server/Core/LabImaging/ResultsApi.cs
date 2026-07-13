@@ -65,6 +65,17 @@ static class ResultsApi
         {
             var labs = db.LabDraws.AsNoTracking().Where(d => !d.Acknowledged).AsEnumerable().Select(d =>
             {
+                /* Custom / Other results are UNSTRUCTURED — the numeric items
+                   array is empty, so the LabItemDto parse below (and items[0])
+                   would throw. Build the headline from the free-text
+                   testName/value/unit instead, and carry NO flag (Flag is ""). */
+                if (d.Custom)
+                {
+                    var unit = string.IsNullOrEmpty(d.CustomUnit) ? "" : $" {d.CustomUnit}";
+                    return new InboxItemDto("lab", d.LabId, d.PatientId, d.BedId, d.PatientName,
+                        $"{d.Label} {d.CustomValue}{unit} — {d.BedId} {d.PatientName}".Replace("  ", " "),
+                        d.Note ?? "custom test documented", d.ResultedAt, d.Flag);
+                }
                 var items = JsonSerializer.Deserialize<List<LabItemDto>>(d.ItemsJson, JsonOpts.Web)!;
                 var h = items.FirstOrDefault(i => i.Flag == "critical")
                     ?? items.FirstOrDefault(i => i.Flag == "abnormal") ?? items[0];
@@ -184,6 +195,50 @@ static class ResultsApi
                 ItemsJson = JsonSerializer.Serialize(items, JsonOpts.Web),
                 Flag = ResultsLogic.DeriveLabFlag(items), Source = "manual", Note = req.Note?.Trim(),
                 Acknowledged = false,
+                EventsJson = JsonSerializer.Serialize(
+                    new List<ResultEventDto> { new(now.ToString("yyyy-MM-dd HH:mm"), actor, "documented", null) }, JsonOpts.Web),
+            };
+            db.LabDraws.Add(row);
+            db.SaveChanges();
+            return Results.Json(row.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* POST /api/icu/results/labs/document-custom — DOCUMENT a CUSTOM / OTHER
+           lab test (Custom Lab Test design). The honest escape hatch for a test
+           the catalogue does not have: same results.document authority
+           (Doctor/SeniorDoctor/Nurse), same server-owned provenance
+           (clinician + time), source=manual, open-encounter scope. But the
+           result is UNSTRUCTURED and UNFLAGGED — testName + value are stored as
+           free text exactly as typed; unit and reference range are optional
+           free-text context; the reference range is DISPLAY-ONLY and NEVER
+           drives a flag (Flag stays "" — the system does not fabricate a
+           normal/abnormal/critical judgment it has no catalogue definition to
+           justify). No catalogue lookup, no order linkage (a custom test has no
+           catalogue TestId to match), and the numeric ItemsJson stays "[]" so
+           no numeric consumer misparses the free-text value. */
+        app.MapPost("/api/icu/results/labs/document-custom", (DocumentCustomLabRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "results.document") is IResult denied) return denied;
+            if (ResultsLogic.ValidateCustomLabDocument(req, db) is string problem)
+                return ApiError.BadRequest(problem);
+            if (EncounterGuard.RequireOpenForPatient(db, req.PatientId!, "documenting a custom lab result", out var enc) is IResult conflict)
+                return conflict;
+            var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var now = DateTime.UtcNow;
+            var time = now.ToString("HH:mm");
+            static string? Trimmed(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+            var row = new LabDrawRow
+            {
+                LabId = ResultsLogic.NextLabId(), PatientId = req.PatientId!,
+                EncounterId = enc!.EncounterId, OrderId = null,
+                BedId = enc.BedId, PatientName = pt.Name,
+                Panel = "Custom", Label = req.TestName!.Trim(),
+                CollectedAt = time, ResultedAt = time,
+                ItemsJson = "[]", Flag = "", Source = "manual",
+                Custom = true, CustomValue = req.Value!.Trim(),
+                CustomUnit = Trimmed(req.Unit), CustomRefRange = Trimmed(req.RefRange),
+                Note = Trimmed(req.Note), Acknowledged = false,
                 EventsJson = JsonSerializer.Serialize(
                     new List<ResultEventDto> { new(now.ToString("yyyy-MM-dd HH:mm"), actor, "documented", null) }, JsonOpts.Web),
             };

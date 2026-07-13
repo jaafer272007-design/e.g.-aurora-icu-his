@@ -1,6 +1,23 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through the LAB RESULT-ENTRY
+**Last updated: 2026-07-13 · current through the CUSTOM / OTHER LAB TEST
+ENTRY (built — an 8th "Custom / Other" tab on the `/lab-entry` screen for
+documenting a test the catalogue lacks: free-text name + value (required) +
+optional unit / display-only reference range / note. UNSTRUCTURED and
+UNFLAGGED by design — the system never computes normal/abnormal/critical for
+a custom test, and the reference range is context only, never a flag (the
+safety choice). Same `results.document` authority (doctor + nurse),
+server-owned provenance, `source=manual`, encounter-scoped. Stored via a
+small additive change — `LabDrawRow.Custom` + free-text value/unit/range
+columns (EF migration `AddCustomLabResult`), the numeric items array stays
+empty and the inbox/Timeline branch on `Custom` so they never misparse or
+fabricate a flag; byte-parity holds for structured results. In Results on
+File a custom result shows a "custom · unflagged" tag, never a
+normal/abnormal/critical badge. The 7 catalogue panels are unchanged. Option
+B (catalogue tests with flagging ranges) dropped for safety; Option C (LIS
+test-list import) recorded as a future item. Verified headless (RBAC,
+non-numeric value, no-crash inbox/Timeline, byte-parity, 409) + a real-browser
+render of the tab. Prior: the LAB RESULT-ENTRY
 (DOCUMENTATION) PATH (built — the missing HUMAN feed into the existing lab
 store: a manual `/lab-entry` documentation/transcription screen for the ICU
 bedside team, built from the validator's `LAB_RESULT_ENTRY_DESIGN.md`. A NEW
@@ -2736,6 +2753,71 @@ over the observation store.
   the documentation path grades normal vs abnormal only — a `critical` grade
   needs threshold data the catalogue does not carry yet.
 
+### Custom / Other Lab Test entry (built) — the honest free-text escape hatch
+Built from the clinical validator's design (`CUSTOM_LAB_TEST_DESIGN.md`,
+recorded in the PR): an 8th **"Custom / Other"** tab on the `/lab-entry`
+screen for documenting a test the catalogue does NOT have. The 7 catalogue
+panels, their structured entry, catalogue-derived units/ranges, automatic
+flagging, order linkage, and acknowledge lifecycle are ALL unchanged — this
+is purely additive (design Option A; Option B — permanent catalogue tests
+with flagging-driving ranges — was deliberately DROPPED for safety and is NOT
+built).
+- **Core principle — UNSTRUCTURED and UNFLAGGED (honest data).** A custom
+  test has no catalogue definition, so the system does NOT compute
+  normal/abnormal/critical for it — it records exactly what the clinician
+  typed. The reference range is DISPLAY-ONLY context; it never drives a flag
+  (the safety choice: a hand-typed range must not produce an
+  authoritative-looking auto-flag). In Results on File a custom result is
+  visually distinct — a violet dashed rail and a "custom · unflagged" tag
+  REPLACE the normal/abnormal/critical badge, so no reader mistakes it for a
+  properly-flagged structured result; the reference range (if given) shows as
+  "ref: …" context.
+- **Who / provenance.** Same `results.document` bedside-team authority
+  (Doctor/SeniorDoctor/Nurse) — low-risk because the data is unstructured and
+  affects no other patient's data or any shared definition (unlike Option B).
+  Server-owned provenance (documenting clinician + time), `source=manual`,
+  encounter-scoped — identical discipline to the structured path; a payload
+  claiming provenance fails binding.
+- **Storage — the flagged additive change (design open item #1).** The
+  existing store could NOT hold a free-text value cleanly: `LabItemFull.Value`
+  is a `double`, and two server consumers parse a draw's items as numeric —
+  the unit-wide **inbox** does `items[0].Value` (would crash on an empty/text
+  item) and the **Timeline**'s `AbnormalSummary` would fabricate "All values
+  within reference range." So rather than forcing free text into a numeric
+  field, a small additive change was made: `LabDrawRow` gained `Custom`
+  (bool) + `CustomValue`/`CustomUnit`/`CustomRefRange` (nullable text) — EF
+  migration `AddCustomLabResult` — the test name is `Label`, the numeric
+  `ItemsJson` stays `"[]"`, and `Flag` stays `""` (no flag). The inbox and
+  timeline now branch on `Custom` to build an honest headline from the
+  free-text value and carry no flag. The new fields are absent on the wire
+  for every structured result (nullable → `WhenWritingNull`), so **byte-parity
+  holds** and the trends card / Mission Control views are unchanged (custom
+  results are also filtered out of the numeric trends chart — unstructured
+  data is not chartable). The inbox card shows a custom result with a neutral
+  informational badge, never a green "normal".
+- **Endpoint** `POST /api/icu/results/labs/document-custom` (`results.document`):
+  free-text `testName` + `value` (both required), optional `unit` /
+  `refRange` / `note`; the value is NEVER parsed as a number (a custom test
+  may be descriptive, e.g. "positive"); no catalogue lookup, no order linkage.
+- **Verification** (headless, live local server): doctor + nurse document a
+  custom test (with and without unit/range/note); non-numeric value
+  ("positive") stored; it persists `custom=true`, `flag=""` (no clinical
+  flag), `source=manual`, provenance, `panel="Custom"`, `label=`testName, no
+  orderId; the **inbox and Timeline do not crash** and report the free-text
+  value honestly (no fabricated "within range"); RBAC matrix (doctor/nurse
+  200, lab-tech/administrator 403, unauth 401); validation 400s (missing
+  testName/value, Disallow on a client-claimed flag, unknown patient);
+  closed-encounter → 409; the 7 catalogue panels and structured results are
+  unchanged (16 structured rows carry 0 custom fields on the wire —
+  byte-parity). The Custom tab + form + safety note were rendered in a real
+  browser. tsc + production build clean; server build clean; the migration
+  adds only the four custom columns.
+- **Recorded as FUTURE (not built)** — see Known Feature Gaps: **Option C —
+  LIS test-list import** (a future piece of the LIS integration / Scenario C
+  Integration Layer; LIS-sourced test definitions become a future source, the
+  same "manual now, integrate later" pattern — the custom-result model does
+  not preclude it). Option B stays dropped for safety.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
@@ -3196,6 +3278,15 @@ instruction, source stated per the documentation rule.]*
     same lab-result object (`source` was built now precisely for this — it is
     not a rebuild, it is a new source of the same record). Record under the
     Integration Layer / this Known-Feature-Gaps list.
+  - **LIS test-list import (Custom Lab Test design Option C).** Importing test
+    *definitions* from the LIS test list — a future piece of the same LIS
+    integration (Scenario C). It would let a catalogue-absent test be picked
+    from the LIS's own list instead of typed free-hand; LIS-sourced test
+    definitions become a future source, the same "manual now, integrate
+    later" pattern. The Custom / Other free-text path is BUILT (see "Custom /
+    Other Lab Test entry (built)"), and its unstructured-result model does not
+    preclude this. Option B (permanent catalogue tests with flagging-driving
+    ranges) stays deliberately DROPPED for safety — not deferred, not built.
   - **ABG analyzer auto-feed.** Like the ventilator Device Adapter, a future
     automated feed from the bedside blood-gas analyzer (manual entry via the
     lab-entry screen now — ABG is entered as a lab panel, so SOFA's PaO₂

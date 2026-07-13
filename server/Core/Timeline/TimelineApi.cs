@@ -100,11 +100,27 @@ static class TimelineLogic
         /* lab draw events — resulted + acknowledged */
         foreach (var d in db.LabDraws.AsNoTracking().Where(x => x.PatientId == patientId).OrderBy(x => x.LabId).AsEnumerable())
         {
-            var items = JsonSerializer.Deserialize<List<LabItemFull>>(d.ItemsJson, JsonOpts.Web)!;
-            var summary = AbnormalSummary(items);
+            /* Custom / Other results are unstructured — no numeric items, no
+               flag. Report the free-text value honestly instead of running the
+               reference-range summary (which would fabricate "All values within
+               reference range" for a test that has no reference range). */
+            string title, summary;
+            if (d.Custom)
+            {
+                title = $"{d.Label} documented (custom)";
+                var unit = string.IsNullOrEmpty(d.CustomUnit) ? "" : $" {d.CustomUnit}";
+                var refr = string.IsNullOrEmpty(d.CustomRefRange) ? "" : $" (ref {d.CustomRefRange})";
+                summary = $"{d.CustomValue}{unit}{refr}";
+            }
+            else
+            {
+                title = $"{d.Panel} panel resulted";
+                var items = JsonSerializer.Deserialize<List<LabItemFull>>(d.ItemsJson, JsonOpts.Web)!;
+                summary = AbnormalSummary(items);
+            }
             events.Add(new TimelineEventDto(
                 $"{d.LabId}-res", patientId, d.ResultedAt, "lab", "LAB",
-                $"{d.Panel} panel resulted",
+                title,
                 d.Note is not null ? $"{summary} — {d.Note}" : summary,
                 null, d.Flag, $"/labs/{patientId}", d.LabId));
             if (d.Acknowledged && d.AcknowledgedAt is not null && d.AcknowledgedBy is not null)

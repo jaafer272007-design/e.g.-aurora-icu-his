@@ -21,8 +21,12 @@ const FLAG_COLOR: Record<ResultFlag, string> = {
 /** Per-patient lab results with trend charts — one analyte charted at a time
  *  with its real units and reference band. View-only (acknowledge lives in
  *  the results inbox). */
-export function LabTrendsCard({ draws }: { draws: LabDraw[] }) {
+export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
   const now = useNow()
+  /* Custom / Other results are UNSTRUCTURED (no numeric analytes, no
+     reference band) — not chartable here. They stay out of the trends card
+     and surface tagged "custom" in the lab-entry Results-on-File list. */
+  const draws = useMemo(() => allDraws.filter(d => !d.custom), [allDraws])
   const panels = useMemo(() => [...new Set(draws.map(d => d.panel))], [draws])
   const [panel, setPanel] = useState<LabPanelKey | null>(null)
   const [analyte, setAnalyte] = useState<string | null>(null)

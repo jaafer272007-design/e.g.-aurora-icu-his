@@ -24,13 +24,15 @@ export function ResultInboxCard({ items, canAcknowledge: canAck, onAcknowledge }
       {items.length === 0 && <div className="liempty">All results acknowledged for this patient.</div>}
       {items.map(item => (
         <div className={`liinrow${item.flag === 'critical' ? ' crit' : ''}`} key={item.id}>
-          <Badge color={item.flag === 'critical' ? 'red' : item.flag === 'abnormal' ? 'amber' : 'green'}>
+          {/* '' flag = a custom / unstructured result — informational (blue),
+              NOT a green "normal": custom results carry no clinical judgment */}
+          <Badge color={item.flag === 'critical' ? 'red' : item.flag === 'abnormal' ? 'amber' : item.flag === '' ? 'blue' : 'green'}>
             {item.kind === 'lab' ? 'LAB' : 'IMAGING'}
           </Badge>
           <div className="liintext">
             <b>{item.title}</b>
             <span>{item.detail}</span>
-            <small className="num">{item.time} · {agoLabel(item.time, now)} · {item.flag.toUpperCase()}</small>
+            <small className="num">{item.time} · {agoLabel(item.time, now)} · {item.flag ? item.flag.toUpperCase() : 'CUSTOM'}</small>
           </div>
           {canAck ? (
             <button className="liackbtn" onClick={() => onAcknowledge(item)} aria-label={`Acknowledge: ${item.title}`}>✓ Ack</button>
