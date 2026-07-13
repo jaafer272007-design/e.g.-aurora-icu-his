@@ -3087,7 +3087,15 @@ new screen.
   deactivation step: DELETE on the USED test answers 409 string-checked
   against the "a used test is never deleted … deactivate (retire) it
   instead" guidance. Cleanup covers the new id (404 accepted — normally
-  already true-deleted). Re-dispatch after merge must show green.
+  already true-deleted). PROOF, pre-merge: because the amendment branch
+  changes no server content, the content gate passes on the branch itself —
+  run 29279236545 dispatched ON THE BRANCH is green, every step ran
+  (job-level verified), with the amended legs in the live log: NUR/PHA/ADM
+  create AND remove all 403; `DOC catalogue create -> HTTP 200`; `DOC
+  remove UNUSED test -> HTTP 200`; re-remove 404; `remove USED test ->
+  HTTP 409` ("referenced by 2 result(s) and 1 order(s)"); cleanup's
+  `deactivate lab-catalog/e2e-doctest-29279236545 -> HTTP 404` accepted;
+  "cleanup complete — no active run state remains".
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
