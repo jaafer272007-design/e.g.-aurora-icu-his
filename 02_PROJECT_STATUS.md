@@ -1,7 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through CATALOGUE TEST MANAGEMENT
-(OPTION B) (built — senior clinicians add/edit/remove SINGLE structured lab
+**Last updated: 2026-07-13 · current through the LABCATALOG SUITE AMENDMENT
+for Option B (the post-merge dispatch of `deployed-labcatalog-e2e.yml` on
+1583cf9, run 29278695381, failed exactly where flagged pre-merge — its RBAC
+matrix still asserted the pre-Option-B `DOC catalogue create -> 403` and got
+200; failure-path cleanup held. The suite now asserts the merged governance:
+denied catalogue matrix NUR/PHA/ADM, a positive Consultant leg on its own
+run-unique test id incl. the new DELETE endpoint's 403s + delete-if-unused
+200 + re-delete 404, and the removal-safety invariant — DELETE on a USED
+test 409 string-checked against the retire guidance). Prior: CATALOGUE TEST
+MANAGEMENT (OPTION B) (built — senior clinicians add/edit/remove SINGLE structured lab
 tests with critical thresholds that drive automatic
 normal/abnormal/CRITICAL flagging, on the existing Layer-4 catalogue and
 `/lab-catalog` screen. FLAGGED governance reconciliation: `labcatalog.manage`
@@ -3061,6 +3069,33 @@ new screen.
 - **Deferred (recorded)**: multi-analyte panel creation (single tests only —
   the validator's decision); backfilling critical thresholds onto the 7
   seeded panels; Option C LIS test-list import (already recorded).
+- **Suite amendment (post-merge follow-up PR).** The post-merge dispatch of
+  `deployed-labcatalog-e2e.yml` on merge commit 1583cf9 (run 29278695381)
+  FAILED exactly where flagged pre-merge: both gates passed (environment
+  `staging`; content gate confirmed Render was serving this ref's server
+  tree), reads all 200 — then the RBAC matrix's pre-Option-B assertion
+  `DOC catalogue create -> 403` met the new governance and got 200. The
+  failure-path cleanup held (DOC's accidental create was retired; "no
+  active run state remains"). The suite was amended to the merged
+  governance, honestly — the failed run is the evidence the old assertion
+  was stale, not a suite flake: the denied catalogue matrix is now
+  NUR/PHA/ADM (office admin 403 preserved — F2/F3), and a new ALLOWED leg
+  has DOC create its OWN run-unique test (`e2e-doctest-<run>`, never
+  colliding with the LAB flow's id), probes the new DELETE endpoint's 403s
+  for the denied three, then true-deletes it (delete-if-unused → 200,
+  re-delete → 404). Option B's removal-safety invariant joined the
+  deactivation step: DELETE on the USED test answers 409 string-checked
+  against the "a used test is never deleted … deactivate (retire) it
+  instead" guidance. Cleanup covers the new id (404 accepted — normally
+  already true-deleted). PROOF, pre-merge: because the amendment branch
+  changes no server content, the content gate passes on the branch itself —
+  run 29279236545 dispatched ON THE BRANCH is green, every step ran
+  (job-level verified), with the amended legs in the live log: NUR/PHA/ADM
+  create AND remove all 403; `DOC catalogue create -> HTTP 200`; `DOC
+  remove UNUSED test -> HTTP 200`; re-remove 404; `remove USED test ->
+  HTTP 409` ("referenced by 2 result(s) and 1 order(s)"); cleanup's
+  `deactivate lab-catalog/e2e-doctest-29279236545 -> HTTP 404` accepted;
+  "cleanup complete — no active run state remains".
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
