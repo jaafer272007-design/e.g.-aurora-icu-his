@@ -54,10 +54,19 @@ record LabTestDto(
     string TestId, string Name, string Category, string Specimen,
     List<AnalyteDefDto> Analytes, bool? Active = null, List<FormularyEventDto>? History = null);
 
-record AnalyteDefDto(string Analyte, string Unit, string RefRange, double RefLow, double RefHigh);
+/* Catalogue Test Management (Option B): CritLow/CritHigh are the CRITICAL
+   thresholds — beyond them a documented value flags CRITICAL (at-threshold
+   counts as critical: over-flagging is the safe error). OPTIONAL per side
+   (not every analyte has both bounds) and nullable → absent on the wire for
+   the 7 seeded panels, whose definitions and behaviour are byte-identical
+   (backfilling seeded critical thresholds is a recorded FUTURE item). They
+   live inside AnalytesJson — data, not schema; no migration. */
+record AnalyteDefDto(string Analyte, string Unit, string RefRange, double RefLow, double RefHigh,
+    double? CritLow = null, double? CritHigh = null);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record AnalyteDefRequest(string? Analyte, string? Unit, string? RefRange, double? RefLow, double? RefHigh);
+record AnalyteDefRequest(string? Analyte, string? Unit, string? RefRange, double? RefLow, double? RefHigh,
+    double? CritLow = null, double? CritHigh = null);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CreateLabTestRequest(

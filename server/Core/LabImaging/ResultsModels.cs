@@ -209,9 +209,17 @@ record InboxItemDto(
        seed rows and producing-service results — byte-parity preserved. */
     string? DocumentedAt = null);
 
-/* full lab item shape for the timeline's abnormal-summary derivation */
+/* full lab item shape for the timeline's abnormal-summary derivation.
+   CritLow/CritHigh (Option B): the CRITICAL thresholds SNAPSHOTTED from the
+   catalogue definition at documentation time — the same snapshot rule as
+   refRange/refLow/refHigh (a result is a historical record graded against
+   the definition in force when it resulted), and what lets the #80
+   correction re-derive a corrected value's flag INCLUDING critical without
+   consulting a definition that may have changed since. Nullable → absent on
+   the wire for every pre-Option-B result (byte-parity). */
 record LabItemFull(string Analyte, double Value, string Unit, string RefRange,
-    double RefLow, double RefHigh, string Flag);
+    double RefLow, double RefHigh, string Flag,
+    double? CritLow = null, double? CritHigh = null);
 
 /* ---------- REQUEST DTOs (results audit PR) ----------
    All carry [JsonUnmappedMemberHandling(Disallow)] per the codified

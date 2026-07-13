@@ -50,11 +50,12 @@ const selfWindowLeft = (d: LabDraw, now: Date) =>
    an entry form over a complete store, not a store rebuild. REAL-ONLY write
    (a documented result is a clinical record — never written to mock). */
 
-/** flag a value would carry, mirroring the server's catalogue derivation
- *  (single reference range → normal in-band, abnormal out; no client-side
- *  critical — the catalogue models one range). Preview only; the SERVER is
- *  authoritative. */
-function previewFlag(value: number, refLow: number, refHigh: number): 'normal' | 'abnormal' {
+/** flag a value would carry, mirroring the server's derivation: CRITICAL
+ *  first when the definition carries Option B critical thresholds (at or
+ *  beyond one — at-threshold counts as critical), else normal in-band /
+ *  abnormal out. Preview only; the SERVER is authoritative. */
+function previewFlag(value: number, refLow: number, refHigh: number, critLow?: number, critHigh?: number): 'normal' | 'abnormal' | 'critical' {
+  if ((critLow !== undefined && value <= critLow) || (critHigh !== undefined && value >= critHigh)) return 'critical'
   return value >= refLow && value <= refHigh ? 'normal' : 'abnormal'
 }
 
@@ -429,7 +430,7 @@ export function LabEntry() {
                       const raw = (draft[a.analyte] ?? '').trim()
                       const n = Number(raw)
                       const show = raw !== '' && Number.isFinite(n)
-                      const flag = show ? previewFlag(n, a.refLow, a.refHigh) : null
+                      const flag = show ? previewFlag(n, a.refLow, a.refHigh, a.critLow, a.critHigh) : null
                       return (
                         <div className="lefield" key={a.analyte}>
                           <label htmlFor={`le-${a.analyte}`}>{a.analyte}</label>
@@ -444,8 +445,13 @@ export function LabEntry() {
                             />
                             {a.unit && <span className="leunit">{a.unit}</span>}
                           </span>
-                          <span className="leref num">ref {a.refRange}</span>
-                          {flag && <span className={`leflag ${flag}`}>{flag === 'normal' ? 'in range' : 'out of range'}</span>}
+                          <span className="leref num">
+                            ref {a.refRange}
+                            {(a.critLow !== undefined || a.critHigh !== undefined) && (
+                              <> · crit {a.critLow !== undefined ? `≤${a.critLow}` : ''}{a.critLow !== undefined && a.critHigh !== undefined ? ' / ' : ''}{a.critHigh !== undefined ? `≥${a.critHigh}` : ''}</>
+                            )}
+                          </span>
+                          {flag && <span className={`leflag ${flag}`}>{flag === 'normal' ? 'in range' : flag === 'critical' ? 'CRITICAL' : 'out of range'}</span>}
                         </div>
                       )
                     })}

@@ -170,9 +170,20 @@ static class ResultsApi
             if (Rbac.Deny(user, "results.document") is IResult denied) return denied;
             if (ResultsLogic.ValidateLabDocument(req, db) is string problem)
                 return ApiError.BadRequest(problem);
+            var test = Aurora.Core.MasterData.LabCatalogLogic.Resolve(db, req.Panel!)!;
+            /* Option B retire semantics, SPLIT deliberately from the
+               producing-service create path below: a RETIRED (inactive) test
+               takes no NEW bedside documentation (it is off the menu and
+               unusable — resource state, 409), while the create path keeps
+               the recorded resulting-never-blocked rule (a day-3 order whose
+               test was retired on day 5 must still be resultable by the
+               laboratory). Historical results of a retired test keep
+               resolving their definition for display either way. */
+            if (!test.Active)
+                return ApiError.StateConflict(
+                    $"test '{test.TestId}' is retired — it takes no new documentation; its historical results remain readable");
             if (EncounterGuard.RequireOpenForPatient(db, req.PatientId!, "documenting a lab result", out var enc) is IResult conflict)
                 return conflict;
-            var test = Aurora.Core.MasterData.LabCatalogLogic.Resolve(db, req.Panel!)!;
             var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var now = DateTime.UtcNow;
@@ -341,8 +352,9 @@ static class ResultsApi
                     if (newNum == item.Value)
                         return ApiError.StateConflict($"{req.Analyte} already reads {item.Value} — there is nothing to correct");
                     /* re-derive the item flag from the corrected value against the
-                       item's OWN stored bounds, then the draw's worst-of-items */
-                    items[idx] = item with { Value = newNum, Flag = ResultsLogic.FlagForValue(newNum, item.RefLow, item.RefHigh) };
+                       item's OWN stored bounds — incl. the snapshotted critical
+                       thresholds (Option B) — then the draw's worst-of-items */
+                    items[idx] = item with { Value = newNum, Flag = ResultsLogic.FlagForValue(newNum, item.RefLow, item.RefHigh, item.CritLow, item.CritHigh) };
                     amendments.Add(new(req.Analyte!, item.Value.ToString("0.####"), newNum.ToString("0.####"),
                         actor, stamp, req.Reason?.Trim() ?? "", role, d.Acknowledged));
                     d.ItemsJson = JsonSerializer.Serialize(items, JsonOpts.Web);

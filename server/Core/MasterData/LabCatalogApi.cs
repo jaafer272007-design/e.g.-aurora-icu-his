@@ -97,12 +97,17 @@ static class LabCatalogApi
             Diff("specimen", row.Specimen, req.Specimen, () => row.Specimen = req.Specimen!.Trim());
             if (req.Analytes is not null)
             {
-                var newJson = JsonSerializer.Serialize(LabCatalogLogic.ToAnalytes(req.Analytes), JsonOpts.Web);
+                var newDefs = LabCatalogLogic.ToAnalytes(req.Analytes);
+                var newJson = JsonSerializer.Serialize(newDefs, JsonOpts.Web);
                 if (newJson != row.AnalytesJson)
                 {
-                    var oldNames = JsonSerializer.Deserialize<List<AnalyteDefDto>>(row.AnalytesJson, JsonOpts.Web)!;
+                    /* amend-not-erase (Option B §4): the audit event carries the
+                       FULL prior definitions — a range/threshold change is
+                       never silently overwritten; the old numbers stay on the
+                       test's permanent history */
+                    var oldDefs = JsonSerializer.Deserialize<List<AnalyteDefDto>>(row.AnalytesJson, JsonOpts.Web)!;
                     events.Add(new(FormularyLogic.Now(), actor, "changed",
-                        $"analytes: {string.Join(" · ", oldNames.Select(a => a.Analyte))} → {string.Join(" · ", req.Analytes.Select(a => a!.Analyte))}"));
+                        $"analytes: {string.Join(" · ", oldDefs.Select(LabCatalogLogic.Describe))} → {string.Join(" · ", newDefs.Select(LabCatalogLogic.Describe))}"));
                     row.AnalytesJson = newJson;
                 }
             }
@@ -146,6 +151,36 @@ static class LabCatalogApi
                 [new(FormularyLogic.Now(), actor, "reactivated", null)]);
             db.SaveChanges();
             return Results.Json(row.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* DELETE /api/icu/lab-catalog/{testId} — Option B removal: a TRUE
+           delete is allowed ONLY for a never-used test (no result and no
+           order has ever referenced it — the recorded invariant: a test that
+           has EVER been ordered or resulted must stay resolvable forever).
+           A referenced test answers 409 directing the caller to DEACTIVATE
+           (retire) instead — off the menu, unusable for new documentation,
+           but every historical result keeps resolving its definition. The
+           retire path is audited on the row's permanent history; a true
+           delete removes the row itself, so its audit is the response +
+           server log only (an honest limitation — a durable delete-audit
+           would need a catalogue audit table, recorded as such). */
+        app.MapDelete("/api/icu/lab-catalog/{testId}", (string testId, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "labcatalog.manage") is IResult denied) return denied;
+            var row = db.LabTests.FirstOrDefault(t => t.TestId == testId);
+            if (row is null) return ApiError.NotFound();
+            var results = db.LabDraws.AsNoTracking().Count(d => d.Panel == testId);
+            var orders = db.Orders.AsNoTracking().Count(o => o.TestId == testId);
+            if (results > 0 || orders > 0)
+                return ApiError.StateConflict(
+                    $"test '{testId}' is referenced by {results} result(s) and {orders} order(s) — a used test is never deleted; " +
+                    "deactivate (retire) it instead: it leaves the menu and takes no new results, while its historical results stay readable forever");
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var dto = row.ToDto();
+            db.LabTests.Remove(row);
+            db.SaveChanges();
+            Console.WriteLine($"[AURORA] lab-catalog test '{testId}' ({dto.Name}) DELETED by {actor} at {FormularyLogic.Now()} — never used (0 results, 0 orders)");
+            return Results.Json(dto, JsonOpts.Web);
         }).RequireAuthorization();
     }
 }
@@ -194,11 +229,27 @@ static class LabCatalogLogic
                 || a.RefHigh is null || !double.IsFinite(a.RefHigh.Value)
                 || a.RefLow.Value > a.RefHigh.Value)
                 return $"{at}.refLow/refHigh must be finite numbers with refLow <= refHigh";
+            /* Option B critical thresholds: OPTIONAL per side; when present
+               they must sit OUTSIDE (or at) the normal range — a critical
+               bound inside the normal range would grade normal values
+               critical, a definition error worth a precise 400 */
+            if (a.CritLow is double cl && (!double.IsFinite(cl) || cl > a.RefLow.Value))
+                return $"{at}.critLow must be a finite number <= refLow (critical-low sits below the normal range)";
+            if (a.CritHigh is double ch && (!double.IsFinite(ch) || ch < a.RefHigh.Value))
+                return $"{at}.critHigh must be a finite number >= refHigh (critical-high sits above the normal range)";
         }
         return null;
     }
 
     public static List<AnalyteDefDto> ToAnalytes(List<AnalyteDefRequest> analytes) =>
         analytes.Select(a => new AnalyteDefDto(
-            a.Analyte!.Trim(), a.Unit!, a.RefRange!.Trim(), a.RefLow!.Value, a.RefHigh!.Value)).ToList();
+            a.Analyte!.Trim(), a.Unit!, a.RefRange!.Trim(), a.RefLow!.Value, a.RefHigh!.Value,
+            a.CritLow, a.CritHigh)).ToList();
+
+    /** one-line summary of an analyte definition for the audit trail —
+        preserves the FULL prior definition (range + critical thresholds) in
+        the change event, so an edit is amend-not-erase (Option B §4) */
+    public static string Describe(AnalyteDefDto a) =>
+        $"{a.Analyte}{(a.Unit == "" ? "" : $" {a.Unit}")} {a.RefLow}–{a.RefHigh}"
+        + (a.CritLow is null && a.CritHigh is null ? "" : $" (crit {(a.CritLow?.ToString() ?? "—")}/{(a.CritHigh?.ToString() ?? "—")})");
 }

@@ -103,11 +103,15 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   /* Stage 11 F4: Doctor's SUPERSET + the Consultant-tier observation
      authorities (correct/configure). HARD CONSTRAINT: these never sit
      on the office Administrator profile. */
+  /* labcatalog.manage joined SeniorDoctor with Option B (Catalogue Test
+     Management) — ALONGSIDE Ancillary, a flagged additive reconciliation
+     (see server Rbac.cs): Consultants define/retire structured tests; the
+     laboratory keeps its recorded authority; office admin stays excluded. */
   SeniorDoctor: [
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'results.document', 'results.correct',
-    'notes.document', 'ai.view',
+    'labcatalog.manage', 'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record',
     'observations.correct', 'observations.configure',
   ],

@@ -45,6 +45,7 @@
 .le .leflag{font-size:9px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:1px 7px;width:fit-content}
 .le .leflag.normal{color:var(--green);border:1px solid rgba(61,232,160,.35);background:rgba(61,232,160,.08)}
 .le .leflag.abnormal{color:var(--amber);border:1px solid rgba(255,180,84,.4);background:rgba(255,180,84,.1)}
+.le .leflag.critical{color:var(--red);border:1px solid rgba(255,93,108,.5);background:rgba(255,93,108,.12);font-weight:700}
 
 /* ---- entry: note + submit strip ---- */
 .le .lenote{display:flex;flex-direction:column;gap:4px;margin-top:12px}
