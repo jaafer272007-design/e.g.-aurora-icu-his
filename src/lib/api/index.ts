@@ -15,7 +15,8 @@ import { composeBedsResponse } from './bedboard'
 import { BEDS_RESPONSE, UNIT_SUMMARY, mockAdtBeds } from './data/beds'
 import { allPatients, derivedAlertCount } from './data/patients'
 import { rosterFor } from './data/roster'
-import { GOALS, HEMODYNAMICS, INFUSIONS, PATIENT_ALERTS, VENTILATOR } from './data/panels'
+import { GOALS, INFUSIONS, PATIENT_ALERTS } from './data/panels'
+import { latestObservations, projectHemodynamics, projectVentilator } from './bedside'
 import { ACTION_QUEUES, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
 import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
 import { allConsults } from './data/consults'
@@ -331,13 +332,19 @@ async function getPatientDetailMock(patientId: string): Promise<PatientDetailRes
   const patient = real ? rosterToPatient(real)
     : allPatients().find(p => p.patientId === patientId)
   if (!patient) return respond(null, 120)
+  /* §12 step 4 — the read-swap: the ventilator/hemodynamics panels project
+     from the REAL Observations read (latest charted per type, real-or-'—');
+     the simulated panels.ts data for them is gone. In a pure-mock offline
+     session the read resolves null → the panels render honestly blank. */
+  const obs = (await getObservations(patientId).catch(() => null)) ?? []
+  const latest = latestObservations(obs)
   return respond(
     {
       patient,
       /* one-line AI risk view derived from the canonical AI domain (Screen 8) */
       aiRisks: deriveMissionControlRisks(patientId),
-      ventilator: VENTILATOR,
-      hemodynamics: HEMODYNAMICS,
+      ventilator: projectVentilator(latest),
+      hemodynamics: projectHemodynamics(latest, obs),
       infusions: INFUSIONS,
       /* lab trends are a derived view over the canonical results store (Screen 6) */
       labs: deriveMissionControlLabs(patientId),

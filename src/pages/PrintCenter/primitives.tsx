@@ -87,3 +87,9 @@ export function SignatureBlock({ role }: { role: string }) {
     </div>
   )
 }
+
+/** §12 step 4 — null-safe printed value: a vital with no charted
+ *  observation prints an honest "— not charted", never a fabricated
+ *  number or a dangling unit. */
+export const pv = (v: number | null, unit: string): string =>
+  v === null ? '— not charted' : `${v} ${unit}`

@@ -10,13 +10,18 @@ export type Sex = 'M' | 'F'
 
 /* ---------- GET /api/icu/units/:unitId/beds ---------- */
 
+/* Stage 11 §12 step 4: bedside vitals are PROJECTED from the latest
+   charted Observations of the open encounter (real), with the demo
+   snapshot as the per-type fallback in demo-seeded environments only.
+   null = "not charted" — rendered as an honest '—', never a fabricated
+   number (design §5). */
 export interface BedCardVitals {
-  hr: number
-  map: number
-  spo2: number
-  temp: number
-  /** urine output, mL/h */
-  uo: number
+  hr: number | null
+  map: number | null
+  spo2: number | null
+  temp: number | null
+  /** latest charted urine output (per-interval amount, mL) */
+  uo: number | null
 }
 
 export interface BedAlert {
@@ -136,18 +141,22 @@ export interface PatientSummary {
 
 /* ---------- GET /api/icu/patients/:patientId ---------- */
 
+/* step 4 (F7 mapping, validator-confirmed): sys/dia ← art_sbp/art_dbp
+   (arterial line), nibpSys/nibpDia ← sbp/dbp (cuff), map ← charted map
+   (never recomputed), etco2 ← the F6 catalogue top-up. null = not
+   charted (honest blank). */
 export interface MonitorVitals {
-  hr: number
-  sys: number
-  dia: number
-  map: number
-  nibpSys: number
-  nibpDia: number
-  spo2: number
-  rr: number
-  temp: number
-  etco2: number
-  cvp: number
+  hr: number | null
+  sys: number | null
+  dia: number | null
+  map: number | null
+  nibpSys: number | null
+  nibpDia: number | null
+  spo2: number | null
+  rr: number | null
+  temp: number | null
+  etco2: number | null
+  cvp: number | null
 }
 
 export type OrganName = 'Brain' | 'Heart' | 'Lungs' | 'Kidneys' | 'Liver' | 'Circulation'
@@ -202,7 +211,9 @@ export interface FluidBalance {
 
 export interface Hemodynamics {
   metrics: HemoMetric[]
-  fluidBalance: FluidBalance
+  /** absent when no fluid entry is charted in the trailing 24 h —
+   *  the strip renders nothing rather than a fabricated balance */
+  fluidBalance?: FluidBalance
 }
 
 export interface Infusion {

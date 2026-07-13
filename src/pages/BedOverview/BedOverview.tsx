@@ -8,7 +8,6 @@ import { AlertRow } from '../../components/AlertRow'
 import { VitalTile } from '../../components/VitalTile'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconBed, IconSearch, IconStats, IconVent } from '../../components/icons'
-import { useReducedMotion } from '../../hooks/useClock'
 import { getBeds, getUnitSummary } from '../../lib/api'
 import type { Bed, BedsResponse, UnitSummaryResponse } from '../../lib/api/types'
 import { BedCard } from './BedCard'
@@ -36,18 +35,15 @@ function visible(b: Bed, f: Filters): boolean {
   return true
 }
 
-type JitterMap = Record<string, { hr: number; map: number; spo2: number }>
 
 export function BedOverview() {
   /* behind RequireSession(patients.view) */
   const session = getSession()!
   const navigate = useNavigate()
-  const reduced = useReducedMotion()
   const { toast, showToast } = useToast()
   const [data, setData] = useState<BedsResponse | null>(null)
   const [summary, setSummary] = useState<UnitSummaryResponse | null>(null)
   const [filters, setFilters] = useState<Filters>({ q: '', doc: '', area: '', vent: false, iso: false, crit: false })
-  const [jitter, setJitter] = useState<JitterMap>({})
   const [ringOffset, setRingOffset] = useState(RING_CIRC)
 
   useEffect(() => {
@@ -55,29 +51,9 @@ export function BedOverview() {
     getUnitSummary().then(setSummary)
   }, [])
 
-  /* live jitter of HR / MAP / SpO₂ display values */
-  useEffect(() => {
-    if (!data || reduced) return
-    const seed: JitterMap = {}
-    data.beds.forEach(b => {
-      if (b.patient) seed[b.bedId] = { hr: b.patient.vitals.hr, map: b.patient.vitals.map, spo2: b.patient.vitals.spo2 }
-    })
-    setJitter(seed)
-    const t = setInterval(() => {
-      setJitter(prev => {
-        const next: JitterMap = {}
-        for (const [k, v] of Object.entries(prev)) {
-          next[k] = {
-            hr: Math.round(v.hr + (Math.random() - 0.5) * 1.6),
-            map: Math.round(v.map + (Math.random() - 0.5) * 1.6),
-            spo2: Math.round(v.spo2 + (Math.random() - 0.5) * 1.6),
-          }
-        }
-        return next
-      })
-    }, 3000)
-    return () => clearInterval(t)
-  }, [data, reduced])
+  /* §12 step 4: the live-jitter simulation is GONE — bed-card vitals are
+     the latest charted observations, displayed as charted (decision F5:
+     presentation tracks the real source; jitter fabricated a stream). */
 
   const occupied = useMemo(() => (data ? data.beds.filter(b => b.patient) : []), [data])
   const stats = useMemo(() => {
@@ -89,7 +65,12 @@ export function BedOverview() {
       crit: occupied.filter(b => b.patient!.severity === 'crit').length,
       vent: occupied.filter(b => b.patient!.flags.includes('vent')).length,
       sofa: (occupied.reduce((s, b) => s + b.patient!.sofa, 0) / n).toFixed(1),
-      map: Math.round(occupied.reduce((s, b) => s + b.patient!.vitals.map, 0) / n),
+      /* unit-average MAP over beds with a CHARTED (or demo-fallback) MAP —
+         null vitals are "not charted" and never count as zero */
+      map: (() => {
+        const maps = occupied.map(b => b.patient!.vitals.map).filter((v): v is number => v !== null)
+        return maps.length > 0 ? String(Math.round(maps.reduce((s, v) => s + v, 0) / maps.length)) : '—'
+      })(),
       los: (occupied.reduce((s, b) => s + b.patient!.los, 0) / n).toFixed(1),
       pct: n / data.capacity,
     }
@@ -173,7 +154,7 @@ export function BedOverview() {
                 : visibleBeds.length === 0
                   ? <div className="nomatch">No beds match the current filters.</div>
                   : visibleBeds.map((b, i) => (
-                      <BedCard key={b.bedId} bed={b} index={i} jitter={jitter[b.bedId]} onOpen={id => navigate(`/patients/${id}`)} />
+                      <BedCard key={b.bedId} bed={b} index={i} onOpen={id => navigate(`/patients/${id}`)} />
                     ))}
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { FactGrid, MedTable, Section, SignatureBlock, WriteIn } from '../primitives'
+import { FactGrid, MedTable, pv, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { AdmissionNoteData } from '../types'
 
 /** Template 1 — ICU Admission Note. Structured fields render from the
@@ -25,13 +25,15 @@ export function AdmissionNote({ data }: { data: AdmissionNoteData }) {
       <Section title="Vital signs on admission review (bedside snapshot as of printing)" keepTogether>
         {vitals ? (
           <FactGrid facts={[
-            ['HR', `${vitals.bedside.hr} /min`],
-            ['MAP', `${vitals.bedside.map} mmHg`],
-            ['BP', `${vitals.monitor.sys}/${vitals.monitor.dia} mmHg`],
-            ['SpO₂', `${vitals.bedside.spo2} %`],
-            ['RR', `${vitals.monitor.rr} /min`],
-            ['Temp', `${vitals.bedside.temp} °C`],
-            ['Urine output', `${vitals.bedside.uo} mL/h`],
+            ['HR', pv(vitals.bedside.hr, '/min')],
+            ['MAP', pv(vitals.bedside.map, 'mmHg')],
+            ['BP', vitals.monitor.sys === null && vitals.monitor.dia === null
+              ? '— not charted'
+              : `${vitals.monitor.sys ?? '—'}/${vitals.monitor.dia ?? '—'} mmHg`],
+            ['SpO₂', pv(vitals.bedside.spo2, '%')],
+            ['RR', pv(vitals.monitor.rr, '/min')],
+            ['Temp', pv(vitals.bedside.temp, '°C')],
+            ['Urine output', pv(vitals.bedside.uo, 'mL')],
             ['Rhythm', vitals.rhythm],
             ['SOFA', vitals.sofa],
             ['EWS', vitals.ews],

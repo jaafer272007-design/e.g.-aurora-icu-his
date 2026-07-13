@@ -210,3 +210,21 @@
 .mc .switchrole{font-size:10.5px;font-weight:600;color:var(--dim);border:1px solid var(--stroke);border-radius:9px;
  padding:8px 12px;min-height:36px;margin-left:12px;transition:.15s}
 .mc .switchrole:hover,.mc .switchrole:focus-visible{color:var(--red);border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.07)}
+
+/* §12 step 4 — the Latest Charted Observations card (decision F5-a): the
+   manual-era bedside display. The waveform/jitter monitor CSS above it in
+   this file's history is gone with MonitorCard; the animated monitor
+   returns with the Device Adapter. */
+.mc .obcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:10px}
+.mc .obcell{background:rgba(6,12,22,.5);border:1px solid var(--stroke);border-radius:12px;
+ padding:9px 11px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.mc .obcell.blank{opacity:.62}
+.mc .obcell .lbl{font-size:9.5px;letter-spacing:1.1px;color:var(--dim);text-transform:uppercase}
+.mc .obval{font-size:20px;font-weight:650;line-height:1.1}
+.mc .obval .u{font-size:10px;color:var(--faint);font-style:normal;margin-left:4px}
+.mc .obmeta{font-size:9.5px;color:var(--faint)}
+.mc .obmeta.demo{color:var(--amber);letter-spacing:.4px;text-transform:uppercase;font-size:8.5px}
+.mc .obcfoot{display:flex;align-items:center;gap:10px;justify-content:space-between;
+ font-size:10px;color:var(--faint);margin-top:10px;flex-wrap:wrap}
+.mc .obclink{font-size:10.5px;color:var(--blue);border:1px solid rgba(77,163,255,.35);
+ border-radius:999px;padding:4px 12px;white-space:nowrap}

@@ -102,8 +102,9 @@ export interface DailyProgressData {
   context: PrintContext
   vitals: PrintVitals | null
   activeProblems: string[]
-  /** null when the patient is not flagged ventilated */
-  ventilation: { flagged: boolean; rhythm: string; spo2: number; rr: number } | null
+  /** null when the patient is not flagged ventilated; spo2/rr are the
+   *  latest charted observations — null = not charted (§12 step 4) */
+  ventilation: { flagged: boolean; rhythm: string; spo2: number | null; rr: number | null } | null
   activeMeds: PrintMedLine[]
   /** latest resulted draw per panel, encounter-scoped where the data
    *  carries encounterId */

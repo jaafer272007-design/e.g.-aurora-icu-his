@@ -6,11 +6,16 @@ import { VitalTile } from '../../components/VitalTile'
 import { IconUsers } from '../../components/icons'
 import type { AssignedPatient } from '../../lib/api/types'
 
-const hrClass = (v: number) => (v > 111 ? 'bad' : v > 50 ? 'warn' : '')
-const mapClass = (v: number) => (v < 65 ? 'bad' : v < 70 ? 'warn' : '')
-const spo2Class = (v: number) => (v < 92 ? 'bad' : v < 95 ? 'warn' : '')
-const tempClass = (v: number) => (v >= 38.3 ? 'warn' : '')
-const uoClass = (v: number) => (v < 30 ? 'bad' : v < 50 ? 'warn' : '')
+/* §12 step 4: vitals are the latest charted observations — null = not
+   charted → '—', threshold classes silent on a blank (same rule as the
+   bed board) */
+const hrClass = (v: number | null) => (v === null ? '' : v > 111 ? 'bad' : v > 50 ? 'warn' : '')
+const mapClass = (v: number | null) => (v === null ? '' : v < 65 ? 'bad' : v < 70 ? 'warn' : '')
+const spo2Class = (v: number | null) => (v === null ? '' : v < 92 ? 'bad' : v < 95 ? 'warn' : '')
+const tempClass = (v: number | null) => (v === null ? '' : v >= 38.3 ? 'warn' : '')
+const uoClass = (v: number | null) => (v === null ? '' : v < 30 ? 'bad' : v < 50 ? 'warn' : '')
+
+const shown = (v: number | null) => (v === null ? '—' : v)
 
 /** My Assigned Patients — 1–2 patients (real ICU nurse:patient ratio).
  *  Cards open Patient Mission Control by stable PatientID. */
@@ -42,11 +47,11 @@ export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[]
               <span className="aptags"><TagList flags={p.flags} iso={p.isolation} size="sm" /></span>
             </div>
             <div className="apvitals">
-              <VitalTile variant="vg" label="HR" value={p.vitals.hr} valueClass={hrClass(p.vitals.hr)} />
-              <VitalTile variant="vg" label="MAP" value={p.vitals.map} valueClass={mapClass(p.vitals.map)} />
-              <VitalTile variant="vg" label="SpO₂" value={p.vitals.spo2} valueClass={spo2Class(p.vitals.spo2)} />
-              <VitalTile variant="vg" label="Temp" value={p.vitals.temp.toFixed(1)} valueClass={tempClass(p.vitals.temp)} />
-              <VitalTile variant="vg" label="UO" value={p.vitals.uo} valueClass={uoClass(p.vitals.uo)} />
+              <VitalTile variant="vg" label="HR" value={shown(p.vitals.hr)} valueClass={hrClass(p.vitals.hr)} />
+              <VitalTile variant="vg" label="MAP" value={shown(p.vitals.map)} valueClass={mapClass(p.vitals.map)} />
+              <VitalTile variant="vg" label="SpO₂" value={shown(p.vitals.spo2)} valueClass={spo2Class(p.vitals.spo2)} />
+              <VitalTile variant="vg" label="Temp" value={p.vitals.temp === null ? '—' : p.vitals.temp.toFixed(1)} valueClass={tempClass(p.vitals.temp)} />
+              <VitalTile variant="vg" label="UO" value={shown(p.vitals.uo)} valueClass={uoClass(p.vitals.uo)} />
             </div>
             <div className="apfoot">Open Mission Control →</div>
           </button>
