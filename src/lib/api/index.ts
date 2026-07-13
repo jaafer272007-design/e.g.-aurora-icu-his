@@ -7,7 +7,7 @@
 import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
-  NewIoEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, Order, OrderSetDef,
+  NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
   RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse, UserAccount,
 } from './types'
@@ -1081,4 +1081,54 @@ export function reactivateUser(username: string): Promise<AdtWriteResult<UserAcc
  *  the old one is never revealed or transmitted. REAL-ONLY write. */
 export function resetUserPassword(username: string, newPassword: string): Promise<AdtWriteResult<UserAccount>> {
   return usersWrite<UserAccount>(`/api/icu/users/${encodeURIComponent(username)}/reset-password`, 'password reset', { newPassword })
+}
+
+/* ---------------- Stage 11 — Observations (Aurora Core clinical store) ----------------
+   REAL-ONLY domain, reads included: observations are the bedside clinical
+   record and have NO mock store — the honest-data rule (design §5): a
+   value with no real observation is blank, never simulated. A dev session
+   without the API sees an explicit unavailable state instead of demo
+   observations; writes are REAL-ONLY like ADT/users (a chart entry is
+   never written to local mock state). RBAC is server-enforced
+   (observations.record / observations.correct / observations.configure);
+   the client checks are defense in depth. */
+
+/** GET /api/icu/observations/catalog — the Observation Type Catalogue
+ *  (Pillar 2): groups in clinical order with their type definitions;
+ *  disabled groups included. Null = API unreachable (the screen says so). */
+export async function getObservationCatalog(): Promise<ObsCatalogGroup[] | null> {
+  const real = await apiGet<ObsCatalogGroup[]>('/api/icu/observations/catalog', 'observation catalogue')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return null
+  throw apiUnavailable('observation catalogue')
+}
+
+/** GET /api/icu/observations?patientId — the patient's chart, oldest
+ *  first (server-ordered). Null = API unreachable — NEVER simulated. */
+export async function getObservations(patientId: string): Promise<Observation[] | null> {
+  const real = await apiGet<Observation[]>(
+    `/api/icu/observations?patientId=${encodeURIComponent(patientId)}`, 'observations')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return null
+  throw apiUnavailable('observations')
+}
+
+/** POST /api/icu/observations — chart a manual round (many entries, one
+ *  server-stamped clinicalTime) or an ad-hoc entry (one entry — same
+ *  request, §10). The payload carries ONLY typeCode→value pairs:
+ *  time/provenance/actor/unit/encounterId are server-owned (§2/§7) and a
+ *  payload claiming them fails binding. REAL-ONLY write. */
+export function chartObservations(patientId: string, entries: NewObservationEntry[]): Promise<AdtWriteResult<Observation[]>> {
+  return usersWrite<Observation[]>('/api/icu/observations', 'observation charting', { patientId, entries })
+}
+
+/** POST /api/icu/observations/:id/correct — the §8 two-tier amendment.
+ *  Tier-1 (own entry, inside the 5-minute window) sends only the value —
+ *  no reason (Q1); tier-2 (Consultant-tier) requires the reason. The
+ *  server decides the tier — the client hint is display only. REAL-ONLY. */
+export function correctObservation(observationId: string, value: ObsEntryValue, reason?: string): Promise<AdtWriteResult<Observation>> {
+  return usersWrite<Observation>(
+    `/api/icu/observations/${encodeURIComponent(observationId)}/correct`,
+    'observation correction',
+    { value, ...(reason !== undefined && reason.trim() !== '' ? { reason } : {}) })
 }

@@ -1,0 +1,101 @@
+/* Stage 11 §12 step 3 — /observations. Shares the app frame/shell/card
+   language of the other patient-scoped screens (Timeline is the closest
+   sibling); these are the observations-only additions. */
+
+.obs .shell{display:grid;grid-template-columns:198px 240px 1fr;min-height:0}
+.obs main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+
+.obs .card{padding:14px 16px}
+
+.obs .obshead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.obs .obshead h2{font-size:13px;letter-spacing:.4px;display:flex;align-items:center;gap:7px}
+.obs .obsaside{font-size:10px;color:var(--faint);max-width:560px;text-align:right}
+
+.obs .obsun{font-size:11.5px;color:var(--amber);padding:10px 2px;line-height:1.5}
+.obs .obsempty{font-size:11.5px;color:var(--faint);padding:14px 2px}
+
+/* ---- entry: group chips ---- */
+.obs .obsgroups{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.obs .obsgchip{font-size:10.5px;letter-spacing:.3px;padding:5px 11px;border-radius:999px;
+ border:1px solid var(--stroke);color:var(--dim);background:rgba(255,255,255,.03);display:flex;gap:6px;align-items:center}
+.obs .obsgchip.on{color:var(--text);border-color:rgba(53,224,208,.5);background:rgba(53,224,208,.09)}
+.obs .obsgchip .n{font-size:9px;background:rgba(53,224,208,.16);color:var(--cyan);border-radius:999px;padding:1px 6px}
+.obs .obsdisabled{font-size:9.5px;color:var(--faint);font-style:italic;margin-left:4px}
+
+/* ---- entry: fields ---- */
+.obs .obsfields{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px 14px}
+.obs .obsfield{display:flex;flex-direction:column;gap:4px;min-width:0}
+.obs .obsfield label{font-size:10px;letter-spacing:.4px;color:var(--dim);text-transform:uppercase}
+.obs .obsfield label .opt{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0}
+.obs .obsfield input,.obs .obsfield select,.obs .obseditor input,.obs .obseditor select{
+ background:rgba(6,12,22,.6);border:1px solid var(--stroke2);border-radius:9px;
+ padding:6px 9px;font-size:12px;min-width:0;width:100%}
+.obs .obsfield.derived .obsderivednote{font-size:10px;color:var(--faint);font-style:italic;padding:6px 0}
+.obs .obsnumwrap{display:flex;align-items:center;gap:6px}
+.obs .obsnumwrap input{flex:1}
+.obs .obsunit{font-size:10px;color:var(--faint);white-space:nowrap}
+.obs .obscomps{display:flex;gap:8px;flex-wrap:wrap}
+.obs .obscomp{display:flex;flex-direction:column;gap:2px;flex:1;min-width:88px}
+.obs .obscomp small{font-size:9px;color:var(--faint)}
+
+/* ---- entry: submit strip ---- */
+.obs .obssubmit{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.obs .obsstaged{font-size:10.5px;color:var(--dim);flex:1;min-width:200px}
+.obs .obschart{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+ padding:7px 14px;border-radius:10px;color:#06121f;background:var(--green)}
+.obs .obschart:disabled{opacity:.35;cursor:not-allowed}
+.obs .obsclear,.obs .obscancel{font-size:10.5px;color:var(--dim);border:1px solid var(--stroke);
+ border-radius:10px;padding:6px 12px}
+.obs .obserr{font-size:11px;color:var(--red);background:rgba(255,93,108,.08);
+ border:1px solid rgba(255,93,108,.35);border-radius:9px;padding:7px 10px;margin-top:10px}
+
+/* ---- the chart: rounds ---- */
+.obs .obsround{border-top:1px solid var(--stroke);padding:10px 0 4px;margin-top:6px}
+.obs .obsroundhead{display:flex;align-items:baseline;gap:10px;font-size:12px;margin-bottom:6px}
+.obs .obsroundhead .num:first-child{font-size:13px;color:var(--cyan)}
+.obs .obsby{color:var(--dim);font-size:10.5px}
+.obs .obssource{font-size:9px;letter-spacing:.5px;text-transform:uppercase;border-radius:999px;padding:1px 7px;
+ color:var(--dim);border:1px solid var(--stroke)}
+.obs .obssource.manual{color:var(--blue);border-color:rgba(77,163,255,.4)}
+.obs .obssource.device{color:var(--violet);border-color:rgba(167,139,250,.4)}
+.obs .obssource.hybrid{color:var(--cyan);border-color:rgba(53,224,208,.4)}
+.obs .obsroundhead small{color:var(--faint);font-size:9.5px;margin-left:auto}
+
+.obs .obsrows{display:flex;flex-direction:column}
+.obs .obsrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:5px 2px;
+ border-bottom:1px dashed rgba(130,170,230,.08)}
+.obs .obsrow:last-child{border-bottom:none}
+.obs .obsname{font-size:11.5px;color:var(--dim);min-width:210px}
+.obs .obsval{font-size:12.5px}
+.obs .obsval .obsu{font-size:10px;color:var(--faint);font-style:normal}
+.obs .obsrow.derived .obsname,.obs .obsrow.derived .obsval{color:var(--faint);font-style:italic}
+.obs .obsderivedtag,.obs .obsamendtag{font-size:9px;letter-spacing:.4px;border-radius:999px;padding:1px 7px}
+.obs .obsderivedtag{color:var(--faint);border:1px dashed var(--stroke)}
+.obs .obsamendtag{color:var(--amber);border:1px solid rgba(255,180,84,.4);background:rgba(255,180,84,.07)}
+.obs .obsfix{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--blue);
+ border:1px solid rgba(77,163,255,.35);border-radius:999px;padding:3px 10px;margin-left:auto}
+
+/* amendment history — the original is preserved, layers shown in order */
+.obs .obshistory{flex-basis:100%;display:flex;flex-direction:column;gap:2px;
+ font-size:10px;color:var(--faint);padding:2px 0 4px 14px}
+.obs .obsorig b{color:var(--dim);text-decoration:line-through}
+.obs .obsamend b{color:var(--text)}
+.obs .obsamend i{color:var(--dim)}
+
+/* ---- inline correction editor ---- */
+.obs .obseditor{flex-basis:100%;display:flex;flex-direction:column;gap:8px;
+ background:rgba(6,12,22,.45);border:1px solid var(--stroke);border-radius:12px;
+ padding:10px 12px;margin:4px 0 6px}
+.obs .obseditor .obserr{margin-top:0}
+.obs .obsreason{width:100%}
+.obs .obsselfnote{font-size:10px;color:var(--green)}
+.obs .obseditbtns{display:flex;gap:8px;justify-content:flex-end}
+
+@media(max-width:1500px){.obs .shell{grid-template-columns:64px 220px 1fr}}
+@media(max-width:1180px){
+ .obs .shell{grid-template-columns:64px 1fr}
+ .obs .ptrail{display:none}
+ .obs.app-frame{height:auto;overflow:visible}
+ .obs main{overflow:visible}
+ .obs .obsname{min-width:150px}
+}

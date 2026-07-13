@@ -999,3 +999,88 @@ export interface EditUserDraft {
   jobTitle?: string
   justification?: string
 }
+
+/* ---------- Stage 11 — Observations (§12 step 3 wire contracts) ----------
+   Mirrors server/Core/Observations/ObservationModels.cs exactly (camelCase;
+   optional fields ABSENT on the wire, not null). The Observation record is
+   GENERIC (typeCode → value against the Type Catalogue — Pillar 2); values
+   arrive as the server's NORMALIZED storage text: numeric → invariant
+   number string, enum → the allowed value, compound → a JSON object
+   string of its components. */
+
+export interface ObsComponent {
+  code: string
+  label: string
+  kind: 'numeric' | 'enum'
+  min?: number
+  max?: number
+  values?: string[]
+}
+
+export interface ObservationType {
+  typeCode: string
+  groupCode: string
+  displayName: string
+  unit: string
+  valueType: 'numeric' | 'enum' | 'compound'
+  min?: number
+  max?: number
+  allowedValues?: string[]
+  components?: ObsComponent[]
+  isDerived: boolean
+  derivationInputs?: string[]
+  optional: boolean
+}
+
+/** GET /api/icu/observations/catalog — groups in clinical order, each
+ *  carrying its types; DISABLED groups are included (config visibility)
+ *  and the entry form filters on enabled. */
+export interface ObsCatalogGroup {
+  groupCode: string
+  displayName: string
+  seq: number
+  enabled: boolean
+  types: ObservationType[]
+}
+
+/** one §8 amendment layer — the actor is ALWAYS on the record; reason is
+ *  '' on a tier-1 self-correction (the Q1 decision: no reason required) */
+export interface ObsAmendment {
+  previousValue: string
+  newValue: string
+  amendedBy: string
+  amendedAt: string
+  reason: string
+  amenderRole: string
+}
+
+export interface Observation {
+  observationId: string
+  patientId: string
+  encounterId: string
+  typeCode: string
+  /** ORIGINAL charted value — never rewritten; the effective value is the
+   *  last amendment's newValue when amendments exist (amend-not-erase) */
+  value: string
+  unit: string
+  /** measurement time, SERVER-stamped 'yyyy-MM-dd HH:mm' UTC (§7 — no back-dating) */
+  clinicalTime: string
+  source: 'manual' | 'device' | 'hybrid'
+  deviceId?: string
+  recordedBy: string
+  /** system entry stamp 'yyyy-MM-dd HH:mm:ss' UTC — the tier-1 window anchor */
+  enteredAt: string
+  verifiedBy?: string
+  amendments: ObsAmendment[]
+}
+
+/** a charted value on its way in: numeric types send a number, enum types
+ *  the string, compound types an object of components */
+export type ObsEntryValue = number | string | Record<string, number | string>
+
+/* ---------- POST /api/icu/observations ---------- */
+
+export interface NewObservationEntry {
+  typeCode: string
+  value: ObsEntryValue
+}

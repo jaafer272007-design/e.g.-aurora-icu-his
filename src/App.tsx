@@ -6,6 +6,7 @@ import { NurseWorkspace } from './pages/NurseWorkspace/NurseWorkspace'
 import { OrdersMedication } from './pages/OrdersMedication/OrdersMedication'
 import { LabImaging } from './pages/LabImaging/LabImaging'
 import { Timeline } from './pages/Timeline/Timeline'
+import { Observations } from './pages/Observations/Observations'
 import { AiAssistant } from './pages/AiAssistant/AiAssistant'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
@@ -37,6 +38,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /orders(/:patientId)    Orders & Medication        orders.view (mutations need more)
    /labs(/:patientId)      Laboratory & Imaging       results.view
    /timeline(/:patientId)  Clinical Timeline          patients.view
+   /observations(/:patientId)  Bedside Observations   patients.view (charting needs observations.record; corrections observations.record/correct — Stage 11 §4)
    /ai(/:patientId)        AI Clinical Assistant      ai.view
    /admissions             ADT — admit                patients.view (admit button needs adt.admit)
    /discharges             ADT — discharge/transfer   patients.view (actions need adt.discharge / adt.transfer)
@@ -81,6 +83,8 @@ export default function App() {
         <Route path="/labs/:patientId" element={<RequireSession permission="results.view"><LabImaging /></RequireSession>} />
         <Route path="/timeline" element={<RequireSession permission="patients.view"><Timeline /></RequireSession>} />
         <Route path="/timeline/:patientId" element={<RequireSession permission="patients.view"><Timeline /></RequireSession>} />
+        <Route path="/observations" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
+        <Route path="/observations/:patientId" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/ai" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />
         <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
