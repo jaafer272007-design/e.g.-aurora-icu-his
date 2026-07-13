@@ -613,6 +613,11 @@ export interface AnalyteDef {
   refRange: string
   refLow: number
   refHigh: number
+  /** Option B (Catalogue Test Management): CRITICAL thresholds — a value at
+   *  or beyond one flags CRITICAL. Optional per side; absent on the 7
+   *  seeded panels (backfilling them is a recorded future item). */
+  critLow?: number
+  critHigh?: number
 }
 
 export interface LabTest {
@@ -716,6 +721,11 @@ export interface LabResultItem {
   refLow: number
   refHigh: number
   flag: ResultFlag
+  /** Option B: the critical thresholds SNAPSHOTTED from the catalogue
+   *  definition at documentation time (same snapshot rule as refLow/
+   *  refHigh); absent on every pre-Option-B result */
+  critLow?: number
+  critHigh?: number
 }
 
 /** append-only result audit event (results audit PR) — acknowledge /

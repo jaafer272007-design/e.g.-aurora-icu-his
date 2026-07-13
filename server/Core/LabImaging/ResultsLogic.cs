@@ -167,20 +167,30 @@ static class ResultsLogic
         return r.Items!.Select(it =>
         {
             var d = byName[it.Analyte!];
+            /* Option B: critical thresholds snapshot onto the item alongside
+               the reference bounds, and the flag derivation honours them */
             return new LabItemFull(it.Analyte!, it.Value!.Value, d.Unit, d.RefRange, d.RefLow, d.RefHigh,
-                FlagForValue(it.Value!.Value, d.RefLow, d.RefHigh));
+                FlagForValue(it.Value!.Value, d.RefLow, d.RefHigh, d.CritLow, d.CritHigh),
+                d.CritLow, d.CritHigh);
         }).ToList();
     }
 
-    /** the per-item flag DERIVED from a value against the catalogue reference
-        range: in [refLow, refHigh] → normal, otherwise abnormal. The
-        catalogue models a SINGLE range per analyte (no separate critical
-        threshold), so the manual documentation path grades normal vs abnormal
-        only — a "critical" grade would need threshold data the catalogue does
-        not carry yet (recorded as a future item). Honest by construction: the
-        clinician types the number, the system grades it. */
-    public static string FlagForValue(double value, double refLow, double refHigh) =>
-        value >= refLow && value <= refHigh ? "normal" : "abnormal";
+    /** the per-item flag DERIVED from a value against the catalogue
+        definition. CRITICAL first (Option B): at or beyond a defined
+        critical threshold — the at-threshold boundary counts as critical
+        (over-flagging is the safe error) and critical takes precedence over
+        the normal range. Then in [refLow, refHigh] → normal, else abnormal.
+        The 7 seeded panels carry no critical thresholds (backfilling them is
+        a recorded future item), so their grading is byte-identical
+        normal/abnormal. Honest by construction: the clinician types the
+        number, the system grades it against the definition. */
+    public static string FlagForValue(double value, double refLow, double refHigh,
+        double? critLow = null, double? critHigh = null)
+    {
+        if ((critLow is double cl && value <= cl) || (critHigh is double ch && value >= ch))
+            return "critical";
+        return value >= refLow && value <= refHigh ? "normal" : "abnormal";
+    }
 
     /* ---------- Lab Result Editing (correction) helpers ----------
        Mirrors ObservationService's two-tier model: Tier-1 = the DOCUMENTER,

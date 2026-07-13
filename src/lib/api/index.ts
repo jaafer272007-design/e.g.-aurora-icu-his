@@ -552,6 +552,14 @@ export function reactivateLabTest(testId: string): Promise<AdtWriteResult<LabTes
   return usersWrite<LabTest>(`/api/icu/lab-catalog/${encodeURIComponent(testId)}/reactivate`, 'lab-catalogue reactivate')
 }
 
+/** DELETE /api/icu/lab-catalog/:testId — Option B removal: a TRUE delete
+ *  succeeds only for a never-used test; a test referenced by any result or
+ *  order answers 409 directing the caller to retire (deactivate) instead —
+ *  historical results are never destroyed. REAL-ONLY. */
+export function deleteLabTest(testId: string): Promise<AdtWriteResult<LabTest>> {
+  return usersWrite<LabTest>(`/api/icu/lab-catalog/${encodeURIComponent(testId)}`, 'lab-catalogue delete', undefined, 'DELETE')
+}
+
 /** POST /api/icu/order-sets — author a set (ordersets.manage). REAL-ONLY. */
 export function createOrderSet(draft: { setId: string; name: string; description: string; items: OrderSetItemTemplate[] }): Promise<AdtWriteResult<OrderSetDef>> {
   return usersWrite<OrderSetDef>('/api/icu/order-sets', 'order-set create', draft)
@@ -1050,7 +1058,7 @@ export function transferEncounter(encounterId: string, bedId: string): Promise<A
    (no audit history offline). Deactivation is a status change, never a
    delete. */
 
-async function usersWrite<T>(path: string, what: string, body?: unknown, method: 'POST' | 'PUT' = 'POST'): Promise<AdtWriteResult<T>> {
+async function usersWrite<T>(path: string, what: string, body?: unknown, method: 'POST' | 'PUT' | 'DELETE' = 'POST'): Promise<AdtWriteResult<T>> {
   if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()

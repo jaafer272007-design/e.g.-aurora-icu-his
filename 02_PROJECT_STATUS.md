@@ -1,6 +1,21 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through LAB RESULT EDITING / CORRECTION
+**Last updated: 2026-07-13 · current through CATALOGUE TEST MANAGEMENT
+(OPTION B) (built — senior clinicians add/edit/remove SINGLE structured lab
+tests with critical thresholds that drive automatic
+normal/abnormal/CRITICAL flagging, on the existing Layer-4 catalogue and
+`/lab-catalog` screen. FLAGGED governance reconciliation: `labcatalog.manage`
+already existed on Ancillary — resolved ADDITIVELY (SeniorDoctor granted the
+atom alongside the Laboratory; nurse/non-senior-doctor/office-admin stay 403;
+Consultant-ONLY recorded as the two-line alternative). critLow/critHigh ride
+in AnalytesJson (no migration); flag-at-entry with per-result definition
+snapshots (stated resolution of open item #2); removal = true-delete only
+when never referenced, else retire preserving every historical result, with
+the document path now 409 on retired tests while producing-service resulting
+stays unblocked (deployed suites hold); required all-patients confirmation
+on add/edit; range edits audited with the full prior definition. 27/27
+headless + real-browser renders. Deferred: multi-analyte creation,
+seeded-critical backfill, Option C. Prior: LAB RESULT EDITING / CORRECTION
 (built — the Stage 11 observation correction model applied to documented lab
 results, from the validator's design recorded verbatim as
 `docs/design/lab-result-editing.md`: Tier-1 documenter self-correction ≤5 min
@@ -2961,6 +2976,91 @@ acknowledgment rules the observation model didn't cover.
   events (incl. "[after acknowledgment]") are in the audit history. Both
   screens rendered in a real browser against the live API. tsc + production
   build + server build clean; the migration adds only the two columns.
+
+### Catalogue Test Management (Option B) (built) — Consultant-managed structured tests
+Built from the clinical validator's design
+(`docs/design/catalogue-test-management.md`, recorded verbatim): senior
+clinicians add/edit/remove SINGLE structured lab tests whose definitions
+drive automatic normal/abnormal/**critical** flagging — distinct from
+Option A (custom free-text, unflagged). Built ONTO the existing Layer-4
+catalogue and its `/lab-catalog` management screen — not a new store or a
+new screen.
+- **THE FLAGGED GOVERNANCE RECONCILIATION (design open item #1 — surfaced,
+  decided additively after the interactive question failed to deliver
+  twice; the PR presents it as the owner's decision point).** The design
+  asked for a "new" Consultant-tier `labcatalog.manage` permission — but
+  that exact atom ALREADY existed on the **Ancillary** profile, with the
+  recorded Layer-4 governance ("the Laboratory's authority"), a working
+  management screen, and a deployed E2E suite asserting lab-tech access.
+  Resolved ADDITIVELY: **SeniorDoctor gains `labcatalog.manage` ALONGSIDE
+  Ancillary** — consistent with the design's own §1 ("reference ranges are
+  owned by the laboratory / clinical staff"). Nurse, non-senior doctor and
+  the office Administrator profile remain 403 (the F2/F3 hard constraint,
+  verified). Flipping to Consultant-ONLY (removing the atom from Ancillary)
+  is a two-line change recorded as the alternative — a conscious governance
+  reversal if the owner prefers the literal reading.
+- **Critical thresholds** (`critLow`/`critHigh`, optional per side) join the
+  analyte definition — inside `AnalytesJson`, data not schema (**no EF
+  migration**). Validation: a critical bound must sit at/outside the normal
+  range (400 otherwise). Flag derivation: **critical first** — a value at or
+  beyond a defined threshold flags CRITICAL (at-threshold counts as
+  critical; over-flagging is the safe error), then normal in-range /
+  abnormal out. The 7 seeded panels carry no thresholds and grade
+  byte-identically (backfilling them is a recorded FUTURE item — this
+  partially supersedes the #76 "flag granularity" limitation for ADDED
+  tests).
+- **Flag-at-entry with definition snapshots (design open item #2, resolved
+  and stated).** Each documented item SNAPSHOTS the definition it was graded
+  against (refRange/refLow/refHigh and now critLow/critHigh — `LabItemFull`
+  extension, nullable → byte-parity) and stores its flag — the results
+  store's existing architecture, chosen over the design's at-render
+  recommendation because five consumers read stored item flags and a lab
+  report is a historical record graded against the definition in force when
+  it resulted (the standard lab-report convention). A RANGE EDIT therefore
+  flows through to NEW results (verified: the audit event preserves the
+  full prior definition — amend-not-erase), while historical results
+  honestly keep the range they were graded against; the #80 value-
+  correction path re-derives from the item's own snapshot INCLUDING
+  critical.
+- **Removal never destroys clinical data.** New
+  `DELETE /api/icu/lab-catalog/{testId}`: a test referenced by ANY result
+  or order answers **409** directing retire (the recorded invariant — "ever
+  ordered or resulted must stay resolvable forever"); a never-used test
+  truly deletes. **Retire = the existing deactivate** (audited on the row's
+  permanent history), now with Option B semantics: off the entry menu, no
+  new orders (existing 409) and **no new bedside documentation** (a new 409
+  on the document path for inactive tests — deliberately SPLIT from the
+  producing-service create path, which keeps the recorded
+  resulting-never-blocked rule so a day-3 order whose test retired on day 5
+  stays resultable and the deployed suites hold). Historical results of a
+  retired test remain readable with their snapshotted definitions
+  (verified: 5 results, incl. pre- and post-range-edit snapshots). An
+  honest limitation, stated: a TRUE delete removes the row, so its audit
+  lives in the response + server log only (a durable delete-audit would
+  need a catalogue audit table — noted, not built).
+- **UI**: the existing `/lab-catalog` screen (the settings/admin area —
+  design §5) gains the critical-threshold fields
+  (`analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]`),
+  a REQUIRED "these ranges drive flagging for ALL patients" confirmation on
+  add and edit (§4), Retire (renamed from Deactivate) and Remove flows, and
+  crit chips on each test. The `/lab-entry` screen shows each analyte's
+  crit bounds and previews CRITICAL live; added tests appear there exactly
+  like seeded ones.
+- **Verification** (headless, live local server — 27/27 after one
+  test-script count fix): Consultant creates a single test with critHigh →
+  200 (crit on the wire, absent side omitted); nurse / Specialist / office
+  admin → 403; lab technician still 200 (kept authority — deployed-suite
+  parity); crit-inside-normal-range → 400; documenting 0.3/1.0/3.5/2.0
+  against the added test → normal/abnormal/CRITICAL/CRITICAL-at-threshold;
+  #80 correction re-derives to critical from the item snapshot; range edit
+  audited with the FULL prior definition and drives new results; delete
+  used → 409, retire → 200, document-against-retired → 409, history
+  readable; delete never-used → 200 gone; seeded panels byte-identical (no
+  crit fields, unchanged grading). Both screens rendered in a real browser.
+  tsc + production build + server build clean; NO migration (JSON columns).
+- **Deferred (recorded)**: multi-analyte panel creation (single tests only —
+  the validator's decision); backfilling critical thresholds onto the 7
+  seeded panels; Option C LIS test-list import (already recorded).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

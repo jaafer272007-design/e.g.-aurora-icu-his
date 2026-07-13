@@ -47,11 +47,23 @@ static class Rbac
            (and the same F2/F3 hard constraint: never on office
            Administrator). Tier-1 self-correction needs no atom of its own —
            it is results.document + being the documenter + the 5-min window,
-           all decided server-side. */
+           all decided server-side.
+           labcatalog.manage on SeniorDoctor (Catalogue Test Management /
+           Option B): a FLAGGED reconciliation — the design asked for a "new"
+           Consultant-tier permission, but the atom already existed on
+           Ancillary (the recorded Layer-4 producing-service governance, with
+           a deployed suite asserting lab-tech access). Resolved ADDITIVELY:
+           SeniorDoctor gains the atom ALONGSIDE Ancillary — consistent with
+           the design's own §1 ("reference ranges are owned by the
+           laboratory / clinical staff"). Nurse, non-senior doctor and office
+           Administrator remain 403 (the F2/F3 hard constraint). Flipping to
+           Consultant-ONLY would be removing the atom from Ancillary below —
+           a conscious governance reversal, not made silently here. */
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "results.document", "results.correct", "notes.document", "ai.view", "adt.admit",
-            "adt.discharge", "observations.record", "observations.correct", "observations.configure"],
+            "results.document", "results.correct", "labcatalog.manage", "notes.document",
+            "ai.view", "adt.admit", "adt.discharge", "observations.record",
+            "observations.correct", "observations.configure"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record"],

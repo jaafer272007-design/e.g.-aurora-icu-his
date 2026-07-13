@@ -6,24 +6,32 @@ import { NavSidebar } from '../../components/NavSidebar'
 import { Card } from '../../components/Card'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAdmit, IconCheck, IconClock, IconFlask } from '../../components/icons'
-import { createLabTest, deactivateLabTest, getLabCatalog, reactivateLabTest, updateLabTest } from '../../lib/api'
+import { createLabTest, deactivateLabTest, deleteLabTest, getLabCatalog, reactivateLabTest, updateLabTest } from '../../lib/api'
 import type { AdtWriteResult } from '../../lib/api'
 import type { AnalyteDef, LabTest } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 
 /** Layer 4 phase 2 — Lab Test Catalogue management (/lab-catalog, Aurora
- *  Core Master Data). Laboratory authority (labcatalog.manage on the
- *  Ancillary profile — the route guard renders Access Restricted for
- *  everyone else; the server re-enforces every mutation). Deactivation is
- *  a status change, never a delete: an inactive test cannot be newly
- *  ORDERED (server 409), but every existing result referencing it keeps
- *  rendering, and resulting stays allowed (completing ordered care).
- *  Writes are REAL-ONLY — reference data is a durable system of record. */
+ *  Core Master Data). labcatalog.manage — the Laboratory (Ancillary) plus,
+ *  with Option B, SeniorDoctor (the Consultant tier); the route guard
+ *  renders Access Restricted for everyone else and the server re-enforces
+ *  every mutation. Deactivation is a status change, never a delete: an
+ *  inactive test cannot be newly ORDERED (server 409) or newly DOCUMENTED
+ *  at the bedside (Option B retire), but every existing result referencing
+ *  it keeps rendering, and lab resulting against open orders stays allowed.
+ *  Option B adds: critical thresholds on analytes (drive the CRITICAL
+ *  flag), and Remove — a true delete ONLY for a never-used test; the server
+ *  refuses (409) when any result/order references it. Writes are REAL-ONLY
+ *  — reference data is a durable system of record. */
 
-/* analytes edited one per line: "analyte | unit | refRange | refLow | refHigh"
-   (unit may be blank for unitless analytes like pH) */
+/* analytes edited one per line:
+   "analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]"
+   (unit may be blank for unitless analytes like pH; the two OPTIONAL
+   trailing fields are the Option B critical thresholds — leave a side
+   blank when the analyte has no critical bound on that side) */
 const analytesToText = (a: AnalyteDef[]) =>
-  a.map(x => `${x.analyte} | ${x.unit} | ${x.refRange} | ${x.refLow} | ${x.refHigh}`).join('\n')
+  a.map(x => `${x.analyte} | ${x.unit} | ${x.refRange} | ${x.refLow} | ${x.refHigh}`
+    + (x.critLow !== undefined || x.critHigh !== undefined ? ` | ${x.critLow ?? ''} | ${x.critHigh ?? ''}` : '')).join('\n')
 
 function parseAnalytes(text: string): AnalyteDef[] | string {
   const out: AnalyteDef[] = []
@@ -31,12 +39,26 @@ function parseAnalytes(text: string): AnalyteDef[] | string {
   if (lines.length === 0) return 'at least one analyte line is required'
   for (const line of lines) {
     const parts = line.split('|').map(p => p.trim())
-    if (parts.length !== 5) return `"${line}" — expected: analyte | unit | refRange | refLow | refHigh`
-    const [analyte, unit, refRange, lo, hi] = parts
+    if (parts.length !== 5 && parts.length !== 7)
+      return `"${line}" — expected: analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]`
+    const [analyte, unit, refRange, lo, hi, cl, ch] = parts
     const refLow = Number(lo), refHigh = Number(hi)
     if (!analyte || !refRange || !Number.isFinite(refLow) || !Number.isFinite(refHigh))
       return `"${line}" — analyte/refRange required; refLow/refHigh must be numbers`
-    out.push({ analyte, unit, refRange, refLow, refHigh })
+    const def: AnalyteDef = { analyte, unit, refRange, refLow, refHigh }
+    if (parts.length === 7) {
+      if (cl !== '') {
+        const n = Number(cl)
+        if (!Number.isFinite(n)) return `"${line}" — critLow must be a number (or blank)`
+        def.critLow = n
+      }
+      if (ch !== '') {
+        const n = Number(ch)
+        if (!Number.isFinite(n)) return `"${line}" — critHigh must be a number (or blank)`
+        def.critHigh = n
+      }
+    }
+    out.push(def)
   }
   return out
 }
@@ -47,7 +69,7 @@ export function LabCatalog() {
 
   const [tests, setTests] = useState<LabTest[] | null>(null)
   const [busy, setBusy] = useState(false)
-  const [panel, setPanel] = useState<{ kind: 'edit' | 'deactivate' | 'history'; testId: string } | null>(null)
+  const [panel, setPanel] = useState<{ kind: 'edit' | 'deactivate' | 'history' | 'remove'; testId: string } | null>(null)
   const [rowError, setRowError] = useState<{ testId: string; error: string } | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -56,10 +78,14 @@ export function LabCatalog() {
   const [cCategory, setCCategory] = useState('')
   const [cSpecimen, setCSpecimen] = useState('')
   const [cAnalytes, setCAnalytes] = useState('')
+  /* Option B §4: adding/editing must be a DELIBERATE act — the definition
+     drives automatic flagging for every patient's results of this test */
+  const [cConfirm, setCConfirm] = useState(false)
   const [eName, setEName] = useState('')
   const [eCategory, setECategory] = useState('')
   const [eSpecimen, setESpecimen] = useState('')
   const [eAnalytes, setEAnalytes] = useState('')
+  const [eConfirm, setEConfirm] = useState(false)
 
   const reload = useCallback(() => { getLabCatalog().then(setTests) }, [])
   useEffect(() => { reload() }, [reload])
@@ -96,21 +122,32 @@ export function LabCatalog() {
   async function doCreate() {
     const analytes = parseAnalytes(cAnalytes)
     if (typeof analytes === 'string') { setFormError(analytes); return }
+    if (!cConfirm) { setFormError('Confirm that these ranges/thresholds will drive automatic flagging for all patients'); return }
     await applyWrite(null, 'the test', () => createLabTest({
       testId: cTestId.trim(), name: cName.trim(), category: cCategory.trim(),
       specimen: cSpecimen.trim(), analytes,
     }), t => {
-      showToast('Test added', `${t.name} (${t.testId}) is active in the catalogue`)
-      setCTestId(''); setCName(''); setCCategory(''); setCSpecimen(''); setCAnalytes('')
+      showToast('Test added', `${t.name} (${t.testId}) is active — its definition now drives flagging for all patients`)
+      setCTestId(''); setCName(''); setCCategory(''); setCSpecimen(''); setCAnalytes(''); setCConfirm(false)
     })
   }
 
   async function doEdit(t: LabTest) {
     const analytes = parseAnalytes(eAnalytes)
     if (typeof analytes === 'string') { setRowError({ testId: t.testId, error: analytes }); return }
+    if (!eConfirm) { setRowError({ testId: t.testId, error: 'Confirm that the changed ranges/thresholds will drive automatic flagging for all patients' }); return }
     await applyWrite(t.testId, 'the change', () => updateLabTest(t.testId, {
       name: eName.trim(), category: eCategory.trim(), specimen: eSpecimen.trim(), analytes,
-    }), upd => { showToast('Test updated', `${upd.name} — recorded in the audit history`); setPanel(null) })
+    }), upd => { showToast('Test updated', `${upd.name} — the prior definition stays on the audit history`); setPanel(null) })
+  }
+
+  /* Option B removal: the SERVER decides — a never-used test truly deletes;
+     a referenced test answers 409 telling us to retire (deactivate) instead */
+  async function doRemove(t: LabTest) {
+    await applyWrite(t.testId, 'the removal', () => deleteLabTest(t.testId), del => {
+      showToast('Test removed', `${del.name} was never used — deleted outright (nothing clinical referenced it)`)
+      setPanel(null)
+    })
   }
 
   async function doDeactivate(t: LabTest) {
@@ -126,12 +163,12 @@ export function LabCatalog() {
     })
   }
 
-  function openPanel(kind: 'edit' | 'deactivate' | 'history', t: LabTest) {
+  function openPanel(kind: 'edit' | 'deactivate' | 'history' | 'remove', t: LabTest) {
     setRowError(null)
     if (panel?.kind === kind && panel.testId === t.testId) { setPanel(null); return }
     if (kind === 'edit') {
       setEName(t.name); setECategory(t.category); setESpecimen(t.specimen)
-      setEAnalytes(analytesToText(t.analytes))
+      setEAnalytes(analytesToText(t.analytes)); setEConfirm(false)
     }
     setPanel({ kind, testId: t.testId })
   }
@@ -144,14 +181,17 @@ export function LabCatalog() {
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
-        <NavSidebar active="labcatalog" alertCount={0} footerLines={['Role: Laboratory', 'Master Data · Aurora Core']} />
+        <NavSidebar active="labcatalog" alertCount={0} footerLines={[`Role: ${profileOf(session.jobTitle)} profile`, 'Master Data · Aurora Core']} />
 
         <main>
           <div className="uanote" role="note">
-            The catalogue is the reference layer lab ordering and resulting read from. Removing a test is a
-            status change, never a delete — an inactive test cannot be newly ordered, but every existing
-            result referencing it keeps rendering forever, and results for already-ordered tests are never
-            blocked. Every change is recorded on the test&apos;s permanent audit history.
+            The catalogue is the reference layer lab ordering, resulting and bedside documentation read
+            from — a test&apos;s ranges and critical thresholds drive automatic flagging for <b>every
+            patient&apos;s</b> results of that test, which is why management is restricted to the
+            Laboratory and Consultant tiers. Removing a used test never deletes it: it retires — off the
+            menu, no new orders or bedside documentation — while every existing result keeps rendering
+            forever (a never-used test deletes outright). Every change is recorded on the test&apos;s
+            permanent audit history, including the prior ranges.
           </div>
 
           <div className="uacols">
@@ -179,17 +219,23 @@ export function LabCatalog() {
                           </button>
                           <button className="uaact" onClick={() => openPanel('edit', t)} aria-expanded={open === 'edit'}>Edit</button>
                           {active && (
-                            <button className="uaact warn" onClick={() => openPanel('deactivate', t)} aria-expanded={open === 'deactivate'}>Deactivate</button>
+                            <button className="uaact warn" onClick={() => openPanel('deactivate', t)} aria-expanded={open === 'deactivate'}>Retire</button>
                           )}
                           {!active && (
                             <button className="uaact" disabled={busy} onClick={() => doReactivate(t)}>Reactivate</button>
                           )}
+                          <button className="uaact warn" onClick={() => openPanel('remove', t)} aria-expanded={open === 'remove'}>Remove</button>
                         </span>
                       </div>
 
                       <div className="fmtags" style={{ marginTop: 6 }}>
                         {t.analytes.map(a => (
-                          <span className="fmtag num" key={a.analyte}>{a.analyte}{a.unit ? ` ${a.unit}` : ''} · {a.refRange}</span>
+                          <span className="fmtag num" key={a.analyte}>
+                            {a.analyte}{a.unit ? ` ${a.unit}` : ''} · {a.refRange}
+                            {(a.critLow !== undefined || a.critHigh !== undefined) && (
+                              <b style={{ color: 'var(--red)' }}> · crit {a.critLow !== undefined ? `≤${a.critLow}` : ''}{a.critLow !== undefined && a.critHigh !== undefined ? ' / ' : ''}{a.critHigh !== undefined ? `≥${a.critHigh}` : ''}</b>
+                            )}
+                          </span>
                         ))}
                       </div>
 
@@ -218,26 +264,48 @@ export function LabCatalog() {
                             <label>Specimen
                               <input value={eSpecimen} onChange={ev => setESpecimen(ev.target.value)} disabled={busy} />
                             </label>
-                            <label className="uawide">Analytes — one per line: analyte | unit | refRange | refLow | refHigh
+                            <label className="uawide">Analytes — one per line: analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]
                               <textarea rows={4} value={eAnalytes} onChange={ev => setEAnalytes(ev.target.value)} disabled={busy}
                                 style={{ fontFamily: 'inherit', fontSize: 11 }} />
                             </label>
+                            <label className="uawide" style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                              <input type="checkbox" checked={eConfirm} onChange={ev => setEConfirm(ev.target.checked)} disabled={busy} style={{ width: 'auto' }} />
+                              <span>I confirm these reference ranges and critical thresholds will drive automatic
+                              normal/abnormal/critical flagging for <b>all patients&apos;</b> results of this test.
+                              The prior definition stays on the audit history (amend-not-erase).</span>
+                            </label>
                           </div>
                           <div className="uapanelacts">
-                            <button className="uaact go" disabled={busy} onClick={() => doEdit(t)}>{busy ? 'Saving…' : 'Save changes'}</button>
+                            <button className="uaact go" disabled={busy || !eConfirm} onClick={() => doEdit(t)}>{busy ? 'Saving…' : 'Save changes'}</button>
                             <button className="uaact" onClick={() => setPanel(null)}>Cancel</button>
                           </div>
                         </div>
                       )}
 
                       {open === 'deactivate' && (
-                        <div className="uapanel" role="alertdialog" aria-label={`Confirm deactivation: ${t.testId}`}>
+                        <div className="uapanel" role="alertdialog" aria-label={`Confirm retirement: ${t.testId}`}>
                           <span className="uaconfirm">
-                            Deactivate <b>{t.name}</b>? It can no longer be newly ordered; existing results
-                            keep rendering and resulting against open orders stays allowed (never deleted).
+                            Retire <b>{t.name}</b>? It leaves the entry menu — no new orders and no new bedside
+                            documentation — while every existing result keeps rendering and lab resulting against
+                            open orders stays allowed (never deleted). Audited on the test&apos;s permanent history.
                           </span>
                           <div className="uapanelacts">
-                            <button className="uaact warn" disabled={busy} onClick={() => doDeactivate(t)}>{busy ? 'Deactivating…' : 'Confirm deactivation'}</button>
+                            <button className="uaact warn" disabled={busy} onClick={() => doDeactivate(t)}>{busy ? 'Retiring…' : 'Confirm retirement'}</button>
+                            <button className="uaact" onClick={() => setPanel(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {open === 'remove' && (
+                        <div className="uapanel" role="alertdialog" aria-label={`Confirm removal: ${t.testId}`}>
+                          <span className="uaconfirm">
+                            Remove <b>{t.name}</b>? A test that has <b>never</b> been ordered or resulted is
+                            deleted outright (nothing clinical references it). A test <b>with</b> results or
+                            orders is never deleted — the server will refuse and direct you to Retire instead,
+                            which preserves every historical result.
+                          </span>
+                          <div className="uapanelacts">
+                            <button className="uaact warn" disabled={busy} onClick={() => doRemove(t)}>{busy ? 'Removing…' : 'Confirm removal'}</button>
                             <button className="uaact" onClick={() => setPanel(null)}>Cancel</button>
                           </div>
                         </div>
@@ -266,14 +334,20 @@ export function LabCatalog() {
                   <label>Specimen
                     <input value={cSpecimen} onChange={ev => setCSpecimen(ev.target.value)} disabled={busy} placeholder="Whole blood (EDTA)" />
                   </label>
-                  <label className="uawide">Analytes — one per line: analyte | unit | refRange | refLow | refHigh
+                  <label className="uawide">Analytes — one per line: analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]
                     <textarea rows={4} value={cAnalytes} onChange={ev => setCAnalytes(ev.target.value)} disabled={busy}
-                      placeholder="WBC | ×10⁹/L | 4.0–11.0 | 4 | 11" style={{ fontFamily: 'inherit', fontSize: 11 }} />
+                      placeholder={'Procalcitonin | ng/mL | 0.0–0.5 | 0 | 0.5 | | 2.0\n(critLow/critHigh optional — a value at or beyond one flags CRITICAL)'}
+                      style={{ fontFamily: 'inherit', fontSize: 11 }} />
+                  </label>
+                  <label className="uawide" style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <input type="checkbox" checked={cConfirm} onChange={ev => setCConfirm(ev.target.checked)} disabled={busy} style={{ width: 'auto' }} />
+                    <span>I confirm these reference ranges and critical thresholds will drive automatic
+                    normal/abnormal/critical flagging for <b>all patients&apos;</b> results of this test.</span>
                   </label>
                 </div>
                 {formError && <div className="uaerr" role="alert">{formError}</div>}
                 <button className="uasubmit" type="submit"
-                  disabled={busy || !cTestId.trim() || !cName.trim() || !cCategory.trim() || !cSpecimen.trim() || !cAnalytes.trim()}>
+                  disabled={busy || !cConfirm || !cTestId.trim() || !cName.trim() || !cCategory.trim() || !cSpecimen.trim() || !cAnalytes.trim()}>
                   {busy ? 'Adding…' : 'Add to catalogue'}
                 </button>
               </form>
