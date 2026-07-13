@@ -10,13 +10,14 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconFlask } from '../../components/icons'
 import {
   acknowledgeImaging, acknowledgeLab, getImagingStudies, getLabDraws, getPatientDetail,
-  getPatients, getResultInbox, unacknowledgeImaging,
+  getPatients, getResultInbox, unacknowledgeImaging, unacknowledgeLab,
 } from '../../lib/api'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import type {
   ImagingStudy, LabDraw, Patient, PatientSummary, ResultInboxItem,
 } from '../../lib/api/types'
 import { LabTrendsCard } from './LabTrendsCard'
+import { CustomResultsCard } from './CustomResultsCard'
 import { ImagingCard } from './ImagingCard'
 import { ResultInboxCard } from './ResultInboxCard'
 
@@ -105,6 +106,23 @@ export function LabImaging() {
     })
   }
 
+  /* same reversal for a lab result — used by the custom-results card (the
+     existing lab unacknowledge endpoint; nothing custom-specific server-side) */
+  const unackLab = (labId: string, reason: string) => {
+    unacknowledgeLab(labId, reason, session.jobTitle).then(ok => {
+      if (!ok) { showToast('Not permitted', 'Reversal requires physician role'); return }
+      refresh()
+      showToast('Acknowledgment reversed', `${ok.label} · returned to the results inbox`)
+    })
+  }
+
+  /* display fix (bug 1): custom results are excluded from the numeric trends
+     chart (unstructured) and the inbox lists only UNACKNOWLEDGED results, so
+     an acknowledged custom result previously had NO home on this screen and
+     appeared to vanish. They live in their own card below — visible in both
+     states, incl. who acknowledged. */
+  const customDraws = draws?.filter(d => d.custom) ?? []
+
   const patientInbox = inbox.filter(i => i.patientId === patientId)
   const latestByPanel = new Map<string, LabDraw>()
   draws?.forEach(d => latestByPanel.set(d.panel, d))
@@ -165,6 +183,14 @@ export function LabImaging() {
             <div className="licols">
               <div className="licolL">
                 <LabTrendsCard draws={draws} />
+                {customDraws.length > 0 && (
+                  <CustomResultsCard
+                    draws={customDraws}
+                    canAcknowledge={canAck}
+                    onAcknowledge={ackLab}
+                    onUnacknowledge={unackLab}
+                  />
+                )}
               </div>
               <div className="licolR">
                 <ResultInboxCard items={patientInbox} canAcknowledge={canAck} onAcknowledge={ackInboxItem} />

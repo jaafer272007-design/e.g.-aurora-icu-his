@@ -1,6 +1,20 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through the CUSTOM / OTHER LAB TEST
+**Last updated: 2026-07-13 · current through the LABS & IMAGING DISPLAY
+FIXES (built — two display-only bugs from hands-on testing: (1) an
+acknowledged CUSTOM result vanished from `/labs` because custom results are
+excluded from the numeric trends chart and the inbox lists only
+unacknowledged results — fixed with a Custom / Other Results card that is the
+custom results' permanent home in both acknowledgment states (value/unit as
+typed, display-only ref context, note, provenance, "custom · unflagged" tag,
+"✓ Acknowledged by …" + ↩ Reverse, mirroring the ImagingCard pattern; still
+no computed flag); (2) the stored NOTE was never displayed — now shown on the
+trends card (latest draw), the custom card, and `/lab-entry` Results on File.
+Frontend-only; data/RBAC/lifecycle unchanged; verified in a real browser
+against a live API with the validator's exact repro. Prerequisite for the Lab
+Result Editing design's §2b "acknowledged-then-edited" visibility safeguard —
+the editing feature is the agreed next item, as its own PR. Prior: the
+CUSTOM / OTHER LAB TEST
 ENTRY (built — an 8th "Custom / Other" tab on the `/lab-entry` screen for
 documenting a test the catalogue lacks: free-text name + value (required) +
 optional unit / display-only reference range / note. UNSTRUCTURED and
@@ -2817,6 +2831,42 @@ built).
   Integration Layer; LIS-sourced test definitions become a future source, the
   same "manual now, integrate later" pattern — the custom-result model does
   not preclude it). Option B stays dropped for safety.
+
+### Labs & Imaging display fixes (built) — acknowledged custom results + the note
+Two display bugs from the validator's hands-on testing, both verified as
+DISPLAY-ONLY (the data was stored correctly; the view didn't show it):
+- **Bug 1 — acknowledged custom results vanished from `/labs`.** Root cause:
+  custom results are (correctly) excluded from the numeric trends chart
+  (unstructured — not chartable), and the results inbox lists only
+  UNACKNOWLEDGED results — so once acknowledged, a custom result had NO home
+  on the screen at all. Fix: a **Custom / Other Results card**
+  (`CustomResultsCard`) on Labs & Imaging — the custom results' permanent
+  home, visible in BOTH acknowledgment states: value/unit as typed, the
+  display-only "ref: … (context only)" line, the note, provenance
+  (documented by whom, ✎ manual), the "custom · unflagged" tag (still NO
+  normal/abnormal/critical — the honest-data rule holds), and the
+  acknowledged state mirroring the ImagingCard pattern ("✓ Acknowledged by X
+  · time" + ↩ Reverse with the required reason, via the EXISTING lab
+  unacknowledge endpoint). The card renders only when the patient has custom
+  results (the exception case — no permanent empty card).
+- **Bug 2 — the stored note was never displayed.** Fix: the trends card now
+  shows the latest draw's note under the chart ("note (time): …"); the
+  custom card shows each custom result's note; and the `/lab-entry` Results
+  on File list shows the note too. (The inbox already carried the note as
+  its detail line — that path was fine.)
+- Frontend-only change — no server/store/wire modifications; nothing about
+  flagging, RBAC, or the acknowledge lifecycle changed. Verified in a real
+  browser against a live local API with the validator's exact repro:
+  documented a structured CBC with a note (note visible under the trend),
+  documented a custom test with a note, acknowledged it — it STAYS visible
+  with value/ref-context/note/tag and "Acknowledged by Dr. …" + Reverse.
+  tsc + production build clean.
+- **Sequencing note:** this fix is the prerequisite for the Lab Result
+  Editing / Correction design's §2b visibility safeguard
+  ("acknowledged-then-edited" must be displayable — impossible while
+  acknowledged custom results were invisible). The editing feature is the
+  agreed NEXT work item, built as its own PR after the owner verifies this
+  fix.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

@@ -19,6 +19,21 @@
 .li .liacked{color:var(--green)}
 .li .liunacked{color:var(--red);font-weight:600}
 .li .lisource{color:var(--violet)}
+/* the note recorded with a draw (display fix — stored, previously unshown) */
+.li .linote{font-size:11px;color:var(--dim);margin:6px 2px 8px;line-height:1.5;
+ border-left:2px solid rgba(130,170,230,.3);padding-left:8px}
+
+/* ===== custom / other results (display fix — the permanent home for
+   unstructured results, visible in BOTH acknowledged states; a violet
+   dashed frame + "custom · unflagged" tag replace the flag badge so an
+   un-interpreted result is never mistaken for a flagged one) ===== */
+.li .licustom{border:1px dashed rgba(167,139,250,.45);border-radius:13px;padding:11px 13px;
+ background:rgba(167,139,250,.04);margin-bottom:9px}
+.li .licustag{font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;
+ padding:2px 8px;color:var(--violet);border:1px solid rgba(167,139,250,.5);background:rgba(167,139,250,.1);flex:none}
+.li .licusval{font-size:14px;font-weight:700}
+.li .licusval small{font-size:9.5px;color:var(--dim);font-weight:500;margin-left:4px}
+.li .licusref{font-size:10px;color:var(--faint);font-style:italic}
 .li .lianalytes{display:flex;flex-direction:column;gap:6px}
 .li .liarow{display:grid;grid-template-columns:1fr auto auto auto 64px;gap:10px;align-items:center;
  padding:8px 11px;border-radius:11px;border:1px solid var(--stroke);background:rgba(255,255,255,.02);
