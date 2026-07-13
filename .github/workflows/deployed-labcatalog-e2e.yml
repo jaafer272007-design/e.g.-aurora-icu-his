@@ -1,7 +1,14 @@
 # Deployed Lab Catalogue + Order Sets E2E — verifies the LIVE Render
 # service (Layer 4 phase 2, Aurora Core Master Data). Core assertions:
-# Laboratory-only RBAC on catalogue mutations and Pharmacy-only RBAC on
-# set mutations, IN BOTH DIRECTIONS (four denied profiles each); the
+# labcatalog.manage RBAC on catalogue mutations — Laboratory AND the
+# SeniorDoctor/Consultant tier since Catalogue Test Management (Option B,
+# PR #81); nurse, pharmacist and the office Administrator stay 403 (the
+# F2/F3 hard constraint) — and Pharmacy-only RBAC on set mutations, IN
+# BOTH DIRECTIONS. (Run 29278695381 failed on the pre-Option-B assertion
+# "DOC catalogue create -> 403"; this amendment is that correction.)
+# Option B's REMOVAL SAFETY: DELETE on a never-used test is a true delete
+# (200); DELETE on a used test is 409 directing retirement — history is
+# never destroyed. Plus the pre-existing core: the
 # deactivation invariant for tests (new ORDER for an inactive test → 409;
 # the existing result keeps rendering; creating a RESULT for the inactive
 # test stays 200 — completing ordered care is never blocked); the
@@ -108,6 +115,7 @@ jobs:
             echo "$u: token issued"
           done
           { echo "TID=e2e-test-${GITHUB_RUN_ID}"; echo "SID=e2e-set-${GITHUB_RUN_ID}";
+            echo "DTID=e2e-doctest-${GITHUB_RUN_ID}";
             echo "DID=e2e-setdrug-${GITHUB_RUN_ID}"; echo "MRN=MRN-L4P2E2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
 
       - name: Reads — 401 unauth; every profile 200 (+ CORS); seeded SUBSET by id
@@ -141,15 +149,39 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/order-sets?active=true")
           echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
 
-      - name: RBAC both directions — catalogue is Laboratory-only, sets are Pharmacy-only
+      - name: RBAC both directions — catalogue is labcatalog.manage (Laboratory + Consultant), sets are Pharmacy-only
         run: |
           TCRE="{\"testId\":\"$TID\",\"name\":\"E2E Panel\",\"category\":\"Chemistry\",\"specimen\":\"Serum\",\"analytes\":[{\"analyte\":\"X\",\"unit\":\"mg/dL\",\"refRange\":\"1-2\",\"refLow\":1,\"refHigh\":2}]}"
           echo "TCRE=$TCRE" >> "$GITHUB_ENV"
-          for who in DOC NUR PHA ADM; do
+          # DENIED direction: nurse, pharmacist and the office Administrator
+          # (F2/F3) are 403 on every catalogue mutation. DOC left this list
+          # when PR #81 (Option B) granted labcatalog.manage to the
+          # SeniorDoctor tier — run 29278695381 caught the stale assertion.
+          for who in NUR PHA ADM; do
             eval "t=\$$who"
             rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $t" -H 'Content-Type: application/json' -d "$TCRE" "$API/api/icu/lab-catalog")
             echo "$who catalogue create -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
           done
+          # ALLOWED direction, new since Option B: the Consultant tier
+          # manages the catalogue alongside Laboratory. DOC works on its
+          # OWN run-unique test id so this leg never collides with the LAB
+          # flow's $TID (a shared id would 409 LAB's create below).
+          DCRE=$(echo "$TCRE" | sed "s/$TID/$DTID/")
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$DCRE" "$API/api/icu/lab-catalog")
+          echo "DOC catalogue create -> HTTP $rc (SeniorDoctor manages since Option B)"; [ "$rc" = "200" ] || exit 1
+          # the denied profiles are 403 on the NEW remove endpoint too
+          for who in NUR PHA ADM; do
+            eval "t=\$$who"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $t" "$API/api/icu/lab-catalog/$DTID")
+            echo "$who catalogue remove -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          done
+          # Option B's delete-if-unused: no result and no order ever
+          # referenced $DTID, so a TRUE delete is allowed — and leaves no
+          # run state behind (cleanup's deactivate answers 404, accepted).
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $DOC" "$API/api/icu/lab-catalog/$DTID")
+          echo "DOC remove UNUSED test -> HTTP $rc (delete-if-unused)"; [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $DOC" "$API/api/icu/lab-catalog/$DTID")
+          echo "remove already-removed -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
           SCRE_PROBE='{"setId":"rbac-probe","name":"X","description":"d","items":[{"category":"Nursing","summary":"x","priority":"Routine"}]}'
           for who in DOC NUR ADM LAB; do
             eval "t=\$$who"
@@ -230,6 +262,11 @@ jobs:
           # existing results referencing the inactive test still render
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/results/labs?patientId=$PID" \
             | python3 -c 'import json,sys,os; d=json.load(sys.stdin); r=[x for x in d if x["panel"]==os.environ["TID"]]; assert len(r)>=2, len(r); print(f"existing results still render: {len(r)}")'
+          # OPTION B's REMOVAL SAFETY: $TID now has results AND an order on
+          # file — a used test can NEVER be true-deleted; 409 directs retire
+          out=$(curl -s -w '\n%{http_code}' -X DELETE -H "Authorization: Bearer $LAB" "$API/api/icu/lab-catalog/$TID")
+          rc=$(echo "$out" | tail -1); echo "remove USED test -> HTTP $rc (history is never destroyed)"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "a used test is never deleted" in e and "deactivate (retire) it instead" in e, e; print("409:", e)'
           # THE ASYMMETRY: resulting against the inactive test stays 200 (completing ordered care)
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
             -d "{\"patientId\":\"$PID\",\"panel\":\"$TID\",\"label\":\"Now\",\"items\":[{\"analyte\":\"X\",\"value\":1.4,\"unit\":\"mg/dL\",\"refRange\":\"1-2\",\"refLow\":1,\"refHigh\":2,\"flag\":\"normal\"}]}" "$API/api/icu/results/labs")
@@ -298,7 +335,10 @@ jobs:
             echo "discharge $EID -> HTTP $rc"
             { [ "$rc" = "200" ] || [ "$rc" = "409" ]; } || fails=$((fails+1))
           fi
-          for pair in "lab-catalog:$TID:LAB" "order-sets:$SID:PHA" "formulary:$DID:PHA"; do
+          # $DTID (the Consultant leg's test) is normally already TRUE-
+          # deleted by its own step — deactivate then answers 404, accepted
+          # below. It only still exists if the run died mid-step.
+          for pair in "lab-catalog:$TID:LAB" "lab-catalog:$DTID:DOC" "order-sets:$SID:PHA" "formulary:$DID:PHA"; do
             path="${pair%%:*}"; rest="${pair#*:}"; id="${rest%%:*}"; who="${rest#*:}"
             [ -n "$id" ] || continue
             eval "t=\$$who"
