@@ -1,38 +1,18 @@
 import type {
-  Goal, Hemodynamics, Infusion, PatientAlert, Ventilator,
+  Goal, Infusion, PatientAlert,
 } from '../types'
 
 /* Clinical panel sample data from reference/icu-mission-control.html.
    The prototype shows the same panels for every patient; the mock API keeps
-   that behavior by attaching these to each patient-detail response. */
+   that behavior by attaching these to each patient-detail response.
 
-export const VENTILATOR: Ventilator = {
-  mode: 'PC-AC (Lung Protective)',
-  tiles: [
-    { label: 'Tidal Volume', value: '420', unit: 'mL (6 mL/kg)', warn: false },
-    { label: 'Set Rate', value: '18', unit: '/min', warn: false },
-    { label: 'FiO₂', value: '55', unit: '%', warn: true },
-    { label: 'PEEP', value: '10', unit: 'cmH₂O', warn: false },
-    { label: 'Peak Pressure', value: '28', unit: 'cmH₂O', warn: true },
-    { label: 'Plateau', value: '24', unit: 'cmH₂O', warn: false },
-    { label: 'Driving Pressure', value: '14', unit: 'cmH₂O', warn: true },
-    { label: 'Compliance', value: '30', unit: 'mL/cmH₂O', warn: false },
-    { label: 'Minute Vent.', value: '8.9', unit: 'L/min', warn: false },
-    { label: 'I:E', value: '1:2', unit: '', warn: false },
-  ],
-}
-
-export const HEMODYNAMICS: Hemodynamics = {
-  metrics: [
-    { label: 'Cardiac Output', value: '5.1', unit: 'L/min', warn: false },
-    { label: 'Cardiac Index', value: '2.4', unit: 'L/min/m²', warn: false },
-    { label: 'SVR', value: '680', unit: 'dyn·s/cm⁵', warn: true },
-    { label: 'SVV', value: '16', unit: '%', warn: true },
-    { label: 'Lactate', value: '3.8', unit: 'mmol/L', warn: true },
-    { label: 'Urine Output', value: '28', unit: 'mL/h', warn: true },
-  ],
-  fluidBalance: { value: '+1,850 mL', percent: 34 },
-}
+   Stage 11 §12 step 4: the VENTILATOR and HEMODYNAMICS panels moved to the
+   REAL bedside projection (src/lib/api/bedside.ts — latest charted
+   Observations, real-or-blank) and their simulated data is DELETED here.
+   What remains (infusions, patient alerts, goals) is NOT observation-backed
+   — those are separate future domains (device/orders integration, alert
+   rules, care plans) and stay mock, compiled out of production like the
+   rest of this module. */
 
 export const INFUSIONS: Infusion[] = [
   { name: 'Noradrenaline', dose: '0.32 µg/kg/min', rate: '12.4 mL/h', status: 'hi', trend: [0.1, 0.14, 0.2, 0.24, 0.3, 0.32, 0.32] },

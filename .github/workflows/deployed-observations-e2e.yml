@@ -288,6 +288,59 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{"value":97,"reason":"post-discharge review"}' "$API/api/icu/observations/$OBS_HR/correct")
           echo "tier-2 correction on the CLOSED encounter -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
 
+      - name: "Step 4 — the bedside READ-SWAP live: a readmission projects HONEST NULLS (the closed stay never leaks); a charted round lights the roster via the F7 map (incl. the F6 etco2 top-up); a correction reaches the projection"
+        run: |
+          # the run patient was DISCHARGED by the §6 leg WITH observations on
+          # the closed encounter — readmitting the SAME MRN must project all
+          # NULLS (encounter scope) and an honest "—" rhythm: never zeros,
+          # never a fabricated "SR". (The F9 demo-fallback half is proven in
+          # the local matrix only — charting on a staging demo patient would
+          # be an immutable permanent write.)
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/adt/beds" -o /tmp/beds2.json
+          B2=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds2.json")) if not b.get("patientId")]; assert free, "no free beds"; print(free[0])')
+          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$MRN'","name":"E2E Observations Patient","age":61,"sex":"M","allergies":"None documented","diagnosis":"observations E2E s4","attending":"Dr. E2E","bedId":"'$B2'"}' \
+            "$API/api/icu/adt/admissions" -o /tmp/adm2.json
+          EID2=$(python3 -c 'import json; print(json.load(open("/tmp/adm2.json"))["encounter"]["encounterId"])')
+          echo "readmitted $PID on $EID2 (bed $B2)"; echo "EID2=$EID2" >> "$GITHUB_ENV"
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/patients" -o /tmp/roster1.json
+          PID="$PID" python3 - <<'PY'
+          import json, os
+          r = [x for x in json.load(open("/tmp/roster1.json")) if x["patientId"] == os.environ["PID"]][0]
+          assert all(v is None for v in r["bedsideVitals"].values()), r["bedsideVitals"]
+          assert all(v is None for v in r["monitorVitals"].values()), r["monitorVitals"]
+          assert set(r["monitorVitals"]) == {"hr","sys","dia","map","nibpSys","nibpDia","spo2","rr","temp","etco2","cvp"}
+          assert r["rhythm"] == "—" and "baseline observations pending" in r["bedAlert"]["message"]
+          print("readmission: every projected vital NULL, rhythm '—' — the closed stay's observations do NOT leak")
+          PY
+          # chart the F7 round and require the roster to serve EXACTLY the
+          # charted values through the tile map
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","entries":[{"typeCode":"hr","value":118},{"typeCode":"map","value":88},{"typeCode":"spo2","value":95},{"typeCode":"temp","value":37.2},{"typeCode":"urine_output","value":300},{"typeCode":"sbp","value":92},{"typeCode":"dbp","value":54},{"typeCode":"art_sbp","value":130},{"typeCode":"art_dbp","value":68},{"typeCode":"rr","value":22},{"typeCode":"etco2","value":38},{"typeCode":"cvp","value":9},{"typeCode":"cardiac_rhythm","value":"Sinus Tachycardia"}]}' \
+            "$API/api/icu/observations" -o /tmp/round4.json
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/patients" -o /tmp/roster2.json
+          PID="$PID" python3 - <<'PY'
+          import json, os
+          r = [x for x in json.load(open("/tmp/roster2.json")) if x["patientId"] == os.environ["PID"]][0]
+          assert r["monitorVitals"] == {"hr":118,"sys":130,"dia":68,"map":88,"nibpSys":92,"nibpDia":54,"spo2":95,"rr":22,"temp":37.2,"etco2":38,"cvp":9}, r["monitorVitals"]
+          assert r["bedsideVitals"] == {"hr":118,"map":88,"spo2":95,"temp":37.2,"uo":300}, r["bedsideVitals"]
+          assert r["rhythm"] == "Sinus Tachycardia"
+          assert "baseline observations charted" in r["bedAlert"]["message"]
+          print("roster projects the round: arterial sys/dia <- art_sbp/art_dbp, NIBP <- sbp/dbp, MAP charted, etco2 live (F6/F7)")
+          PY
+          # a tier-1 correction must reach the projection (EFFECTIVE value)
+          HR4=$(python3 -c 'import json; print([o["observationId"] for o in json.load(open("/tmp/round4.json")) if o["typeCode"]=="hr"][0])')
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"value":96}' "$API/api/icu/observations/$HR4/correct" >/dev/null
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/patients" -o /tmp/roster3.json
+          PID="$PID" python3 - <<'PY'
+          import json, os
+          r = [x for x in json.load(open("/tmp/roster3.json")) if x["patientId"] == os.environ["PID"]][0]
+          assert r["monitorVitals"]["hr"] == 96 and r["bedsideVitals"]["hr"] == 96
+          print("a correction reaches the bedside projection: hr effective 96 (amend-not-erase upstream)")
+          PY
+          # release this leg's encounter (the always() cleanup also covers it)
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/adt/encounters/$EID2/discharge" >/dev/null && echo "released $EID2"
+
       - name: Failure-path cleanup — restore the devices group and release the encounter (runs on failure/cancel too)
         if: always()
         run: |

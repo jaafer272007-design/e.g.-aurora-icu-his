@@ -1,4 +1,4 @@
-import { FactGrid, MedTable, Section, SignatureBlock, WriteIn } from '../primitives'
+import { FactGrid, MedTable, pv, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { DailyProgressData } from '../types'
 
 /** Template 2 — Daily Progress Note. Current-state document for an open
@@ -36,13 +36,15 @@ export function DailyProgressNote({ data }: { data: DailyProgressData }) {
       <Section title="Vital signs (bedside snapshot as of printing)" keepTogether>
         {vitals ? (
           <FactGrid facts={[
-            ['HR', `${vitals.bedside.hr} /min`],
-            ['MAP', `${vitals.bedside.map} mmHg`],
-            ['BP', `${vitals.monitor.sys}/${vitals.monitor.dia} mmHg`],
-            ['SpO₂', `${vitals.bedside.spo2} %`],
-            ['RR', `${vitals.monitor.rr} /min`],
-            ['Temp', `${vitals.bedside.temp} °C`],
-            ['Urine output', `${vitals.bedside.uo} mL/h`],
+            ['HR', pv(vitals.bedside.hr, '/min')],
+            ['MAP', pv(vitals.bedside.map, 'mmHg')],
+            ['BP', vitals.monitor.sys === null && vitals.monitor.dia === null
+              ? '— not charted'
+              : `${vitals.monitor.sys ?? '—'}/${vitals.monitor.dia ?? '—'} mmHg`],
+            ['SpO₂', pv(vitals.bedside.spo2, '%')],
+            ['RR', pv(vitals.monitor.rr, '/min')],
+            ['Temp', pv(vitals.bedside.temp, '°C')],
+            ['Urine output', pv(vitals.bedside.uo, 'mL')],
             ['SOFA', vitals.sofa],
             ['EWS', vitals.ews],
           ]} />
@@ -61,8 +63,8 @@ export function DailyProgressNote({ data }: { data: DailyProgressData }) {
         <Section title="Ventilation" keepTogether>
           <FactGrid facts={[
             ['Ventilated', 'yes (roster support flag)'],
-            ['SpO₂', `${ventilation.spo2} %`],
-            ['RR', `${ventilation.rr} /min`],
+            ['SpO₂', pv(ventilation.spo2, '%')],
+            ['RR', pv(ventilation.rr, '/min')],
             ['Rhythm', ventilation.rhythm],
           ]} />
           <p className="pd-sub">

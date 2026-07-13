@@ -1,6 +1,22 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-12 · current through STAGE 11 §12 STEP 3 (the
+**Last updated: 2026-07-13 · current through STAGE 11 §12 STEP 4 (the
+bedside READ-SWAP, built to the owner's six recorded decisions F5–F10:
+every bedside vitals surface — roster/bed board/Mission Control — now
+projects the LATEST charted Observations of the OPEN encounter, per-type
+demo-snapshot fallback in demo-seeded environments only, honest nulls
+otherwise; the simulated MonitorCard (waveforms/jitter/STREAMING) and the
+panels.ts vent/hemo demo data are DELETED — the manual-era display is the
+"Latest Charted Observations" card with clinical time + source per value
+(F5-a), and the bed-board jitter is gone with it; EtCO₂ added to the
+catalogue as a data top-up with seed-if-missing (F6, 51→52 types,
+fresh-vs-topped-up catalog byte-identical); the F7 tile map is live
+(arterial ← art lines, NIBP ← cuff, MAP charted never recomputed);
+19/19 byte-parity incl. a BYTE-IDENTICAL roster for demo patients,
+12/12 server matrix incl. readmission-never-inherits, 25/25 UI proof,
+bundle proofs re-run; the step-3 POST-MERGE pass was 13/13 on 24e77ac
+after the print suite's Pages gate honestly caught a stale deploy that
+was then redeployed from main). Prior: STEP 3 (the
 /observations screen: the entry form is RENDERED FROM the Type
 Catalogue — enabled groups only, no observation vocabulary in frontend
 code; both §10 entry modes as ONE staged submission — many values are a
@@ -2421,6 +2437,88 @@ ad-hoc; chart read view; read-only without permission; RBAC per §4").]*
 - **Remaining (§12)**: step 4 the two-source bedside read-swap, then
   the 3 deferred print templates and (later) the Device Adapter.
 
+### Stage 11 §12 step 4 (built) — the two-source bedside READ-SWAP
+
+*[Attributed addition 2026-07-13 — the fourth and final rework PR of the
+§12 model sequence. The pre-build verification surfaced six findings
+(F5–F10) where the code differed from or was underspecified by the
+design; ALL SIX were decided by the owner BEFORE building and are
+recorded verbatim in the design artifact
+(`docs/design/stage11-observation-model.md`, "Step-4 build decisions").
+The step-3 post-merge thirteen-suite pass also ran GREEN on merge commit
+`24e77ac` (13/13) — with one honest catch: the print suite's PAGES gate
+refused a stale staging deployment (the PR-branch push predated PR #72,
+so its deploy job was skipped and the live site still served the
+pre-step-3 frontend); deploy-pages was dispatched on main per the gate's
+own operational instruction and the re-run went green.]*
+
+- **The server projection (M1)**: the roster read
+  (`GET /api/icu/patients`) now projects every vitals field from the
+  LATEST charted Observation of the OPEN encounter
+  (`Core/Observations/ObservationProjection` — effective values, so
+  amendments show through), falling back PER-TYPE to the demo-seeded
+  snapshot row where one exists (F9 — demo rows exist only in demo
+  seed mode; production is pure real-or-blank by construction), else
+  an honest NULL on the wire. The fresh-patient default's fabricated
+  zeros, rhythm "SR" are GONE (nulls + "—"); the bed alert says
+  "baseline observations pending" only while that is true. The F7 tile
+  map is data on the record: monitor sys/dia ← art_sbp/art_dbp, NIBP ←
+  sbp/dbp, MAP ← the charted map (never recomputed), uo ← urine_output,
+  etco2 ← the new type. ENCOUNTER scope is structural: a readmission
+  projects from its own (empty) encounter — the closed stay never leaks.
+- **The F6 catalogue top-up mechanism**: seeding is now
+  seed-if-missing per typeCode (append-only; authored entries are
+  APPENDED so a topped-up deployment's Seq equals a fresh seed's —
+  proven byte-identical catalog between a fresh seed and an old
+  51-type DB restarted on the new build). EtCO₂ ships as the first
+  top-up (ventilator group, mmHg, 0–100). Existing rows are never
+  rewritten; the v1 catalogue stays runtime-read-only (F3).
+- **The frontend swap (M2)**: `panels.ts` loses its VENTILATOR and
+  HEMODYNAMICS demo data — those panels now render from
+  `src/lib/api/bedside.ts` (REAL path, no mock imports): latest-per-type
+  tiles real-or-'—', Driving Pressure computed ONLY when Pplat and PEEP
+  share a charted timepoint, the 24-h fluid strip summed from real
+  per-interval entries (absent when none; the bar percent is a
+  documented display scale), Compliance/SVV dropped (F6 deferred), the
+  fabricated "PiCCO · q1h" panel caption replaced with "Latest charted".
+  warn flags are FALSE everywhere — alarm thresholds are a clinical
+  rule set that does not exist yet (recorded with the Derived Clinical
+  Scores item). Infusions/alerts/goals stay mock (NOT
+  observation-backed; separate future domains) and stay compiled out of
+  production; Mission Control's production refusal REMAINS (F10 — a
+  gate that lifts progressively as those domains become real).
+- **The F5-a display**: the simulated `MonitorCard` is DELETED —
+  synthetic waveforms, 2.5-s value jitter, the STREAMING badge, and the
+  client-side MAP recomputation are gone (the bed board's 3-s jitter
+  too). Its replacement, `LatestObservationsCard`, shows each reading
+  with its clinical time and source badge, a DEMO SNAPSHOT tag on
+  fallback values, "not charted" blanks, a MANUAL CHARTING badge, and a
+  link to the /observations flowsheet. Bed cards and the nurse
+  workspace render '—' for null vitals with threshold classes silent on
+  blanks; print templates print "— not charted" (never a dangling
+  unit); the unit-average-MAP KPI averages only charted values.
+- **Verification**: 19/19 byte-parity old-main vs branch on fresh demo
+  seeds — the roster is BYTE-IDENTICAL for demo patients (per-type
+  fallback preserves values and key order) and the only intended delta
+  is the catalog (etco2, asserted exactly); 12/12 server matrix (fresh
+  nulls, the exact F7 map, correction→projection, demo-override,
+  readmission-never-inherits); 25/25 headless UI proof (fresh bed card
+  all '—' no zeros, MC card blanks→charted values with time·manual,
+  130/68 vs 92/54 on screen, ΔP 14 same-timepoint, +200 mL fluid strip,
+  DEMO tags on a demo patient, no STREAMING/canvases anywhere, nurse
+  workspace null-safe); bundle proofs re-run (9/9 baseline + step-4
+  addendum: deleted simulator markers absent from BOTH bundles,
+  remaining mock panels dev-only, the F5 card ships in production, the
+  vent/hemo projection tree-shakes out WITH the still-refused composite
+  per F10); server + tsc + production build clean. The suite gains a
+  step-4 leg (readmission-nulls, the F7 roster map incl. etco2,
+  correction-reaches-projection); the F9 demo-fallback half is
+  local-matrix-only (charting on a staging demo patient would be an
+  immutable permanent write) — recorded per the CI-evidence rule.
+- **Remaining (Stage 11)**: the 3 deferred print templates (MAR, Vitals
+  Flowsheet, Ventilator & Device Report), then (later) the Device
+  Adapter. The §12 model sequence (steps 1–4) is COMPLETE.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
@@ -2799,6 +2897,18 @@ instruction, source stated per the documentation rule.]*
   corroborates ("Modalities stay a closed union until the
   imaging-order workflow exists").]*
 
+- **Derived Clinical Scores — compute SOFA, EWS, etc. from charted
+  observations + labs (enabled by Stage 11).** Source: the owner's
+  step-4 F8 decision (2026-07-13), recorded verbatim in the design
+  artifact. Today SOFA/EWS/severity/organs on the roster are demo
+  snapshot values (staging) or synthesized defaults (fresh patients) —
+  recorded drift, deliberately NOT part of the step-4 bedside
+  read-swap. To be built after step 4 as its own piece with clinical
+  validation of the scoring logic; alarm/warn thresholds on bedside
+  tiles belong to the same future rule set (step 4 ships warn=false
+  everywhere — an invented alarm is as dishonest as an invented
+  value). Score computation was NOT built in step 4, per the decision.
+
 ## Known Deferred Debt (documented, intentionally not yet unified)
 - `panels.ts` attaches the same VENTILATOR/HEMODYNAMICS/INFUSIONS/
   PATIENT_ALERTS/GOALS to every patient — vent/hemo/infusions are now
@@ -2806,6 +2916,13 @@ instruction, source stated per the documentation rule.]*
   Sources" rule above (Observation model, Manual/Device/Hybrid); alerts
   still await the structured alert model (architecture rule 5). Stage 11
   scope — do not touch before then.
+  *[SUPERSEDED IN PART by §12 step 4 (2026-07-13): the VENTILATOR and
+  HEMODYNAMICS halves are RESOLVED — deleted from panels.ts and
+  projected from real Observations. What remains mock in panels.ts is
+  INFUSIONS/PATIENT_ALERTS/GOALS (device/orders integration, the
+  structured alert model, care plans — separate future domains), still
+  compiled out of production, still the reason Mission Control's
+  production arm refuses (the F10 gate, lifting progressively).]*
 - Infusion channels (`panels.ts` INFUSIONS) overlap active continuous
   medication orders (Screen 5) — post-Stage-11, derive infusions from active
   med orders + pump data arriving as Observations per the Stage 11 rule

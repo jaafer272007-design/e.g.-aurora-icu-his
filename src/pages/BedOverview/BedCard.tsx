@@ -8,22 +8,26 @@ import { IconAlertTriangle } from '../../components/icons'
 interface BedCardProps {
   bed: Bed
   index: number
-  /** live-jittered display values (falls back to base vitals) */
-  jitter?: { hr: number; map: number; spo2: number }
   onOpen: (patientId: string) => void
 }
 
 const scoreColor = (v: number, red: number, amber: number) =>
   v >= red ? 'var(--red)' : v >= amber ? 'var(--amber)' : 'var(--green)'
 
-/* threshold classes are derived from the base (un-jittered) vitals */
-const hrClass = (v: number) => (v > 111 ? 'bad' : v > 50 ? 'warn' : '')
-const mapClass = (v: number) => (v < 65 ? 'bad' : v < 70 ? 'warn' : '')
-const spo2Class = (v: number) => (v < 92 ? 'bad' : v < 95 ? 'warn' : '')
-const tempClass = (v: number) => (v >= 38.3 ? 'warn' : '')
-const uoClass = (v: number) => (v < 30 ? 'bad' : v < 50 ? 'warn' : '')
+/* §12 step 4: vitals are the LATEST CHARTED observations (or the demo
+   snapshot in demo-seeded environments) — displayed as charted, no live
+   jitter (a static value presented as a moving one is a fabricated
+   stream; the honest-data rule, decision F5). null = not charted → '—',
+   and threshold classes stay silent on a blank. */
+const hrClass = (v: number | null) => (v === null ? '' : v > 111 ? 'bad' : v > 50 ? 'warn' : '')
+const mapClass = (v: number | null) => (v === null ? '' : v < 65 ? 'bad' : v < 70 ? 'warn' : '')
+const spo2Class = (v: number | null) => (v === null ? '' : v < 92 ? 'bad' : v < 95 ? 'warn' : '')
+const tempClass = (v: number | null) => (v === null ? '' : v >= 38.3 ? 'warn' : '')
+const uoClass = (v: number | null) => (v === null ? '' : v < 30 ? 'bad' : v < 50 ? 'warn' : '')
 
-export function BedCard({ bed, index, jitter, onOpen }: BedCardProps) {
+const shown = (v: number | null) => (v === null ? '—' : v)
+
+export function BedCard({ bed, index, onOpen }: BedCardProps) {
   const delay = { animationDelay: `${index * 40}ms` }
   if (!bed.patient) {
     return (
@@ -37,7 +41,6 @@ export function BedCard({ bed, index, jitter, onOpen }: BedCardProps) {
   const p = bed.patient
   const trendColor = p.severity === 'crit' ? 'var(--red)' : p.severity === 'high' ? 'var(--amber)' : 'var(--green)'
   const v = p.vitals
-  const shown = jitter ?? { hr: v.hr, map: v.map, spo2: v.spo2 }
   return (
     <button
       className={`bcard sev-${p.severity}`}
@@ -59,11 +62,11 @@ export function BedCard({ bed, index, jitter, onOpen }: BedCardProps) {
         <div className="score"><span className="sk">EWS</span><span className="sv" style={{ color: scoreColor(p.ews, 7, 4) }}>{p.ews}</span></div>
       </div>
       <div className="vgrid">
-        <VitalTile variant="vg" label="HR" value={shown.hr} valueClass={hrClass(v.hr)} />
-        <VitalTile variant="vg" label="MAP" value={shown.map} valueClass={mapClass(v.map)} />
-        <VitalTile variant="vg" label="SpO₂" value={shown.spo2} valueClass={spo2Class(v.spo2)} />
-        <VitalTile variant="vg" label="Temp" value={v.temp.toFixed(1)} valueClass={tempClass(v.temp)} />
-        <VitalTile variant="vg" label="UO" value={<>{v.uo}<span className="uo-unit">mL/h</span></>} valueClass={uoClass(v.uo)} />
+        <VitalTile variant="vg" label="HR" value={shown(v.hr)} valueClass={hrClass(v.hr)} />
+        <VitalTile variant="vg" label="MAP" value={shown(v.map)} valueClass={mapClass(v.map)} />
+        <VitalTile variant="vg" label="SpO₂" value={shown(v.spo2)} valueClass={spo2Class(v.spo2)} />
+        <VitalTile variant="vg" label="Temp" value={v.temp === null ? '—' : v.temp.toFixed(1)} valueClass={tempClass(v.temp)} />
+        <VitalTile variant="vg" label="UO" value={v.uo === null ? '—' : <>{v.uo}<span className="uo-unit">mL</span></>} valueClass={uoClass(v.uo)} />
       </div>
       <div className={`balert ${p.alert.severity === 'crit' ? 'crit' : p.alert.severity === 'high' ? 'high' : ''}`}>
         <IconAlertTriangle size={12} strokeWidth={2.2} />

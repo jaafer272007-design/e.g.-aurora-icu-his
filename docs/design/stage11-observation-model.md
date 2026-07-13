@@ -436,3 +436,43 @@ to both. In production TODAY neither fake source can reach a screen
 (panels.ts is already compiled out; the Mission Control detail read's
 production arm refuses) — the read-swap makes Mission Control WORK in
 production rather than removing a live hazard.]*
+
+---
+
+## Step-4 build decisions (the owner/clinical validator, 2026-07-13 — recorded verbatim)
+
+*The pre-build verification of §12 step 4 surfaced six findings (F5–F10)
+where the real code differed from, or was underspecified by, this design.
+The owner decided all six before any step-4 code was written:*
+
+- **F5 → (a):** In the manual era, the bedside display is a **"Latest
+  charted observations" card** — real values with clinical time + source
+  badge, NO waveforms/jitter/STREAMING. Confirmed intent: the animated
+  monitor + STREAMING returns later when the Device Adapter brings
+  genuinely streaming data (**presentation tracks the real source**).
+- **F6:** **add EtCO₂ as a chartable observation type** (standard for
+  ventilated patients); Compliance and SVV optional/deferred — those
+  tiles show "— not charted" or are dropped for now. EtCO₂ is a new
+  catalogue entry (**data, no schema change**).
+- **F7 → confirmed:** arterial sys/dia ← `art_sbp`/`art_dbp`; NIBP ←
+  `sbp`/`dbp`; MAP ← the charted `map` (**not recomputed**).
+- **F8 → ok for Step 4:** SOFA/EWS/severity/organs/flags/sparkline stay
+  as-is (demo rows in staging, synthesized defaults for fresh patients),
+  recorded as drift — they are derived scores/views for a later piece,
+  NOT part of the bedside read-swap. Fresh-patient rhythm default →
+  honestly blank ("—"), not a fabricated "SR" (cardiac_rhythm is
+  chartable). A new roadmap item is recorded: **"Derived Clinical Scores
+  — compute SOFA, EWS, etc. from charted observations + labs (enabled by
+  Stage 11)"**, to be built after Step 4 as its own piece with clinical
+  validation of the scoring logic. Score computation is NOT built in
+  Step 4.
+- **F9 → demo-overridden-by-real:** production is pure real-or-blank (no
+  fake bedside data ever); in demo-seeded environments (staging), the
+  demo snapshot remains a clearly-labelled fallback, overridden per-type
+  by real observations wherever charted.
+- **F10 → ok:** production Mission Control stays refused after Step 4
+  (its composite still carries mock infusions/alerts/goals); Step 4's
+  production-visible surface is the roster/bed board (real-or-blank
+  vitals); full MC becomes honest in staging. Recorded: this refusal is
+  a **gate that lifts progressively** as those other domains become real
+  — not permanent.

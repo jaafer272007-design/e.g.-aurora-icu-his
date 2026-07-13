@@ -10,10 +10,11 @@ import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
-import { getPatientDetail, getPatients } from '../../lib/api'
+import { getObservations, getPatientDetail, getPatients } from '../../lib/api'
+import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
 import { signOut } from '../../lib/session'
 import type { PatientAlert, PatientDetailResponse, PatientSummary } from '../../lib/api/types'
-import { MonitorCard } from './MonitorCard'
+import { LatestObservationsCard } from './LatestObservationsCard'
 import { DigitalTwin } from './DigitalTwin'
 import { AiPanel } from './AiPanel'
 import { LabsCard } from './LabsCard'
@@ -51,8 +52,22 @@ export function MissionControl() {
   const [query, setQuery] = useState('')
   const [alerts, setAlerts] = useState<LiveAlert[]>([])
   const [goals, setGoals] = useState<{ label: string; done: boolean }[]>([])
+  /* §12 step 4: the latest-per-type observation map for the bedside card
+     (real read; empty when nothing is charted or the API is unreachable —
+     the card then shows demo-tagged fallbacks or honest blanks) */
+  const [latestObs, setLatestObs] = useState<Map<string, LatestObservation>>(new Map())
 
   useEffect(() => { getPatients().then(setPatients) }, [])
+
+  useEffect(() => {
+    let stale = false
+    setLatestObs(new Map())
+    if (!patientId) return
+    getObservations(patientId)
+      .then(obs => { if (!stale && obs) setLatestObs(latestObservations(obs)) })
+      .catch(() => {})
+    return () => { stale = true }
+  }, [patientId])
 
   useEffect(() => {
     let stale = false
@@ -180,7 +195,14 @@ export function MissionControl() {
         <main>
           {missing && <NotFoundCard />}
 
-          {detail && <MonitorCard vitals={detail.patient.vitals} rhythm={detail.patient.rhythm} />}
+          {detail && (
+            <LatestObservationsCard
+              latest={latestObs}
+              vitals={detail.patient.vitals}
+              rhythm={detail.patient.rhythm}
+              patientId={detail.patient.patientId}
+            />
+          )}
 
           {detail && (
             <div className="colR">
@@ -203,16 +225,18 @@ export function MissionControl() {
           {detail && (
             <Card id="hemo"
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21C7 17 3 13.5 3 9a5 5 0 019-3 5 5 0 019 3c0 4.5-4 8-9 12z" /></svg>}
-              title="Hemodynamics" aside="PiCCO · q1h">
+              title="Hemodynamics" aside="Latest charted">
               <div className="tgrid">
                 {detail.hemodynamics.metrics.map(t => (
                   <VitalTile key={t.label} variant="tile" label={t.label} value={t.value} unit={t.unit} warn={t.warn} />
                 ))}
               </div>
-              <div className="fluid">
-                <div className="fk"><span>Fluid balance · 24 h</span><b className="num" style={{ color: 'var(--cyan)' }}>{detail.hemodynamics.fluidBalance.value}</b></div>
-                <div className="fbar"><i style={{ width: `${detail.hemodynamics.fluidBalance.percent}%` }} /></div>
-              </div>
+              {detail.hemodynamics.fluidBalance && (
+                <div className="fluid">
+                  <div className="fk"><span>Fluid balance · 24 h</span><b className="num" style={{ color: 'var(--cyan)' }}>{detail.hemodynamics.fluidBalance.value}</b></div>
+                  <div className="fbar"><i style={{ width: `${detail.hemodynamics.fluidBalance.percent}%` }} /></div>
+                </div>
+              )}
             </Card>
           )}
 

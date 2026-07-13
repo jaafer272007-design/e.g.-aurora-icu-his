@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using Aurora.Core.Observations;
 using Aurora.Core.Persistence;
 using Aurora.Core.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -36,11 +37,21 @@ static class RosterApi
         {
             var bedside = db.Patients.AsNoTracking().AsEnumerable().ToDictionary(r => r.PatientId);
             var identity = db.AdtPatients.AsNoTracking().AsEnumerable().ToDictionary(p => p.PatientId);
-            var records = db.Encounters.AsNoTracking()
+            var open = db.Encounters.AsNoTracking()
                 .Where(e => e.Status == "open")
                 .OrderBy(e => e.PatientId)
-                .AsEnumerable()
-                .Select(e =>
+                .ToList();
+            /* §12 step 4 — the bedside READ-SWAP: the vitals/monitor
+               numbers on every roster record project from the LATEST
+               charted Observations of the OPEN encounter (real), falling
+               back per-type to the demo-seeded snapshot row where one
+               exists (staging demo — F9: clearly-labelled environment,
+               overridden by real wherever charted), else honestly NULL.
+               Production seeds no demo rows, so production is pure
+               real-or-blank by construction. */
+            var projected = ObservationProjection.LatestForEncounters(
+                db, open.Select(e => e.EncounterId).ToList());
+            var records = open.Select(e =>
                 {
                     /* identity via THE canonical resolver (Patient.ToDto —
                        the no-fork rule): the same assembly GET
@@ -50,10 +61,10 @@ static class RosterApi
                        roster wire shape (int age) is unchanged. */
                     var p = identity[e.PatientId].ToDto();
                     var b = bedside.GetValueOrDefault(e.PatientId);
-                    return b is not null
-                        ? b.ToDto(e.BedId, p.Name, p.Mrn, p.Age, p.Sex, e.Diagnosis, p.Allergies, e.Attending)
-                        : PatientRow.DefaultBedsideDto(e.PatientId, e.BedId, p.Name, p.Mrn, p.Age,
-                            p.Sex, e.Diagnosis, p.Allergies, e.Attending, e.AdmittedAt);
+                    var latest = projected.GetValueOrDefault(e.EncounterId);
+                    return PatientRow.ComposeDto(b, latest, e.PatientId, e.BedId,
+                        p.Name, p.Mrn, p.Age, p.Sex, e.Diagnosis, p.Allergies,
+                        e.Attending, e.AdmittedAt);
                 });
             return Results.Json(records, JsonOpts.Web);
         }).RequireAuthorization();
@@ -104,48 +115,85 @@ class PatientRow
         OrgansJson = JsonSerializer.Serialize(d.Organs, JsonOpts.Web),
     };
 
-    /* Layer 2: identity/encounter fields (bed, name, MRN, age, sex,
-       diagnosis, allergies, attending) are supplied by CORE — only the
-       bedside snapshot columns are read from this row. The row's own
-       identity/location columns are historical dead weight until Stage 11
-       removes the table. */
-    public RosterRecordDto ToDto(string bedId, string name, string mrn, int age,
-        string sex, string diagnosis, string allergies, string attending) => new(
-        PatientId, bedId, name, mrn, age, sex, diagnosis, Los, allergies,
-        attending, CodeStatus, Rhythm, Isolation, Severity, Sofa, Ews,
-        JsonSerializer.Deserialize<List<string>>(FlagsJson, JsonOpts.Web)!,
-        JsonSerializer.Deserialize<JsonElement>(BedsideVitalsJson, JsonOpts.Web),
-        JsonSerializer.Deserialize<JsonElement>(BedAlertJson, JsonOpts.Web),
-        JsonSerializer.Deserialize<List<double>>(MapTrendJson, JsonOpts.Web)!,
-        JsonSerializer.Deserialize<JsonElement>(MonitorVitalsJson, JsonOpts.Web),
-        JsonSerializer.Deserialize<JsonElement>(OrgansJson, JsonOpts.Web));
+    /* ---- §12 step 4 — the tile→observation MAP (F7, validator-confirmed):
+       arterial sys/dia ← art_sbp/art_dbp (Hemodynamics — the arterial
+       line); NIBP ← sbp/dbp (Vital Signs — the cuff); MAP ← the charted
+       map, never recomputed; uo ← urine_output (latest per-interval
+       amount); etco2 ← the F6 catalogue top-up. */
+    static readonly (string Key, string TypeCode)[] BedCardMap =
+        [("hr", "hr"), ("map", "map"), ("spo2", "spo2"), ("temp", "temp"), ("uo", "urine_output")];
+    static readonly (string Key, string TypeCode)[] MonitorMap =
+        [("hr", "hr"), ("sys", "art_sbp"), ("dia", "art_dbp"), ("map", "map"),
+         ("nibpSys", "sbp"), ("nibpDia", "dbp"), ("spo2", "spo2"), ("rr", "rr"),
+         ("temp", "temp"), ("etco2", "etco2"), ("cvp", "cvp")];
 
-    /* A freshly admitted patient has no bedside row yet — synthesize a
-       neutral snapshot at read time (derived, never stored): stable
-       severity, zeroed scores/vitals, all organs ok, and an INFO bed note
-       (info is excluded from the unit's high-priority alert derivation).
-       Stage 11 Observations replace this. */
-    public static RosterRecordDto DefaultBedsideDto(string patientId, string bedId,
-        string name, string mrn, int age, string sex, string diagnosis,
-        string allergies, string attending, string admittedAt)
+    /* One composition for BOTH the demo-seeded and the fresh patient
+       (Layer 2 supplies identity/encounter fields; F8: the score/organ
+       snapshot columns stay as-is — derived clinical scores are a later
+       piece — while the VITALS are the step-4 read-swap):
+       real observation → demo snapshot value (demo rows exist only in
+       demo-seeded environments) → honest null. Rhythm is chartable
+       (cardiac_rhythm) → real, else demo, else an honest "—" (the old
+       fabricated "SR" default is gone). */
+    public static RosterRecordDto ComposeDto(PatientRow? b,
+        Dictionary<string, ObservationProjection.Latest>? latest,
+        string patientId, string bedId, string name, string mrn, int age, string sex,
+        string diagnosis, string allergies, string attending, string admittedAt)
     {
-        static JsonElement J(string json) => JsonSerializer.Deserialize<JsonElement>(json, JsonOpts.Web);
-        var alert = JsonSerializer.Serialize(new
-        {
-            severity = "info",
-            message = "Newly admitted — baseline observations pending",
-            time = admittedAt,
-        }, JsonOpts.Web);
+        var demoBedCard = ParseNumbers(b?.BedsideVitalsJson);
+        var demoMonitor = ParseNumbers(b?.MonitorVitalsJson);
+        var alert = b is not null
+            ? JsonSerializer.Deserialize<JsonElement>(b.BedAlertJson, JsonOpts.Web)
+            : JsonSerializer.Deserialize<JsonElement>(JsonSerializer.Serialize(new
+            {
+                severity = "info",
+                message = latest is { Count: > 0 }
+                    ? "Newly admitted — baseline observations charted"
+                    : "Newly admitted — baseline observations pending",
+                time = admittedAt,
+            }, JsonOpts.Web), JsonOpts.Web);
         return new RosterRecordDto(
-            patientId, bedId, name, mrn, age, sex, diagnosis, 0, allergies,
-            attending, "Full Code", "SR", false, "stable", 0, 0,
-            [],
-            J("""{"hr":0,"map":0,"spo2":0,"temp":0,"uo":0}"""),
-            J(alert),
-            [],
-            J("""{"hr":0,"sys":0,"dia":0,"map":0,"nibpSys":0,"nibpDia":0,"spo2":0,"rr":0,"temp":0,"etco2":0,"cvp":0}"""),
-            J("""{"Brain":"ok","Heart":"ok","Lungs":"ok","Kidneys":"ok","Liver":"ok","Circulation":"ok"}"""));
+            patientId, bedId, name, mrn, age, sex, diagnosis, b?.Los ?? 0, allergies,
+            attending, b?.CodeStatus ?? "Full Code",
+            latest.Text("cardiac_rhythm") ?? b?.Rhythm ?? "—",
+            b?.Isolation ?? false, b?.Severity ?? "stable", b?.Sofa ?? 0, b?.Ews ?? 0,
+            b is null ? [] : JsonSerializer.Deserialize<List<string>>(b.FlagsJson, JsonOpts.Web)!,
+            MergeVitals(BedCardMap, latest, demoBedCard),
+            alert,
+            b is null ? [] : JsonSerializer.Deserialize<List<double>>(b.MapTrendJson, JsonOpts.Web)!,
+            MergeVitals(MonitorMap, latest, demoMonitor),
+            b is not null
+                ? JsonSerializer.Deserialize<JsonElement>(b.OrgansJson, JsonOpts.Web)
+                : JsonSerializer.Deserialize<JsonElement>(
+                    """{"Brain":"ok","Heart":"ok","Lungs":"ok","Kidneys":"ok","Liver":"ok","Circulation":"ok"}""", JsonOpts.Web));
     }
+
+    static Dictionary<string, double>? ParseNumbers(string? json)
+    {
+        if (json is null) return null;
+        return JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json, JsonOpts.Web)!
+            .Where(kv => kv.Value.ValueKind == JsonValueKind.Number)
+            .ToDictionary(kv => kv.Key, kv => kv.Value.GetDouble());
+    }
+
+    /** per-type: real charted value → demo snapshot value → null (never a
+        fabricated number — the §5 honest-data rule on the wire) */
+    static JsonElement MergeVitals((string Key, string TypeCode)[] map,
+        Dictionary<string, ObservationProjection.Latest>? latest,
+        Dictionary<string, double>? demo)
+    {
+        var merged = new Dictionary<string, double?>();
+        foreach (var (key, typeCode) in map)
+            merged[key] = latest.Number(typeCode)
+                ?? (demo is not null && demo.TryGetValue(key, out var d) ? d : null);
+        return JsonSerializer.Deserialize<JsonElement>(
+            JsonSerializer.Serialize(merged, VitalsJson), JsonOpts.Web);
+    }
+
+    /* vitals nulls are MEANINGFUL on this wire ("not charted") — they must
+       serialize, so this one payload opts out of Web's when-writing-null
+       omission */
+    static readonly JsonSerializerOptions VitalsJson = new(JsonSerializerDefaults.Web);
 }
 
 /* ---------- wire contract (camelCase over the wire) ----------

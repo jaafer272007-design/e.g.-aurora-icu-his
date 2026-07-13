@@ -143,6 +143,12 @@ static class ObservationCatalog
         new("restraint_assessment", "nursing", "Restraint Assessment", "", "enum",
             Values: ["Not in use", "In use — circulation intact", "In use — concern escalated"],
             Optional: true),
+
+        // ---- catalogue top-ups (data, no schema change) — APPENDED so the
+        //      Seq a topped-up deployment assigns equals a fresh seed's.
+        // F6 (step-4 decision): EtCO₂ is chartable — standard for
+        // ventilated patients; Compliance and SVV stay deferred.
+        new("etco2", "ventilator", "EtCO₂", "mmHg", "numeric", 0, 100),
     ];
 
     public static void Seed(AuroraDb db)
@@ -156,24 +162,32 @@ static class ObservationCatalog
             }));
             db.SaveChanges();
         }
-        if (!db.ObservationTypes.Any())
+        /* seed-if-missing per typeCode (append-only TOP-UP): an existing
+           deployment picks up newly-authored catalogue entries as data —
+           the F3 v1 catalogue stays read-only at runtime, its content
+           ships with the build. Existing rows are never rewritten, and
+           top-ups are APPENDED in the authored array so their Seq equals
+           a fresh seed's (content equality across environments). */
+        var known = db.ObservationTypes.AsNoTracking().Select(t => t.TypeCode).ToHashSet();
+        var missing = Types.Select((t, i) => (t, i)).Where(x => !known.Contains(x.t.Code)).ToList();
+        if (missing.Count > 0)
         {
-            db.ObservationTypes.AddRange(Types.Select((t, i) => new ObservationTypeRow
+            db.ObservationTypes.AddRange(missing.Select(x => new ObservationTypeRow
             {
-                TypeCode = t.Code, GroupCode = t.Group, DisplayName = t.Name,
-                Unit = t.Unit, ValueType = t.Kind,
-                Min = t.Kind == "numeric" ? t.Min : null,
-                Max = t.Kind == "numeric" ? t.Max : null,
-                AllowedValuesJson = t.Values is null ? null : JsonSerializer.Serialize(t.Values, JsonOpts.Web),
-                ComponentsJson = t.Components is null ? null : JsonSerializer.Serialize(
-                    t.Components.Select(c => new ComponentDto(
+                TypeCode = x.t.Code, GroupCode = x.t.Group, DisplayName = x.t.Name,
+                Unit = x.t.Unit, ValueType = x.t.Kind,
+                Min = x.t.Kind == "numeric" ? x.t.Min : null,
+                Max = x.t.Kind == "numeric" ? x.t.Max : null,
+                AllowedValuesJson = x.t.Values is null ? null : JsonSerializer.Serialize(x.t.Values, JsonOpts.Web),
+                ComponentsJson = x.t.Components is null ? null : JsonSerializer.Serialize(
+                    x.t.Components.Select(c => new ComponentDto(
                         c.Code, c.Label, c.Kind,
                         c.Kind == "numeric" ? c.Min : null,
                         c.Kind == "numeric" ? c.Max : null,
                         c.Values?.ToList())).ToList(), JsonOpts.Web),
-                IsDerived = t.DerivedFrom is not null,
-                DerivationInputsJson = t.DerivedFrom is null ? null : JsonSerializer.Serialize(t.DerivedFrom, JsonOpts.Web),
-                Optional = t.Optional, Seq = i + 1,
+                IsDerived = x.t.DerivedFrom is not null,
+                DerivationInputsJson = x.t.DerivedFrom is null ? null : JsonSerializer.Serialize(x.t.DerivedFrom, JsonOpts.Web),
+                Optional = x.t.Optional, Seq = x.i + 1,
             }));
             db.SaveChanges();
         }
