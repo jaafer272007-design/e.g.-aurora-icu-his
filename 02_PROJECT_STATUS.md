@@ -1,6 +1,21 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through the CLINICAL SCORING ENGINE
+**Last updated: 2026-07-13 · current through the LAB RESULT-ENTRY
+(DOCUMENTATION) PATH (built — the missing HUMAN feed into the existing lab
+store: a manual `/lab-entry` documentation/transcription screen for the ICU
+bedside team, built from the validator's `LAB_RESULT_ENTRY_DESIGN.md`. A NEW
+`results.document` permission atom — Nurse + Doctor + SeniorDoctor — was added
+and reconciled against the existing producing-service `results.create`
+(kept on Ancillary, unchanged) per the owner's decision on the design's open
+item #1; a lean catalogue-driven `POST /api/icu/results/labs/document` derives
+unit/refRange/flag from the lab catalogue, links an existing order or stands
+alone, and stamps `source=manual` via a new `LabDrawRow.Source` column (EF
+migration; byte-parity preserved — the field is absent on the wire for
+pre-existing rows). ABG (incl. PaO₂) enters as a lab panel through this
+screen. Verified headless — full RBAC matrix, order-linked + standalone,
+catalogue-derived value-flags, provenance, source=manual, validation 400s,
+closed-encounter 409; LIS integration + ABG analyzer auto-feed + coded-analyte
+identity recorded as future items. Prior: the CLINICAL SCORING ENGINE
 DESIGN RECORD (docs-only — the clinical validator's architectural design
 recorded verbatim as `docs/design/clinical-scoring-engine.md`: a GENERIC
 scoring engine with SOFA as its first score (qSOFA/APACHE II/NEWS2/
@@ -2642,6 +2657,85 @@ COMPLETE at 13/13 contract documents (+ the retained Admission Note).]*
   (labelled); if the validator prefers compute-only, that is a
   one-line change.
 
+### Lab Result-Entry (Documentation) path (built) — the missing HUMAN feed into the lab store
+Built from the clinical validator's design (`LAB_RESULT_ENTRY_DESIGN.md`,
+recorded in the PR): a manual lab-result **documentation/transcription**
+screen (`/lab-entry`). The data-source assessment for the Clinical Scoring
+Engine found the lab *store* complete (structured analytes incl. PaO₂, ref
+ranges, order→result linkage, acknowledge lifecycle) but with **no human
+feed** — results reached Aurora only via the producing-service
+`results.create` API, exercised only by the E2E suite. This fills that hole:
+a way for the ICU bedside team to actually *enter* results, reflecting the
+real paper-based workflow (central lab prints on paper → the ICU transcribes;
+bedside ABG entered from the analyzer). Entry screen over the EXISTING store —
+the store was NOT rebuilt, the same shape as the `/observations` entry screen
+over the observation store.
+- **RBAC reconciliation (the design's open item #1 — a conscious decision,
+  flagged not silently made; the project owner chose the NEW-ATOM option).**
+  A NEW permission atom `results.document` was added (Nurse + Doctor +
+  SeniorDoctor — the ICU bedside team who transcribe paper reports and enter
+  bedside ABGs). The existing `results.create` STAYS the producing-service /
+  future-LIS authority on the Ancillary profile, UNCHANGED. The two
+  authorities are reconciled, not merged: a nurse/doctor is 403'd on
+  `results.create` and a lab technician is 403'd on `results.document`.
+  Verified live: nurse/doctor document → 200; lab-tech/administrator document
+  → 403; unauth → 401; lab-tech `results.create` still 200; nurse
+  `results.create` still 403.
+- **Lean, catalogue-driven request** (`POST /api/icu/results/labs/document`,
+  `results.document`). The client sends ONLY patientId, the catalogue panel,
+  and per-analyte `{analyte, value}`. Everything else is SERVER-OWNED:
+  unit/refRange/numeric-bounds are CATALOGUE-DERIVED from the lab catalogue's
+  analyte definitions; the per-item **flag is DERIVED from the value against
+  that reference range** (in-band → normal, out → abnormal — never
+  client-claimed); the label is the catalogue test's Name; the documenting
+  clinician is the token; the encounter is the patient's OPEN one; the
+  order→result linkage is the SAME server-derived rule as create (oldest
+  unfulfilled active Lab order for the panel on this encounter, else
+  standalone); timestamps are server-stamped; and **`source` is stamped
+  `manual`** (§5) so a future LIS-fed result stays distinguishable. The
+  request DTO is `[JsonUnmappedMemberHandling(Disallow)]` — a client that
+  tries to claim a unit, refRange or flag fails binding (verified: 400).
+- **`Source` field added to the lab result** (`LabDrawRow.Source`, EF
+  migration `AddLabResultSource`, wire field `LabDraw.source`). The
+  source-provenance idea from the observation model (manual/device/hybrid):
+  `"manual"` for this documentation path; `""` (absent on the wire) for
+  pre-existing rows and the producing-service create path, which predate the
+  field — a source is never invented. **Byte-parity preserved**: a seeded
+  result carries no `source` on the wire (null omitted), so the 13 deployed
+  suites and every existing lab GET are unchanged (verified: 0 occurrences of
+  `"source"` on a seed-only patient).
+- **Screen** (`/lab-entry`, `/lab-entry/:patientId`, nav "Lab Entry", gated
+  by `results.document`): patient rail → catalogue panel chips → per-analyte
+  inputs RENDERED FROM the catalogue (with a live in-range/out-of-range
+  preview mirroring the server derivation) → optional note → submit; below,
+  a "Results on File" list over the EXISTING store shows each draw's flag,
+  provenance (`documented by X at time` from the audit history), order-link
+  vs standalone, and a `manual` badge, with a link to the full `/labs`
+  trends view (which also gained a `✎ manually documented` provenance line).
+  REAL-ONLY write (a documented result is a clinical record — never applied
+  to local mock state), like observations/ADT.
+- **Verification** (headless, live local server): a nurse documents CBC →
+  Platelets 95 against order ORD-101 (server-LINKED, Platelets 95 < 150 →
+  abnormal derived, source manual, "documented by RN Maya Chen"); a doctor
+  documents ABG → PaO₂ 62 STANDALONE (no ABG order → orderId absent, 62 < 80
+  → abnormal, source manual); a normal in-range value → normal flag;
+  catalogue-owned unit/refRange present on the stored item; the full RBAC
+  matrix above; validation 400s (unknown analyte for the panel, unknown
+  panel, no items, unknown patient, Disallow on unit/flag); closed-encounter
+  → 409. tsc + production build clean; server build clean; the migration adds
+  only the `Source` column (default `""`).
+- **Recorded as FUTURE (not built now)** — see Known Feature Gaps: **LIS
+  integration** (the Scenario-C automated feed that would *replace* manual
+  transcription — LIS-fed results become a second `source` of the same
+  object, which is exactly why `source` was built now); **ABG analyzer
+  auto-feed** (a bedside blood-gas Device Adapter, like the ventilator one);
+  and **coded analyte identity (LOINC-style)** (analytes are display strings
+  today — the panel-membership check is a name match; a coded system is worth
+  settling before any scoring join). A fourth honest limitation is recorded
+  there too: the catalogue models a SINGLE reference range per analyte, so
+  the documentation path grades normal vs abnormal only — a `critical` grade
+  needs threshold data the catalogue does not carry yet.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
@@ -3087,6 +3181,36 @@ instruction, source stated per the documentation rule.]*
     Consistent with Aurora's discipline of not building on incomplete
     foundations. Nothing is built now — this is the recorded engine
     architecture + locked principles only.
+
+- **Lab Result-Entry — future items (recorded 2026-07-13).** Source: the
+  clinical validator's Lab Result-Entry design (`LAB_RESULT_ENTRY_DESIGN.md`,
+  §8/§10). The manual documentation path is BUILT (see "Lab Result-Entry
+  (Documentation) path (built)" above); these three are deliberately deferred,
+  and one honest limitation is recorded:
+  - **LIS integration — the future automated feed (Scenario C Integration
+    Layer).** A Laboratory Information System exists as a SEPARATE system;
+    integrating it would *replace* manual transcription with an automated
+    feed. This is exactly the "manual now, integrate later" pattern of the
+    ventilator Device Adapter: the manual path is built and made
+    integration-ready. LIS-fed results become a SECOND `source` value of the
+    same lab-result object (`source` was built now precisely for this — it is
+    not a rebuild, it is a new source of the same record). Record under the
+    Integration Layer / this Known-Feature-Gaps list.
+  - **ABG analyzer auto-feed.** Like the ventilator Device Adapter, a future
+    automated feed from the bedside blood-gas analyzer (manual entry via the
+    lab-entry screen now — ABG is entered as a lab panel, so SOFA's PaO₂
+    enters through this path).
+  - **Coded analyte identity (LOINC-style).** Analytes are display strings
+    today; the documentation path's panel-membership check is a NAME match.
+    A coded system is worth settling before any future scoring join (it
+    affects the join between a documented lab value and a score's declared
+    input — flagged by the data-source assessment, noted by the design §10).
+  - **Honest limitation (not a gap to close blindly): flag granularity.** The
+    lab catalogue models a SINGLE reference range per analyte, so the manual
+    documentation path derives normal vs abnormal only — a `critical` grade
+    would need critical-threshold data the catalogue does not carry. Recorded
+    so a future catalogue enrichment (critical thresholds) is a conscious
+    addition, consistent with the flag-don't-fabricate discipline.
 
 ## Known Deferred Debt (documented, intentionally not yet unified)
 - `panels.ts` attaches the same VENTILATOR/HEMODYNAMICS/INFUSIONS/

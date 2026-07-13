@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -729,6 +729,18 @@ export async function getLabDraws(patientId: string): Promise<LabDraw[]> {
   if (real != null) return real
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(labDrawsFor(patientId), 120)
   throw apiUnavailable('labs')
+}
+
+/** POST /api/icu/results/labs/document — MANUALLY DOCUMENT a lab result
+ *  (Lab Result-Entry design). The ICU bedside team transcribes a paper
+ *  central-lab report or enters a bedside ABG. REAL-ONLY write (like
+ *  observations/ADT): documenting a result is a clinical record and is
+ *  never applied to local mock state. The payload is lean — the server
+ *  derives unit/refRange/flag from the catalogue, the label from the test
+ *  name, the documenting clinician + time + encounter + order linkage, and
+ *  stamps source=manual. RBAC is results.document, re-enforced server-side. */
+export function documentLabResult(draft: DocumentLabDraft): Promise<AdtWriteResult<LabDraw>> {
+  return usersWrite<LabDraw>('/api/icu/results/labs/document', 'lab result documentation', draft)
 }
 
 /** GET /api/icu/results/imaging?patientId — REAL endpoint; mock fallback. */

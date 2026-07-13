@@ -1,11 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import './NavSidebar.css'
 import {
-  IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPill, IconPrinter, IconPulse, IconSettings, IconStats, IconUsers,
+  IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPencil, IconPill, IconPrinter, IconPulse, IconSettings, IconStats, IconUsers,
 } from './icons'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 
-export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'formulary' | 'labcatalog' | 'ordersets' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'formulary' | 'labcatalog' | 'ordersets' | 'alerts' | 'statistics' | 'settings'
 
 interface NavItem {
   key: NavKey
@@ -39,6 +39,7 @@ export function NavSidebar({ active, alertCount = 0, footerLines }: NavSidebarPr
     { key: 'observations', label: 'Observations', icon: <IconPulse />, to: '/observations', perm: 'patients.view' },
     { key: 'orders', label: 'Orders & Meds', icon: <IconPill />, to: '/orders', perm: 'orders.view' },
     { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: '/labs', perm: 'results.view' },
+    { key: 'labentry', label: 'Lab Entry', icon: <IconPencil size={16} />, to: '/lab-entry', perm: 'results.document' },
     { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: '/timeline', perm: 'patients.view' },
     { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: '/ai', perm: 'ai.view' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },

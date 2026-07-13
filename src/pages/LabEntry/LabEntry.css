@@ -1,0 +1,78 @@
+/* Lab Result-Entry (Documentation) — /lab-entry. Shares the app frame/
+   shell/card language of the patient-scoped screens (Observations is the
+   closest sibling — an entry form over a complete store); these are the
+   lab-entry-only additions. */
+
+.le .shell{display:grid;grid-template-columns:198px 240px 1fr;min-height:0}
+.le main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+
+.le .card{padding:14px 16px}
+
+.le .lehead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.le .lehead h2{font-size:13px;letter-spacing:.4px;display:flex;align-items:center;gap:7px}
+.le .leaside{font-size:10px;color:var(--faint);max-width:560px;text-align:right;line-height:1.5}
+.le .leaside a{color:var(--blue);cursor:pointer}
+
+.le .leun{font-size:11.5px;color:var(--amber);padding:10px 2px;line-height:1.5}
+.le .leempty{font-size:11.5px;color:var(--faint);padding:14px 2px}
+
+/* ---- entry: panel chips ---- */
+.le .lepanels{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.le .lepchip{font-size:10.5px;letter-spacing:.3px;padding:5px 11px;border-radius:999px;
+ border:1px solid var(--stroke);color:var(--dim);background:rgba(255,255,255,.03);display:flex;gap:6px;align-items:center}
+.le .lepchip.on{color:var(--text);border-color:rgba(53,224,208,.5);background:rgba(53,224,208,.09)}
+.le .lepchip .n{font-size:9px;background:rgba(53,224,208,.16);color:var(--cyan);border-radius:999px;padding:1px 6px}
+.le .lepmeta{font-size:10.5px;color:var(--dim);margin-bottom:12px}
+.le .lepmeta b{color:var(--text)}
+
+/* ---- entry: fields ---- */
+.le .lefields{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 14px}
+.le .lefield{display:flex;flex-direction:column;gap:4px;min-width:0}
+.le .lefield label{font-size:10px;letter-spacing:.4px;color:var(--dim);text-transform:uppercase}
+.le .lefield input{background:rgba(6,12,22,.6);border:1px solid var(--stroke2);border-radius:9px;
+ padding:6px 9px;font-size:12px;min-width:0;width:100%}
+.le .lenumwrap{display:flex;align-items:center;gap:6px}
+.le .lenumwrap input{flex:1}
+.le .leunit{font-size:10px;color:var(--faint);white-space:nowrap}
+.le .leref{font-size:9.5px;color:var(--faint)}
+.le .leflag{font-size:9px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:1px 7px;width:fit-content}
+.le .leflag.normal{color:var(--green);border:1px solid rgba(61,232,160,.35);background:rgba(61,232,160,.08)}
+.le .leflag.abnormal{color:var(--amber);border:1px solid rgba(255,180,84,.4);background:rgba(255,180,84,.1)}
+
+/* ---- entry: note + submit strip ---- */
+.le .lenote{display:flex;flex-direction:column;gap:4px;margin-top:12px}
+.le .lenote label{font-size:10px;letter-spacing:.4px;color:var(--dim);text-transform:uppercase}
+.le .lenote label i{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0}
+.le .lenote input{background:rgba(6,12,22,.6);border:1px solid var(--stroke2);border-radius:9px;
+ padding:6px 9px;font-size:12px;width:100%}
+
+.le .lesubmit{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.le .lestaged{font-size:10.5px;color:var(--dim);flex:1;min-width:200px}
+.le .ledoc{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
+ padding:7px 14px;border-radius:10px;color:#06121f;background:var(--green)}
+.le .ledoc:disabled{opacity:.35;cursor:not-allowed}
+.le .leclear{font-size:10.5px;color:var(--dim);border:1px solid var(--stroke);border-radius:10px;padding:6px 12px}
+.le .leerr{font-size:11px;color:var(--red);background:rgba(255,93,108,.08);
+ border:1px solid rgba(255,93,108,.35);border-radius:9px;padding:7px 10px;margin-top:10px}
+
+/* ---- results on file ---- */
+.le .lerow{border-top:1px solid var(--stroke);padding:10px 0 8px}
+.le .lerow.manual{border-left:2px solid rgba(167,139,250,.5);padding-left:10px;margin-left:-12px}
+.le .lerowtop{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;font-size:11px}
+.le .lerpanel{font-size:11px;font-weight:700;color:var(--cyan)}
+.le .lerlabel{color:var(--dim);font-size:10.5px}
+.le .lerflag{font-size:9px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:1px 7px}
+.le .lerflag.normal{color:var(--green)}
+.le .lerflag.abnormal{color:var(--amber)}
+.le .lerflag.critical{color:var(--red);font-weight:700}
+.le .lersource{font-size:9px;color:var(--violet);letter-spacing:.3px}
+.le .lerorder{font-size:9.5px;color:var(--blue)}
+.le .lerstandalone{font-size:9.5px;color:var(--faint);font-style:italic}
+.le .lertime{margin-left:auto;font-size:10px;color:var(--faint)}
+.le .leritems{display:flex;gap:8px 14px;flex-wrap:wrap;margin:5px 0 3px}
+.le .leritem{font-size:11px;color:var(--dim)}
+.le .leritem b{color:var(--text)}
+.le .leritem.abnormal b{color:var(--amber)}
+.le .leritem.critical b{color:var(--red)}
+.le .leru{color:var(--faint);font-style:normal;font-size:9.5px}
+.le .lerprov{font-size:9.5px;color:var(--faint);font-style:italic}

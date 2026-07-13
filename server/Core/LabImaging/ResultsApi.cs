@@ -134,6 +134,64 @@ static class ResultsApi
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* POST /api/icu/results/labs/document — DOCUMENT (transcribe) a lab
+           result (Lab Result-Entry design). The MANUAL human-entry path the
+           ICU bedside team uses: transcribing a paper central-lab report, or
+           entering a bedside ABG from the analyzer. RBAC is results.document
+           (Doctor/SeniorDoctor/Nurse) — a DISTINCT atom from the
+           producing-service results.create above, so the two authorities stay
+           reconciled rather than repurposed (the design's open item #1). The
+           request is LEAN: only patientId, the catalogue panel, and per-analyte
+           {analyte, value}. Everything the result stores that is not those raw
+           numbers is SERVER-OWNED — unit/refRange/bounds/flag are
+           CATALOGUE-DERIVED (§9), the label is the catalogue test's Name, the
+           documenting clinician is the token, timestamps are stamped here, the
+           encounter is the patient's OPEN one (409 if closed — documenting a
+           result is completing care initiated on this episode), the order
+           linkage is the same server-derived rule as create, and source is
+           stamped "manual" so a future LIS-fed result is distinguishable (§5). */
+        app.MapPost("/api/icu/results/labs/document", (DocumentLabRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "results.document") is IResult denied) return denied;
+            if (ResultsLogic.ValidateLabDocument(req, db) is string problem)
+                return ApiError.BadRequest(problem);
+            if (EncounterGuard.RequireOpenForPatient(db, req.PatientId!, "documenting a lab result", out var enc) is IResult conflict)
+                return conflict;
+            var test = Aurora.Core.MasterData.LabCatalogLogic.Resolve(db, req.Panel!)!;
+            var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var now = DateTime.UtcNow;
+            var time = now.ToString("HH:mm");
+            var items = ResultsLogic.BuildDocumentedItems(req, test);
+            /* ORDER→RESULT LINKAGE — the SAME server-derived rule as create:
+               the oldest unfulfilled active Lab order for this panel on the
+               open encounter, else stand alone (documenting a result that was
+               never ordered is legitimate — a reflex/protocol addition). */
+            var fulfilled = db.LabDraws.AsNoTracking()
+                .Where(x => x.OrderId != null).Select(x => x.OrderId).ToHashSet();
+            var linkedOrder = db.Orders.AsNoTracking()
+                .Where(o => o.PatientId == req.PatientId && o.EncounterId == enc!.EncounterId
+                    && o.Category == "Lab" && o.TestId == req.Panel && o.Status == "active")
+                .OrderBy(o => o.Seq).AsEnumerable()
+                .FirstOrDefault(o => !fulfilled.Contains(o.OrderId));
+            var row = new LabDrawRow
+            {
+                LabId = ResultsLogic.NextLabId(), PatientId = req.PatientId!,
+                EncounterId = enc!.EncounterId, OrderId = linkedOrder?.OrderId,
+                BedId = enc.BedId, PatientName = pt.Name,
+                Panel = test.TestId, Label = test.Name,
+                CollectedAt = time, ResultedAt = time,
+                ItemsJson = JsonSerializer.Serialize(items, JsonOpts.Web),
+                Flag = ResultsLogic.DeriveLabFlag(items), Source = "manual", Note = req.Note?.Trim(),
+                Acknowledged = false,
+                EventsJson = JsonSerializer.Serialize(
+                    new List<ResultEventDto> { new(now.ToString("yyyy-MM-dd HH:mm"), actor, "documented", null) }, JsonOpts.Web),
+            };
+            db.LabDraws.Add(row);
+            db.SaveChanges();
+            return Results.Json(row.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* POST /api/icu/results/imaging — CREATE an imaging result (same rules;
            the study is recorded at the RESULTED stage: report + impression
            present, status final — the ordered/performed pipeline stages

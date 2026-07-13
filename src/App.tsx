@@ -5,6 +5,7 @@ import { DoctorWorkspace } from './pages/DoctorWorkspace/DoctorWorkspace'
 import { NurseWorkspace } from './pages/NurseWorkspace/NurseWorkspace'
 import { OrdersMedication } from './pages/OrdersMedication/OrdersMedication'
 import { LabImaging } from './pages/LabImaging/LabImaging'
+import { LabEntry } from './pages/LabEntry/LabEntry'
 import { Timeline } from './pages/Timeline/Timeline'
 import { Observations } from './pages/Observations/Observations'
 import { AiAssistant } from './pages/AiAssistant/AiAssistant'
@@ -37,6 +38,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /patients/:patientId    Patient Mission Control    patients.view
    /orders(/:patientId)    Orders & Medication        orders.view (mutations need more)
    /labs(/:patientId)      Laboratory & Imaging       results.view
+   /lab-entry(/:patientId) Lab Result Entry (manual)  results.document (ICU bedside team documents/transcribes)
    /timeline(/:patientId)  Clinical Timeline          patients.view
    /observations(/:patientId)  Bedside Observations   patients.view (charting needs observations.record; corrections observations.record/correct — Stage 11 §4)
    /ai(/:patientId)        AI Clinical Assistant      ai.view
@@ -81,6 +83,8 @@ export default function App() {
         <Route path="/orders/:patientId" element={<RequireSession permission="orders.view"><OrdersMedication /></RequireSession>} />
         <Route path="/labs" element={<RequireSession permission="results.view"><LabImaging /></RequireSession>} />
         <Route path="/labs/:patientId" element={<RequireSession permission="results.view"><LabImaging /></RequireSession>} />
+        <Route path="/lab-entry" element={<RequireSession permission="results.document"><LabEntry /></RequireSession>} />
+        <Route path="/lab-entry/:patientId" element={<RequireSession permission="results.document"><LabEntry /></RequireSession>} />
         <Route path="/timeline" element={<RequireSession permission="patients.view"><Timeline /></RequireSession>} />
         <Route path="/timeline/:patientId" element={<RequireSession permission="patients.view"><Timeline /></RequireSession>} />
         <Route path="/observations" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
