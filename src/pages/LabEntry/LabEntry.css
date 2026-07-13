@@ -22,8 +22,15 @@
  border:1px solid var(--stroke);color:var(--dim);background:rgba(255,255,255,.03);display:flex;gap:6px;align-items:center}
 .le .lepchip.on{color:var(--text);border-color:rgba(53,224,208,.5);background:rgba(53,224,208,.09)}
 .le .lepchip .n{font-size:9px;background:rgba(53,224,208,.16);color:var(--cyan);border-radius:999px;padding:1px 6px}
-.le .lepmeta{font-size:10.5px;color:var(--dim);margin-bottom:12px}
+.le .lepmeta{font-size:10.5px;color:var(--dim);margin-bottom:12px;line-height:1.5}
 .le .lepmeta b{color:var(--text)}
+/* the Custom / Other tab — a violet accent marks it apart from the catalogue panels */
+.le .lepcustom{border-style:dashed}
+.le .lepcustom.on{color:var(--text);border-color:rgba(167,139,250,.6);background:rgba(167,139,250,.1)}
+.le .lecustomfields .lefield .req{color:var(--red);text-transform:none;font-style:italic;letter-spacing:0}
+.le .lefield label i{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0;font-size:9.5px}
+.le .lecustomnote{font-size:10px;color:var(--amber);line-height:1.5;margin:10px 0 0;
+ border-left:2px solid rgba(255,180,84,.4);padding-left:9px}
 
 /* ---- entry: fields ---- */
 .le .lefields{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 14px}
@@ -58,6 +65,14 @@
 /* ---- results on file ---- */
 .le .lerow{border-top:1px solid var(--stroke);padding:10px 0 8px}
 .le .lerow.manual{border-left:2px solid rgba(167,139,250,.5);padding-left:10px;margin-left:-12px}
+/* a custom result is visually distinct — a violet dashed rail + a "custom" tag
+   instead of a normal/abnormal/critical flag, so it is never mistaken for a
+   properly-flagged structured result */
+.le .lerow.custom{border-left:2px dashed rgba(167,139,250,.6)}
+.le .lercustomtag{font-size:9px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:1px 8px;
+ color:var(--violet);border:1px solid rgba(167,139,250,.5);background:rgba(167,139,250,.1)}
+.le .lercustomval b{color:var(--text)}
+.le .lercustomref{margin-left:10px;font-size:9.5px;color:var(--faint);font-style:italic}
 .le .lerowtop{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;font-size:11px}
 .le .lerpanel{font-size:11px;font-weight:700;color:var(--cyan)}
 .le .lerlabel{color:var(--dim);font-size:10.5px}

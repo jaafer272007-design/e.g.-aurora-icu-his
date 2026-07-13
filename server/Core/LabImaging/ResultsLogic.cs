@@ -136,6 +136,25 @@ static class ResultsLogic
         return null;
     }
 
+    /** null when valid, else the precise 400 — the CUSTOM / OTHER path
+        (Custom Lab Test design). NO catalogue: testName + value are free text
+        and REQUIRED; unit / refRange / note are optional free text. The value
+        is NEVER parsed as a number (a custom test may be descriptive), and
+        refRange is DISPLAY-ONLY — it is bounded like any text field but is
+        never interpreted as numeric bounds and never drives a flag. */
+    public static string? ValidateCustomLabDocument(DocumentCustomLabRequest r, AuroraDb db)
+    {
+        if (CheckText("patientId", r.PatientId, required: true) is string p) return p;
+        if (!db.AdtPatients.AsNoTracking().Any(x => x.PatientId == r.PatientId))
+            return $"patientId '{r.PatientId}' does not match any roster patient";
+        if (CheckText("testName", r.TestName, required: true) is string tn) return tn;
+        if (CheckText("value", r.Value, required: true) is string v) return v;
+        if (CheckText("unit", r.Unit, required: false) is string u) return u;
+        if (CheckText("refRange", r.RefRange, required: false) is string rr) return rr;
+        if (CheckText("note", r.Note, required: false) is string nt) return nt;
+        return null;
+    }
+
     /** resolve each documented {analyte, value} against the panel's catalogue
         definition — the stored item carries the catalogue-owned unit,
         refRange and numeric bounds, and a VALUE-DERIVED flag (never

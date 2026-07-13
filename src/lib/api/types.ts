@@ -279,8 +279,9 @@ export interface TimelineEvent {
   title: string
   detail?: string
   actor?: string
-  /** result severity, for lab/imaging events */
-  flag?: ResultFlag
+  /** result severity, for lab/imaging events. '' on a custom / unstructured
+   *  lab event (no flag) — treated as no severity, like absent. */
+  flag?: ResultFlag | ''
   /** route to the originating screen (view-only feed — act there, not here) */
   link?: string
   /** id of the source record (orderId / labId / studyId / taskId / …) */
@@ -750,14 +751,27 @@ export interface LabDraw {
   collectedAt: string
   resultedAt: string
   items: LabResultItem[]
-  /** worst flag across items (validated server-side) */
-  flag: ResultFlag
+  /** worst flag across items (validated server-side). '' ONLY on a custom /
+   *  unstructured result (see `custom`) — those carry NO clinical flag. */
+  flag: ResultFlag | ''
   /** how the result ENTERED Aurora (Lab Result-Entry design §5):
    *  'manual' = the human documentation/transcription path
    *  (results.document). Absent on pre-existing rows and the
    *  producing-service create path, which predate the field — never
    *  invented. A future LIS feed becomes a second source value. */
   source?: 'manual'
+  /** Custom / Other Lab Test design: an UNSTRUCTURED, UNFLAGGED result for a
+   *  test the catalogue does not have. When true the result carries NO
+   *  catalogue analyte (`items` is empty) and NO flag (`flag` is ''); the
+   *  free-text value/unit/reference-range are below and the test name is
+   *  `label`. Absent on the wire for every structured result (byte-parity). */
+  custom?: true
+  /** custom free-text result value (numeric like "2.5" or descriptive like
+   *  "positive") — present only when `custom` */
+  customValue?: string
+  customUnit?: string
+  /** DISPLAY-ONLY reference context — shown next to the value, never drives a flag */
+  customRefRange?: string
   /** short lab/clinical note surfaced in the results inbox */
   note?: string
   acknowledged: boolean
@@ -784,6 +798,21 @@ export interface DocumentLabDraft {
   patientId: string
   panel: LabPanelKey
   items: DocumentLabItem[]
+  note?: string
+}
+
+/* ---------- POST /api/icu/results/labs/document-custom (Custom Lab Test) ----------
+   The UNSTRUCTURED escape hatch for a test the catalogue does not have.
+   Free-text testName + value (both required), optional unit / reference
+   range / note. The value is free text (never parsed as a number); the
+   reference range is DISPLAY-ONLY (never drives a flag). The server stamps
+   provenance + time + source=manual and stores it unflagged, tagged custom. */
+export interface DocumentCustomLabDraft {
+  patientId: string
+  testName: string
+  value: string
+  unit?: string
+  refRange?: string
   note?: string
 }
 
@@ -830,7 +859,8 @@ export interface ResultInboxItem {
   title: string
   detail: string
   time: string
-  flag: ResultFlag
+  /** '' ONLY for a custom / unstructured lab result — it carries no flag */
+  flag: ResultFlag | ''
 }
 
 /* ==================== AI Clinical Assistant domain (Screen 8) ====================
