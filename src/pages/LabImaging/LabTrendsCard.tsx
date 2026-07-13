@@ -156,6 +156,11 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
           </span>
         )}
       </div>
+      {/* display fix (bug 2): the note recorded with a draw was stored but
+          never shown here — surface the latest draw's note with its time */}
+      {latest?.note && (
+        <div className="linote">note ({latest.resultedAt}): {latest.note}</div>
+      )}
 
       <div className="lianalytes">
         {analytes.map(item => {

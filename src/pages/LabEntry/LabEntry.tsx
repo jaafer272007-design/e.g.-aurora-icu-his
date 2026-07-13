@@ -458,6 +458,8 @@ export function LabEntry() {
                         ))}
                       </div>
                     )}
+                    {/* display fix (bug 2): the stored note was never shown */}
+                    {d.note && <div className="lernote">note: {d.note}</div>}
                     {prov && (
                       <div className="lerprov">
                         {d.source === 'manual' ? 'documented' : 'resulted'} by {prov.actor} at {prov.time}

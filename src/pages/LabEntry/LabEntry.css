@@ -90,4 +90,6 @@
 .le .leritem.abnormal b{color:var(--amber)}
 .le .leritem.critical b{color:var(--red)}
 .le .leru{color:var(--faint);font-style:normal;font-size:9.5px}
+.le .lernote{font-size:10.5px;color:var(--dim);margin:3px 0;line-height:1.5;
+ border-left:2px solid rgba(130,170,230,.3);padding-left:8px}
 .le .lerprov{font-size:9.5px;color:var(--faint);font-style:italic}
