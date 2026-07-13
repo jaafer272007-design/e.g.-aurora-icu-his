@@ -42,6 +42,14 @@ export function Admissions() {
   const [diagnosis, setDiagnosis] = useState('')
   const [attending, setAttending] = useState('')
   const [bedId, setBedId] = useState('')
+  /* Weight & Height capture (kg/cm) — OPTIONAL at admission by design:
+     if omitted, a clinician adds them later on the patient record
+     (Mission Control), so a hectic admission is never blocked on a
+     scale. ENCOUNTER-SCOPED (the owner's decision): the values land on
+     THIS admission's encounter — a re-admission starts fresh, never
+     inheriting or overwriting a prior episode's. Not observations. */
+  const [weight, setWeight] = useState('')
+  const [height, setHeight] = useState('')
 
   const reload = useCallback(() => {
     getAdtBeds().then(setBeds)
@@ -77,16 +85,34 @@ export function Admissions() {
       }
       identity = { dateOfBirth: dob }
     }
+    const measurements: { weightKg?: number; heightCm?: number } = {}
+    if (weight.trim()) {
+      const w = Number(weight)
+      if (!Number.isFinite(w) || w < 0.5 || w > 500) {
+        setFormError('Weight must be a number between 0.5 and 500 kg (or leave it blank to add later)')
+        return
+      }
+      measurements.weightKg = w
+    }
+    if (height.trim()) {
+      const h = Number(height)
+      if (!Number.isFinite(h) || h < 30 || h > 260) {
+        setFormError('Height must be a number between 30 and 260 cm (or leave it blank to add later)')
+        return
+      }
+      measurements.heightCm = h
+    }
     setBusy(true)
     const res = await admitPatient({
       mrn: mrn.trim(), name: name.trim(), ...identity, sex,
       allergies: allergies.trim(), diagnosis: diagnosis.trim(),
-      attending: attending.trim(), bedId,
+      attending: attending.trim(), bedId, ...measurements,
     })
     setBusy(false)
     if (res.kind === 'ok') {
       showToast('Admitted', `${res.data.patient.name} (${res.data.patient.patientId}) admitted to ${res.data.encounter.bedId} — encounter ${res.data.encounter.encounterId}`)
       setMrn(''); setName(''); setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
+      setWeight(''); setHeight('')
       setAllergies('None documented')
       reload()
     } else if (res.kind === 'rejected') {
@@ -144,6 +170,12 @@ export function Admissions() {
                       <option value="M">M</option>
                       <option value="F">F</option>
                     </select>
+                  </label>
+                  <label>Weight (kg) <i className="admopt">optional — addable later</i>
+                    <input value={weight} onChange={e => setWeight(e.target.value)} inputMode="decimal" placeholder="e.g. 78" disabled={!canAdmit} aria-label="Weight in kilograms, optional" />
+                  </label>
+                  <label>Height (cm) <i className="admopt">optional — addable later</i>
+                    <input value={height} onChange={e => setHeight(e.target.value)} inputMode="decimal" placeholder="e.g. 172" disabled={!canAdmit} aria-label="Height in centimetres, optional" />
                   </label>
                   <label className="admwide">Allergies
                     <input value={allergies} onChange={e => setAllergies(e.target.value)} disabled={!canAdmit} required />

@@ -36,3 +36,6 @@
 /* DOB-unknown toggle (identity redesign) — checkbox row inside the grid */
 .adm .admgrid .admdob { flex-direction: row; align-items: center; gap: 8px; font-size: 11px; color: #9fb1c9; }
 .adm .admgrid .admdob input { width: auto; min-height: 0; }
+
+/* weight/height capture — the "optional" marker inside a field label */
+.adm .admopt { color: var(--faint); text-transform: none; font-style: italic; letter-spacing: 0; font-weight: 400; }

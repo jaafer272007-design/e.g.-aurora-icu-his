@@ -1,6 +1,22 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through the LABCATALOG SUITE AMENDMENT
+**Last updated: 2026-07-13 · current through PATIENT WEIGHT & HEIGHT CAPTURE
+(built — weight/height as ENCOUNTER-SCOPED attributes (kg/cm), NOT
+observations (the validator's judgment: ICU patients aren't weighed daily)
+and NOT person-level (the flagged patient-vs-encounter choice was decided
+by the owner pre-merge: each admission keeps ITS OWN values; a re-admission
+STARTS FRESH — never inherits, never overwrites a prior episode's; DOB
+stays person-level identity, age already computes at read); optional at
+admission + new `PUT /adt/encounters/{id}/measurements` behind the new
+`patients.measure` atom (Doctor/SeniorDoctor/Nurse; office admin 403);
+amend-not-erase history within the encounter (who/when/prior — the
+70-vs-07-kg typo is fixable, never silently overwritten); BMI / IBW-Devine
+(≥152.4 cm domain only) / BSA-Mosteller derived at render per encounter,
+never stored, blank when an input is missing; migration
+`AddEncounterWeightHeight`; Weight & Height card on Mission Control +
+admission-form fields; 36/36 local matrix + 12/12 real-browser checks;
+deferred: serial weight as observation, SOFA vasopressor dose/rate
+inputs. Prior: the LABCATALOG SUITE AMENDMENT
 for Option B (the post-merge dispatch of `deployed-labcatalog-e2e.yml` on
 1583cf9, run 29278695381, failed exactly where flagged pre-merge — its RBAC
 matrix still asserted the pre-Option-B `DOC catalogue create -> 403` and got
@@ -3096,6 +3112,100 @@ new screen.
   HTTP 409` ("referenced by 2 result(s) and 1 order(s)"); cleanup's
   `deactivate lab-catalog/e2e-doctest-29279236545 -> HTTP 404` accepted;
   "cleanup complete — no active run state remains".
+
+### Patient Weight & Height Capture (built) — encounter-scoped reference values, kg/cm
+Built from the clinical validator's design
+(`docs/design/patient-weight-height.md`, recorded verbatim): weight and
+height captured at admission, addable/correctable later — explicitly NOT
+observations (the validator's §0 judgment: ICU patients aren't weighed
+daily; this is the recorded reference weight for dosing and SOFA's
+µg/kg/min). Closes the Scoring-Engine data-source gap ("patient weight is
+missing entirely") and the basic-HIS dosing gap.
+- **MODELLING (design open item #1 — "patient/encounter record") — FLAGGED,
+  then DECIDED BY THE OWNER pre-merge: ENCOUNTER-SCOPED.** The build first
+  resolved patient-level (per §0's "a patient attribute" language) with
+  the encounter-scoped alternative recorded; the owner chose the
+  alternative, and the PR was reworked before merge. The fields live on
+  the ENCOUNTER row (`Encounters` — `WeightKg`/`HeightCm` nullable + a
+  `MeasurementsJson` amend-not-erase history; migration
+  `AddEncounterWeightHeight`, defaultValue hand-set to `"[]"` per the
+  AddResultAudit lesson — the patient-level migration was regenerated,
+  never merged/deployed). Semantics: **each admission keeps ITS OWN
+  weight/height** — a patient re-admitted a year later may genuinely
+  differ, so a new encounter **STARTS FRESH**: it never inherits and
+  never overwrites a prior admission's values (verified: after the
+  re-admitted encounter recorded 84 kg, the prior discharged encounter
+  still served its own 79 kg with its full history). DateOfBirth stays
+  person-level identity — age already computes at read, correctly
+  per-time (nothing to change). `Patient.ToDto` is untouched; the
+  encounter wire gains an additive nullable tail, absent values serve as
+  ABSENT (WhenWritingNull): seeded/pre-feature encounters keep their
+  wire bytes (verified).
+- **Units FIXED: kg / cm** (design open item #2). Bounds server-validated
+  on BOTH capture paths: weight 0.5–500 kg, height 30–260 cm — wide
+  enough for any ICU patient, tight enough to reject unit mistakes.
+- **Capture at admission**: `AdmitRequest` gains OPTIONAL
+  `weightKg`/`heightCm`, applied to the NEW encounter (a hectic admission
+  is never blocked on a scale); the admission form (`/admissions`)
+  carries the two optional fields. Rides `adt.admit` — the fields are
+  part of the admission payload.
+- **Add/correct later**: new
+  `PUT /api/icu/adt/encounters/{encounterId}/measurements` behind the new
+  **`patients.measure`** atom — BEDSIDE CLINICIAN authority
+  (Doctor/SeniorDoctor/Nurse; office Administrator, Pharmacist, Ancillary,
+  and every non-bedside profile 403 — the F2/F3-style hard constraint;
+  server `Rbac.cs` + client `session.ts` mirrored). Amend-not-erase
+  WITHIN the encounter: every set/change appends {time (UTC
+  "yyyy-MM-dd HH:mm" — dated; a correction can land days after
+  admission), actor, field, action "recorded at admission"/"added"/
+  "corrected", PRIOR value, new value}; values are never cleared, only
+  corrected; another encounter's values are never touched. Four-code:
+  absent encounter 404 (RBAC before lookup); equal values / both-absent /
+  out-of-bounds / unknown field 400. NO closed-encounter 409,
+  deliberately: correcting the episode's recorded weight is
+  completing/repairing the record, not initiating care — a DISCHARGED
+  encounter's wrong weight stays fixable (verified 200, the ack-path
+  asymmetry; the state machine only blocks transitions that initiate
+  care).
+- **Derived at render, never stored** (the Net Balance / GCS Total
+  discipline): BMI (kg/m²), **IBW = Devine 1974** (M 50 kg / F 45.5 kg +
+  2.3 kg per inch over 60 in, computed ONLY within the formula's
+  ≥152.4 cm domain — below it IBW is hidden, never extrapolated), **BSA =
+  Mosteller** (√(cm·kg/3600)) — `src/lib/anthropometrics.ts`, consumed by
+  the new Weight & Height card on Mission Control (the patient record),
+  computing **per encounter** from the OPEN encounter's values (the card
+  names the encounter and the starts-fresh rule; sex for Devine comes
+  from the real identity read, which also gates the card — in pure mock
+  mode it renders nothing: no mock store exists for this domain, nothing
+  is fabricated). Missing input → the derived value is BLANK with an
+  honest note (no fabricated BMI — verified weight-only leaves BMI/BSA
+  blank).
+- **Verification (encounter-scoped rework)**: 36/36 local behavior matrix
+  (admission with values → they land on the ENCOUNTER, patient identity
+  stays measurement-free; admission without; nurse add-later; doctor
+  correction with prior preserved; equal/absent/bounds/unknown-field/
+  absent-encounter four-code answers; office-admin/pharmacist/lab-tech
+  403 + unauth 401; DISCHARGED-encounter correction 200; **re-admission
+  starts fresh — the new encounter inherits nothing, and after it
+  recorded its own 84 kg the prior encounter still served its own 79 kg
+  with full history**; roster untouched; seeded patient + encounter
+  wire-shape byte-parity) + 12/12 real-browser checks (admission form
+  fields; the re-admitted patient's card shows THIS admission's 84 kg
+  with the prior 79 kg not leaking in; per-encounter BMI/IBW/BSA incl.
+  re-derivation after a UI correction; history with struck-through
+  prior; honest-blank + add-later; nurse edit control present, office
+  admin view-only). tsc + production build + server build clean.
+- **Deferred / future (recorded per the design's §6)**:
+  - **Serial/daily weight tracking as an OBSERVATION — explicitly NOT
+    built** (the validator: ICU patients aren't weighed daily; weight is
+    a stable attribute). If serial weights are ever wanted, that is a
+    separate observation-model addition (a `weight` type in the Stage 11
+    catalogue), distinct from this person-level reference value.
+  - **SOFA cardiovascular inputs beyond weight**: structured vasopressor
+    dose + current infusion rate remain open items for the Scoring
+    Engine's step-4 prerequisites (consistent with the recorded engine
+    sequencing) — this build supplies the weight datum and derivations,
+    not the dosing wiring.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

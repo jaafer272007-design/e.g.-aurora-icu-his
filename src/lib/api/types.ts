@@ -1030,6 +1030,19 @@ export interface Encounter {
   dischargedAt?: string
   dischargedBy?: string
   events: AdtEvent[]
+  /** Weight & Height capture — ENCOUNTER-SCOPED attributes (kg / cm), NOT
+   *  observations (the validator: ICU patients aren't weighed daily) and
+   *  NOT person-level (the owner's decision on the flagged choice): each
+   *  admission keeps ITS OWN reference weight/height — a re-admission
+   *  starts fresh, never inheriting or overwriting a prior episode's.
+   *  Absent until captured (the wire omits nulls). BMI/IBW/BSA are NEVER
+   *  on the wire — derived at render (src/lib/anthropometrics.ts) and
+   *  hidden when an input is missing. */
+  weightKg?: number
+  heightCm?: number
+  /** amend-not-erase history WITHIN this encounter — every set/change
+   *  with who/when/prior; absent until the first measurement */
+  measurements?: MeasurementEvent[]
 }
 
 /* ---------- GET /api/icu/adt/patients/:patientId ---------- */
@@ -1057,6 +1070,20 @@ export interface PatientIdentity {
   allergies: string
 }
 
+/** one weight/height history entry (who / when / prior value preserved —
+ *  a value that drives dosing is never silently overwritten) */
+export interface MeasurementEvent {
+  /** UTC "yyyy-MM-dd HH:mm" — a correction can land days after admission,
+   *  so the audit stamp carries the date */
+  time: string
+  actor: string
+  field: 'weight' | 'height'
+  action: 'recorded at admission' | 'added' | 'corrected'
+  /** the previous value whenever one existed (kg or cm per field) */
+  prior?: number | null
+  value: number
+}
+
 /* ---------- POST /api/icu/adt/admissions ---------- */
 
 export interface AdmitDraft {
@@ -1073,11 +1100,25 @@ export interface AdmitDraft {
   diagnosis: string
   attending: string
   bedId: string
+  /** Weight & Height capture — OPTIONAL at admission (kg / cm); if
+   *  omitted, a clinician adds them later on the patient record */
+  weightKg?: number
+  heightCm?: number
 }
 
 export interface AdmitResponse {
   patient: PatientIdentity
   encounter: Encounter
+}
+
+/* ---------- PUT /api/icu/adt/encounters/:encounterId/measurements ---------- */
+
+/** add-if-omitted / correct-with-history WITHIN the encounter — at least
+ *  one field required; RBAC patients.measure (doctor/nurse — never office
+ *  admin). Each admission keeps its own values. */
+export interface MeasureDraft {
+  weightKg?: number
+  heightCm?: number
 }
 
 /* ================= Layer 3 — User Administration (Aurora Core) =================

@@ -18,6 +18,7 @@ import { LatestObservationsCard } from './LatestObservationsCard'
 import { DigitalTwin } from './DigitalTwin'
 import { AiPanel } from './AiPanel'
 import { LabsCard } from './LabsCard'
+import { WeightHeightCard } from './WeightHeightCard'
 
 type Filter = 'all' | 'vent' | 'pressor' | 'crrt' | 'ecmo' | 'iso' | 'alerts'
 const FILTERS: { key: Filter; label: string }[] = [
@@ -210,6 +211,11 @@ export function MissionControl() {
               <AiPanel risks={detail.aiRisks} />
             </div>
           )}
+
+          {/* Weight & Height (person-level reference values, kg/cm) — reads
+              the REAL identity endpoint; renders nothing in pure mock mode
+              (no mock store behind this domain, nothing fabricated) */}
+          {detail && <WeightHeightCard patientId={patientId} />}
 
           {detail && (
             <Card id="vent" icon={<IconVent size={15} stroke="var(--blue)" />} title="Ventilator"
