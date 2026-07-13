@@ -1110,11 +1110,15 @@ export async function getObservationCatalog(): Promise<ObsCatalogGroup[] | null>
   throw apiUnavailable('observation catalogue')
 }
 
-/** GET /api/icu/observations?patientId — the patient's chart, oldest
- *  first (server-ordered). Null = API unreachable — NEVER simulated. */
-export async function getObservations(patientId: string): Promise<Observation[] | null> {
+/** GET /api/icu/observations?patientId(&encounterId) — the patient's
+ *  chart, oldest first (server-ordered); optionally scoped to ONE
+ *  encounter (bedside documents are episode-scoped — a readmission's
+ *  flowsheet never carries a prior stay). Null = API unreachable —
+ *  NEVER simulated. */
+export async function getObservations(patientId: string, encounterId?: string): Promise<Observation[] | null> {
   const real = await apiGet<Observation[]>(
-    `/api/icu/observations?patientId=${encodeURIComponent(patientId)}`, 'observations')
+    `/api/icu/observations?patientId=${encodeURIComponent(patientId)}`
+    + (encounterId ? `&encounterId=${encodeURIComponent(encounterId)}` : ''), 'observations')
   if (real) return real
   if (import.meta.env.VITE_APP_ENV !== 'production') return null
   throw apiUnavailable('observations')

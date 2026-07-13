@@ -1,13 +1,17 @@
 import {
-  getEncounters, getImagingStudies, getLabDraws, getPatientIdentity, getPatientOrders, getRosterRecord, getTimeline,
+  getEncounters, getImagingStudies, getLabDraws, getObservationCatalog, getObservations,
+  getPatientIdentity, getPatientOrders, getRosterRecord, getTimeline,
 } from '../../lib/api'
-import type { Encounter, LabDraw, Order, PatientIdentity, RosterRecordDto } from '../../lib/api/types'
+import type {
+  Encounter, LabDraw, Observation, ObservationType, Order, PatientIdentity, RosterRecordDto,
+} from '../../lib/api/types'
 import { dayOffsetOf } from '../../lib/time'
 import type {
   ActiveOrdersData, AdmissionNoteData, ConsultReportData, DailyProgressData, DischargeSummaryData,
-  FaceSheetData, ImagingReportData, LabReportData, MedicationOrdersData, PrintContext,
-  PrintEncounterInfo, PrintMedLine, PrintOrderLine, PrintPatientIdentity, PrintVitals,
-  SbarData, TransferSummaryData,
+  FaceSheetData, FlowsheetColumn, FlowsheetData, FlowsheetRow, FlowsheetSection,
+  ImagingReportData, LabReportData, MarCell, MarMedRow, MarSheetData, MedicationOrdersData,
+  PrintContext, PrintEncounterInfo, PrintMedLine, PrintOrderLine, PrintPatientIdentity,
+  PrintVitals, SbarData, TransferSummaryData, VentDeviceData, VentSnapshotLine,
 } from './types'
 
 /* ==================== Print Center selectors ====================
@@ -359,5 +363,251 @@ export async function buildTransferSummary(patientId: string, encounterId?: stri
     activeMeds: medOrders(rc.orders).filter(o => o.status === 'active').map(toMedLine),
     latestLabs: [...latestByPanel.values()],
     adtEvents: rc.encounter?.events ?? [],
+  }
+}
+
+/* ==================== Stage 11 templates — contract #12/#13/#11 ====================
+   These read the REAL Stage 11 chart-read path (getObservations,
+   encounter-scoped) plus the persisted administrations on the orders the
+   context already resolved. The OBSERVATION TYPE CATALOGUE read supplies
+   the printed VOCABULARY (row labels, units, section titles, component
+   definitions): unlike the formulary it is v1 read-only reference data,
+   group ENABLEMENT is deliberately ignored here (a disabled group must
+   not erase a historical flowsheet — the ORD-168 principle), and values/
+   units still render from each persisted observation itself. */
+
+const eff = (o: Observation): string =>
+  o.amendments.length > 0 ? o.amendments[o.amendments.length - 1].newValue : o.value
+
+/** compact printed form of one charted value (compound values render
+ *  their components; the section legend explains abbreviations) */
+function printedValue(t: ObservationType | undefined, raw: string): string {
+  if (t?.valueType !== 'compound') return raw
+  try {
+    const v = JSON.parse(raw) as Record<string, number | string>
+    if (t.typeCode === 'gcs') return `E${v.eye} V${v.verbal} M${v.motor}`
+    if (t.typeCode === 'pupils') {
+      const r = (x: unknown) => String(x ?? '?').charAt(0)
+      return `L${v.leftSize}${r(v.leftReaction)} R${v.rightSize}${r(v.rightReaction)}`
+    }
+    return (t.components ?? []).map(c => `${c.label} ${v[c.code] ?? '—'}`).join(' ')
+  } catch { return raw }
+}
+
+/** "yyyy-MM-dd HH:mm" → epoch ms (charted clinical times are real UTC
+ *  datetimes — unlike order times, they carry calendar dates) */
+const obsMs = (clinicalTime: string) => Date.parse(`${clinicalTime.replace(' ', 'T')}:00Z`)
+const HOUR = 3600_000
+
+const FLOWSHEET_GROUPS = ['vitals', 'neuro', 'fluid'] as const
+const FLUID_IN_TYPES = ['oral_intake', 'iv_fluids', 'blood_products']
+const FLUID_OUT_TYPES = ['urine_output', 'drain_output', 'ng_output', 'stool_output']
+
+/* ---------------- Contract #12 — Vital Signs / Observation Flowsheet ---------------- */
+
+export async function buildVitalsFlowsheet(patientId: string, encounterId?: string): Promise<FlowsheetData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  const [obs, catalog] = await Promise.all([
+    getObservations(patientId, rc.encounter?.encounterId),
+    getObservationCatalog(),
+  ])
+  if (obs === null || catalog === null) return { context: rc.context, grid: null, unavailable: true }
+  if (obs.length === 0) return { context: rc.context, grid: null, unavailable: false }
+
+  const byCode = new Map(catalog.flatMap(g => g.types).map(t => [t.typeCode, t]))
+
+  /* ADAPTIVE window (design P1): 24 hourly columns ANCHORED to the latest
+     charted observation — identical behavior for admitted and discharged
+     patients; the window facts print on the document. The window/interval
+     are the parameters the future Print Center Engine (P2) will expose. */
+  const WINDOW_HOURS = 24
+  const latestMs = Math.max(...obs.map(o => obsMs(o.clinicalTime)))
+  const endMs = (Math.floor(latestMs / HOUR) + 1) * HOUR
+  const startMs = endMs - WINDOW_HOURS * HOUR
+  const columns: FlowsheetColumn[] = Array.from({ length: WINDOW_HOURS }, (_, i) => {
+    const d = new Date(startMs + i * HOUR)
+    return { hourLabel: `${String(d.getUTCHours()).padStart(2, '0')}:00`, date: d.toISOString().slice(0, 10) }
+  })
+  const colOf = (o: Observation) => Math.floor((obsMs(o.clinicalTime) - startMs) / HOUR)
+
+  const windowObs = obs.filter(o => { const c = colOf(o); return c >= 0 && c < WINDOW_HOURS })
+
+  /* per type per column: every charted value that hour (repeats join —
+     each is real, none replaces another on paper) */
+  const cellsFor = (typeCode: string): (string | null)[] => {
+    const cells: (string | null)[] = Array.from({ length: WINDOW_HOURS }, () => null)
+    for (const o of windowObs) {
+      if (o.typeCode !== typeCode) continue
+      const c = colOf(o)
+      const v = printedValue(byCode.get(o.typeCode), eff(o))
+      cells[c] = cells[c] === null ? v : `${cells[c]} / ${v}`
+    }
+    return cells
+  }
+
+  /* derived rows compute PER COLUMN at render (validator's decision) —
+     never charted, never stored. Sums cover EVERY entry of the hour
+     (per-interval amounts); GCS Total sums that hour's compound. */
+  const numAt = (o: Observation) => Number(eff(o))
+  const hourEntries = (col: number, codes: string[]) =>
+    windowObs.filter(o => colOf(o) === col && codes.includes(o.typeCode))
+  const derivedCells = (typeCode: string): (string | null)[] =>
+    Array.from({ length: WINDOW_HOURS }, (_, col) => {
+      if (typeCode === 'gcs_total') {
+        const g = hourEntries(col, ['gcs']).pop()
+        if (!g) return null
+        try {
+          const v = JSON.parse(eff(g)) as Record<string, number>
+          return String(Number(v.eye) + Number(v.verbal) + Number(v.motor))
+        } catch { return null }
+      }
+      const ins = hourEntries(col, FLUID_IN_TYPES).reduce((s, o) => s + (numAt(o) || 0), 0)
+      const outs = hourEntries(col, FLUID_OUT_TYPES).reduce((s, o) => s + (numAt(o) || 0), 0)
+      const anyIn = hourEntries(col, FLUID_IN_TYPES).length > 0
+      const anyOut = hourEntries(col, FLUID_OUT_TYPES).length > 0
+      if (typeCode === 'total_input') return anyIn ? String(ins) : null
+      if (typeCode === 'total_output') return anyOut ? String(outs) : null
+      if (typeCode === 'net_balance') return anyIn || anyOut ? String(ins - outs) : null
+      return null
+    })
+
+  /* rows = the catalogue's own types for the TRADITIONAL SPLIT groups
+     (vitals + neuro + fluids — the validator's decision; ventilator
+     detail lives on the Ventilator & Device Report). Derived types render
+     as computed rows in their catalogue position. */
+  const sections: FlowsheetSection[] = catalog
+    .filter(g => (FLOWSHEET_GROUPS as readonly string[]).includes(g.groupCode))
+    .map(g => ({
+      title: g.displayName,
+      rows: g.types.map((t): FlowsheetRow => ({
+        typeCode: t.typeCode, label: t.displayName, unit: t.unit,
+        derived: t.isDerived,
+        cells: t.isDerived ? derivedCells(t.typeCode) : cellsFor(t.typeCode),
+      })),
+    }))
+
+  return {
+    context: rc.context,
+    grid: {
+      columns,
+      sections,
+      windowStart: new Date(startMs).toISOString().slice(0, 16).replace('T', ' '),
+      windowEnd: new Date(endMs).toISOString().slice(0, 16).replace('T', ' '),
+      amendedCount: windowObs.filter(o => o.amendments.length > 0).length,
+    },
+    unavailable: false,
+  }
+}
+
+/* ---------------- Contract #13 — Ventilator & Device Report ---------------- */
+
+export async function buildVentDeviceReport(patientId: string, encounterId?: string): Promise<VentDeviceData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  const [obs, catalog] = await Promise.all([
+    getObservations(patientId, rc.encounter?.encounterId),
+    getObservationCatalog(),
+  ])
+  if (obs === null || catalog === null)
+    return { context: rc.context, ventilator: null, pumpRate: null, devicesGroupEnabled: null, unavailable: true }
+
+  /* SNAPSHOT (validator's decision): the latest charted value per type —
+     point-in-time, not a trend; each value carries its own clinical time
+     (settings may legitimately have been charted at different rounds). */
+  const latest = new Map<string, Observation>()
+  for (const o of obs) latest.set(o.typeCode, o)   // oldest→newest: last wins
+
+  const line = (t: { typeCode: string; displayName: string; unit: string }, o: Observation | undefined): VentSnapshotLine => ({
+    typeCode: t.typeCode, label: t.displayName, unit: t.unit,
+    value: o ? eff(o) : null,
+    clinicalTime: o?.clinicalTime ?? null,
+    provenance: o ? 'charted' : null,
+  })
+
+  const ventGroup = catalog.find(g => g.groupCode === 'ventilator')
+  const ventLines: VentSnapshotLine[] = []
+  for (const t of ventGroup?.types ?? []) {
+    if (t.typeCode === 'driving_pressure') {
+      /* DERIVED at render (never charted): Pplat − PEEP, only when both
+         come from ONE charted timepoint — a ΔP across different rounds
+         would be a fabricated number. */
+      const pplat = latest.get('pplat'); const peep = latest.get('peep')
+      const same = pplat && peep && pplat.clinicalTime === peep.clinicalTime
+      ventLines.push({
+        typeCode: t.typeCode, label: t.displayName, unit: t.unit,
+        value: same ? String(Number(eff(pplat)) - Number(eff(peep))) : null,
+        clinicalTime: same ? pplat.clinicalTime : null,
+        provenance: same ? 'derived' : null,
+      })
+      continue
+    }
+    if (t.typeCode === 'minute_ventilation') {
+      /* MV is CHARTABLE in the catalogue; the design also lists it as a
+         computed value. Charted wins; when absent, compute VT(exhaled) ×
+         RR(measured) from ONE shared timepoint, labelled computed —
+         flagged in the PR rather than silently chosen. */
+      const charted = latest.get('minute_ventilation')
+      if (charted) { ventLines.push(line(t, charted)); continue }
+      const vt = latest.get('vt_exhaled'); const rr = latest.get('rr_measured')
+      const same = vt && rr && vt.clinicalTime === rr.clinicalTime
+      ventLines.push({
+        typeCode: t.typeCode, label: t.displayName, unit: t.unit,
+        value: same ? ((Number(eff(vt)) * Number(eff(rr))) / 1000).toFixed(1) : null,
+        clinicalTime: same ? vt.clinicalTime : null,
+        provenance: same ? 'computed' : null,
+      })
+      continue
+    }
+    ventLines.push(line(t, latest.get(t.typeCode)))
+  }
+
+  const devicesGroup = catalog.find(g => g.groupCode === 'devices')
+  const pumpType = devicesGroup?.types.find(t => t.typeCode === 'pump_rate')
+  return {
+    context: rc.context,
+    ventilator: ventLines,
+    pumpRate: pumpType ? line(pumpType, latest.get('pump_rate')) : null,
+    devicesGroupEnabled: devicesGroup?.enabled ?? null,
+    unavailable: false,
+  }
+}
+
+/* ---------------- Contract #11 — Medication Administration Record ---------------- */
+
+export async function buildMar(patientId: string, encounterId?: string): Promise<MarSheetData | null> {
+  const rc = await resolveContext(patientId, encounterId)
+  if (!rc) return null
+  /* administrations live ON the persisted orders the context already
+     resolved (encounter-scoped) — the Q4 verification: AdminDto carries
+     status (given/held/refused), documentedTime, documentedBy (the
+     token's nurse), and the server-REQUIRED reason for held/refused.
+     Pending prescriptions have no dose schedule (they are not in force)
+     and print on the Medication Orders sheet, not the MAR. */
+  const meds = medOrders(rc.orders)
+  const scheduled = meds.filter(o => (o.administrations ?? []).length > 0)
+  return {
+    context: rc.context,
+    meds: scheduled.map((o): MarMedRow => ({
+      orderId: o.orderId,
+      drug: o.medication!.drug, dose: o.medication!.dose, route: o.medication!.route,
+      frequency: o.medication!.frequency, prn: o.medication!.prn,
+      prnIndication: o.medication!.prnIndication,
+      status: o.status,
+      stoppedReason: o.status === 'discontinued' ? o.statusReason : undefined,
+      /* the SCHEDULED slots per drug ARE the columns (a q8h drug → 3, a
+         q4h → 6 — the validator's decision, no uniform grid). Documented
+         doses always print; still-scheduled slots print as awaiting
+         documentation only while the order is ACTIVE (mirrors the MAR
+         screen derivation). */
+      cells: (o.administrations ?? [])
+        .filter(a => a.status !== 'scheduled' || o.status === 'active')
+        .map((a): MarCell => ({
+          adminId: a.adminId, scheduledTime: a.scheduledTime,
+          status: a.status, documentedTime: a.documentedTime,
+          documentedBy: a.documentedBy, reason: a.reason,
+        })),
+    })),
+    unscheduledCount: meds.length - scheduled.length,
   }
 }

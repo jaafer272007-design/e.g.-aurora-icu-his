@@ -10,10 +10,14 @@ import { LabReport } from './templates/LabReport'
 import { MedicationOrdersSheet } from './templates/MedicationOrdersSheet'
 import { SbarSheet } from './templates/SbarSheet'
 import { TransferSummary } from './templates/TransferSummary'
+import { MarSheet } from './templates/MarSheet'
+import { VentDeviceReport } from './templates/VentDeviceReport'
+import { VitalsFlowsheet } from './templates/VitalsFlowsheet'
 import {
   buildActiveOrders, buildAdmissionNote, buildConsultReport, buildDailyProgress,
   buildDischargeSummary, buildFaceSheet, buildImagingReport, buildLabReport,
-  buildMedicationOrders, buildSbar, buildTransferSummary,
+  buildMar, buildMedicationOrders, buildSbar, buildTransferSummary, buildVentDeviceReport,
+  buildVitalsFlowsheet,
 } from './selectors'
 import type { PrintContext } from './types'
 
@@ -150,6 +154,35 @@ export const PRINT_TEMPLATES: PrintTemplateDef[] = [
     encounterScope: 'any',
     load: buildDischargeSummary,
     Component: DischargeSummary,
+  }),
+  /* ---- Stage 11 templates (contract #11/#12/#13 — the deferred three,
+     now built on the real Observation model + persisted administrations) ---- */
+  def({
+    id: 'mar',
+    title: 'Medication Administration Record',
+    description: 'Doses administered this encounter — each medication’s own scheduled slots with given/held/refused status, actual time, administering nurse, and the recorded reason when a dose was not given.',
+    orientation: 'portrait',
+    encounterScope: 'any',
+    load: buildMar,
+    Component: MarSheet,
+  }),
+  def({
+    id: 'vitals-flowsheet',
+    title: 'Vital Signs / Observation Flowsheet',
+    description: '24 hours of charted observations as an hourly grid — vital signs, neurological assessment and fluid balance, with per-hour computed totals (Net Balance, Total I/O, GCS Total). Landscape.',
+    orientation: 'landscape',
+    encounterScope: 'any',
+    load: buildVitalsFlowsheet,
+    Component: VitalsFlowsheet,
+  }),
+  def({
+    id: 'ventilator-device-report',
+    title: 'Ventilator & Device Report',
+    description: 'Current ventilator setup from the latest charted settings (with derived Driving Pressure), plus device sections — infusion pumps, ECMO, CRRT, ICP — honestly empty until device observations exist.',
+    orientation: 'portrait',
+    encounterScope: 'any',
+    load: buildVentDeviceReport,
+    Component: VentDeviceReport,
   }),
 ]
 
