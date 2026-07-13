@@ -722,7 +722,9 @@ export interface LabResultItem {
 export interface ResultEvent {
   time: string
   actor: string
-  action: 'resulted' | 'acknowledged' | 'unacknowledged'
+  /** 'documented' is the manual-entry path (results.document); 'resulted'
+   *  is the producing-service create path (results.create) */
+  action: 'resulted' | 'documented' | 'acknowledged' | 'unacknowledged'
   detail?: string
 }
 
@@ -750,6 +752,12 @@ export interface LabDraw {
   items: LabResultItem[]
   /** worst flag across items (validated server-side) */
   flag: ResultFlag
+  /** how the result ENTERED Aurora (Lab Result-Entry design §5):
+   *  'manual' = the human documentation/transcription path
+   *  (results.document). Absent on pre-existing rows and the
+   *  producing-service create path, which predate the field — never
+   *  invented. A future LIS feed becomes a second source value. */
+  source?: 'manual'
   /** short lab/clinical note surfaced in the results inbox */
   note?: string
   acknowledged: boolean
@@ -758,6 +766,25 @@ export interface LabDraw {
   /** never-destroy audit history: a reversed acknowledgment survives here
    *  while the summary fields above clear (results audit PR) */
   history?: ResultEvent[]
+}
+
+/* ---------- POST /api/icu/results/labs/document (Lab Result-Entry) ----------
+   The MANUAL documentation path — a nurse or doctor transcribing a paper
+   central-lab report or entering a bedside ABG. The payload is LEAN: only
+   the catalogue panel and per-analyte {analyte, value}. The server derives
+   unit/refRange/bounds/flag from the lab catalogue, the label from the test
+   name, the documenting clinician + time + encounter + order linkage, and
+   stamps source=manual — none of it is client-claimed. */
+export interface DocumentLabItem {
+  analyte: string
+  value: number
+}
+
+export interface DocumentLabDraft {
+  patientId: string
+  panel: LabPanelKey
+  items: DocumentLabItem[]
+  note?: string
 }
 
 /* ---------- GET /api/icu/results/imaging?patientId ---------- */

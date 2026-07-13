@@ -98,6 +98,71 @@ static class ResultsLogic
         return null;
     }
 
+    /** null when valid, else the precise 400 — the MANUAL DOCUMENTATION path
+        (Lab Result-Entry design). Leaner than ValidateLabCreate: the client
+        supplies only patientId, the catalogue panel, and per-analyte
+        {analyte, value}; unit/refRange/bounds/flag are catalogue-derived, so
+        they are NOT validated here (they cannot be wrong — the server owns
+        them). Each submitted analyte MUST belong to the chosen panel's
+        catalogue definition (a display-string match today — coded analyte
+        identity is the recorded future item). A panel resolves against ANY
+        catalogue test, active OR inactive (resulting is never blocked by a
+        reference-status change — the same rule ValidateLabCreate documents). */
+    public static string? ValidateLabDocument(DocumentLabRequest r, AuroraDb db)
+    {
+        if (CheckText("patientId", r.PatientId, required: true) is string p) return p;
+        if (!db.AdtPatients.AsNoTracking().Any(x => x.PatientId == r.PatientId))
+            return $"patientId '{r.PatientId}' does not match any roster patient";
+        var test = r.Panel is null ? null : Aurora.Core.MasterData.LabCatalogLogic.Resolve(db, r.Panel);
+        if (test is null)
+            return $"panel must be one of: {string.Join(", ", Aurora.Core.MasterData.LabCatalogLogic.TestIds(db))}";
+        if (CheckText("note", r.Note, required: false) is string nt) return nt;
+        if (r.Items is null || r.Items.Count == 0)
+            return "at least one result item is required (items[])";
+        var known = JsonSerializer.Deserialize<List<Aurora.Core.MasterData.AnalyteDefDto>>(test.AnalytesJson, JsonOpts.Web)!
+            .Select(a => a.Analyte).ToList();
+        var knownSet = known.ToHashSet();
+        for (var i = 0; i < r.Items.Count; i++)
+        {
+            var it = r.Items[i];
+            var at = $"items[{i}]";
+            if (it is null) return $"{at} is null";
+            if (CheckText($"{at}.analyte", it.Analyte, required: true) is string a) return a;
+            if (!knownSet.Contains(it.Analyte!))
+                return $"{at}.analyte '{it.Analyte}' is not part of the {test.TestId} panel — expected one of: {string.Join(", ", known)}";
+            if (it.Value is null || !double.IsFinite(it.Value.Value))
+                return $"{at}.value must be a finite number";
+        }
+        return null;
+    }
+
+    /** resolve each documented {analyte, value} against the panel's catalogue
+        definition — the stored item carries the catalogue-owned unit,
+        refRange and numeric bounds, and a VALUE-DERIVED flag (never
+        client-claimed). Assumes ValidateLabDocument passed, so every analyte
+        resolves. */
+    public static List<LabItemFull> BuildDocumentedItems(DocumentLabRequest r, Aurora.Core.MasterData.LabTestRow test)
+    {
+        var byName = JsonSerializer.Deserialize<List<Aurora.Core.MasterData.AnalyteDefDto>>(test.AnalytesJson, JsonOpts.Web)!
+            .ToDictionary(a => a.Analyte);
+        return r.Items!.Select(it =>
+        {
+            var d = byName[it.Analyte!];
+            return new LabItemFull(it.Analyte!, it.Value!.Value, d.Unit, d.RefRange, d.RefLow, d.RefHigh,
+                FlagForValue(it.Value!.Value, d.RefLow, d.RefHigh));
+        }).ToList();
+    }
+
+    /** the per-item flag DERIVED from a value against the catalogue reference
+        range: in [refLow, refHigh] → normal, otherwise abnormal. The
+        catalogue models a SINGLE range per analyte (no separate critical
+        threshold), so the manual documentation path grades normal vs abnormal
+        only — a "critical" grade would need threshold data the catalogue does
+        not carry yet (recorded as a future item). Honest by construction: the
+        clinician types the number, the system grades it. */
+    public static string FlagForValue(double value, double refLow, double refHigh) =>
+        value >= refLow && value <= refHigh ? "normal" : "abnormal";
+
     public static string? ValidateImagingCreate(CreateImagingRequest r, AuroraDb db)
     {
         if (CheckText("patientId", r.PatientId, required: true) is string p) return p;
@@ -118,6 +183,12 @@ static class ResultsLogic
         normal) — never client-supplied, so a draw can never understate its
         own worst item */
     public static string DeriveLabFlag(IEnumerable<NewLabItemDto> items) =>
+        items.Any(i => i.Flag == "critical") ? "critical"
+        : items.Any(i => i.Flag == "abnormal") ? "abnormal" : "normal";
+
+    /** same worst-item rule for the documentation path, over the built items
+        (whose flags are catalogue-value-derived — normal/abnormal) */
+    public static string DeriveLabFlag(IEnumerable<LabItemFull> items) =>
         items.Any(i => i.Flag == "critical") ? "critical"
         : items.Any(i => i.Flag == "abnormal") ? "abnormal" : "normal";
 

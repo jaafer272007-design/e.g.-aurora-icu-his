@@ -36,6 +36,13 @@ class LabDrawRow
     public string ResultedAt { get; set; } = "";
     public string ItemsJson { get; set; } = "[]";
     public string Flag { get; set; } = "";
+    /* Lab Result-Entry design (§5): how this result ENTERED Aurora, so a
+       future LIS-fed result is distinguishable from a manually-transcribed
+       one — the same source-provenance idea as the observation model.
+       "manual" for the human documentation path (results.document); ""
+       (absent on the wire) for pre-existing rows and the producing-service
+       create path, which predate the field — a source is never invented. */
+    public string Source { get; set; } = "";
     public string? Note { get; set; }
     public bool Acknowledged { get; set; }
     public string? AcknowledgedBy { get; set; }
@@ -52,7 +59,7 @@ class LabDrawRow
         OrderId = d.OrderId, BedId = d.BedId, PatientName = d.PatientName,
         Panel = d.Panel, Label = d.Label, CollectedAt = d.CollectedAt, ResultedAt = d.ResultedAt,
         ItemsJson = JsonSerializer.Serialize(d.Items, JsonOpts.Web),
-        Flag = d.Flag, Note = d.Note, Acknowledged = d.Acknowledged,
+        Flag = d.Flag, Source = d.Source ?? "", Note = d.Note, Acknowledged = d.Acknowledged,
         AcknowledgedBy = d.AcknowledgedBy, AcknowledgedAt = d.AcknowledgedAt,
         EventsJson = d.History is null ? "[]" : JsonSerializer.Serialize(d.History, JsonOpts.Web),
     };
@@ -65,7 +72,7 @@ class LabDrawRow
             Panel, Label, CollectedAt, ResultedAt,
             JsonSerializer.Deserialize<JsonElement>(ItemsJson, JsonOpts.Web),
             Flag, Note, Acknowledged, AcknowledgedBy, AcknowledgedAt,
-            events.Count == 0 ? null : events, OrderId);
+            events.Count == 0 ? null : events, OrderId, Source == "" ? null : Source);
     }
 }
 
@@ -124,7 +131,7 @@ record LabDrawDto(
     string LabId, string PatientId, string? EncounterId, string BedId, string PatientName, string Panel,
     string Label, string CollectedAt, string ResultedAt, JsonElement Items, string Flag,
     string? Note, bool Acknowledged, string? AcknowledgedBy, string? AcknowledgedAt,
-    List<ResultEventDto>? History, string? OrderId = null);
+    List<ResultEventDto>? History, string? OrderId = null, string? Source = null);
 
 record ImagingStudyDto(
     string StudyId, string PatientId, string? EncounterId, string BedId, string PatientName, string Modality,
@@ -164,6 +171,23 @@ record NewLabItemDto(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CreateLabRequest(
     string? PatientId, string? Panel, string? Label, string? Note, List<NewLabItemDto>? Items);
+
+/* ---------- DOCUMENTATION REQUEST DTOs (Lab Result-Entry design) ----------
+   The MANUAL documentation path (results.document) is LEANER than the
+   producing-service create above: the client sends only patientId, the
+   catalogue panel, and per-analyte {analyte, value}. Everything else is
+   CATALOGUE-DERIVED server-side (§9): unit, refRange, refLow/refHigh come
+   from the lab catalogue's analyte definition, and the per-item flag is
+   derived from the value against that reference range — the client cannot
+   claim any of them. Label (the catalogue test's Name), source=manual, the
+   documenting clinician, encounter scope, order linkage, and timestamps are
+   all server-owned, exactly as they are for create. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record DocumentLabItemDto(string? Analyte, double? Value);
+
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record DocumentLabRequest(
+    string? PatientId, string? Panel, string? Note, List<DocumentLabItemDto>? Items);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CreateImagingRequest(

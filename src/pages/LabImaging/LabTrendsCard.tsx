@@ -140,6 +140,10 @@ export function LabTrendsCard({ draws }: { draws: LabDraw[] }) {
       <canvas className="lichart" ref={canvasRef} aria-label={`${activeAnalyte} trend chart`} />
       <div className="lichartmeta">
         <span><i className="liband" /> reference range {refItem?.refRange} {refItem?.unit}</span>
+        {/* Lab Result-Entry design §5: surface how the latest draw ENTERED
+            Aurora — a manually-documented result is provenance-flagged so a
+            future LIS feed stays distinguishable */}
+        {latest?.source === 'manual' && <span className="lisource" title="manually documented by the ICU bedside team">✎ manually documented</span>}
         {latest && (
           <span className={latest.acknowledged ? 'liacked' : 'liunacked'}>
             {latest.acknowledged

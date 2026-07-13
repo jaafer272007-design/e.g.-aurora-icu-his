@@ -72,7 +72,8 @@ export type Permission =
   | 'meds.administer'      // MAR documentation (given / held / refused)
   | 'results.view'
   | 'results.acknowledge'
-  | 'results.create'       // results audit PR: enter a lab/imaging result (producing service)
+  | 'results.create'       // results audit PR: enter a lab/imaging result (producing service / future LIS)
+  | 'results.document'     // Lab Result-Entry: manually document/transcribe a lab result (ICU bedside team)
   | 'notes.document'       // nursing tasks, I&O, SBAR handoff
   | 'ai.view'
   | 'admin.view'           // administrative landing view
@@ -95,7 +96,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   Doctor: [
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
-    'results.acknowledge', 'notes.document', 'ai.view',
+    'results.acknowledge', 'results.document', 'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record',
   ],
   /* Stage 11 F4: Doctor's SUPERSET + the Consultant-tier observation
@@ -104,14 +105,17 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   SeniorDoctor: [
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
-    'results.acknowledge', 'notes.document', 'ai.view',
+    'results.acknowledge', 'results.document', 'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record',
     'observations.correct', 'observations.configure',
   ],
-  /* administer + document only — cannot originate orders (locked decision) */
+  /* administer + document only — cannot originate orders (locked decision).
+     results.document (Lab Result-Entry): the ICU bedside team transcribes
+     paper central-lab reports and enters bedside ABGs — a distinct atom
+     from the producing-service results.create (kept on Ancillary). */
   Nurse: [
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
-    'notes.document', 'results.view', 'ai.view', 'adt.transfer',
+    'notes.document', 'results.view', 'results.document', 'ai.view', 'adt.transfer',
     'observations.record',
   ],
   /* administrative landing view + census-level board + user administration */
@@ -123,8 +127,11 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   /* vent-focused: orders, ABGs, and risk trajectories, view-only */
   RespiratoryTherapist: ['patients.view', 'orders.view', 'results.view', 'ai.view'],
   /* lab/radiology technicians: pending order worklist + results; entering
-     a RESULT is the producing service's authority (results audit PR) —
-     doctors/nurses are 403'd on create, the usual polarity flip */
+     a RESULT via results.create is the producing service's authority
+     (results audit PR / future LIS feed) — doctors/nurses are 403'd on
+     create, the usual polarity flip. The manual documentation path is a
+     SEPARATE atom (results.document, on the clinical profiles) — the two
+     authorities are reconciled, not merged. */
   Ancillary: ['patients.view', 'orders.view', 'results.view', 'results.create', 'labcatalog.manage'],
   /* physio/dietitian: chart + results, view-only */
   AlliedHealth: ['patients.view', 'results.view'],

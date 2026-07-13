@@ -33,7 +33,8 @@ static class Rbac
            is BEDSIDE CLINICIAN authority — any doctor or nurse. */
         ["Doctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "notes.document", "ai.view", "adt.admit", "adt.discharge", "observations.record"],
+            "results.document", "notes.document", "ai.view", "adt.admit", "adt.discharge",
+            "observations.record"],
         /* SeniorDoctor (Stage 11 F4): Doctor's SUPERSET — everything a
            doctor may do, plus the Consultant-tier observation authorities:
            observations.correct (tier-2 retrospective correction, §8) and
@@ -43,10 +44,11 @@ static class Rbac
            governed. */
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "notes.document", "ai.view", "adt.admit", "adt.discharge", "observations.record",
-            "observations.correct", "observations.configure"],
+            "results.document", "notes.document", "ai.view", "adt.admit", "adt.discharge",
+            "observations.record", "observations.correct", "observations.configure"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
-            "notes.document", "results.view", "ai.view", "adt.transfer", "observations.record"],
+            "notes.document", "results.view", "results.document", "ai.view", "adt.transfer",
+            "observations.record"],
         ["Administrator"] = ["admin.view", "patients.view", "users.manage"],
         /* formulary.manage (Layer 4): maintaining the drug formulary is
            PHARMACY's authority — the same polarity flip as results.create
@@ -62,7 +64,17 @@ static class Rbac
         /* results.create (results audit PR): entering a result is the
            PRODUCING SERVICE's authority — lab/radiology technicians — not
            the prescriber's (doctor/nurse tokens are 403'd on create, the
-           same polarity flip as implement/administer/transfer) */
+           same polarity flip as implement/administer/transfer). This is the
+           future LIS-integration authority (an automated feed produces the
+           result); it is DISTINCT from results.document below.
+           ── results.document (Lab Result-Entry design): a SEPARATE atom for
+           the manual documentation/transcription path — the ICU bedside team
+           (Doctor/SeniorDoctor/Nurse) transcribing a paper central-lab
+           report or entering a bedside ABG. The two authorities were kept
+           apart on a conscious reconciliation (the design's open item #1):
+           results.create stays the producing-service/LIS authority, and the
+           human documentation path gets its own grant rather than
+           repurposing results.create. */
         /* labcatalog.manage (Layer 4 phase 2): maintaining the lab test
            catalogue is the LABORATORY's authority — the producing-service
            principle behind results.create, kept as its OWN atom: entering
