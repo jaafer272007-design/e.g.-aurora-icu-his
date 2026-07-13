@@ -182,6 +182,36 @@ static class ResultsLogic
     public static string FlagForValue(double value, double refLow, double refHigh) =>
         value >= refLow && value <= refHigh ? "normal" : "abnormal";
 
+    /* ---------- Lab Result Editing (correction) helpers ----------
+       Mirrors ObservationService's two-tier model: Tier-1 = the DOCUMENTER,
+       within the flat 5-minute window from the documentation anchor; Tier-2
+       = everything else (Consultant-tier, reason required — decided at the
+       endpoint). */
+    public const int SelfCorrectWindowMinutes = 5;
+
+    /** the clinician who documented the result — the first "documented"
+        audit event's actor ("" when the result was never manually
+        documented: seed rows and the producing-service create path) */
+    public static string DocumenterOf(LabDrawRow d)
+    {
+        var events = JsonSerializer.Deserialize<List<ResultEventDto>>(d.EventsJson, JsonOpts.Web)!;
+        return events.FirstOrDefault(e => e.Action == "documented")?.Actor ?? "";
+    }
+
+    /** true while the result is inside its 5-minute self-correction window
+        (false for anything without a documentation anchor) */
+    public static bool WithinSelfWindow(LabDrawRow d, DateTime utcNow) =>
+        d.DocumentedAt != ""
+        && DateTime.TryParseExact(d.DocumentedAt, "yyyy-MM-dd HH:mm:ss",
+               System.Globalization.CultureInfo.InvariantCulture,
+               System.Globalization.DateTimeStyles.None, out var documented)
+        && (utcNow - documented) <= TimeSpan.FromMinutes(SelfCorrectWindowMinutes);
+
+    /** Tier-1 (self) = the documenter, inside the window — the observation
+        IsSelfTier rule applied to labs */
+    public static bool IsSelfTier(LabDrawRow d, string actor, DateTime utcNow) =>
+        DocumenterOf(d) == actor && WithinSelfWindow(d, utcNow);
+
     public static string? ValidateImagingCreate(CreateImagingRequest r, AuroraDb db)
     {
         if (CheckText("patientId", r.PatientId, required: true) is string p) return p;

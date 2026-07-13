@@ -11,6 +11,12 @@ interface ResultInboxCardProps {
   onAcknowledge: (item: ResultInboxItem) => void
 }
 
+/* Lab Result Editing §2a: a documented result is not acknowledgeable inside
+   its 5-minute self-correction window — the server enforces; this shows it */
+const WINDOW_MS = 5 * 60_000
+const inWindow = (documentedAt: string | undefined, now: Date) =>
+  !!documentedAt && now.getTime() - Date.parse(`${documentedAt.replace(' ', 'T')}Z`) <= WINDOW_MS
+
 /** Unacknowledged results for this patient — the same store that feeds
  *  Doctor Workspace's "Results to Acknowledge". Doctor RBAC to acknowledge. */
 export function ResultInboxCard({ items, canAcknowledge: canAck, onAcknowledge }: ResultInboxCardProps) {
@@ -34,7 +40,9 @@ export function ResultInboxCard({ items, canAcknowledge: canAck, onAcknowledge }
             <span>{item.detail}</span>
             <small className="num">{item.time} · {agoLabel(item.time, now)} · {item.flag ? item.flag.toUpperCase() : 'CUSTOM'}</small>
           </div>
-          {canAck ? (
+          {inWindow(item.documentedAt, now) ? (
+            <span className="liwindow" title="a documented result becomes acknowledgeable when its 5-minute self-correction window closes (server-enforced)">⏳ in window</span>
+          ) : canAck ? (
             <button className="liackbtn" onClick={() => onAcknowledge(item)} aria-label={`Acknowledge: ${item.title}`}>✓ Ack</button>
           ) : (
             <span className="liviewonly">view only</span>
