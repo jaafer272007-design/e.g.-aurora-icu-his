@@ -1,6 +1,20 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through the STAGE 11 PRINT
+**Last updated: 2026-07-13 · current through the CLINICAL SCORING ENGINE
+DESIGN RECORD (docs-only — the clinical validator's architectural design
+recorded verbatim as `docs/design/clinical-scoring-engine.md`: a GENERIC
+scoring engine with SOFA as its first score (qSOFA/APACHE II/NEWS2/
+SAPS II later as score definitions, the Observation-Type-Catalogue
+pattern), replacing the currently-fabricated bedside SOFA/EWS; seven
+LOCKED engine principles safe to decide now (missing-data-never-normal →
+INCOMPLETE; latest-within-a-window; total + per-component; trend/ΔSOFA;
+computed-not-stored; replaces fabrication; clinical-validation-required);
+and the validator's SEQUENCING decision — the detailed SOFA scoring
+rules are DELIBERATELY DEFERRED until the prerequisite data sources are
+complete: Labs (complete + connected) → Ventilator module + ABG → THEN
+the Scoring Engine with SOFA. The Known-Feature-Gaps "Derived Clinical
+Scores" (F8) entry is superseded by this formal record; nothing is
+built). Prior: the STAGE 11 PRINT
 TEMPLATES (the 3 contract documents deferred until Observations existed,
 built from the owner's recorded design —
 `docs/design/stage11-print-templates.md`: the ADAPTIVE landscape 24-hour
@@ -3022,17 +3036,57 @@ instruction, source stated per the documentation rule.]*
   Device Adapter). To be designed in its own session when it is its
   turn.
 
-- **Derived Clinical Scores — compute SOFA, EWS, etc. from charted
-  observations + labs (enabled by Stage 11).** Source: the owner's
-  step-4 F8 decision (2026-07-13), recorded verbatim in the design
-  artifact. Today SOFA/EWS/severity/organs on the roster are demo
-  snapshot values (staging) or synthesized defaults (fresh patients) —
-  recorded drift, deliberately NOT part of the step-4 bedside
-  read-swap. To be built after step 4 as its own piece with clinical
-  validation of the scoring logic; alarm/warn thresholds on bedside
-  tiles belong to the same future rule set (step 4 ships warn=false
-  everywhere — an invented alarm is as dishonest as an invented
-  value). Score computation was NOT built in step 4, per the decision.
+- **Clinical Scoring Engine — a generic scoring engine, SOFA first**
+  (formalizes and supersedes the earlier "Derived Clinical Scores" gap
+  from the step-4 F8 decision). Source: the clinical validator, design
+  session (2026-07-13); the full architectural design is recorded
+  verbatim as `docs/design/clinical-scoring-engine.md`. The validator's
+  insight: Stage 11's real observation data UNLOCKS real computed
+  clinical scores that REPLACE the currently-fabricated bedside
+  SOFA/EWS numbers (the F8-recorded drift — SOFA/EWS/severity/organs on
+  the roster are still demo snapshots in staging / synthesized defaults
+  for fresh patients).
+  - **The engine (not SOFA-specific code)**: a generic Clinical Scoring
+    Engine with SOFA as its FIRST score; qSOFA / APACHE II / NEWS2 /
+    SAPS II / custom scores plug in later as score *definitions*, not
+    re-architecture — MIRRORS THE OBSERVATION TYPE CATALOGUE PATTERN
+    (generic, data-driven, extend by adding a definition). A score is
+    its declared inputs (observations/labs/medications via the
+    canonical reads, never forks/mocks) + per-component rules +
+    aggregation.
+  - **Locked principles (safe to decide now, independent of data
+    sources)**: P1 missing data is NEVER assumed normal → the score is
+    shown INCOMPLETE with the uncomputable components flagged (assuming
+    0 understates severity — unsafe); P2 latest value within a defined
+    recency window, never stale — nothing in window = missing (→ P1);
+    P3 always total + per-component breakdown (Resp/Coag/Cardio/CNS/
+    Renal for SOFA — the number alone isn't useful); P4 trend retained
+    (ΔSOFA is more meaningful than a point value); P5 computed at
+    render, NEVER stored (the Net Balance / GCS Total discipline — a
+    correction to an underlying observation/lab flows through
+    automatically); P6 replaces the fabricated bedside SOFA/EWS, showing
+    INCOMPLETE rather than a fabricated or falsely-complete number; P7
+    clinical validation REQUIRED before any computed score informs care
+    ("approximately right" is not acceptable for a severity score — the
+    rules are specified by the clinician, not generated).
+  - **THE SEQUENCING DECISION (validator's judgment) — the detailed
+    SOFA scoring rules are DELIBERATELY DEFERRED**: SOFA depends on data
+    that isn't fully built (vasopressor doses from the finished MAR/med
+    module; PaO₂/FiO₂ + ventilation status from the Ventilator module +
+    ABG/lab integration; lab values from complete/connected Labs).
+    Specifying SOFA's thresholds and input-mappings against incomplete
+    sources would risk rework. **Correct project sequence: (1) Print
+    system — DONE (13/13); (2) finish Labs and connect them; (3) finish
+    the Ventilator module + ABG; (4) THEN build the Scoring Engine with
+    SOFA's detailed spec on complete, real, integrated data sources.**
+    §4 of the design (the 6 organ-system thresholds, the vasopressor/
+    PaO₂-FiO₂/lab-input mappings, the recency-window lengths, the
+    worst-in-window-vs-current-latest question, and input-availability
+    verification against real code — as was done for the MAR admin data)
+    is specified with the validator when step 4's prerequisites exist.
+    Consistent with Aurora's discipline of not building on incomplete
+    foundations. Nothing is built now — this is the recorded engine
+    architecture + locked principles only.
 
 ## Known Deferred Debt (documented, intentionally not yet unified)
 - `panels.ts` attaches the same VENTILATOR/HEMODYNAMICS/INFUSIONS/
