@@ -1,4 +1,12 @@
+/* min-height:0 + overflow-y:auto — the sidebar was the ONE column on
+   every screen with no scroll region of its own, so on a short viewport
+   its nav-item stack inflated the shell's implicit row and the frame's
+   overflow:hidden clipped everything below the fold unreachably (the
+   short-viewport clipping fix — see tokens.css .app-frame .shell). Now
+   the nav list itself scrolls when the viewport is shorter than the
+   stack, and it never inflates the row. */
 .nav-sidebar{border-right:1px solid var(--stroke);padding:14px 10px;display:flex;flex-direction:column;gap:4px;
+ min-height:0;overflow-y:auto;
  background:linear-gradient(180deg,rgba(11,17,29,.72),rgba(8,12,21,.72))}
 .nv{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:12px;color:var(--dim);font-size:13px;font-weight:500;
  transition:.16s;border:1px solid transparent;text-align:left;width:100%;position:relative;min-height:44px}

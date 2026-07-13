@@ -1,6 +1,20 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through PATIENT WEIGHT & HEIGHT CAPTURE
+**Last updated: 2026-07-13 · current through the SHORT-VIEWPORT CLIPPING FIX
+(built — owner's hands-on-testing bug: on short viewports, content
+exceeding the visible area was clipped unreachably (no scroll) because
+every screen's `.shell` has an IMPLICIT auto-sized row that any
+non-scrollable column — the shared nav sidebar everywhere — inflated past
+the shell's height, and the 100vh `overflow:hidden` frame clipped the
+excess while dragging the "scrollable" siblings taller than the viewport
+too. Fixed with two SHARED-layer rules covering all 18 screens:
+`.app-frame .shell{grid-auto-rows:minmax(0,1fr)}` in tokens.css pins the
+row, and `.nav-sidebar` gains `min-height:0;overflow-y:auto`. Verified in
+a real browser at 1360×560: 24/24 incl. the Observations rail's last
+patient, the sidebar's last nav item, Discharges below-fold, and an
+18-route sweep — with A/B evidence that the identical checks FAIL on the
+pre-fix build; the ≤1180px whole-page-scroll mode unchanged, 3/3). Prior:
+PATIENT WEIGHT & HEIGHT CAPTURE
 (built — weight/height as ENCOUNTER-SCOPED attributes (kg/cm), NOT
 observations (the validator's judgment: ICU patients aren't weighed daily)
 and NOT person-level (the flagged patient-vs-encounter choice was decided
@@ -3206,6 +3220,50 @@ missing entirely") and the basic-HIS dosing gap.
     Engine's step-4 prerequisites (consistent with the recorded engine
     sequencing) — this build supplies the weight datum and derivations,
     not the dosing wiring.
+
+### Short-viewport clipping fix (built) — app-wide, two shared-layer rules
+Bug found and diagnosed in the owner's hands-on testing (live-DOM
+diagnosis): on a short viewport, content that exceeded the visible area
+was CLIPPED with no scrollbar — unreachable (a patient low in the
+Observations rail appeared "missing"; Discharges' below-fold sections and
+the sidebar's lower nav items were cut off). ROOT CAUSE, one level below
+the reported one: `.app-frame` is a fixed 100vh grid with
+`overflow:hidden` (a fine fixed-header layout), and every screen's
+`.shell` is a single-row column grid whose row is IMPLICIT (auto-sized) —
+so any column WITHOUT its own scroll region (min-height:auto = content
+height; the shared `.nav-sidebar` was the one such column on every
+screen) inflated the row past the shell's height. The frame then clipped
+the excess, AND the inflated row dragged every "scrollable" sibling
+column (main, patient rail) taller than the visible area too — their own
+`overflow-y:auto` never engaged, so even screens that already followed
+the inner-scroll pattern clipped. Unnoticed on tall screens; unreachable
+content on short ones.
+- **Fix — two rules in the SHARED layer, covering all 18 routed screens**
+  (no per-screen edits): `tokens.css` pins the shell's implicit row —
+  `.app-frame .shell{grid-auto-rows:minmax(0,1fr)}` — so the row is
+  exactly the shell's height and each region scrolls itself; and
+  `NavSidebar.css` makes the sidebar a scroll region
+  (`min-height:0;overflow-y:auto`), since it was the only
+  never-scrollable column. Every existing inner scroller (each screen's
+  `main`, the shared PatientRail's list, MC's aside list, BedOverview's
+  gridwrap/right panel, PrintCenter's pc-body) now engages as designed.
+- **The ≤1180px small-screen mode is unchanged** (pages there switch the
+  frame to height:auto + overflow:visible for whole-page scrolling): an
+  fr row in an indefinite-height container sizes to content — verified
+  at 1000px width (whole-page scroll to bottom on
+  Discharges/Admissions/Observations).
+- **Verification (real browser at 1360×560 — the bug's regime, above the
+  1180px breakpoint)**: 24/24 with the fix — the Observations rail's
+  LAST patient is off-screen before scrolling and fully visible after
+  (the "missing patient"); the sidebar's last nav item likewise;
+  Discharges' main scrolls to its last section; and an 18-route sweep
+  (every routed screen, per-profile sessions) asserting frame
+  containment, no shell-row inflation, and nothing unreachably clipped.
+  **A/B evidence**: the identical checks against the PRE-fix build FAIL
+  exactly as reported (rail last patient unreachable, sidebar not
+  scrollable, Discharges below-fold unreachable, shell-row inflation on
+  every swept screen) — the checks measure the bug, not the test.
+  tsc + production build clean; no markup or behavior changes — CSS only.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

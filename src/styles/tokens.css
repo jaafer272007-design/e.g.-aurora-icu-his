@@ -28,6 +28,23 @@ input,select,textarea{font:inherit;color:var(--text)}
 
 /* app frame: fixed-height header + fluid shell, inner regions scroll */
 .app-frame{display:grid;grid-template-rows:auto 1fr;height:100vh;overflow:hidden}
+/* THE SHORT-VIEWPORT CLIPPING FIX (hands-on-testing bug, diagnosed on the
+   live DOM): every screen's .shell is a single-row column grid whose row
+   is IMPLICIT (auto-sized) — so any column WITHOUT its own scroll region
+   (min-height:auto = content height; the shared nav sidebar was the one
+   such column on every screen) inflated the row past the shell's height,
+   and the frame's overflow:hidden CLIPPED the excess with no scrollbar:
+   content below the fold was unreachable on short viewports. Worse, the
+   inflated row dragged every "scrollable" sibling column (main, patient
+   rail) taller than the visible area too, so even their bottoms were cut
+   off and their own overflow-y:auto never engaged. Pinning the implicit
+   row to minmax(0,1fr) makes it exactly the shell's height; each region
+   (main / patient rail / nav sidebar) then scrolls itself instead of
+   being clipped. The ≤1180px small-screen mode — where pages switch the
+   frame to height:auto + overflow:visible for whole-page scrolling — is
+   unchanged: with an indefinite container height the fr row sizes to its
+   content as before. */
+.app-frame .shell{grid-auto-rows:minmax(0,1fr)}
 
 /* shared keyframes */
 @keyframes blink{50%{opacity:.4}}
