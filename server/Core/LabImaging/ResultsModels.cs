@@ -56,6 +56,25 @@ class LabDrawRow
     public string? CustomValue { get; set; }
     public string? CustomUnit { get; set; }
     public string? CustomRefRange { get; set; }
+    /* Lab Result Editing design: the PRECISE UTC anchor of the manual
+       documentation ("yyyy-MM-dd HH:mm:ss" — the observation EnteredAt
+       pattern). Set ONLY by the document / document-custom paths; "" for
+       seed rows and the producing-service create path — those carry NO
+       bedside correction model (nothing to self-correct) and NO §2a
+       acknowledgment gate, which also keeps the deployed suites'
+       create→acknowledge flows unchanged. */
+    public string DocumentedAt { get; set; } = "";
+    /* append-only correction history (Lab Result Editing design) — the
+       amend-not-erase record: every correction preserves the previous
+       value/note here with actor/tier/time/reason and whether it happened
+       AFTER the result was acknowledged (the §2b safeguard fact, stored at
+       correction time, never re-derived from timestamp comparison). The
+       row's items/CustomValue/Note stay the CURRENT-STATE summary — the
+       store's existing convention (Acknowledged* summary + EventsJson
+       record), chosen over the observation model's derive-at-read because
+       five consumers (trends, inbox, timeline, flag derivation, print)
+       read the current items directly. */
+    public string AmendmentsJson { get; set; } = "[]";
     public string? Note { get; set; }
     public bool Acknowledged { get; set; }
     public string? AcknowledgedBy { get; set; }
@@ -75,6 +94,8 @@ class LabDrawRow
         Flag = d.Flag, Source = d.Source ?? "", Note = d.Note, Acknowledged = d.Acknowledged,
         Custom = d.Custom ?? false, CustomValue = d.CustomValue,
         CustomUnit = d.CustomUnit, CustomRefRange = d.CustomRefRange,
+        DocumentedAt = d.DocumentedAt ?? "",
+        AmendmentsJson = d.Amendments is null ? "[]" : JsonSerializer.Serialize(d.Amendments, JsonOpts.Web),
         AcknowledgedBy = d.AcknowledgedBy, AcknowledgedAt = d.AcknowledgedAt,
         EventsJson = d.History is null ? "[]" : JsonSerializer.Serialize(d.History, JsonOpts.Web),
     };
@@ -82,13 +103,16 @@ class LabDrawRow
     public LabDrawDto ToDto()
     {
         var events = JsonSerializer.Deserialize<List<ResultEventDto>>(EventsJson, JsonOpts.Web)!;
+        var amendments = JsonSerializer.Deserialize<List<LabAmendmentDto>>(AmendmentsJson, JsonOpts.Web)!;
         return new(
             LabId, PatientId, EncounterId == "" ? null : EncounterId, BedId, PatientName,
             Panel, Label, CollectedAt, ResultedAt,
             JsonSerializer.Deserialize<JsonElement>(ItemsJson, JsonOpts.Web),
             Flag, Note, Acknowledged, AcknowledgedBy, AcknowledgedAt,
             events.Count == 0 ? null : events, OrderId, Source == "" ? null : Source,
-            Custom ? true : null, CustomValue, CustomUnit, CustomRefRange);
+            Custom ? true : null, CustomValue, CustomUnit, CustomRefRange,
+            DocumentedAt == "" ? null : DocumentedAt,
+            amendments.Count == 0 ? null : amendments);
     }
 }
 
@@ -148,7 +172,19 @@ record LabDrawDto(
     string Label, string CollectedAt, string ResultedAt, JsonElement Items, string Flag,
     string? Note, bool Acknowledged, string? AcknowledgedBy, string? AcknowledgedAt,
     List<ResultEventDto>? History, string? OrderId = null, string? Source = null,
-    bool? Custom = null, string? CustomValue = null, string? CustomUnit = null, string? CustomRefRange = null);
+    bool? Custom = null, string? CustomValue = null, string? CustomUnit = null, string? CustomRefRange = null,
+    string? DocumentedAt = null, List<LabAmendmentDto>? Amendments = null);
+
+/* one correction on a documented lab result (Lab Result Editing design) —
+   mirrors the observation AmendmentDto plus the lab-specific facts: WHICH
+   field was corrected (an analyte name, "value" for a custom result's
+   free-text value, or "note") and whether the correction happened AFTER the
+   result was acknowledged (§2b — stored at correction time so the
+   acknowledged-then-edited ordering is an immutable fact, never a
+   re-derivation). Tier is implied by AmenderRole + Reason ("" on Tier-1). */
+record LabAmendmentDto(
+    string Target, string PreviousValue, string NewValue, string AmendedBy,
+    string AmendedAt, string Reason, string AmenderRole, bool AfterAcknowledgment);
 
 record ImagingStudyDto(
     string StudyId, string PatientId, string? EncounterId, string BedId, string PatientName, string Modality,
@@ -165,7 +201,13 @@ record LabItemDto(string Analyte, double Value, string Unit, string Flag);
 
 record InboxItemDto(
     string Kind, string Id, string PatientId, string BedId, string PatientName,
-    string Title, string Detail, string Time, string Flag);
+    string Title, string Detail, string Time, string Flag,
+    /* Lab Result Editing §2a: the documentation anchor, present ONLY for
+       manually documented lab results — lets the inbox show that a result
+       inside its 5-minute self-correction window is not yet acknowledgeable
+       (the server enforces the gate regardless). Absent (null) for imaging,
+       seed rows and producing-service results — byte-parity preserved. */
+    string? DocumentedAt = null);
 
 /* full lab item shape for the timeline's abnormal-summary derivation */
 record LabItemFull(string Analyte, double Value, string Unit, string RefRange,
@@ -218,6 +260,19 @@ record DocumentLabRequest(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record DocumentCustomLabRequest(
     string? PatientId, string? TestName, string? Value, string? Unit, string? RefRange, string? Note);
+
+/* ---------- CORRECTION REQUEST (Lab Result Editing design) ----------
+   Corrects a DOCUMENTED lab result's value and/or note. For a STRUCTURED
+   result, Analyte names the item and Value must be a JSON number (the
+   corrected value re-derives that item's flag and the draw's flag). For a
+   CUSTOM result, Analyte is absent and Value is a JSON string (free text —
+   custom results stay unflagged). Note corrects the draw note (either
+   kind). Reason is REQUIRED on Tier-2 (Consultant-tier — outside the
+   5-minute window or on another clinician's entry), optional on Tier-1;
+   the SERVER decides the tier. Everything else about the result is
+   immutable here — a payload with any other field fails binding. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record CorrectLabRequest(string? Analyte, JsonElement? Value, string? Note, string? Reason);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CreateImagingRequest(

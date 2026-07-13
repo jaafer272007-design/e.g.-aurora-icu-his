@@ -74,6 +74,7 @@ export type Permission =
   | 'results.acknowledge'
   | 'results.create'       // results audit PR: enter a lab/imaging result (producing service / future LIS)
   | 'results.document'     // Lab Result-Entry: manually document/transcribe a lab result (ICU bedside team)
+  | 'results.correct'      // Lab Result Editing: Tier-2 correction of a documented result (Consultant-tier ONLY — never office admin)
   | 'notes.document'       // nursing tasks, I&O, SBAR handoff
   | 'ai.view'
   | 'admin.view'           // administrative landing view
@@ -105,7 +106,8 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   SeniorDoctor: [
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
-    'results.acknowledge', 'results.document', 'notes.document', 'ai.view',
+    'results.acknowledge', 'results.document', 'results.correct',
+    'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record',
     'observations.correct', 'observations.configure',
   ],

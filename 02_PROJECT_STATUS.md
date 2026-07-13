@@ -1,6 +1,22 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through the LABS & IMAGING DISPLAY
+**Last updated: 2026-07-13 · current through LAB RESULT EDITING / CORRECTION
+(built — the Stage 11 observation correction model applied to documented lab
+results, from the validator's design recorded verbatim as
+`docs/design/lab-result-editing.md`: Tier-1 documenter self-correction ≤5 min
+no reason (still recorded) / Tier-2 Consultant-tier via the new
+`results.correct` atom with a required reason, marked "edited";
+amend-not-erase with the previous value preserved in a new `AmendmentsJson`
+history (+ `DocumentedAt` seconds-precision anchor — the flagged additive
+store change); corrected structured values RE-DERIVE their flag from the
+corrected value, corrected custom values stay unflagged; §2a a documented
+result is NOT acknowledgeable inside its 5-minute window (seed/create-path
+results have no window — deployed suites unchanged); §2b a post-ack
+Consultant edit KEEPS the original acknowledgment and stamps
+afterAcknowledgment=true, displayed as "acknowledged … — then edited AFTER
+this acknowledgment" (the safeguard #79 made possible). 28/28 headless proof
+incl. window aging via local SQLite + real-browser renders of both screens.
+Prior: the LABS & IMAGING DISPLAY
 FIXES (built — two display-only bugs from hands-on testing: (1) an
 acknowledged CUSTOM result vanished from `/labs` because custom results are
 excluded from the numeric trends chart and the inbox lists only
@@ -2867,6 +2883,84 @@ DISPLAY-ONLY (the data was stored correctly; the view didn't show it):
   acknowledged custom results were invisible). The editing feature is the
   agreed NEXT work item, built as its own PR after the owner verifies this
   fix.
+
+### Lab Result Editing / Correction (built) — the observation model applied to labs
+Built from the clinical validator's design (`docs/design/lab-result-editing.md`,
+recorded verbatim): the two-tier correction of a DOCUMENTED lab result,
+mirroring the Stage 11 observation correction model, plus the lab-specific
+acknowledgment rules the observation model didn't cover.
+- **The two tiers (the observation pattern, verified against its real
+  implementation and reused):** **Tier-1** — the documenter, within a flat
+  5-minute window from the documentation anchor, no reason required (the
+  amendment still records actor/original/new/time). **Tier-2** — everything
+  else (another's entry, or the window closed): Consultant-tier ONLY via a
+  new **`results.correct`** atom (SeniorDoctor profile — mirrors
+  `observations.correct`, same F2/F3 hard constraint: never office admin),
+  reason REQUIRED, marked "edited". The SERVER decides the tier; the same
+  weakest-gate-first RBAC ordering keeps 403s oracle-free. Editable: an
+  analyte VALUE (structured), the free-text VALUE (custom), and/or the NOTE.
+- **Flag re-derivation (design open item #2, resolved as recommended):** a
+  corrected STRUCTURED value re-derives its item flag from the corrected
+  value against the item's OWN stored reference bounds, then the draw's
+  worst-of-items flag (2.1→4.1 changes the grade honestly; same
+  normal/abnormal granularity as the documentation path — the recorded
+  critical-threshold limitation applies here too). A corrected CUSTOM value
+  stays UNFLAGGED (`flag` remains `""`).
+- **§2a — acknowledgment only after the window:** a documented result inside
+  its 5-minute self-correction window answers 409 on acknowledge (the value
+  stabilises before anyone signs off); the inbox and the custom card show the
+  in-window state honestly. Results WITHOUT a documentation anchor (seed
+  rows, the producing-service `results.create` path) have no window and
+  acknowledge exactly as before — which also keeps the 13 deployed suites'
+  create→acknowledge flows byte-identical.
+- **§2b — post-acknowledgment Tier-2 edit (validator's Option a + the
+  safeguard):** the original acknowledgment is KEPT (who/when intact); the
+  amendment is stamped **`afterAcknowledgment: true` at correction time** (a
+  stored fact, never a timestamp re-derivation), and the display states the
+  ordering ON the sign-off line — "✓ Acknowledged by X · T1 — then edited
+  AFTER this acknowledgment" — plus an "after acknowledgment" tag on the
+  amendment itself, so the old sign-off is never read as covering the
+  corrected value.
+- **Store (design open item #1, flagged then resolved additively):**
+  `LabDrawRow` gained `DocumentedAt` (the precise UTC anchor, seconds — the
+  observation `EnteredAt` pattern; set ONLY by the document/document-custom
+  paths) and `AmendmentsJson` (append-only history; migration hand-sets the
+  existing-row default to `"[]"` — the AddResultAudit lesson). ONE deliberate
+  divergence from observations, stated consciously: labs keep CURRENT STATE
+  in their columns (items/CustomValue/Note updated) while the amendment
+  preserves previous→new — the store's existing convention (the Acknowledged
+  summary + EventsJson record), because five consumers (trends, inbox,
+  timeline, flag derivation, print) read the current items directly; the
+  observation model instead derives the effective value at read. Both are
+  amend-not-erase; a "corrected" event also lands in the append-only
+  EventsJson audit history. "Edited" is DERIVED from a non-empty amendment
+  list, never stored. Correction is scoped to DOCUMENTED results — a
+  seed/create-path result answers 409 (no bedside correction window exists
+  for it); corrections work on closed encounters (completing the record — no
+  EncounterGuard, the observation rule).
+- **Endpoint** `POST /api/icu/results/labs/{labId}/correct` (weakest gate
+  `results.document` first, tier gate after); lean request
+  `{analyte?, value?, note?, reason?}` with `Disallow` binding; no-op
+  corrections answer 409 (the observation rule). UI: the `/lab-entry`
+  Results-on-File rows carry "Amend (self · N min left)" / "Correct" with an
+  inline editor (target picker → value/note → reason when Tier-2) and the
+  full amendment history; the `/labs` custom card shows the history + the
+  §2b ordering; the trends card marks an edited latest draw "✎ edited ×N".
+- **Verification** (headless, live local server — 28/28 after correcting two
+  buggy check-strings in the proof script itself): Tier-1 self-correct ≤5 min
+  no reason (original preserved, flag re-derived abnormal→normal, draw flag
+  re-derived); §2a ack 409 in-window and 200 after (window aged via the
+  established LOCAL-SQLite-aging pattern — the live API has no back-dating,
+  by design); documenter after window → 403; other-nurse / Specialist
+  (Doctor profile) / office-admin → 403; Consultant without reason → 400,
+  with reason → 200 marked edited; §2b post-ack edit keeps the ack and stamps
+  afterAcknowledgment; custom value+note corrected and stays unflagged;
+  no-op → 409; create-path result: correct → 409 and immediate ack still
+  200 (suite compatibility); seed rows carry neither new field on the wire
+  (byte-parity, checked on a patient with 49 seed rows); the corrected
+  events (incl. "[after acknowledgment]") are in the audit history. Both
+  screens rendered in a real browser against the live API. tsc + production
+  build + server build clean; the migration adds only the two columns.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

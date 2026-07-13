@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -750,6 +750,17 @@ export function documentLabResult(draft: DocumentLabDraft): Promise<AdtWriteResu
  *  + source=manual and stores it tagged custom with NO clinical flag. */
 export function documentCustomLabResult(draft: DocumentCustomLabDraft): Promise<AdtWriteResult<LabDraw>> {
   return usersWrite<LabDraw>('/api/icu/results/labs/document-custom', 'custom lab result documentation', draft)
+}
+
+/** POST /api/icu/results/labs/:labId/correct — the two-tier CORRECTION of a
+ *  documented lab result (Lab Result Editing design; mirrors the observation
+ *  amendment). Tier-1 (documenter, ≤5 min) sends no reason; Tier-2
+ *  (Consultant-tier) requires it — the SERVER decides the tier; the client
+ *  hints are display only. Amend-not-erase: the correction history rides on
+ *  the returned result. REAL-ONLY write. */
+export function correctLabResult(labId: string, draft: CorrectLabDraft): Promise<AdtWriteResult<LabDraw>> {
+  return usersWrite<LabDraw>(
+    `/api/icu/results/labs/${encodeURIComponent(labId)}/correct`, 'lab result correction', draft)
 }
 
 /** GET /api/icu/results/imaging?patientId — REAL endpoint; mock fallback. */

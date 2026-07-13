@@ -772,6 +772,15 @@ export interface LabDraw {
   customUnit?: string
   /** DISPLAY-ONLY reference context — shown next to the value, never drives a flag */
   customRefRange?: string
+  /** Lab Result Editing: the precise UTC documentation anchor
+   *  ('yyyy-MM-dd HH:mm:ss') — present ONLY on manually documented results.
+   *  Anchors the 5-minute Tier-1 self-correction window and the §2a rule
+   *  that a result is not acknowledgeable until the window closes. */
+  documentedAt?: string
+  /** Lab Result Editing: append-only correction history (amend-not-erase) —
+   *  present once a result has been corrected. "Edited" is DERIVED from
+   *  this being non-empty, never stored. */
+  amendments?: LabAmendment[]
   /** short lab/clinical note surfaced in the results inbox */
   note?: string
   acknowledged: boolean
@@ -799,6 +808,42 @@ export interface DocumentLabDraft {
   panel: LabPanelKey
   items: DocumentLabItem[]
   note?: string
+}
+
+/* ---------- POST /api/icu/results/labs/:labId/correct (Lab Result Editing) ----------
+   The two-tier correction of a DOCUMENTED lab result — mirrors the Stage 11
+   observation amendment. Tier-1: the documenter, within 5 minutes of
+   documentation, no reason required (still recorded). Tier-2: Consultant-
+   tier (results.correct), reason REQUIRED, any time — incl. after
+   acknowledgment (§2b: the original acknowledgment is kept and the
+   amendment carries afterAcknowledgment=true so the ordering is visible).
+   The SERVER decides the tier. */
+
+/** one recorded correction — previous value preserved (amend-not-erase) */
+export interface LabAmendment {
+  /** what was corrected: an analyte name (structured), 'value' (custom), or 'note' */
+  target: string
+  previousValue: string
+  newValue: string
+  amendedBy: string
+  amendedAt: string
+  /** '' on a Tier-1 self-correction */
+  reason: string
+  amenderRole: string
+  /** §2b: true when the correction happened AFTER the result was
+   *  acknowledged — stored at correction time, so the old sign-off is
+   *  never mistaken to cover the corrected value */
+  afterAcknowledgment: boolean
+}
+
+export interface CorrectLabDraft {
+  /** structured results only: the analyte whose value is corrected */
+  analyte?: string
+  /** number for a structured analyte; free-text string for a custom result */
+  value?: number | string
+  note?: string
+  /** required on Tier-2 — the server decides the tier */
+  reason?: string
 }
 
 /* ---------- POST /api/icu/results/labs/document-custom (Custom Lab Test) ----------
@@ -861,6 +906,10 @@ export interface ResultInboxItem {
   time: string
   /** '' ONLY for a custom / unstructured lab result — it carries no flag */
   flag: ResultFlag | ''
+  /** Lab Result Editing §2a: present only for manually documented lab
+   *  results — a result inside its 5-minute self-correction window is not
+   *  yet acknowledgeable (server-enforced; this lets the UI say so) */
+  documentedAt?: string
 }
 
 /* ==================== AI Clinical Assistant domain (Screen 8) ====================

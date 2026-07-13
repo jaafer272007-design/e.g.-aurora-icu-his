@@ -93,3 +93,27 @@
 .le .lernote{font-size:10.5px;color:var(--dim);margin:3px 0;line-height:1.5;
  border-left:2px solid rgba(130,170,230,.3);padding-left:8px}
 .le .lerprov{font-size:9.5px;color:var(--faint);font-style:italic}
+.le .lerpostack{color:var(--amber);font-style:normal}
+
+/* ---- Lab Result Editing: correction UI + amend-not-erase history ---- */
+.le .leredited{font-size:9px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:1px 7px;
+ color:var(--amber);border:1px solid rgba(255,180,84,.45);background:rgba(255,180,84,.08)}
+.le .lerfix{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--blue);
+ border:1px solid rgba(77,163,255,.35);border-radius:8px;padding:3px 9px;min-height:26px}
+.le .lerfix:hover{background:rgba(77,163,255,.1)}
+.le .lerhistory{margin:4px 0;display:flex;flex-direction:column;gap:2px}
+.le .leramend{font-size:10px;color:var(--dim);line-height:1.6;
+ border-left:2px solid rgba(255,180,84,.4);padding-left:8px}
+.le .leramend s{color:var(--faint)}
+.le .leramend b{color:var(--text)}
+.le .leramend i{color:var(--faint)}
+.le .lerpostacktag{margin-left:8px;font-size:8.5px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;
+ padding:1px 6px;color:var(--amber);border:1px solid rgba(255,180,84,.5);background:rgba(255,180,84,.1);font-weight:700}
+.le .lereditor{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 4px;
+ border:1px dashed rgba(77,163,255,.35);border-radius:10px;padding:9px 10px}
+.le .lereditor select,.le .lereditor input{background:rgba(6,12,22,.6);border:1px solid var(--stroke2);
+ border-radius:9px;padding:6px 9px;font-size:11.5px;min-width:0}
+.le .lereditor input{flex:1;min-width:130px}
+.le .lereditor .lerreason{flex:2;min-width:200px}
+.le .lerselfnote{font-size:9.5px;color:var(--faint);flex-basis:100%}
+.le .lereditbtns{display:flex;gap:8px;margin-left:auto}

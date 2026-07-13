@@ -148,6 +148,13 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
             Aurora — a manually-documented result is provenance-flagged so a
             future LIS feed stays distinguishable */}
         {latest?.source === 'manual' && <span className="lisource" title="manually documented by the ICU bedside team">✎ manually documented</span>}
+        {/* Lab Result Editing: an edited latest draw says so — the full
+            amend-not-erase history lives on the lab-entry record view */}
+        {(latest?.amendments?.length ?? 0) > 0 && (
+          <span className="liedited" title="this draw was corrected — the original value stays on the record (full history on the Lab Entry screen)">
+            ✎ edited ×{latest!.amendments!.length}
+          </span>
+        )}
         {latest && (
           <span className={latest.acknowledged ? 'liacked' : 'liunacked'}>
             {latest.acknowledged

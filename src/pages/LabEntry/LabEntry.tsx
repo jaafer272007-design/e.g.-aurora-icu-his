@@ -8,14 +8,34 @@ import { PatientBar } from '../../components/PatientBar'
 import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconCheck, IconClock, IconFlask, IconPencil } from '../../components/icons'
-import { documentCustomLabResult, documentLabResult, getLabCatalog, getLabDraws, getPatients, getRosterRecord } from '../../lib/api'
+import { correctLabResult, documentCustomLabResult, documentLabResult, getLabCatalog, getLabDraws, getPatients, getRosterRecord } from '../../lib/api'
 import type {
   DocumentLabItem, LabDraw, LabPanelKey, LabTest, PatientSummary, RosterRecordDto,
 } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
+import { useNow } from '../../lib/time'
 
 /* the pseudo-panel key for the Custom / Other tab (not a catalogue testId) */
 const CUSTOM = '__custom__'
+
+/* Lab Result Editing — the observation two-tier model applied to labs.
+   Tier-1: the documenter, within the flat 5-minute window from the
+   documentation anchor, no reason required (still recorded). Tier-2:
+   Consultant-tier (results.correct), reason required. The SERVER decides
+   the tier — everything here is a display hint. */
+const SELF_WINDOW_MS = 5 * 60_000
+
+/** the window anchor: documentedAt is 'yyyy-MM-dd HH:mm:ss' UTC */
+const documentedAtMs = (d: LabDraw) =>
+  d.documentedAt ? Date.parse(`${d.documentedAt.replace(' ', 'T')}Z`) : NaN
+
+const withinSelfWindow = (d: LabDraw, now: Date) =>
+  !!d.documentedAt && now.getTime() - documentedAtMs(d) <= SELF_WINDOW_MS
+
+/** clamped to the window — never advertise more than 5 minutes (the
+ *  observation screen's rule; the render clock ticks every 10 s) */
+const selfWindowLeft = (d: LabDraw, now: Date) =>
+  Math.min(SELF_WINDOW_MS / 60_000, Math.max(0, Math.ceil((SELF_WINDOW_MS - (now.getTime() - documentedAtMs(d))) / 60_000)))
 
 /* Lab Result-Entry (Documentation) screen — the MANUAL human feed into the
    EXISTING lab-results store. The real paper-based workflow: the central lab
@@ -50,7 +70,9 @@ export function LabEntry() {
   const navigate = useNavigate()
   const { toast, showToast } = useToast()
   const session = getSession()!
+  const now = useNow(10_000)
   const canDocument = hasPermission(session.jobTitle, 'results.document')
+  const canCorrect = hasPermission(session.jobTitle, 'results.correct')
 
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [roster, setRoster] = useState<RosterRecordDto | null>(null)
@@ -75,6 +97,64 @@ export function LabEntry() {
   const isCustom = panel === CUSTOM
   const customReady = cName.trim() !== '' && cValue.trim() !== ''
   const resetDrafts = () => { setDraft({}); setNote(''); setCName(''); setCValue(''); setCUnit(''); setCRange(''); setEntryError(null) }
+
+  /* the open correction editor (one at a time — the observation pattern) */
+  const [editing, setEditing] = useState<string | null>(null)
+  /** an analyte name (structured), 'value' (custom), or 'note' */
+  const [editTarget, setEditTarget] = useState('')
+  const [editValue, setEditValue] = useState('')
+  const [editReason, setEditReason] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+
+  function openEditor(d: LabDraw) {
+    setEditing(d.labId)
+    setEditError(null)
+    setEditReason('')
+    const target = d.custom ? 'value' : (d.items[0]?.analyte ?? 'note')
+    setEditTarget(target)
+    setEditValue(d.custom ? (d.customValue ?? '') : String(d.items[0]?.value ?? ''))
+  }
+
+  function switchTarget(d: LabDraw, target: string) {
+    setEditTarget(target)
+    setEditError(null)
+    if (target === 'note') setEditValue(d.note ?? '')
+    else if (d.custom) setEditValue(d.customValue ?? '')
+    else setEditValue(String(d.items.find(i => i.analyte === target)?.value ?? ''))
+  }
+
+  async function submitCorrection(d: LabDraw) {
+    if (busy) return
+    const selfTier = withinSelfWindow(d, now) && provenance(d)?.actor === session.name && canDocument
+    const raw = editValue.trim()
+    if (raw === '') { setEditError('enter the corrected ' + (editTarget === 'note' ? 'note' : 'value')); return }
+    if (!selfTier && !editReason.trim()) { setEditError('a reason is required for a Consultant-tier correction'); return }
+    const draft: { analyte?: string; value?: number | string; note?: string; reason?: string } = {}
+    if (editTarget === 'note') draft.note = raw
+    else if (d.custom) draft.value = raw
+    else {
+      const n = Number(raw)
+      if (!Number.isFinite(n)) { setEditError(`${editTarget}: enter a number`); return }
+      draft.analyte = editTarget
+      draft.value = n
+    }
+    /* tier-1 sends no reason; if the window expired between render and
+       submit, the server answers with the tier rule — shown here */
+    if (!selfTier && editReason.trim()) draft.reason = editReason.trim()
+    setBusy(true)
+    setEditError(null)
+    const r = await correctLabResult(d.labId, draft)
+    setBusy(false)
+    if (r.kind === 'ok') {
+      setEditing(null)
+      showToast('Result corrected', 'amended, not erased — the original value stays on the record')
+      loadDraws()
+    } else if (r.kind === 'rejected') {
+      setEditError(r.error)
+    } else {
+      setEditError('The AURORA API is unreachable — corrections are never applied to local mock state')
+    }
+  }
 
   useEffect(() => { getPatients().then(setPatients) }, [])
   useEffect(() => {
@@ -424,6 +504,9 @@ export function LabEntry() {
 
               {recent.map(d => {
                 const prov = provenance(d)
+                const selfTier = !!d.documentedAt && withinSelfWindow(d, now) && prov?.actor === session.name && canDocument
+                const correctable = !!d.documentedAt && (selfTier || canCorrect)
+                const edited = (d.amendments?.length ?? 0) > 0
                 return (
                   <article className={`lerow${d.source === 'manual' ? ' manual' : ''}${d.custom ? ' custom' : ''}`} key={d.labId}>
                     <div className="lerowtop">
@@ -436,10 +519,16 @@ export function LabEntry() {
                         ? <span className="lercustomtag" title="unstructured — no normal/abnormal/critical flag">custom · unflagged</span>
                         : <span className={`lerflag ${d.flag}`}>{d.flag}</span>}
                       {d.source === 'manual' && <span className="lersource" title="manually documented">✎ manual</span>}
+                      {edited && <span className="leredited" title="corrected — the original stays on the record below">edited ×{d.amendments!.length}</span>}
                       {!d.custom && (d.orderId
                         ? <span className="lerorder" title="fulfils a lab order">↳ {d.orderId}</span>
                         : <span className="lerstandalone" title="documented without a prior order">standalone</span>)}
                       <span className="lertime num">{d.resultedAt}</span>
+                      {correctable && editing !== d.labId && (
+                        <button className="lerfix" onClick={() => openEditor(d)}>
+                          <IconPencil size={11} /> {selfTier ? `Amend (self · ${selfWindowLeft(d, now)} min left)` : 'Correct'}
+                        </button>
+                      )}
                     </div>
                     {d.custom ? (
                       <div className="leritems">
@@ -464,6 +553,65 @@ export function LabEntry() {
                       <div className="lerprov">
                         {d.source === 'manual' ? 'documented' : 'resulted'} by {prov.actor} at {prov.time}
                         {d.acknowledged && d.acknowledgedBy && <> · acknowledged by {d.acknowledgedBy}</>}
+                        {/* §2b safeguard: when a correction post-dates the
+                            sign-off, say so right where the sign-off shows */}
+                        {d.acknowledged && d.amendments?.some(a => a.afterAcknowledgment) && (
+                          <b className="lerpostack"> — then EDITED after acknowledgment (below)</b>
+                        )}
+                      </div>
+                    )}
+
+                    {/* amend-not-erase history — every correction with the
+                        original preserved; §2b entries carry their marker */}
+                    {edited && (
+                      <div className="lerhistory">
+                        {d.amendments!.map((a, i) => (
+                          <div className="leramend" key={i}>
+                            {a.target === 'note' ? 'note' : a.target}: <s className="num">{a.previousValue || '—'}</s> → <b className="num">{a.newValue}</b>
+                            {' '}by {a.amendedBy} ({a.amenderRole}) at {a.amendedAt}
+                            {a.reason && <i> — “{a.reason}”</i>}
+                            {a.afterAcknowledgment && <span className="lerpostacktag" title="this correction happened AFTER the result was acknowledged — the earlier sign-off covers the previous value, not this one">after acknowledgment</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* the inline correction editor (one at a time) */}
+                    {editing === d.labId && (
+                      <div className="lereditor">
+                        <select
+                          aria-label="What to correct"
+                          value={editTarget}
+                          onChange={e => switchTarget(d, e.target.value)}
+                        >
+                          {d.custom
+                            ? <option value="value">value ({d.customValue})</option>
+                            : d.items.map(it => <option key={it.analyte} value={it.analyte}>{it.analyte} ({it.value})</option>)}
+                          <option value="note">note</option>
+                        </select>
+                        <input
+                          className={editTarget !== 'note' && !d.custom ? 'num' : undefined}
+                          inputMode={editTarget !== 'note' && !d.custom ? 'decimal' : undefined}
+                          aria-label={`Corrected ${editTarget}`}
+                          placeholder={editTarget === 'note' ? 'corrected note' : 'corrected value'}
+                          value={editValue}
+                          onChange={e => { setEditValue(e.target.value); setEditError(null) }}
+                        />
+                        {!selfTier && (
+                          <input
+                            className="lerreason"
+                            placeholder="Reason (required — Consultant-tier correction)"
+                            aria-label="Correction reason"
+                            value={editReason}
+                            onChange={e => { setEditReason(e.target.value); setEditError(null) }}
+                          />
+                        )}
+                        {selfTier && <span className="lerselfnote">Self-correction inside the 5-minute window — no reason needed; the amendment still records you, the original and the time.</span>}
+                        {editError && <span className="leerr" role="alert">{editError}</span>}
+                        <span className="lereditbtns">
+                          <button className="leclear" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+                          <button className="ledoc" onClick={() => submitCorrection(d)} disabled={busy}><IconCheck /> Save correction</button>
+                        </span>
                       </div>
                     )}
                   </article>

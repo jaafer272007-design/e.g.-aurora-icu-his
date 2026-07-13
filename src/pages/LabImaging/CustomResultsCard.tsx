@@ -69,6 +69,15 @@ function provenance(d: LabDraw): { actor: string; time: string } | null {
   return evt ? { actor: evt.actor, time: evt.time } : null
 }
 
+/* Lab Result Editing §2a: a documented result is not acknowledgeable inside
+   its 5-minute self-correction window (server-enforced — this is the honest
+   display of that state) */
+const WINDOW_MS = 5 * 60_000
+const docMs = (d: LabDraw) => (d.documentedAt ? Date.parse(`${d.documentedAt.replace(' ', 'T')}Z`) : NaN)
+const inWindow = (d: LabDraw, now: Date) => !!d.documentedAt && now.getTime() - docMs(d) <= WINDOW_MS
+const windowLeft = (d: LabDraw, now: Date) =>
+  Math.min(WINDOW_MS / 60_000, Math.max(0, Math.ceil((WINDOW_MS - (now.getTime() - docMs(d))) / 60_000)))
+
 export function CustomResultsCard({ draws, canAcknowledge: canAck, onAcknowledge, onUnacknowledge }: CustomResultsCardProps) {
   const now = useNow()
   const [unackTarget, setUnackTarget] = useState<LabDraw | null>(null)
@@ -100,11 +109,33 @@ export function CustomResultsCard({ draws, canAcknowledge: canAck, onAcknowledge
               documented {d.resultedAt} ({agoLabel(d.resultedAt, now)})
               {prov && <> · by {prov.actor}</>}
               {d.source === 'manual' && <> · ✎ manual</>}
+              {(d.amendments?.length ?? 0) > 0 && <> · <span className="liedited">edited ×{d.amendments!.length}</span></>}
             </div>
+            {/* Lab Result Editing: the amend-not-erase history — every
+                correction shows original → new; a §2b entry carries its
+                after-acknowledgment marker */}
+            {(d.amendments?.length ?? 0) > 0 && (
+              <div className="lihistory">
+                {d.amendments!.map((a, i) => (
+                  <div className="liamend" key={i}>
+                    {a.target}: <s>{a.previousValue || '—'}</s> → <b>{a.newValue}</b> by {a.amendedBy} ({a.amenderRole}) at {a.amendedAt}
+                    {a.reason && <i> — “{a.reason}”</i>}
+                    {a.afterAcknowledgment && <span className="lipostack" title="this correction happened AFTER the acknowledgment below — the sign-off covers the previous value, not this one">after acknowledgment</span>}
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="lisack">
               {d.acknowledged ? (
                 <>
-                  <span className="liacked">✓ Acknowledged by {d.acknowledgedBy} · {d.acknowledgedAt}</span>
+                  <span className="liacked">
+                    ✓ Acknowledged by {d.acknowledgedBy} · {d.acknowledgedAt}
+                    {/* §2b safeguard: the acknowledged-then-edited ordering,
+                        stated ON the sign-off line so the old acknowledgment
+                        is never read as covering the corrected value */}
+                    {d.amendments?.some(a => a.afterAcknowledgment) &&
+                      <b className="lipostackinline"> — then edited AFTER this acknowledgment (history above)</b>}
+                  </span>
                   {canAck && (
                     <button
                       className="liunackbtn"
@@ -115,6 +146,12 @@ export function CustomResultsCard({ draws, canAcknowledge: canAck, onAcknowledge
                     </button>
                   )}
                 </>
+              ) : inWindow(d, now) ? (
+                /* §2a: not acknowledgeable inside the 5-minute self-correction
+                   window — server-enforced; said honestly here */
+                <span className="liwindow">
+                  ⏳ acknowledgeable in {windowLeft(d, now)} min — the value stabilises through its self-correction window first
+                </span>
               ) : canAck ? (
                 <button className="liackbtn" onClick={() => onAcknowledge(d.labId)} aria-label={`Acknowledge ${d.label}`}>
                   ✓ Acknowledge

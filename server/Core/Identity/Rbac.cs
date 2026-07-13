@@ -42,10 +42,16 @@ static class Rbac
            (§4): these NEVER sit on the office Administrator profile —
            clinical data and clinical configuration are clinically
            governed. */
+        /* results.correct (Lab Result Editing): the Tier-2 lab-correction
+           authority — Consultant-tier ONLY, mirroring observations.correct
+           (and the same F2/F3 hard constraint: never on office
+           Administrator). Tier-1 self-correction needs no atom of its own —
+           it is results.document + being the documenter + the 5-min window,
+           all decided server-side. */
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "results.document", "notes.document", "ai.view", "adt.admit", "adt.discharge",
-            "observations.record", "observations.correct", "observations.configure"],
+            "results.document", "results.correct", "notes.document", "ai.view", "adt.admit",
+            "adt.discharge", "observations.record", "observations.correct", "observations.configure"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record"],
