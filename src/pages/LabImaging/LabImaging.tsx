@@ -12,6 +12,7 @@ import {
   acknowledgeImaging, acknowledgeLab, getImagingStudies, getLabDraws, getPatientDetail,
   getPatients, getResultInbox, unacknowledgeImaging, unacknowledgeLab,
 } from '../../lib/api'
+import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import type {
   ImagingStudy, LabDraw, Patient, PatientSummary, ResultInboxItem,
@@ -43,8 +44,11 @@ export function LabImaging() {
   useEffect(() => { getPatients().then(setPatients) }, [])
 
   useEffect(() => {
-    if (!patientId && patients?.length) navigate(`/labs/${patients[0].patientId}`, { replace: true })
+    if (!patientId && patients?.length) navigate(`/labs/${defaultPatientId(patients)}`, { replace: true })
   }, [patientId, patients, navigate])
+  /* record the viewed patient as the cross-section context (only once
+     this screen's own list confirms the id resolves) */
+  useRememberPatient(patientId, patients)
 
   const refresh = useCallback(() => {
     if (patientId) {

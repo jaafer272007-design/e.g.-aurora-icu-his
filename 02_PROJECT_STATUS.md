@@ -1,6 +1,16 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through STANDARD NEWS2 v1 (built — the
+**Last updated: 2026-07-14 · current through the PERSISTENT PATIENT CONTEXT
+(built — the assessed moderate case: pick a patient once and the selection
+follows through the nav sidebar (Ahmed → Lab Entry → Observations → Orders
+stays Ahmed); a tab-scoped last-viewed-patient module (cleared on
+sign-out, never remembers an unresolvable id), the six patient-scoped
+sidebar targets carry the remembered patient, and the six screens'
+bare-path fallback becomes remembered-if-in-this-screen's-list else the
+normal default — the URL route param REMAINS the source of truth (deep
+links/bookmarks/print links unchanged) and stale contexts fall back
+honestly (never a silently-substituted patient). 20/20 browser checks;
+UI-only). Prior: STANDARD NEWS2 v1 (built — the
 Clinical Scoring Engine's SECOND score, cleared once SOFA was clinically
 validated: all 7 NEWS2 parameters at the standard thresholds (RR, SpO₂
 Scale 1, air/supplemental O₂ from FiO₂, systolic BP, pulse, ACVPU,
@@ -3807,6 +3817,48 @@ a second score needed NO engine change.
   [Alert, Confusion, Voice, Pain, Unresponsive]`, seed-if-missing top-up),
   and the roster wire CLEAN — 15 records, none carry sofa/ews, proving the
   `DropRosterSofaEws` migration applied on boot. No manual step needed.
+
+### Persistent patient context (built) — pick a patient once, sections follow
+Built from the recorded assessment (the MODERATE case: the shared
+`:patientId` route convention + the shared PatientRail already existed;
+only the sidebar dropped the patient on section switches). The user picks
+a patient once and the selection FOLLOWS them through the nav sidebar:
+Ahmed → Lab Entry (his) → Observations (his) → Orders (his). **The URL
+route param stays the SOURCE OF TRUTH** — deep links, bookmarks and print
+links are byte-unchanged; the remembered patient is only a NAVIGATION
+DEFAULT. UI-only: no server change, no RBAC change, no data-layer change.
+- **The three pieces (exactly per the assessment)**: (1)
+  `src/lib/patientContext.ts` — the last-viewed patient in TAB-SCOPED
+  sessionStorage (the session-store discipline; two tabs = two independent
+  contexts, deliberate), recorded by a screen only once its OWN list
+  confirms the id resolves (a mistyped deep-link id is never remembered),
+  CLEARED ON SIGN-OUT (a role switch never inherits the previous user's
+  patient). (2) `NavSidebar` — the six patient-scoped items (Orders,
+  Labs & Imaging, Lab Entry, Observations, Timeline, AI Assistant) append
+  the remembered patient to their target; with no context the bare paths
+  behave exactly as before. (3) The six screens' bare-path fallback
+  becomes remembered-patient-IF-in-this-screen's-list, else the normal
+  first-patient default (`defaultPatientId`); Mission Control records the
+  selection when a chart is opened (the AI screen keeps its
+  ranking-overview default when nothing is remembered).
+- **Honest fallback (locked not-found discipline)**: a screen only uses
+  the remembered patient when its own list contains them. A STALE context
+  (e.g. the patient was discharged) never substitutes a different
+  patient: the sidebar target still names the remembered patient and
+  renders THAT patient's own closed-episode record (reads of a closed
+  encounter are legitimate) or the explicit not-found state; the rail
+  simply no longer lists them, and the next pick overwrites the memory.
+  Bare paths with a stale context fall back to the screen's normal
+  default.
+- **Verification**: 20/20 real-browser checks — the full core flow (bed
+  board → Ahmed's chart → bare /lab-entry defaults to him → sidebar
+  Observations/Orders/Labs/Timeline/AI all stay P-1001); deep link wins
+  and updates the context; a rail pick updates it; a garbage deep-link id
+  renders not-found and is NEVER remembered; a discharged remembered
+  patient stays himself (own record, no substitution), un-sticks from the
+  rail on fresh load, and bare paths drop to the normal default; the next
+  pick overwrites the stale memory; sign-out clears the context and a
+  nurse in the same tab starts clean. tsc + vite build clean.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

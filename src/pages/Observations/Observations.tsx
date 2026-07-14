@@ -16,6 +16,7 @@ import type {
   NewObservationEntry, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType,
   PatientSummary, RosterRecordDto,
 } from '../../lib/api/types'
+import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { useNow } from '../../lib/time'
 
@@ -209,8 +210,11 @@ export function Observations() {
   }, [])
 
   useEffect(() => {
-    if (!patientId && patients?.length) navigate(`/observations/${patients[0].patientId}`, { replace: true })
+    if (!patientId && patients?.length) navigate(`/observations/${defaultPatientId(patients)}`, { replace: true })
   }, [patientId, patients, navigate])
+  /* record the viewed patient as the cross-section context (only once
+     this screen's own list confirms the id resolves) */
+  useRememberPatient(patientId, patients)
 
   const loadObservations = useCallback(() => {
     if (!patientId) return
