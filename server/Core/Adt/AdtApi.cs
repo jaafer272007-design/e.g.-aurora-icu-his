@@ -262,9 +262,16 @@ static class AdtApi
            (adt.discharge). Closes the encounter; the bed frees itself
            because occupancy is derived from OPEN encounters. */
         app.MapPost("/api/icu/adt/encounters/{encounterId}/discharge",
-            (string encounterId, ClaimsPrincipal user, AuroraDb db) =>
+            (string encounterId, DischargeRequest? req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "adt.discharge") is IResult denied) return denied;
+            /* DISCHARGE DISPOSITION — validated WHEN PROVIDED (unknown
+               value → 400 naming the vocabulary, the four-code rule);
+               the body itself stays optional (see DischargeRequest). */
+            var disposition = req?.Disposition?.Trim();
+            if (disposition is not null && !AdtLogic.Dispositions.Contains(disposition))
+                return ApiError.BadRequest(
+                    $"disposition must be one of: {string.Join(", ", AdtLogic.Dispositions)}");
             var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
             if (enc is null) return ApiError.NotFound();
             if (enc.Status == "discharged")
@@ -277,7 +284,9 @@ static class AdtApi
             enc.Status = "discharged";
             enc.DischargedAt = time;
             enc.DischargedBy = actor;
-            enc.EventsJson = AdtLogic.AppendEvent(enc.EventsJson, new(time, actor, "discharged", $"from {enc.BedId}"));
+            enc.Disposition = disposition;
+            enc.EventsJson = AdtLogic.AppendEvent(enc.EventsJson, new(time, actor, "discharged",
+                $"from {enc.BedId}" + (disposition is null ? "" : $" · disposition {disposition}")));
             /* THE BACKWARD INVARIANT (one rule with the create-time
                chokepoint): an order's lifecycle is bounded by its
                encounter. Closing the encounter discontinues its
@@ -333,6 +342,17 @@ static class AdtLogic
 {
     /* same free-text bound as every other mutating endpoint */
     public const int MaxTextLength = 2000;
+
+    /* DISCHARGE DISPOSITION vocabulary — the outcome of the ICU stay.
+       Stored as these codes; display labels live client-side:
+       home         → Home
+       ward         → Ward (step-down / general floor)
+       transfer_out → Another facility / transfer out
+       higher_care  → Higher care / another ICU
+       died         → Died   (the mortality numerator)
+       other        → Other */
+    public static readonly string[] Dispositions =
+        ["home", "ward", "transfer_out", "higher_care", "died", "other"];
 
     static int _patientSeq;
     static int _encounterSeq;

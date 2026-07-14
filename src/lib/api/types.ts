@@ -1055,7 +1055,16 @@ export interface Encounter {
   /** amend-not-erase history WITHIN this encounter — every set/change
    *  with who/when/prior; absent until the first measurement */
   measurements?: MeasurementEvent[]
+  /** discharge disposition — the OUTCOME of the ICU stay, selected by the
+   *  discharging clinician as part of the discharge flow. One of the
+   *  DISPOSITION codes (src/lib/api/index.ts). Absent = not recorded
+   *  (every pre-feature discharge): shown as "not recorded", NEVER
+   *  fabricated, and excluded from any mortality denominator. */
+  disposition?: DispositionCode
 }
+
+/** discharge-disposition vocabulary (server-validated) */
+export type DispositionCode = 'home' | 'ward' | 'transfer_out' | 'higher_care' | 'died' | 'other'
 
 /* ---------- GET /api/icu/adt/patients/:patientId ---------- */
 

@@ -1,6 +1,21 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through DATED EVENT TIMESTAMPS (built
+**Last updated: 2026-07-14 · current through the DISCHARGE DISPOSITION
+(built — Statistics prerequisite 2: the OUTCOME of the ICU stay is now
+captured at discharge. The discharge flow requires the discharging
+clinician to select one of home / ward / transfer_out / higher_care /
+died / other; the value is stored on the encounter (additive nullable
+column, migration `AddDischargeDisposition`), audited in the discharge
+event, shown on the Discharges screen and printed on the Discharge
+Summary. ICU MORTALITY IS NOW COMPUTABLE going forward ("died" over
+discharges WITH a recorded disposition). The API body is OPTIONAL by
+design (every deployed suite's discharge legs + failure-path cleanups
+use the body-less POST — flagged, not broken); a provided value is
+validated against the vocabulary (unknown → 400). Pre-existing
+discharged encounters have NO disposition — shown/printed as "not
+recorded", never fabricated, and EXCLUDED from any mortality
+denominator. 19/19 API + 13/13 browser checks). Prior: DATED EVENT
+TIMESTAMPS (built
 — the recorded date-less-stamp foundational gap resolved GOING FORWARD:
 every server EVENT stamp that was `HH:mm` (ADT admit/discharge/transfer +
 encounter events, the order lifecycle incl. orderedTime and every history
@@ -4000,6 +4015,59 @@ convention for every new event in the system.
   `dayOffsetOf`/`datedEpoch`/`agoLabel`/`timestampMinutes` cross-format
   coherence + the dated `labMinutesAgo` window math). tsc + vite +
   dotnet builds clean.
+
+### Discharge disposition (built) — the ICU stay's outcome, mortality computable
+Statistics prerequisite 2 (from the data-model audit): discharging an
+encounter only set `status: 'discharged'` + dischargedAt/By — no outcome
+existed anywhere, so ICU mortality and discharge-outcome breakdowns were
+unknowable from the data. **The disposition is now captured at discharge**
+— an additive field on the ENCOUNTER, selected by the discharging
+clinician as part of the discharge flow, part of the discharge record.
+- **Vocabulary (server-validated, `AdtLogic.Dispositions`)**: `home`,
+  `ward` (step-down / general floor), `transfer_out` (another facility),
+  `higher_care` (another ICU), `died`, `other` — stored as these codes;
+  display labels live client-side (`DISPOSITIONS`/`dispositionLabel`).
+  An unknown value → 400 naming the vocabulary (four-code rule), and the
+  rejected discharge leaves the encounter OPEN.
+- **Storage**: nullable `Disposition` column on Encounters (migration
+  `AddDischargeDisposition`); additive nullable tail on the wire DTO
+  (WhenWritingNull — pre-feature rows keep their wire bytes). The
+  discharge audit event names it ("from B-08 · disposition died").
+- **The API body is OPTIONAL — a FLAGGED design decision**: the discharge
+  POST took no body its whole life, and every deployed suite's discharge
+  legs AND failure-path cleanups (the finite-resources discipline) rely
+  on the body-less form — requiring a body would break them all. So: the
+  UI flow REQUIRES a disposition (Confirm disabled until selected); a
+  body-less API discharge records none. Verified: body-less POST still
+  200, and it stores/serves NO disposition.
+- **Honest absence**: pre-existing discharged encounters (including the
+  recently-discharged test patients) have no disposition — the
+  Discharges screen shows "disposition not recorded", the printed
+  Discharge Summary prints "not recorded", and such rows are EXCLUDED
+  from any mortality denominator. An outcome is never fabricated.
+- **Mortality computable going forward**: ICU mortality = count of
+  `died` over discharges WITH a recorded disposition (verified live:
+  1/6 on the test matrix). The Statistics page can now compute it
+  honestly.
+- **RBAC unchanged**: the disposition rides the existing `adt.discharge`
+  authority (nurse still 403, with or without a body); re-discharge
+  stays 409 (state machine intact).
+- **Surfaces**: Discharges confirm dialog (required select) + Recently
+  Discharged rows; printed Discharge Summary (new Disposition fact in
+  Hospital course — recorded value or "not recorded"); the discharge
+  event in the Timeline carries it in its detail.
+- **Verification**: 19/19 API matrix (all six values stored + served;
+  unknown value 400 naming the set + encounter stays open; unknown field
+  400; body-less 200 with honest absence; nurse 403; re-discharge 409;
+  dispositioned + absent rows coexist on the list read; mortality
+  numerator/denominator computes) + 13/13 real-browser checks (Confirm
+  disabled until selection; discharged row shows "Died"; body-less row
+  shows "disposition not recorded"; Discharge Summary prints the
+  disposition and "not recorded" for a pre-feature encounter; no page
+  errors). tsc + vite + dotnet clean.
+- **Recorded follow-up (not built here)**: a deployed-adt-e2e leg
+  asserting disposition round-trip on staging; the Statistics page
+  itself (prerequisite now met).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

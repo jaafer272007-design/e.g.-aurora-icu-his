@@ -78,6 +78,7 @@ function toEncounterInfo(target: Encounter, all: Encounter[]): PrintEncounterInf
     admittedBy: target.admittedBy,
     dischargedAt: target.dischargedAt,
     dischargedBy: target.dischargedBy,
+    disposition: target.disposition,
     otherEncounterCount: all.filter(e => e.encounterId !== target.encounterId).length,
   }
 }

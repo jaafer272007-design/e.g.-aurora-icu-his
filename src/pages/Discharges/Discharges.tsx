@@ -7,8 +7,8 @@ import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconBed, IconDischarge, IconUsers } from '../../components/icons'
-import { dischargeEncounter, getAdtBeds, getEncounters, transferEncounter } from '../../lib/api'
-import type { AdtBed, Encounter } from '../../lib/api/types'
+import { DISPOSITIONS, dischargeEncounter, dispositionLabel, getAdtBeds, getEncounters, transferEncounter } from '../../lib/api'
+import type { AdtBed, DispositionCode, Encounter } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { displayStamp } from '../../lib/time'
 
@@ -29,6 +29,9 @@ export function Discharges() {
   const [discharged, setDischarged] = useState<Encounter[] | null>(null)
   const [beds, setBeds] = useState<AdtBed[] | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  /* discharge disposition — the stay's OUTCOME, REQUIRED before confirm
+     (the server stores it on the encounter; mortality derives from it) */
+  const [disposition, setDisposition] = useState<DispositionCode | ''>('')
   const [transferId, setTransferId] = useState<string | null>(null)
   const [targetBed, setTargetBed] = useState('')
   const [busy, setBusy] = useState(false)
@@ -50,11 +53,12 @@ export function Discharges() {
   ]
 
   async function doDischarge(encounterId: string) {
+    if (!disposition) return
     setBusy(true); setRowError(null)
-    const res = await dischargeEncounter(encounterId)
-    setBusy(false); setConfirmId(null)
+    const res = await dischargeEncounter(encounterId, disposition)
+    setBusy(false); setConfirmId(null); setDisposition('')
     if (res.kind === 'ok') {
-      showToast('Discharged', `${res.data.patientName} discharged — ${res.data.bedId} is now free`)
+      showToast('Discharged', `${res.data.patientName} discharged (${dispositionLabel(res.data.disposition) || 'disposition not recorded'}) — ${res.data.bedId} is now free`)
       reload()
     } else if (res.kind === 'rejected') {
       setRowError({ id: encounterId, error: res.error })
@@ -118,7 +122,7 @@ export function Discharges() {
                           </button>
                         )}
                         {canDischarge && (
-                          <button className="disact warn" onClick={() => { setConfirmId(confirmId === e.encounterId ? null : e.encounterId); setRowError(null) }}>
+                          <button className="disact warn" onClick={() => { setConfirmId(confirmId === e.encounterId ? null : e.encounterId); setDisposition(''); setRowError(null) }}>
                             Discharge
                           </button>
                         )}
@@ -127,10 +131,16 @@ export function Discharges() {
                     {confirmId === e.encounterId && (
                       <div className="disconfirm" role="alertdialog" aria-label="Confirm discharge">
                         <span>Close encounter <b className="num">{e.encounterId}</b> and free <b>{e.bedId}</b>?</span>
-                        <button className="disact warn" disabled={busy} onClick={() => doDischarge(e.encounterId)}>
+                        {/* the stay's OUTCOME — required before confirm; stored on
+                            the encounter (unlocks honest mortality tracking) */}
+                        <select value={disposition} onChange={ev => setDisposition(ev.target.value as DispositionCode | '')} aria-label="Discharge disposition">
+                          <option value="" disabled>Disposition…</option>
+                          {DISPOSITIONS.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
+                        </select>
+                        <button className="disact warn" disabled={!disposition || busy} onClick={() => doDischarge(e.encounterId)}>
                           {busy ? 'Discharging…' : 'Confirm discharge'}
                         </button>
-                        <button className="disact" onClick={() => setConfirmId(null)}>Cancel</button>
+                        <button className="disact" onClick={() => { setConfirmId(null); setDisposition('') }}>Cancel</button>
                       </div>
                     )}
                     {transferId === e.encounterId && (
@@ -165,6 +175,9 @@ export function Discharges() {
                       <span className="dismeta">
                         <span className="num">{e.encounterId}</span>
                         <small>{e.dischargedAt ? `discharged ${displayStamp(e.dischargedAt)} · ${e.dischargedBy}` : 'discharged'}</small>
+                        {/* honest outcome display: pre-feature discharges have
+                            none recorded — never fabricated */}
+                        <small>{dispositionLabel(e.disposition) || 'disposition not recorded'}</small>
                       </span>
                     </div>
                   </div>

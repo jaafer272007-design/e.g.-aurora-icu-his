@@ -1,5 +1,6 @@
 import { FactGrid, MedTable, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { DischargeSummaryData } from '../types'
+import { dispositionLabel } from '../../../lib/api'
 
 /** Template 3 — Discharge Summary. The medication sections are the
  *  historical-rendering guarantee in action: "medications at discharge"
@@ -29,6 +30,11 @@ export function DischargeSummary({ data }: { data: DischargeSummaryData }) {
         <FactGrid facts={[
           ['Admitted', `${enc?.admittedAt || '—'}${enc?.admittedBy ? ` · ${enc.admittedBy}` : ''}`],
           ['Discharged', enc?.status === 'discharged' ? `${enc.dischargedAt || '—'}${enc.dischargedBy ? ` · ${enc.dischargedBy}` : ''}` : 'encounter still open — printed before discharge'],
+          /* the recorded stay OUTCOME — honest when absent (pre-feature
+             discharges recorded none; a value is never fabricated) */
+          ['Disposition', enc?.status === 'discharged'
+            ? (dispositionLabel(enc.disposition) || 'not recorded')
+            : 'encounter still open'],
           ['Medication orders', medOrderCount],
           ['Laboratory results', labCount],
           ['Imaging studies', imagingCount],
