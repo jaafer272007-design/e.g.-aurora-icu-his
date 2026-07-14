@@ -1,0 +1,42 @@
+# TEMPORARY read-only check (removed in the next commit — never merges):
+# directly confirms the SOFA v1 `resp_support` observation type reached the
+# STAGING catalogue after the PR #89 redeploy. Read-only (no writes), so no
+# environment-write gate needed; it only proves the seed-if-missing top-up
+# populated the new type on the live service. The permanent proof that the
+# server redeployed is the deployed-observations-e2e content gate; this is
+# the direct, human-readable confirmation the owner asked for.
+name: TEMP check resp_support on staging
+on:
+  push:
+    paths:
+      - '.github/workflows/tmp-check-resp-support.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm resp_support is in the live staging Observation Type Catalogue
+        run: |
+          API=https://icu-cp49.onrender.com
+          env=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environment","<absent>"))' 2>/dev/null || echo unreachable)
+          echo "healthz environment: $env"
+          t=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
+            -d '{"username":"sara.rahman","password":"Aurora2026!"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          curl -sf -H "Authorization: Bearer $t" "$API/api/icu/observations/catalog" > /tmp/cat.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open("/tmp/cat.json"))
+          # the catalog is grouped; find resp_support in the ventilator group
+          types = []
+          for g in data:
+              for t in g.get("types", []):
+                  types.append((g.get("groupCode") or g.get("code"), t.get("typeCode"), t.get("displayName"), t.get("valueType"), t.get("allowedValues")))
+          rs = [x for x in types if x[1] == "resp_support"]
+          assert rs, "resp_support NOT found in the live staging catalogue"
+          g, code, name, vt, vals = rs[0]
+          assert g == "ventilator", f"resp_support in wrong group: {g}"
+          assert vt == "enum" and vals == ["Yes", "No"], f"unexpected shape: {vt} {vals}"
+          print(f"CONFIRMED on staging: resp_support · group '{g}' · {name} · {vt} {vals}")
+          print(f"(catalogue carries {len(types)} types total)")
+          PY
