@@ -3,9 +3,10 @@ import { Card } from '../../components/Card'
 import type { OrderPriority } from '../../lib/api/types'
 
 interface ImagingOrderCardProps {
-  /** the study vocabulary — the SAME list the Doctor Workspace "+ Order"
-   *  drawer offers (getOrderSets().Imaging: Portable CXR / CT
-   *  Abdomen-Pelvis / Bedside Echo), so the two entry points never drift */
+  /** the study vocabulary — the Order Sets master data
+   *  (getOrderSets().Imaging: Portable CXR / CT Abdomen-Pelvis / Bedside
+   *  Echo). The Doctor Workspace demo drawer once rendered the same list;
+   *  the drawer is retired and this is now the ONE imaging entry point. */
   studies: string[]
   onOrder: (study: string, detail: string, priority: OrderPriority, sign: boolean) => void
 }

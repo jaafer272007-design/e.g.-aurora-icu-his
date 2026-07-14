@@ -50,39 +50,9 @@
 .dw .consult .ct{flex:1;font-size:12px;line-height:1.4}
 .dw .consult .ct small{display:block;color:var(--faint);font-family:var(--mono);font-size:10px;margin-top:2px}
 
-/* quick order FAB + drawer */
-.dw .fab{position:fixed;bottom:26px;right:26px;width:58px;height:58px;border-radius:18px;display:grid;place-items:center;
- background:linear-gradient(135deg,#1e5fb4,#35e0d0);box-shadow:0 10px 30px rgba(20,90,170,.5);z-index:40;transition:.2s}
-.dw .fab:hover,.dw .fab:focus-visible{transform:translateY(-3px) scale(1.04)}
-.dw .scrim{position:fixed;inset:0;background:rgba(4,8,15,.6);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:.25s;z-index:45}
-.dw .scrim.show{opacity:1;pointer-events:auto}
-.dw .drawer{position:fixed;top:0;right:0;bottom:0;width:420px;max-width:92vw;background:linear-gradient(160deg,#0d1626,#0a0f1c);
- border-left:1px solid var(--stroke2);box-shadow:-20px 0 50px rgba(0,0,0,.5);transform:translateX(100%);transition:.32s cubic-bezier(.2,.7,.2,1);
- z-index:46;display:flex;flex-direction:column}
-.dw .drawer.show{transform:translateX(0)}
-.dw .dhead{display:flex;align-items:center;gap:10px;padding:18px 18px 14px;border-bottom:1px solid var(--stroke)}
-.dw .dhead h2{font-size:15px}
-.dw .dhead .x{margin-left:auto;width:44px;height:44px;border-radius:10px;display:grid;place-items:center;color:var(--dim);border:1px solid var(--stroke)}
-.dw .dhead .x:hover,.dw .dhead .x:focus-visible{color:var(--text);border-color:var(--stroke2)}
-.dw .dbody{flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:16px}
-.dw .field label{display:block;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
-.dw .field select,.dw .field input,.dw .field textarea{width:100%;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);
- border:1px solid var(--stroke);outline:none;transition:.15s;min-height:44px}
-.dw .field select:focus,.dw .field input:focus,.dw .field textarea:focus{border-color:var(--blue)}
-.dw .field textarea{min-height:80px;resize:vertical}
-.dw .field select option{background:#0d1524}
-.dw .ordertype{display:flex;gap:7px;flex-wrap:wrap}
-.dw .otbtn{padding:9px 13px;border-radius:10px;font-size:12px;border:1px solid var(--stroke);color:var(--dim);transition:.15s;min-height:40px}
-.dw .otbtn.on{background:rgba(77,163,255,.16);border-color:rgba(77,163,255,.5);color:var(--blue);font-weight:600}
-.dw .qsets{display:flex;gap:7px;flex-wrap:wrap}
-.dw .qset{padding:8px 12px;border-radius:20px;font-size:11.5px;border:1px dashed var(--stroke2);color:var(--cyan);transition:.15s;min-height:36px}
-.dw .qset:hover,.dw .qset:focus-visible{background:rgba(53,224,208,.1)}
-.dw .dfoot{padding:14px 18px;border-top:1px solid var(--stroke);display:flex;gap:10px}
-.dw .btn{flex:1;padding:12px;border-radius:11px;font-size:13px;font-weight:600;transition:.18s;min-height:46px}
-.dw .btn.primary{background:linear-gradient(135deg,#1e5fb4,#35e0d0);color:#06121f}
-.dw .btn.primary:hover,.dw .btn.primary:focus-visible{filter:brightness(1.08)}
-.dw .btn.ghost{border:1px solid var(--stroke2);color:var(--dim)}
-.dw .btn.ghost:hover,.dw .btn.ghost:focus-visible{color:var(--text)}
+/* (the quick-order FAB + toast-only demo drawer were REMOVED — real
+   ordering lives in Orders & Meds; the rounding row's "Orders →" button
+   navigates there) */
 
 @media(max-width:1500px){.dw .shell{grid-template-columns:64px 1fr}}
 @media(max-width:1180px){.dw main{grid-template-columns:1fr;overflow:visible}.dw.app-frame{height:auto;overflow:visible}}
