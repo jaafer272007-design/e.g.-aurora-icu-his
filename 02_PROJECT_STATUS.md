@@ -1,6 +1,17 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through STRUCTURED INFUSION ORDERING
+**Last updated: 2026-07-14 · current through the STAGING FORMULARY SYNC
+WORKFLOW (built — the operational gap seed-if-empty leaves: a drug added to
+`server/Data/formulary-seed.json` after a durable environment's first boot
+never reaches it through the seed. `staging-formulary-sync.yml` is a
+dispatchable, environment-gated, STRICTLY ADDITIVE workflow that creates
+any seed drug absent from staging via the Pharmacist management path
+(audited like a manual add); present drugs are never edited — drift
+against the seed is reported in the log only. First run added PR #87's
+five infusion drugs; staging live-verified serving all 24 seed drugs.
+Also the recorded PR #87 post-merge evidence: Pages deploy job green on
+main, deployed-orders-e2e green incl. the content gate = Render redeploy
+proof). Prior: STRUCTURED INFUSION ORDERING
 (built — the last SOFA cardiovascular data-source prerequisite: continuous
 mass-dosed infusions are ordered structured (numeric value + µg/mg +
 per-kg + per-min/hour, e.g. 0.3 µg/kg/min / 2 mg/kg/hour) instead of free
@@ -3479,6 +3490,58 @@ noradrenaline during verification, proving the infusion path rides it).
   detailed SOFA cardiovascular scoring bands (which drug+dose → which
   score — part of the deferred SOFA spec; this build provides the
   structured, normalisable data those bands will read).
+- **Post-merge record (PR #87 merged 2026-07-14 14:45 UTC as `10ac594`)**:
+  Pages force-deploy run 29342611959 on main — deploy JOB steps all
+  success (built, artifact uploaded, deployed; not skipped);
+  deployed-orders-e2e run 29342768768 on main `10ac594` all steps green
+  INCLUDING the server content gate — Render is serving the merged
+  server tree (redeploy proven) with the full orders matrix passing on
+  it; the five formulary drugs reached staging via the Staging Formulary
+  Sync first run (next section).
+
+### Staging Formulary Sync workflow (built) — seed additions reach durable environments
+The operational gap PR #87 exposed, closed as a mechanism instead of a
+one-off: durable environments seed IF EMPTY (env-separation §11 step 2),
+so a drug added to `server/Data/formulary-seed.json` after an
+environment's first boot never arrives through the seed — the recorded
+answer was "added once via the Pharmacist formulary path (reference
+data)", and staging is not reachable from every operator network (only
+GitHub runners reach it reliably). `staging-formulary-sync.yml`
+(dispatchable) IS that path, PR #88:
+- **Strictly additive (the honest-data rule for reference data)**: a seed
+  drug ABSENT from staging is created via `POST /api/icu/formulary`
+  under a Pharmacist token — audited exactly like a manual add ("added
+  to formulary", actor from the token); a seed drug PRESENT on staging
+  is NEVER edited/reactivated/deactivated — field drift against the
+  seed is reported in the run log only (staging's live state/history
+  owns existing rows), and a deactivated seed drug is noted, never
+  silently reactivated. Nothing is deleted (no delete exists — locked).
+  Idempotent: a re-run finds nothing missing and passes.
+- **Guarded like the data-writing suites**: the §11 step-1 environment
+  gate (refuses any target whose `/healthz` isn't `staging`; deliberately
+  no production entry) and the shared `deployed-e2e` concurrency group
+  (it writes formulary rows the suites assert against — the
+  never-dispatch-concurrently lesson, structurally enforced). Sends
+  EXACTLY `CreateDrugRequest`'s fields (Disallow binding) — the seed's
+  `active` is stripped (creates are born active; all seed rows active).
+- **First run (the PR #87 five)**: run 29343134170 green — `seed drugs:
+  24 · already present: 19 · added this run: 5 · failed: 0` (adrenaline,
+  dopamine, dobutamine, phenylephrine, propofol each HTTP 200), verify
+  step confirmed all 24 seed drugs present and active on staging with
+  the 5 new ones carrying their "added to formulary" audit event; no
+  drift reported on the 19 pre-existing rows. Structured infusion
+  ordering is therefore fully exercisable on staging (the Pages deploy
+  above already serves the form).
+- **Bootstrap note (honest CI evidence)**: GitHub does not register a
+  brand-new `workflow_dispatch` workflow from a non-default branch, so
+  the first run could not be a dispatch of the permanent file pre-merge.
+  It ran via a TEMPORARY push-triggered twin with identical steps
+  (commit `3cc0231`, removed again in the very next commit — it never
+  merges); run 29343134170 is that twin's run. Post-merge the permanent
+  workflow is dispatchable on main — a re-dispatch is expected to pass
+  with "added this run: 0". The suites' amended-workflow branch-dispatch
+  pattern (PR #82) is unaffected — it works because those files are
+  already registered from main.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
