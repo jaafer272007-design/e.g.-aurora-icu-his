@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import '../UsersAdmin/UsersAdmin.css'
 import '../Formulary/Formulary.css'
+import './LabCatalog.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Card } from '../../components/Card'
@@ -24,43 +25,135 @@ import { getSession, initialsOf, profileOf } from '../../lib/session'
  *  refuses (409) when any result/order references it. Writes are REAL-ONLY
  *  — reference data is a durable system of record. */
 
-/* analytes edited one per line:
-   "analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]"
-   (unit may be blank for unitless analytes like pH; the two OPTIONAL
-   trailing fields are the Option B critical thresholds — leave a side
-   blank when the analyte has no critical bound on that side) */
-const analytesToText = (a: AnalyteDef[]) =>
-  a.map(x => `${x.analyte} | ${x.unit} | ${x.refRange} | ${x.refLow} | ${x.refHigh}`
-    + (x.critLow !== undefined || x.critHigh !== undefined ? ` | ${x.critLow ?? ''} | ${x.critHigh ?? ''}` : '')).join('\n')
+/* ---- structured analyte rows (usability fix from hands-on testing) ----
+   Analytes were one pipe-delimited textarea ("analyte | unit | refRange |
+   refLow | refHigh [| critLow | critHigh]", one per line) — a consultant
+   had to hand-type the "|" separators. Each analyte is now a ROW of
+   separate labeled inputs; a single-analyte test is one row, a
+   multi-analyte panel (like the seeded CBC) is several rows via "Add
+   another analyte". UI-ONLY: the same AnalyteDef data is built and stored
+   — no data-model or flagging change (the server validates identically). */
 
-function parseAnalytes(text: string): AnalyteDef[] | string {
+interface AnalyteRow {
+  analyte: string
+  unit: string
+  /** the DISPLAY range string (e.g. "4.0–11.0"); blank = auto-derived
+   *  "low–high" on submit, so typing the bounds alone is enough */
+  refRange: string
+  refLow: string
+  refHigh: string
+  critLow: string
+  critHigh: string
+}
+
+const emptyRow = (): AnalyteRow =>
+  ({ analyte: '', unit: '', refRange: '', refLow: '', refHigh: '', critLow: '', critHigh: '' })
+
+const rowsFromDefs = (a: AnalyteDef[]): AnalyteRow[] => a.map(x => ({
+  analyte: x.analyte, unit: x.unit, refRange: x.refRange,
+  refLow: String(x.refLow), refHigh: String(x.refHigh),
+  critLow: x.critLow !== undefined ? String(x.critLow) : '',
+  critHigh: x.critHigh !== undefined ? String(x.critHigh) : '',
+}))
+
+/** fully-empty trailing rows are ignored (an extra "Add another analyte"
+ *  click never blocks submission) */
+const rowIsBlank = (r: AnalyteRow) =>
+  !r.analyte.trim() && !r.unit.trim() && !r.refRange.trim() && !r.refLow.trim()
+  && !r.refHigh.trim() && !r.critLow.trim() && !r.critHigh.trim()
+
+/** rows → AnalyteDef[], or a message naming the offending row. Client
+ *  checks mirror what the old pipe parser checked (required fields +
+ *  numeric bounds); the semantic rules (refLow ≤ refHigh, crit at/outside
+ *  the range) stay server-answered 400s exactly as before. */
+function rowsToDefs(rows: AnalyteRow[]): AnalyteDef[] | string {
+  const filled = rows.filter(r => !rowIsBlank(r))
+  if (filled.length === 0) return 'at least one analyte row is required'
   const out: AnalyteDef[] = []
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
-  if (lines.length === 0) return 'at least one analyte line is required'
-  for (const line of lines) {
-    const parts = line.split('|').map(p => p.trim())
-    if (parts.length !== 5 && parts.length !== 7)
-      return `"${line}" — expected: analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]`
-    const [analyte, unit, refRange, lo, hi, cl, ch] = parts
-    const refLow = Number(lo), refHigh = Number(hi)
-    if (!analyte || !refRange || !Number.isFinite(refLow) || !Number.isFinite(refHigh))
-      return `"${line}" — analyte/refRange required; refLow/refHigh must be numbers`
-    const def: AnalyteDef = { analyte, unit, refRange, refLow, refHigh }
-    if (parts.length === 7) {
-      if (cl !== '') {
-        const n = Number(cl)
-        if (!Number.isFinite(n)) return `"${line}" — critLow must be a number (or blank)`
-        def.critLow = n
-      }
-      if (ch !== '') {
-        const n = Number(ch)
-        if (!Number.isFinite(n)) return `"${line}" — critHigh must be a number (or blank)`
-        def.critHigh = n
-      }
+  for (let i = 0; i < filled.length; i++) {
+    const r = filled[i]
+    const at = `Analyte ${i + 1}`
+    if (!r.analyte.trim()) return `${at}: name is required`
+    const refLow = Number(r.refLow), refHigh = Number(r.refHigh)
+    if (!r.refLow.trim() || !Number.isFinite(refLow)) return `${at} (${r.analyte.trim()}): reference low must be a number`
+    if (!r.refHigh.trim() || !Number.isFinite(refHigh)) return `${at} (${r.analyte.trim()}): reference high must be a number`
+    const def: AnalyteDef = {
+      analyte: r.analyte.trim(), unit: r.unit.trim(),
+      /* blank display range auto-derives from the bounds (en dash, the
+         seeded style) — no extra typing for the common case */
+      refRange: r.refRange.trim() || `${r.refLow.trim()}–${r.refHigh.trim()}`,
+      refLow, refHigh,
+    }
+    if (r.critLow.trim()) {
+      const n = Number(r.critLow)
+      if (!Number.isFinite(n)) return `${at} (${r.analyte.trim()}): critical low must be a number (or blank)`
+      def.critLow = n
+    }
+    if (r.critHigh.trim()) {
+      const n = Number(r.critHigh)
+      if (!Number.isFinite(n)) return `${at} (${r.analyte.trim()}): critical high must be a number (or blank)`
+      def.critHigh = n
     }
     out.push(def)
   }
   return out
+}
+
+/** the row-based analyte editor — shared by Add Test and the Edit panel */
+function AnalyteRowsEditor({ rows, setRows, disabled, idPrefix }: {
+  rows: AnalyteRow[]
+  setRows: (rows: AnalyteRow[]) => void
+  disabled: boolean
+  idPrefix: string
+}) {
+  const set = (i: number, field: keyof AnalyteRow, value: string) =>
+    setRows(rows.map((r, k) => (k === i ? { ...r, [field]: value } : r)))
+  const remove = (i: number) => setRows(rows.filter((_, k) => k !== i))
+  const num = (i: number, field: keyof AnalyteRow, label: string, cls: string, placeholder: string, optional = false) => (
+    <span className={`anfield ${cls}`}>
+      <label htmlFor={`${idPrefix}-${field}-${i}`}>{label}{optional && <i> · optional</i>}</label>
+      <input id={`${idPrefix}-${field}-${i}`} className="num" inputMode="decimal" value={rows[i][field]}
+        onChange={ev => set(i, field, ev.target.value)} disabled={disabled} placeholder={placeholder} autoComplete="off" />
+    </span>
+  )
+  return (
+    <div className="anrows">
+      <span className="anlegend">Analytes <i>— one row per analyte; a panel is several rows. No separators — each value in its own box.</i></span>
+      {rows.map((r, i) => (
+        <div className="anblock" key={i} role="group" aria-label={`Analyte ${i + 1}`}>
+          <span className="anhead">
+            <b>Analyte {i + 1}</b>
+            <button type="button" className="anremove" onClick={() => remove(i)}
+              disabled={disabled || rows.length === 1} aria-label={`Remove analyte row ${i + 1}`}>
+              ✕ Remove
+            </button>
+          </span>
+          <span className="anfield an-name">
+            <label htmlFor={`${idPrefix}-analyte-${i}`}>Analyte name</label>
+            <input id={`${idPrefix}-analyte-${i}`} value={r.analyte} onChange={ev => set(i, 'analyte', ev.target.value)}
+              disabled={disabled} placeholder="e.g. WBC" autoComplete="off" />
+          </span>
+          <span className="anfield an-unit">
+            <label htmlFor={`${idPrefix}-unit-${i}`}>Unit <i>· blank if none</i></label>
+            <input id={`${idPrefix}-unit-${i}`} value={r.unit} onChange={ev => set(i, 'unit', ev.target.value)}
+              disabled={disabled} placeholder="e.g. K/µL" autoComplete="off" />
+          </span>
+          {num(i, 'refLow', 'Reference low', 'an-num', '4.0')}
+          {num(i, 'refHigh', 'Reference high', 'an-num', '11.0')}
+          <span className="anfield an-range">
+            <label htmlFor={`${idPrefix}-refRange-${i}`}>Range text <i>· blank = auto low–high</i></label>
+            <input id={`${idPrefix}-refRange-${i}`} className="num" value={r.refRange} onChange={ev => set(i, 'refRange', ev.target.value)}
+              disabled={disabled} placeholder={r.refLow.trim() && r.refHigh.trim() ? `auto: ${r.refLow.trim()}–${r.refHigh.trim()}` : 'e.g. 4.0–11.0'} autoComplete="off" />
+          </span>
+          {num(i, 'critLow', 'Critical low', 'an-num an-crit', '—', true)}
+          {num(i, 'critHigh', 'Critical high', 'an-num an-crit', '—', true)}
+        </div>
+      ))}
+      <button type="button" className="anadd" disabled={disabled} onClick={() => setRows([...rows, emptyRow()])}>
+        + Add another analyte
+      </button>
+    </div>
+  )
 }
 
 export function LabCatalog() {
@@ -77,14 +170,14 @@ export function LabCatalog() {
   const [cName, setCName] = useState('')
   const [cCategory, setCCategory] = useState('')
   const [cSpecimen, setCSpecimen] = useState('')
-  const [cAnalytes, setCAnalytes] = useState('')
+  const [cRows, setCRows] = useState<AnalyteRow[]>([emptyRow()])
   /* Option B §4: adding/editing must be a DELIBERATE act — the definition
      drives automatic flagging for every patient's results of this test */
   const [cConfirm, setCConfirm] = useState(false)
   const [eName, setEName] = useState('')
   const [eCategory, setECategory] = useState('')
   const [eSpecimen, setESpecimen] = useState('')
-  const [eAnalytes, setEAnalytes] = useState('')
+  const [eRows, setERows] = useState<AnalyteRow[]>([emptyRow()])
   const [eConfirm, setEConfirm] = useState(false)
 
   const reload = useCallback(() => { getLabCatalog().then(setTests) }, [])
@@ -120,7 +213,7 @@ export function LabCatalog() {
   }
 
   async function doCreate() {
-    const analytes = parseAnalytes(cAnalytes)
+    const analytes = rowsToDefs(cRows)
     if (typeof analytes === 'string') { setFormError(analytes); return }
     if (!cConfirm) { setFormError('Confirm that these ranges/thresholds will drive automatic flagging for all patients'); return }
     await applyWrite(null, 'the test', () => createLabTest({
@@ -128,12 +221,12 @@ export function LabCatalog() {
       specimen: cSpecimen.trim(), analytes,
     }), t => {
       showToast('Test added', `${t.name} (${t.testId}) is active — its definition now drives flagging for all patients`)
-      setCTestId(''); setCName(''); setCCategory(''); setCSpecimen(''); setCAnalytes(''); setCConfirm(false)
+      setCTestId(''); setCName(''); setCCategory(''); setCSpecimen(''); setCRows([emptyRow()]); setCConfirm(false)
     })
   }
 
   async function doEdit(t: LabTest) {
-    const analytes = parseAnalytes(eAnalytes)
+    const analytes = rowsToDefs(eRows)
     if (typeof analytes === 'string') { setRowError({ testId: t.testId, error: analytes }); return }
     if (!eConfirm) { setRowError({ testId: t.testId, error: 'Confirm that the changed ranges/thresholds will drive automatic flagging for all patients' }); return }
     await applyWrite(t.testId, 'the change', () => updateLabTest(t.testId, {
@@ -168,7 +261,7 @@ export function LabCatalog() {
     if (panel?.kind === kind && panel.testId === t.testId) { setPanel(null); return }
     if (kind === 'edit') {
       setEName(t.name); setECategory(t.category); setESpecimen(t.specimen)
-      setEAnalytes(analytesToText(t.analytes)); setEConfirm(false)
+      setERows(rowsFromDefs(t.analytes)); setEConfirm(false)
     }
     setPanel({ kind, testId: t.testId })
   }
@@ -264,10 +357,9 @@ export function LabCatalog() {
                             <label>Specimen
                               <input value={eSpecimen} onChange={ev => setESpecimen(ev.target.value)} disabled={busy} />
                             </label>
-                            <label className="uawide">Analytes — one per line: analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]
-                              <textarea rows={4} value={eAnalytes} onChange={ev => setEAnalytes(ev.target.value)} disabled={busy}
-                                style={{ fontFamily: 'inherit', fontSize: 11 }} />
-                            </label>
+                            <div className="uawide">
+                              <AnalyteRowsEditor rows={eRows} setRows={setERows} disabled={busy} idPrefix={`edit-${t.testId}`} />
+                            </div>
                             <label className="uawide" style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                               <input type="checkbox" checked={eConfirm} onChange={ev => setEConfirm(ev.target.checked)} disabled={busy} style={{ width: 'auto' }} />
                               <span>I confirm these reference ranges and critical thresholds will drive automatic
@@ -334,11 +426,9 @@ export function LabCatalog() {
                   <label>Specimen
                     <input value={cSpecimen} onChange={ev => setCSpecimen(ev.target.value)} disabled={busy} placeholder="Whole blood (EDTA)" />
                   </label>
-                  <label className="uawide">Analytes — one per line: analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]
-                    <textarea rows={4} value={cAnalytes} onChange={ev => setCAnalytes(ev.target.value)} disabled={busy}
-                      placeholder={'Procalcitonin | ng/mL | 0.0–0.5 | 0 | 0.5 | | 2.0\n(critLow/critHigh optional — a value at or beyond one flags CRITICAL)'}
-                      style={{ fontFamily: 'inherit', fontSize: 11 }} />
-                  </label>
+                  <div className="uawide">
+                    <AnalyteRowsEditor rows={cRows} setRows={setCRows} disabled={busy} idPrefix="add" />
+                  </div>
                   <label className="uawide" style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                     <input type="checkbox" checked={cConfirm} onChange={ev => setCConfirm(ev.target.checked)} disabled={busy} style={{ width: 'auto' }} />
                     <span>I confirm these reference ranges and critical thresholds will drive automatic
@@ -347,7 +437,7 @@ export function LabCatalog() {
                 </div>
                 {formError && <div className="uaerr" role="alert">{formError}</div>}
                 <button className="uasubmit" type="submit"
-                  disabled={busy || !cConfirm || !cTestId.trim() || !cName.trim() || !cCategory.trim() || !cSpecimen.trim() || !cAnalytes.trim()}>
+                  disabled={busy || !cConfirm || !cTestId.trim() || !cName.trim() || !cCategory.trim() || !cSpecimen.trim() || cRows.every(rowIsBlank)}>
                   {busy ? 'Adding…' : 'Add to catalogue'}
                 </button>
               </form>
