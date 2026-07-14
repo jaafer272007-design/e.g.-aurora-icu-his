@@ -500,6 +500,12 @@ as ruled write-in areas — never fabricated. Generation metadata (the
   medication ordering (searchable formulary, dose/route/frequency,
   allergy/interaction checking against the patient's allergy field) is
   Screen 5 (Orders & Medication) scope, built after Nurse Workspace.
+  *[Superseded 2026-07-14, per the project owner: the drawer is REMOVED.
+  It was a toast-only demo that never created a real order (found and
+  recorded with the imaging-ordering build); the owner resolved the
+  recorded wire-or-retire open question as RETIRE. Real ordering is
+  Screen 5 only; the rounding row's "Orders →" navigates there. The
+  second half of this decision (full ordering is Screen 5 scope) stands.]*
 - An ID in a URL that doesn't resolve (patient, order, …) must render an
   explicit "not found" state with a route back (see Mission Control's
   Patient Not Found card) — never redirect to or display another record's

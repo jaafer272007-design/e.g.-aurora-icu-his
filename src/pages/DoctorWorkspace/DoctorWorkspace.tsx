@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './DoctorWorkspace.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
@@ -9,15 +9,14 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconFlask, IconNote, IconPencil, IconUsers } from '../../components/icons'
 import { News2Pill } from '../../components/News2Pill'
 import {
-  acknowledgeResult, getActionQueues, getConsults, getOrderSets, getPendingOrders,
+  acknowledgeResult, getActionQueues, getConsults, getPendingOrders,
   getResultInbox, getRoundingList, signOrder,
 } from '../../lib/api'
 import type {
-  ActionQueueItem, Consult, Order, OrderSetsResponse, QueueKey, ResultInboxItem,
+  ActionQueueItem, Consult, Order, QueueKey, ResultInboxItem,
   RoundingListResponse,
 } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
-import { OrderDrawer } from './OrderDrawer'
 
 const QUEUE_LABEL: Record<QueueKey, string> = {
   orders: 'Orders to Sign',
@@ -48,11 +47,7 @@ export function DoctorWorkspace() {
   const [results, setResults] = useState<(ResultInboxItem & { leaving?: boolean })[] | null>(null)
   const [queues, setQueues] = useState<Record<'notes', QueueRow[]> | null>(null)
   const [consults, setConsults] = useState<Consult[] | null>(null)
-  const [orderSets, setOrderSets] = useState<OrderSetsResponse | null>(null)
   const [qtab, setQtab] = useState<QueueKey>('orders')
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [drawerFor, setDrawerFor] = useState<string | undefined>()
-  const fabRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     getRoundingList().then(setRounding)
@@ -61,7 +56,6 @@ export function DoctorWorkspace() {
     getActionQueues().then(q =>
       setQueues({ notes: q.notes.map(i => ({ ...i, leaving: false })) }))
     getConsults().then(setConsults)
-    getOrderSets().then(setOrderSets)
   }, [])
 
   /* doctor RBAC: signing activates the order in the canonical store */
@@ -90,15 +84,6 @@ export function DoctorWorkspace() {
     setTimeout(() => {
       setQueues(prev => prev && ({ notes: prev.notes.filter(i => i.title !== title) }))
     }, 280)
-  }
-
-  const openDrawer = (forName?: string) => {
-    setDrawerFor(forName)
-    setDrawerOpen(true)
-  }
-  const closeDrawer = () => {
-    setDrawerOpen(false)
-    fabRef.current?.focus()
   }
 
   const queueCount = (k: QueueKey) =>
@@ -150,7 +135,13 @@ export function DoctorWorkspace() {
                       {/* real computed NEWS2 (early-warning) — replaces the
                           fabricated SOFA; display-only, no alerts */}
                       <News2Pill patientId={p.patientId} />
-                      <button className="orderbtn" onClick={e => { e.stopPropagation(); openDrawer(p.name) }}>+ Order</button>
+                      {/* REAL ordering only: this navigates to the canonical
+                          Orders & Meds screen for this patient. The former
+                          "+ Order" quick-action opened a toast-only demo
+                          drawer that never created an order — removed per
+                          the owner's decision (the recorded wire-or-retire
+                          open question, resolved: retire). */}
+                      <button className="orderbtn" onClick={e => { e.stopPropagation(); navigate(`/orders/${p.patientId}`) }}>Orders →</button>
                     </div>
                   </div>
                 ))}
@@ -221,18 +212,6 @@ export function DoctorWorkspace() {
         </main>
       </div>
 
-      <button ref={fabRef} className="fab" aria-label="New order" title="New order" onClick={() => openDrawer()}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#06121f" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
-      </button>
-
-      <OrderDrawer
-        open={drawerOpen}
-        patients={rounding?.patients ?? []}
-        orderSets={orderSets}
-        forName={drawerFor}
-        onClose={closeDrawer}
-        onSign={(t, pt) => { showToast('Order signed', `${t} order for ${pt}`, 2600); closeDrawer() }}
-      />
       <Toast state={toast} accent="green" />
     </div>
   )

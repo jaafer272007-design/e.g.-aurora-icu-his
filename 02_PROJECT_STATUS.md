@@ -10,7 +10,16 @@ bare-path fallback becomes remembered-if-in-this-screen's-list else the
 normal default — the URL route param REMAINS the source of truth (deep
 links/bookmarks/print links unchanged) and stale contexts fall back
 honestly (never a silently-substituted patient). 20/20 browser checks;
-UI-only). Prior: STANDARD NEWS2 v1 (built — the
+UI-only). Prior: the FAKE "+ ORDER" DRAWER
+REMOVAL (built — the owner resolved the recorded wire-or-retire open
+question as RETIRE: the Doctor Workspace's toast-only demo drawer + FAB are
+GONE (no control pretends to place an order without creating one); the
+rounding row's "Orders →" navigates to the canonical Orders & Meds screen
+instead; EVERY dashboard/statistics surface is preserved — the
+Administrator's /admin census/occupancy statistics verified intact and the
+admin remains correctly blocked from clinical ordering (orders.sign gates
+/workspace); the 01 lightweight-drawer locked decision superseded in place
+per the owner; 10/10 browser checks, UI-only). Prior: STANDARD NEWS2 v1 (built — the
 Clinical Scoring Engine's SECOND score, cleared once SOFA was clinically
 validated: all 7 NEWS2 parameters at the standard thresholds (RR, SpO₂
 Scale 1, air/supplemental O₂ from FiO₂, systolic BP, pulse, ACVPU,
@@ -3441,6 +3450,9 @@ nurse To-Implement queue; stated choice).
   form vocabulary (studies + detail + priority) and its study list
   source. Whether the drawer should be wired to the real create path (or
   removed) is recorded as an OPEN QUESTION for the owner.
+  *(RESOLVED 2026-07-14 by the owner: RETIRE. The toast-only drawer is
+  REMOVED — see "Fake '+ Order' drawer removed" below; real ordering is
+  Orders & Meds only, and the rounding row links there.)*
 - **FLAGGED FINDING 2 — imaging order→result linkage does not exist
   anywhere today.** `OrderId` lives on LAB result rows only (the Layer-4
   linkage matches on the catalogue `testId`); `ImagingStudyRow` has no
@@ -3818,6 +3830,48 @@ a second score needed NO engine change.
   and the roster wire CLEAN — 15 records, none carry sofa/ews, proving the
   `DropRosterSofaEws` migration applied on boot. No manual step needed.
 
+### Fake "+ Order" drawer removed (built) — dashboards keep their statistics
+The owner resolved the recorded wire-or-retire OPEN QUESTION (from the
+imaging-ordering build, which proved the Doctor Workspace quick-order
+drawer's "Sign & Submit" was TOAST-ONLY — it never created an order in any
+category): **RETIRE**. The misleading demo control is gone; every
+statistics/overview surface is fully preserved.
+- **Removed**: `OrderDrawer.tsx` (the Medication/Lab/Imaging/Nursing
+  quick-action panel), the floating "New order" FAB, the drawer state +
+  `getOrderSets` fetch in DoctorWorkspace, and the drawer-only CSS
+  (~33 rules). No control anywhere now pretends to place an order without
+  creating one.
+- **Replaced honestly**: the rounding row's "+ Order" quick-action became
+  **"Orders →"** — a plain navigation to the CANONICAL Orders & Meds
+  screen for that patient (`/orders/:patientId`), where real ordering
+  (formulary, structured infusion, imaging, safety, full lifecycle/audit)
+  already lives. No ordering capability was rebuilt or duplicated.
+- **Dashboards/statistics intact (the instruction's hard constraint)**:
+  the Administrator's statistics dashboard (`/admin` — census, occupancy,
+  beds available, ventilated, by-area breakdown, "No clinical actions")
+  is untouched and verified live; the Doctor Workspace keeps its KPIs,
+  rounding list (real NEWS2 pills), action queues and consults; the
+  BedOverview statistics are untouched. Note the drawer was never
+  admin-facing anyway — `/workspace` is gated on `orders.sign`, which the
+  office Administrator profile does not hold (verified live: the admin
+  gets the explicit Access Restricted state) — so the RBAC posture
+  (admin sees statistics, never clinical ordering) was already correct
+  and is now also free of any fake order control in the codebase.
+- **01 locked decision superseded in place** (attributed note): "the
+  quick-order drawer stays lightweight — do not expand it" → the drawer
+  is removed per the owner; the decision's second half (full ordering is
+  Screen 5 scope) stands. Comments in the imaging-ordering code that
+  referenced the drawer as the study-vocabulary peer were updated (the
+  vocabulary's source was always the Order Sets master data).
+- **Verification**: 10/10 real-browser checks — workspace intact (KPIs,
+  rounding, 3 action-queue tabs) with NO drawer/FAB/scrim/"+ Order" in
+  the DOM; "Orders →" lands on the real Orders & Meds for the patient; a
+  REAL Paracetamol order signed end-to-end there (ordering unaffected;
+  rerun friction was the duplicate-therapy safety gate correctly blocking
+  a repeat order — positive evidence); the Administrator reaches `/admin`
+  with all statistics rendering and no order control; the admin is
+  blocked from `/workspace` with the explicit Access Restricted state.
+  tsc + vite build clean. UI-only — no server change.
 ### Persistent patient context (built) — pick a patient once, sections follow
 Built from the recorded assessment (the MODERATE case: the shared
 `:patientId` route convention + the shared PatientRail already existed;
