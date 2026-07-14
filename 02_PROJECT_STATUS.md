@@ -1,6 +1,16 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-13 · current through the SHORT-VIEWPORT CLIPPING FIX
+**Last updated: 2026-07-14 · current through the LAB CATALOGUE ANALYTE-ROW
+FORM (built — hands-on-testing usability fix: the Add Test (and Edit)
+analytes are no longer one pipe-delimited textarea; each analyte is a row
+of separate labeled inputs (name · unit · ref low/high · range text with
+blank=auto · optional crit low/high) with add/remove-row controls — a
+panel is several rows, no separators anywhere. UI-ONLY: same AnalyteDef[]
+stored, flagging identical (verified: 0.3/0.7/2.0 flag
+normal/abnormal/CRITICAL against a UI-built definition), confirmation
+checkbox still gates Add and Save, all Option B behavior intact; 19/19
+real-browser checks; supersedes in part the Option B multi-analyte
+deferral per the owner's instruction). Prior: the SHORT-VIEWPORT CLIPPING FIX
 (built — owner's hands-on-testing bug: on short viewports, content
 exceeding the visible area was clipped unreachably (no scroll) because
 every screen's `.shell` has an IMPLICIT auto-sized row that any
@@ -3099,6 +3109,12 @@ new screen.
 - **Deferred (recorded)**: multi-analyte panel creation (single tests only —
   the validator's decision); backfilling critical thresholds onto the 7
   seeded panels; Option C LIS test-list import (already recorded).
+  *[SUPERSEDED IN PART (2026-07-14, the analyte-row form PR): the owner's
+  hands-on-testing instruction explicitly asks for "add another analyte"
+  rows where "a multi-analyte panel (like the seeded CBC) is several
+  rows" — multi-analyte creation is now a first-class UI flow (the server
+  always accepted 1–N analytes; the old pipe textarea took one per line).
+  The seeded-critical backfill and Option C remain deferred.]*
 - **Suite amendment (post-merge follow-up PR).** The post-merge dispatch of
   `deployed-labcatalog-e2e.yml` on merge commit 1583cf9 (run 29278695381)
   FAILED exactly where flagged pre-merge: both gates passed (environment
@@ -3264,6 +3280,45 @@ content on short ones.
   scrollable, Discharges below-fold unreachable, shell-row inflation on
   every swept screen) — the checks measure the bug, not the test.
   tsc + production build clean; no markup or behavior changes — CSS only.
+
+### Lab catalogue analyte-row form (built) — structured fields replace the pipe textarea
+Usability improvement from the owner's hands-on testing: the `/lab-catalog`
+Add Test form entered analytes as ONE pipe-delimited textarea
+(`analyte | unit | refRange | refLow | refHigh [| critLow | critHigh]`,
+one per line) — a consultant had to hand-type the `|` separators. Replaced
+with a structured ROW-BASED editor — each analyte is a bordered row of
+separate labeled inputs (Analyte name · Unit (blank if none) · Reference
+low/high · Range text (blank = auto "low–high", so typing the bounds
+alone is enough; the display string stays overridable because seeded
+styles like "4.0–11.0" are data, not derivable) · optional Critical
+low/high) with "+ Add another analyte" and a per-row Remove (fully-blank
+extra rows are ignored; validation errors NAME the row). A single-analyte
+test is one row; a multi-analyte panel (the seeded-CBC shape) is several
+rows — no `|` or `~` anywhere. The EDIT panel got the same editor (it used
+the identical pipe textarea; the instruction's "no separators anywhere"
+covers it), prefilled from the stored definitions.
+- **UI-ONLY, verified**: the same `AnalyteDef[]` is built and stored — no
+  data-model, endpoint, or flagging change; the confirmation checkbox
+  ("ranges/thresholds drive flagging for ALL patients") still gates Add
+  AND Save; all Option B behavior intact (Consultant + lab-tech
+  authority, audited amend-not-erase edits, delete-if-unused/
+  retire-if-used, added tests behave like seeded ones).
+- **Verification (real browser + live local server, 19/19 after one
+  test-script assertion fix — confirmed against live data)**: no textarea
+  remains; single-analyte test created from one row → stored def
+  byte-equal to the pipe path's (auto range "0–0.5"); documenting
+  0.3/0.7/2.0 against the UI-built definition flags
+  normal/abnormal/CRITICAL exactly as before; a 4-row entry with one row
+  removed stores a 3-analyte panel in row order with per-row crit
+  bounds/manual range text intact; edit panel prefills rows (no "|"
+  anywhere), Save gated on its own checkbox, and the saved change is
+  audited with the FULL prior definition ("…0–0.5 (crit —/2) → …0–0.6
+  (crit —/2)"); non-numeric bound rejected client-side naming the row;
+  Option B removal semantics re-verified (unused UI test true-deleted;
+  used one retired 200 / delete 409). tsc + production build clean.
+- Supersedes IN PART the Option B "multi-analyte panel creation deferred"
+  note (see that section) — panels are now a first-class creation flow
+  per the owner's instruction.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
