@@ -167,3 +167,12 @@
 .om .omlabhit b{color:var(--text)}
 .om .omlabmeta{color:var(--faint)}
 .om .omlabacts{display:flex;gap:6px}
+
+/* imaging ordering (hands-on-testing gap) — study chips mirroring the
+   dashboard drawer's quick-set buttons; the rest reuses the lab-order
+   row/hit styles */
+.om .omimgstudies{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+.om .omimgchip{font-size:11px;padding:7px 12px;border-radius:10px;color:var(--dim);
+ border:1px solid var(--stroke);transition:.15s;min-height:36px}
+.om .omimgchip:hover{color:var(--text);border-color:var(--stroke2)}
+.om .omimgchip.on{color:var(--text);border-color:rgba(167,139,250,.6);background:rgba(167,139,250,.12)}

@@ -1,7 +1,18 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through the LAB CATALOGUE ANALYTE-ROW
-FORM (built — hands-on-testing usability fix: the Add Test (and Edit)
+**Last updated: 2026-07-14 · current through IMAGING ORDERING ON ORDERS &
+MEDS (built — the hands-on-testing gap: `/orders` now has an Order Imaging
+card (study chips + indication/detail + urgency, Pending / Sign & order)
+placing REAL `category: 'Imaging'` orders through the same canonical
+create path as meds/labs, with full lifecycle/audit/encounter scoping
+verified live and RBAC matching med/lab ordering (nurse 403). TWO FLAGGED
+FINDINGS recorded in the section: (1) the dashboard "+ Order" drawer never
+created real orders — its Sign & Submit is toast-only, confirmed live;
+left unchanged per the locked lightweight-drawer decision, wiring-or-
+removing it is an OPEN QUESTION; (2) imaging order→result linkage does not
+exist anywhere — OrderId is lab-only; recorded as a gap needing a coded
+study identity, not forced. 12/12 browser checks. Prior: the LAB CATALOGUE
+ANALYTE-ROW FORM (built — hands-on-testing usability fix: the Add Test (and Edit)
 analytes are no longer one pipe-delimited textarea; each analyte is a row
 of separate labeled inputs (name · unit · ref low/high · range text with
 blank=auto · optional crit low/high) with add/remove-row controls — a
@@ -3319,6 +3330,62 @@ covers it), prefilled from the stored definitions.
 - Supersedes IN PART the Option B "multi-analyte panel creation deferred"
   note (see that section) — panels are now a first-class creation flow
   per the owner's instruction.
+
+### Imaging ordering on Orders & Meds (built) — the canonical create path, plus two flagged findings
+Hands-on-testing gap (doctor profile): the dashboard "+ Order" drawer
+offered Imaging but the CANONICAL ordering screen (`/orders`) offered only
+New Medication Order / Order Lab Test / Order Sets — a doctor at Orders &
+Meds could not order imaging. Built: an **Order Imaging** card beside the
+med/lab cards — study chips + free-text indication/detail + urgency, with
+Pending / Sign & order — placing a REAL `category: 'Imaging'` order
+through the same `createOrders → POST /api/icu/orders` path meds and labs
+use (Imaging was already a first-class category in the server's Order
+model: full pending→sign→active→discontinue lifecycle, audit history,
+encounter scoping — all verified live). The study vocabulary is read from
+the SAME `getOrderSets()` list the drawer renders, so the two entry
+points cannot drift. RBAC matches med/lab ordering exactly: the card
+renders only with `orders.create` and the server re-enforces (nurse 403
+verified). `requiresImplementation: true` follows the Lab/Nursing
+convention (a bedside study needs nursing coordination — lands on the
+nurse To-Implement queue; stated choice).
+- **FLAGGED FINDING 1 — the two entry points did NOT share a path,
+  because the dashboard path was never real.** The drawer's Sign & Submit
+  handler is `showToast(...); closeDrawer()` — a Stage-2-era demo
+  interaction that creates NOTHING in the order store (confirmed live:
+  order count unchanged after a drawer submission — it never did create
+  orders, for any category). The instruction's premise ("the dashboard
+  modal proves the imaging-order path exists and works") was a demo-UI
+  illusion. Per the instruction's flag-don't-force rule the drawer is
+  left UNCHANGED (also the 01 locked decision: the quick-order drawer
+  stays lightweight — and wiring its free-text MEDICATION tab to the real
+  path would collide with formulary-authority validation, a separate
+  decision for the owner). What was reused from the drawer: its imaging
+  form vocabulary (studies + detail + priority) and its study list
+  source. Whether the drawer should be wired to the real create path (or
+  removed) is recorded as an OPEN QUESTION for the owner.
+- **FLAGGED FINDING 2 — imaging order→result linkage does not exist
+  anywhere today.** `OrderId` lives on LAB result rows only (the Layer-4
+  linkage matches on the catalogue `testId`); `ImagingStudyRow` has no
+  OrderId and the imaging-result create has no fulfilment logic —
+  confirmed live: after an imaging result for the same patient, the
+  imaging order stays active and the study carries no orderId. So the
+  instruction's "order→result linkage works" holds for LABS (unchanged)
+  but CANNOT hold for imaging without server work — and there is no safe
+  join key (imaging orders are free-text study summaries; inventing a
+  fuzzy text match would be a fabricated linkage). RECORDED GAP: imaging
+  order→result linkage needs a coded study identity (the imaging
+  analogue of the lab catalogue / the coded-analyte-identity item) — a
+  future piece, deliberately not forced into this UI change.
+- **Verification (real browser + live local server, 12/12 after one
+  test-script modality fix — re-confirmed live)**: card present with the
+  drawer's exact study list; Sign & order creates a REAL active Imaging
+  order (summary "Portable CXR — ?consolidation, worsening hypoxia",
+  STAT, encounter-scoped, signed-by audit from the token) rendering in
+  the canonical order list; Pending → sign → discontinue-with-reason
+  lifecycle verified on a second order; nurse sees no card + API 403;
+  the dashboard drawer is byte-unchanged (same study list; still
+  toast-only — finding 1's live proof); linkage finding 2 confirmed
+  live. tsc + production build clean; UI-only diff (no server change).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
