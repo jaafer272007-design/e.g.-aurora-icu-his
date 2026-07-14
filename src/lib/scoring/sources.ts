@@ -154,6 +154,21 @@ export function numericObsSamples(obs: Observation[], typeCode: string, now: Dat
   return out
 }
 
+/** an enum observation type → string-valued timed samples (e.g. ACVPU) */
+export interface EnumSample {
+  value: string
+  timeLabel: string
+  minutesAgo: number
+}
+export function enumObsSamples(obs: Observation[], typeCode: string, now: Date): EnumSample[] {
+  const out: EnumSample[] = []
+  for (const o of obs) {
+    if (o.typeCode !== typeCode) continue
+    out.push({ value: effectiveObsValue(o).trim(), timeLabel: o.clinicalTime, minutesAgo: obsMinutesAgo(o.clinicalTime, now) })
+  }
+  return out
+}
+
 /** GCS Total samples — DERIVED from the `gcs` compound (eye+verbal+motor),
  *  the same computation the flowsheet does at read (gcs_total is a derived
  *  catalogue type the server never stores). A `gcs_total` observation, if

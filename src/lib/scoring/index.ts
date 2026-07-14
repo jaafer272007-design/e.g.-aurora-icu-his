@@ -10,9 +10,12 @@
 import type { LabDraw, Observation, Order } from '../api/types'
 import { aggregate, type ScoreResult } from './engine'
 import { SOFA_V1, SOFA_WINDOW_MINUTES, buildSofaContext, type SofaContext } from './sofa'
+import { NEWS2_V1, NEWS2_WINDOW_MINUTES, buildNews2Context, news2Band, type News2Band } from './news2'
 
 export type { ScoreResult, ScoredComponent, ScoreMode, Contributor } from './engine'
 export { SOFA_V1, SOFA_WINDOW_MINUTES } from './sofa'
+export { NEWS2_V1, NEWS2_WINDOW_MINUTES, news2Band } from './news2'
+export type { News2Band, News2BandKey } from './news2'
 
 export interface SofaInputs {
   labs: LabDraw[]
@@ -76,4 +79,34 @@ export function computeSofa(inputs: SofaInputs): SofaComputation {
   const deltaFromPrevious = complete.length >= 2 ? complete[0].result.total - complete[1].result.total : null
 
   return { worst, latest, weightKg: inputs.weightKg, trend, deltaFromPrevious }
+}
+
+/* ================= NEWS2 (standard) v1 — the second score ================= */
+
+export interface News2Inputs {
+  observations: Observation[]
+  now: Date
+}
+
+export interface News2Computation {
+  result: ScoreResult
+  /** the escalation band + colour (display only, D6). null when INCOMPLETE
+   *  (no band on a score that could not be computed) */
+  band: News2Band | null
+  /** the single-parameter-3 escalation trigger (§6) — a component scored 3 */
+  anyParamIs3: boolean
+  /** D2 — the patient is on respiratory support, so standard NEWS2 has
+   *  known limitations under mechanical ventilation (surfaced in the UI,
+   *  never silently adjusted) */
+  ventilated: boolean
+}
+
+/** compute standard NEWS2 v1 for a patient from the real observations. All
+ *  7 parameters required; any missing → INCOMPLETE (no band). */
+export function computeNews2(inputs: News2Inputs): News2Computation {
+  const ctx = buildNews2Context({ observations: inputs.observations, now: inputs.now }, 0, NEWS2_WINDOW_MINUTES)
+  const result = aggregate(NEWS2_V1, ctx, 'latest')
+  const anyParamIs3 = result.components.some(c => c.score === 3)
+  const band = result.complete ? news2Band(result.total, anyParamIs3) : null
+  return { result, band, anyParamIs3, ventilated: ctx.ventilated }
 }
