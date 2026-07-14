@@ -3796,6 +3796,17 @@ a second score needed NO engine change.
   later definitions; automated alerting workflows (v2); a dedicated
   oxygen-delivery observation; a real unit-level NEWS2 aggregate KPI (the
   retired "Avg SOFA" was not replaced with a fabricated one).
+- **Post-merge deploy record (PR #91 merged 2026-07-14 as `6a8b30d`)**:
+  Pages force-deploy run 29359613262 on main — deploy JOB all 13 steps
+  success (not skipped), the NEWS2 card + pills live. deployed-observations-
+  e2e run 29359042993 on main — all steps green INCLUDING the server
+  content gate (Render redeployed the merged server) AND the bedside
+  read-swap step that reads the roster projection (now without sofa/ews).
+  DIRECT staging confirmation (a one-off read check): `acvpu` present in the
+  live `staging` catalogue (`group 'neuro' · Consciousness (ACVPU) · enum
+  [Alert, Confusion, Voice, Pain, Unresponsive]`, seed-if-missing top-up),
+  and the roster wire CLEAN — 15 records, none carry sofa/ews, proving the
+  `DropRosterSofaEws` migration applied on boot. No manual step needed.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
