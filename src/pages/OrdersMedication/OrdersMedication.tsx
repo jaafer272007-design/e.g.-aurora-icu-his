@@ -10,7 +10,7 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconPencil, IconPill } from '../../components/icons'
 import {
   createOrders, discontinueOrder, getFormulary, getInteractionRules, getLabCatalog, getOrderSetDefs,
-  getPatientDetail, getPatientOrders, getPatients, getPendingOrders, modifyOrder, signOrder,
+  getOrderSets, getPatientDetail, getPatientOrders, getPatients, getPendingOrders, modifyOrder, signOrder,
 } from '../../lib/api'
 import type {
   FormularyDrug, InteractionRule, LabTest, MedicationDetails, NewOrderDraft, Order, OrderPriority,
@@ -21,6 +21,7 @@ import { OrderListCard } from './OrderListCard'
 import { NewOrderCard } from './NewOrderCard'
 import { OrderSetsCard } from './OrderSetsCard'
 import { LabOrderCard } from './LabOrderCard'
+import { ImagingOrderCard } from './ImagingOrderCard'
 import { DiscontinueDialog, ModifyDialog } from './OrderDialogs'
 
 
@@ -45,6 +46,11 @@ export function OrdersMedication() {
   const [labCatalog, setLabCatalog] = useState<LabTest[] | null>(null)
   const [rules, setRules] = useState<InteractionRule[]>([])
   const [setDefs, setSetDefs] = useState<OrderSetDef[]>([])
+  /* the imaging STUDY VOCABULARY — deliberately the same getOrderSets()
+     list the Doctor Workspace "+ Order" drawer renders (Portable CXR /
+     CT Abdomen-Pelvis / Bedside Echo), so the two entry points offer one
+     set of studies and can never drift apart */
+  const [imagingStudies, setImagingStudies] = useState<string[]>([])
   const [modifyId, setModifyId] = useState<string | null>(null)
   const [discontinueId, setDiscontinueId] = useState<string | null>(null)
 
@@ -54,6 +60,7 @@ export function OrdersMedication() {
     getLabCatalog().then(setLabCatalog)
     getInteractionRules().then(setRules)
     getOrderSetDefs().then(setSetDefs)
+    getOrderSets().then(s => setImagingStudies(s.Imaging ?? []))
   }, [])
 
   /* no patient in the URL → default to the first patient */
@@ -131,6 +138,26 @@ export function OrdersMedication() {
     createOrders([draft], session.name, sign, session.jobTitle).then(([o]) => {
       refresh()
       showToast(sign ? 'Lab order signed & active' : 'Lab order saved as pending', o?.summary ?? '')
+    })
+  }
+
+  /* imaging goes through the SAME canonical create path as meds and labs
+     (category 'Imaging' is first-class in the server's Order model —
+     full lifecycle + audit + encounter scoping). requiresImplementation
+     follows the Lab/Nursing convention: a bedside study needs nursing
+     coordination, so it lands on the nurse To-Implement queue. NOTE
+     (recorded in 02): imaging results carry NO order linkage today —
+     OrderId exists on lab results only — so unlike a lab order, an
+     imaging order is not auto-fulfilled by its study's result. */
+  const handleImagingOrder = (study: string, detail: string, priority: OrderPriority, sign: boolean) => {
+    const draft: NewOrderDraft = {
+      patientId, category: 'Imaging',
+      summary: detail ? `${study} — ${detail}` : study,
+      priority, requiresImplementation: true,
+    }
+    createOrders([draft], session.name, sign, session.jobTitle).then(([o]) => {
+      refresh()
+      showToast(sign ? 'Imaging order signed & active' : 'Imaging order saved as pending', o?.summary ?? '')
     })
   }
 
@@ -223,6 +250,9 @@ export function OrdersMedication() {
                 )}
                 {labCatalog && canPrescribe && (
                   <LabOrderCard catalog={labCatalog} onOrder={handleLabOrder} />
+                )}
+                {imagingStudies.length > 0 && canPrescribe && (
+                  <ImagingOrderCard studies={imagingStudies} onOrder={handleImagingOrder} />
                 )}
                 {formulary && canPrescribe && (
                   <OrderSetsCard
