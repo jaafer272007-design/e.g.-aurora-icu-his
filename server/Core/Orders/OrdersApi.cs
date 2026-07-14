@@ -160,16 +160,20 @@ static class OrdersApi
                 if (overridesByDraft.TryGetValue(draft, out var overridden))
                     history.Add(new(time, actor, "safety override",
                         $"{string.Join(" | ", overridden.Select(w => w.Message))} — justification: {req.OverrideJustification!.Trim()}"));
+                /* STRUCTURED INFUSION: the stored display dose is composed
+                   from the structured entry (validation already rejected a
+                   mismatching client dose) — single source, no desync */
+                var medication = draft.Medication is null ? null : OrderLogic.NormaliseMedication(draft.Medication);
                 List<AdminDto>? administrations = null;
                 if (req.Sign)
                 {
                     history.Add(new(time, actor, "signed", null));
-                    if (draft.Medication is not null) administrations = OrderLogic.GenerateAdministrations(draft.Medication);
+                    if (medication is not null) administrations = OrderLogic.GenerateAdministrations(medication);
                 }
                 var dto = new OrderDto(
                     OrderLogic.NextOrderId(), draft.PatientId!, enc.EncounterId, enc.BedId, pt.Name,
-                    draft.Category!, draft.Summary ?? OrderLogic.MedSummary(draft.Medication!),
-                    draft.Medication, draft.Priority!, req.Sign ? "active" : "pending",
+                    draft.Category!, draft.Summary ?? OrderLogic.MedSummary(medication!),
+                    medication, draft.Priority!, req.Sign ? "active" : "pending",
                     actor, time, draft.RequiresImplementation, administrations, history, null,
                     draft.TestId);
                 db.Orders.Add(OrderRow.FromDto(dto, OrderLogic.NextSeq()));
@@ -248,6 +252,23 @@ static class OrdersApi
                     $"drug '{inactiveDrug.Name}' ({inactiveDrug.DrugId}) is inactive in the formulary — it cannot be selected for a new order");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var before = JsonSerializer.Deserialize<MedicationDto>(row.MedicationJson, JsonOpts.Web)!;
+            /* STRUCTURED INFUSION desync guards (SHAPE, 400): on an order
+               that carries a structured dose, the display dose derives
+               from the structure — a dose-only change could silently
+               contradict it, and a frequency change away from
+               'continuous' would leave a continuous-infusion dose on a
+               non-continuous order. */
+            if (before.Infusion is not null && req.Changes.Dose is not null && req.Changes.Infusion is null)
+                return ApiError.BadRequest(
+                    $"order '{orderId}' carries a structured infusion dose — change the structured entry (infusion); the display dose derives from it");
+            if ((req.Changes.Infusion ?? before.Infusion) is not null
+                && req.Changes.Frequency is not null && req.Changes.Frequency != "continuous")
+                return ApiError.BadRequest(
+                    $"order '{orderId}' carries a structured infusion dose — its frequency is 'continuous' (an infusion runs continuously)");
+            if (req.Changes.Infusion is not null && req.Changes.Dose is not null
+                && req.Changes.Dose != OrderLogic.ComposeInfusionDose(req.Changes.Infusion))
+                return ApiError.BadRequest(
+                    $"changes.dose '{req.Changes.Dose}' does not match the structured infusion dose '{OrderLogic.ComposeInfusionDose(req.Changes.Infusion)}' — omit dose (it derives from the structured entry)");
             var (merged, diff) = OrderLogic.ApplyChanges(before, req.Changes);
             row.MedicationJson = JsonSerializer.Serialize(merged, JsonOpts.Web);
             row.Summary = OrderLogic.MedSummary(merged);

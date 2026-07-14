@@ -9,8 +9,9 @@ import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconPencil, IconPill } from '../../components/icons'
 import {
-  createOrders, discontinueOrder, getFormulary, getInteractionRules, getLabCatalog, getOrderSetDefs,
-  getOrderSets, getPatientDetail, getPatientOrders, getPatients, getPendingOrders, modifyOrder, signOrder,
+  createOrders, discontinueOrder, getEncounters, getFormulary, getInteractionRules, getLabCatalog,
+  getOrderSetDefs, getOrderSets, getPatientDetail, getPatientOrders, getPatients, getPendingOrders,
+  modifyOrder, signOrder,
 } from '../../lib/api'
 import type {
   FormularyDrug, InteractionRule, LabTest, MedicationDetails, NewOrderDraft, Order, OrderPriority,
@@ -51,6 +52,10 @@ export function OrdersMedication() {
      CT Abdomen-Pelvis / Bedside Echo), so the two entry points offer one
      set of studies and can never drift apart */
   const [imagingStudies, setImagingStudies] = useState<string[]>([])
+  /* the OPEN encounter's recorded weight (PR #83, encounter-scoped) —
+     drives the structured-infusion absolute-rate preview; undefined =
+     not recorded, handled honestly (no fabricated rate) */
+  const [weightKg, setWeightKg] = useState<number | undefined>(undefined)
   const [modifyId, setModifyId] = useState<string | null>(null)
   const [discontinueId, setDiscontinueId] = useState<string | null>(null)
 
@@ -76,6 +81,10 @@ export function OrdersMedication() {
   useEffect(() => {
     if (!patientId) return
     let stale = false
+    setWeightKg(undefined)
+    getEncounters({ patientId, status: 'open' })
+      .then(list => { if (!stale) setWeightKg(list[0]?.weightKg) })
+      .catch(() => {})
     setMissing(false)
     getPatientDetail(patientId).then(res => {
       if (stale) return
@@ -245,6 +254,7 @@ export function OrdersMedication() {
                     formulary={formulary}
                     rules={rules}
                     orders={orders}
+                    weightKg={weightKg}
                     onCreate={handleCreate}
                   />
                 )}

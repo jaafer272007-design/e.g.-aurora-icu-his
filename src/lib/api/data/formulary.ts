@@ -21,6 +21,58 @@ export const FORMULARY: FormularyDrug[] = [
     doseLimits: { max: '0.04 U/min' },
     frequencies: ['continuous'], prnCapable: false, active: true, allergyBlock: [], allergyWarn: [],
   },
+  /* Structured Infusion Ordering — the design's full vasopressor class
+     (adrenaline/dopamine/dobutamine/phenylephrine join the seeded
+     noradrenaline/vasopressin) plus propofol as the first Sedative
+     infusion. NOTE for durable environments (seed-if-empty): staging's
+     formulary won't pick these up from the seed — they are added there
+     once via the Pharmacist /formulary management screen (reference
+     data, the built Layer-4 path). */
+  {
+    drugId: 'adrenaline', name: 'Adrenaline', drugClass: 'Vasopressor',
+    doses: ['0.05 µg/kg/min', '0.1 µg/kg/min', '0.2 µg/kg/min', '0.5 µg/kg/min'],
+    brandNames: ['Epinephrine'], form: 'solution for infusion',
+    strengths: ['1 mg/mL (1:1000)'], defaultDose: '0.05 µg/kg/min',
+    doseLimits: { perKg: '1 µg/kg/min max' },
+    routes: ['IV infusion (central)'], frequencies: ['continuous'], prnCapable: false, active: true,
+    allergyBlock: [], allergyWarn: [],
+  },
+  {
+    drugId: 'dopamine', name: 'Dopamine', drugClass: 'Vasopressor',
+    doses: ['5 µg/kg/min', '10 µg/kg/min', '15 µg/kg/min'],
+    brandNames: ['Intropin'], form: 'solution for infusion',
+    strengths: ['200 mg/5 mL'], defaultDose: '5 µg/kg/min',
+    doseLimits: { perKg: '20 µg/kg/min max' },
+    routes: ['IV infusion (central)'], frequencies: ['continuous'], prnCapable: false, active: true,
+    allergyBlock: [], allergyWarn: [],
+  },
+  {
+    drugId: 'dobutamine', name: 'Dobutamine', drugClass: 'Vasopressor · inotrope',
+    doses: ['2.5 µg/kg/min', '5 µg/kg/min', '10 µg/kg/min'],
+    brandNames: ['Dobutrex'], form: 'solution for infusion',
+    strengths: ['250 mg/20 mL'], defaultDose: '5 µg/kg/min',
+    doseLimits: { perKg: '20 µg/kg/min max' },
+    routes: ['IV infusion (central)'], frequencies: ['continuous'], prnCapable: false, active: true,
+    allergyBlock: [], allergyWarn: [],
+  },
+  {
+    drugId: 'phenylephrine', name: 'Phenylephrine', drugClass: 'Vasopressor',
+    doses: ['0.5 µg/kg/min', '1 µg/kg/min', '2 µg/kg/min'],
+    brandNames: ['Neo-Synephrine'], form: 'solution for infusion',
+    strengths: ['10 mg/mL'], defaultDose: '0.5 µg/kg/min',
+    doseLimits: { perKg: '3 µg/kg/min max' },
+    routes: ['IV infusion (central)'], frequencies: ['continuous'], prnCapable: false, active: true,
+    allergyBlock: [], allergyWarn: [],
+  },
+  {
+    drugId: 'propofol', name: 'Propofol', drugClass: 'Sedative',
+    doses: ['25 µg/kg/min', '50 µg/kg/min', '1 mg/kg/hour', '2 mg/kg/hour'],
+    brandNames: ['Diprivan'], form: 'emulsion for infusion',
+    strengths: ['10 mg/mL (1%)'], defaultDose: '25 µg/kg/min',
+    doseLimits: { perKg: '4 mg/kg/hour max' },
+    routes: ['IV infusion'], frequencies: ['continuous'], prnCapable: false, active: true,
+    allergyBlock: [], allergyWarn: ['egg', 'soy'],
+  },
   {
     drugId: 'piperacillin-tazobactam', name: 'Piperacillin-Tazobactam', drugClass: 'Antibiotic · penicillin',
     doses: ['4.5 g', '2.25 g'], routes: ['IV over 30 min'], frequencies: ['q6h', 'q8h'],

@@ -2,9 +2,20 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card } from '../../components/Card'
 import { IconSearch } from '../../components/icons'
 import { checkMedicationSafety } from '../../lib/api/safety'
+import { absoluteRate, formatInfusionDose, formatNormalised, parseInfusionPreset } from '../../lib/infusion'
 import type {
-  FormularyDrug, InteractionRule, MedicationDetails, Order, OrderPriority,
+  FormularyDrug, InfusionDose, InteractionRule, MedicationDetails, Order, OrderPriority,
 } from '../../lib/api/types'
+
+/* STRUCTURED INFUSION ORDERING — drugs whose infusions are dosed in
+   UNITS (U/min, U/h: vasopressin, insulin, heparin) cannot be expressed
+   in the design's µg/mg-per-kg structure, so they keep the free-text/
+   preset dose path (FLAGGED open item — a units-based entry mode is a
+   recorded follow-up; SOFA's vasopressin band is any-dose, so presence
+   can still be read from drug identity). Every mass-dosed drug ordered
+   at frequency 'continuous' uses the structured form instead of free
+   text (the stated resolution of the design's open item 3). */
+const UNIT_DOSED_INFUSIONS = ['vasopressin', 'insulin-actrapid', 'heparin']
 
 interface NewOrderCardProps {
   patient: { patientId: string; name: string; allergies: string }
@@ -12,6 +23,9 @@ interface NewOrderCardProps {
   rules: InteractionRule[]
   /** the patient's current orders — active meds feed interaction checks */
   orders: Order[]
+  /** THIS encounter's recorded weight (PR #83) — drives the derived
+   *  absolute-rate preview; undefined = not recorded (handled honestly) */
+  weightKg?: number
   onCreate: (medication: MedicationDetails, priority: OrderPriority, sign: boolean, overrideNote?: string) => void
 }
 
@@ -19,7 +33,7 @@ interface NewOrderCardProps {
  *  duration/PRN fields and live allergy + interaction checking. Blocks on
  *  contraindication; warnings require an acknowledged clinical justification.
  *  Doctor RBAC only. */
-export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: NewOrderCardProps) {
+export function NewOrderCard({ patient, formulary, rules, orders, weightKg, onCreate }: NewOrderCardProps) {
   const [query, setQuery] = useState('')
   const [drug, setDrug] = useState<FormularyDrug | null>(null)
   const [dose, setDose] = useState('')
@@ -33,6 +47,10 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
   const [priority, setPriority] = useState<OrderPriority>('Routine')
   const [ack, setAck] = useState(false)
   const [justification, setJustification] = useState('')
+  /* structured infusion entry (value + µg/mg + per-kg fixed + min/hour) */
+  const [infValue, setInfValue] = useState('')
+  const [infUnit, setInfUnit] = useState<'mcg' | 'mg'>('mcg')
+  const [infTime, setInfTime] = useState<'min' | 'hour'>('min')
 
   /* reset the form when switching patients */
   useEffect(() => {
@@ -62,7 +80,26 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
     setPrnIndication('')
     setAck(false)
     setJustification('')
+    /* prefill the structured entry from the formulary default when it
+       parses as a kg-mass rate (e.g. "0.05 µg/kg/min") */
+    const preset = parseInfusionPreset(d.defaultDose ?? d.doses[0] ?? '')
+    setInfValue(preset ? String(preset.value) : '')
+    setInfUnit(preset?.massUnit ?? 'mcg')
+    setInfTime(preset?.timeBasis ?? 'min')
   }
+
+  /* the structured form REPLACES free-text dose whenever the selected
+     frequency is 'continuous' on a mass-dosed drug; everything else
+     (q6h antibiotics, PRN analgesia, unit-dosed infusions) is unchanged */
+  const infusionMode = !!drug && frequency === 'continuous' && !prn
+    && !UNIT_DOSED_INFUSIONS.includes(drug.drugId)
+  /* ≤ 4 decimals so the client-composed display string and the server's
+     composition are character-identical (neither side ever rounds) */
+  const infParsed = /^\d+(\.\d{1,4})?$/.test(infValue.trim()) ? Number(infValue.trim()) : NaN
+  const infOk = Number.isFinite(infParsed) && infParsed > 0 && infParsed <= 100000
+  const infusion: InfusionDose | null = infusionMode && infOk
+    ? { value: infParsed, massUnit: infUnit, timeBasis: infTime }
+    : null
 
   const issues = useMemo(
     () => (drug ? checkMedicationSafety(drug, patient.allergies, orders, rules) : []),
@@ -74,7 +111,8 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
   /* acknowledging the warnings is what gates ordering — the justification
      text is optional context, captured in the audit trail either way */
   const overrideOk = !needsOverride || ack
-  const fieldsOk = !!drug && !!dose && !!route && (prn ? !!prnIndication : !!frequency)
+  const fieldsOk = !!drug && !!route
+    && (infusionMode ? infOk : !!dose && (prn ? !!prnIndication : !!frequency))
   const canOrder = fieldsOk && !blocked && overrideOk
 
   const submit = (sign: boolean) => {
@@ -87,9 +125,15 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
       : undefined
     onCreate(
       {
-        drugId: drug.drugId, drug: drug.name, dose, route, frequency,
+        drugId: drug.drugId, drug: drug.name,
+        /* infusion mode: the display dose is the composition of the
+           structured entry (the server re-composes and enforces the
+           match); the structured entry itself is the canonical dose */
+        dose: infusion ? formatInfusionDose(infusion) : dose,
+        route, frequency,
         duration: duration.trim() || 'ongoing',
         prn, prnIndication: prn ? prnIndication : undefined,
+        ...(infusion ? { infusion } : {}),
       },
       priority, sign, warnNote,
     )
@@ -99,6 +143,7 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
   const disabledHint = !drug || canOrder ? null
     : blocked ? 'Ordering blocked — contraindicated for this patient.'
     : needsOverride && !ack ? 'Acknowledge the warnings above to enable ordering.'
+    : infusionMode ? 'Enter a numeric infusion dose (up to 4 decimals) to enable ordering.'
     : 'Complete dose, route and frequency (or PRN indication) to enable ordering.'
 
   return (
@@ -153,13 +198,61 @@ export function NewOrderCard({ patient, formulary, rules, orders, onCreate }: Ne
             </div>
           )}
 
-          <div className="omgrid2">
-            <div className="field">
-              <label htmlFor="noDose">Dose</label>
-              <select id="noDose" value={dose} onChange={e => setDose(e.target.value)}>
-                {drug.doses.map(d => <option key={d}>{d}</option>)}
-              </select>
+          {infusionMode && (
+            <div className="ominfusion" role="group" aria-label="Structured infusion dose">
+              <div className="ominfhead">Structured infusion dose <i>— weight-based (per kg), stored as entered</i></div>
+              <div className="ominfrow">
+                <input
+                  className="ominfval num" value={infValue} inputMode="decimal"
+                  onChange={e => setInfValue(e.target.value)}
+                  placeholder="0.3" aria-label="Infusion dose value (up to 4 decimals)"
+                />
+                <select value={infUnit} onChange={e => setInfUnit(e.target.value as 'mcg' | 'mg')} aria-label="Mass unit">
+                  <option value="mcg">µg</option>
+                  <option value="mg">mg</option>
+                </select>
+                <span className="ominfper">/ kg /</span>
+                <select value={infTime} onChange={e => setInfTime(e.target.value as 'min' | 'hour')} aria-label="Time basis">
+                  <option value="min">min</option>
+                  <option value="hour">hour</option>
+                </select>
+              </div>
+              {drug.doses.some(d => parseInfusionPreset(d)) && (
+                <div className="ominfpresets" role="group" aria-label="Formulary dose presets">
+                  {drug.doses.map(d => {
+                    const p = parseInfusionPreset(d)
+                    return p ? (
+                      <button key={d} type="button" className="ominfpreset num"
+                        onClick={() => { setInfValue(String(p.value)); setInfUnit(p.massUnit); setInfTime(p.timeBasis) }}>
+                        {d}
+                      </button>
+                    ) : null
+                  })}
+                </div>
+              )}
+              {infusion && (
+                <div className="ominfpreview">
+                  <b className="num">{formatInfusionDose(infusion)}</b>
+                  <span className="num"> · normalised {formatNormalised(infusion)}</span>
+                  {absoluteRate(infusion, weightKg) ? (
+                    <span className="num"> · ≈ {absoluteRate(infusion, weightKg)} at {weightKg} kg (encounter weight)</span>
+                  ) : (
+                    <span className="ominfnow"> · encounter weight not recorded — absolute rate unavailable (the per-kg dose stands; nothing fabricated)</span>
+                  )}
+                </div>
+              )}
             </div>
+          )}
+
+          <div className="omgrid2">
+            {!infusionMode && (
+              <div className="field">
+                <label htmlFor="noDose">Dose</label>
+                <select id="noDose" value={dose} onChange={e => setDose(e.target.value)}>
+                  {drug.doses.map(d => <option key={d}>{d}</option>)}
+                </select>
+              </div>
+            )}
             <div className="field">
               <label htmlFor="noRoute">Route</label>
               <select id="noRoute" value={route} onChange={e => setRoute(e.target.value)}>

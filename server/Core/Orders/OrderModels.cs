@@ -78,7 +78,29 @@ record OrderDto(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record MedicationDto(
     string DrugId, string Drug, string Dose, string Route, string Frequency,
-    string Duration, bool Prn, string? PrnIndication);
+    string Duration, bool Prn, string? PrnIndication,
+    /* STRUCTURED INFUSION ORDERING (the clinical validator's design):
+       ADDITIVE tail — an infusion order carries its dose STRUCTURED
+       (numeric value + mass unit + time basis; the weight basis is
+       always per kg by design) instead of only free text. Lives inside
+       MedicationJson (data, not schema — NO migration); null on every
+       non-infusion order and every pre-feature row, and WhenWritingNull
+       keeps those wire bytes unchanged. The free-text Dose field remains
+       the DISPLAY string and is COMPOSED from this entry server-side
+       (single source — the two can never desync). Normalisation to
+       µg/kg/min is DERIVED at read (client/scoring), never stored —
+       the entry stays faithful to what the physician ordered. */
+    InfusionDoseDto? Infusion = null);
+
+/* the structured infusion dose: e.g. {value:0.3, massUnit:"mcg",
+   timeBasis:"min"} = 0.3 µg/kg/min; {value:2, massUnit:"mg",
+   timeBasis:"hour"} = 2 mg/kg/hour. massUnit is ASCII "mcg"|"mg" on the
+   wire (rendered µg/mg); timeBasis "min"|"hour". Per-kg is implicit —
+   the design fixes the weight basis (rates use the encounter weight,
+   which the CLIENT resolves for display; the µg/kg/min value itself is
+   weight-relative so nothing is fabricated when weight is absent). */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record InfusionDoseDto(double Value, string MassUnit, string TimeBasis);
 
 record AdminDto(string AdminId, string ScheduledTime, string Status,
     string? DocumentedTime, string? DocumentedBy, string? Reason = null);
@@ -108,11 +130,17 @@ record CreateOrdersRequest(List<NewOrderDraftDto>? Drafts, bool Sign, string? No
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record MedicationChanges(
     string? DrugId, string? Drug, string? Dose, string? Route, string? Frequency,
-    string? Duration, bool? Prn, string? PrnIndication)
+    string? Duration, bool? Prn, string? PrnIndication,
+    /* structured-infusion change: when provided, the display Dose is
+       COMPOSED from it (a client-supplied dose on an infusion change is
+       rejected on mismatch; a dose-only change on an order that carries a
+       structured entry is rejected outright — the two can never desync) */
+    InfusionDoseDto? Infusion = null)
 {
     public bool HasAnyField =>
         DrugId is not null || Drug is not null || Dose is not null || Route is not null
-        || Frequency is not null || Duration is not null || Prn is not null || PrnIndication is not null;
+        || Frequency is not null || Duration is not null || Prn is not null || PrnIndication is not null
+        || Infusion is not null;
 }
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]

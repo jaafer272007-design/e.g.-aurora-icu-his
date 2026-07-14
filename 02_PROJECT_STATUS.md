@@ -1,7 +1,21 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through IMAGING ORDERING ON ORDERS &
-MEDS (built — the hands-on-testing gap: `/orders` now has an Order Imaging
+**Last updated: 2026-07-14 · current through STRUCTURED INFUSION ORDERING
+(built — the last SOFA cardiovascular data-source prerequisite: continuous
+mass-dosed infusions are ordered structured (numeric value + µg/mg +
+per-kg + per-min/hour, e.g. 0.3 µg/kg/min / 2 mg/kg/hour) instead of free
+text, stored FAITHFULLY as an additive nested object in MedicationJson (no
+migration) with the display dose COMPOSED server-side (desync-proof);
+normalisation to µg/kg/min derived at render (×1000 mg→µg, ÷60 hour→min:
+2 mg/kg/hour → 33.33); encounter weight (PR #83) drives the absolute-rate
+preview, honestly absent when unrecorded; full lifecycle/audit/safety on
+the shared Order machinery; physician RBAC unchanged; free-text stays for
+non-infusion meds AND unit-dosed infusions (vasopressin U/min — FLAGGED
+deviation/open item); formulary gains adrenaline/dopamine/dobutamine/
+phenylephrine/propofol (staging adds them via the Pharmacist path —
+seed-if-empty); 24/24 server matrix + 12/12 browser; deferred: live
+titration tracking, SOFA cardiovascular bands. Prior: IMAGING ORDERING ON
+ORDERS & MEDS (built — the hands-on-testing gap: `/orders` now has an Order Imaging
 card (study chips + indication/detail + urgency, Pending / Sign & order)
 placing REAL `category: 'Imaging'` orders through the same canonical
 create path as meds/labs, with full lifecycle/audit/encounter scoping
@@ -3386,6 +3400,85 @@ nurse To-Implement queue; stated choice).
   the dashboard drawer is byte-unchanged (same study list; still
   toast-only — finding 1's live proof); linkage finding 2 confirmed
   live. tsc + production build clean; UI-only diff (no server change).
+
+### Structured Infusion Ordering (built) — the last SOFA cardiovascular data-source prerequisite
+Built from the clinical validator's design
+(`docs/design/structured-infusion-ordering.md`, transcribed verbatim from
+the provided PDF): a structured "infusion" order mode in Orders & Meds —
+when a physician orders a continuous mass-dosed infusion, the free-text
+dose is replaced by **numeric value + µg/mg + per kg (fixed, the design's
+decision) + per min/hour**, so a dose is e.g. `0.3 µg/kg/min` or
+`2 mg/kg/hour`. The order is a proper canonical order (full
+pending→sign→active→discontinue lifecycle, audit, encounter scoping, the
+shared SAFETY machinery — a duplicate-therapy warn fired on the seeded
+noradrenaline during verification, proving the infusion path rides it).
+- **Model (design open item #1, resolved cleanly — NO migration)**:
+  `MedicationDto` gains an ADDITIVE nested `infusion` object
+  (`{value, massUnit:'mcg'|'mg', timeBasis:'min'|'hour'}`, per-kg
+  implicit) inside the existing `MedicationJson` column; WhenWritingNull
+  keeps every pre-feature order's wire bytes (verified: seeded ORD-2001
+  serves no `infusion` key). **The display `dose` string is COMPOSED
+  server-side from the structured entry** (single source): the client may
+  omit dose; a mismatching supplied dose is 400; a dose-only or
+  frequency-away-from-continuous modify on a structured order is 400 —
+  display and structure can never desync. Shape rules: structured dose
+  requires frequency `continuous`, never PRN; value/unit/basis
+  vocabulary validated (four-code 400s, Disallow binding on unknown
+  fields).
+- **Faithful + derived (design §2, formula stated)**: the entry is stored
+  AS ENTERED; normalisation to the common unit is DERIVED at render
+  (`src/lib/infusion.ts`): µg/kg/min = value ×1000 (if mg) ÷60 (if per
+  hour) — verified `2 mg/kg/hour → 33.33 µg/kg/min`. The order list shows
+  "⚗ structured infusion · <as entered> · normalised <µg/kg/min>";
+  nothing normalised is ever stored.
+- **Weight (PR #83)**: the form reads the OPEN encounter's recorded
+  weight and previews the derived absolute rate (`0.3 µg/kg/min ≈
+  24 µg/min at 80 kg`); when weight is absent it says so honestly — the
+  per-kg dose stands, no fabricated rate (both states verified in the
+  browser; SOFA's INCOMPLETE rule owns the scoring side later).
+- **Free-text vs structured (design open item #3, stated)**: structured
+  REPLACES free text exactly when the selected frequency is `continuous`
+  on a mass-dosed drug; every other medication order (q6h antibiotics,
+  PRN analgesia) is byte-unchanged. Formulary dose presets that parse as
+  kg-mass rates become one-tap chips; the default dose prefills.
+- **FLAGGED DEVIATION — vasopressin**: the design lists it among the
+  vasopressors, but its dosing is `U/min` — units are NOT representable
+  in the design's µg/mg structure. It keeps the free-text preset path
+  (verified unchanged), recorded as an OPEN ITEM (a units-based entry
+  mode is a small follow-up; SOFA's vasopressin band is any-dose, so
+  presence remains readable from drug identity). Insulin and heparin
+  infusions are unit-dosed too and stay free-text for the same reason.
+- **Formulary**: the design's remaining vasopressors (adrenaline,
+  dopamine, dobutamine, phenylephrine) + propofol (the first Sedative)
+  added to the mock store and the regenerated seed. NOTE
+  (seed-if-empty): STAGING's durable formulary does not re-seed — the
+  five drugs are added there once via the Pharmacist `/formulary`
+  management path (reference data; part of the post-merge routine).
+- **Modify**: an order carrying a structured dose is modified through the
+  SAME structured fields (ModifyDialog swaps the free-text dose input;
+  frequency locked); the audit diff carries the composed change
+  (`dose: 0.3 µg/kg/min → 0.5 µg/kg/min — <reason>`).
+- **RBAC**: unchanged physician ordering authority (orders.create/sign;
+  nurse 403 verified) — no new atom.
+- **Verification**: 24/24 server matrix (compose-on-create with dose
+  omitted; faithful storage both unit systems; mismatch/vocabulary/
+  bounds/frequency/PRN/Disallow 400s; nurse 403; structured modify with
+  audited diff + both desync guards; pending→sign→discontinue lifecycle;
+  seeded byte-parity; free-text paths incl. vasopressin unchanged) +
+  12/12 real-browser checks (structured form replaces the dose dropdown
+  for noradrenaline with preset chips + default prefill; honest
+  no-weight note then absolute rate after recording 80 kg via the
+  weight-capture path; signed order in the canonical list with the
+  structured line; propofol 2 mg/kg/hour normalising to 33.33; the
+  structured ModifyDialog; vasopressin + paracetamol paths unchanged).
+  tsc + vite build + server build clean.
+- **Deferred (recorded per the design §6)**: live titrated
+  infusion-rate tracking over time (explicitly NOT built — the
+  validator: SOFA reads the ORDERED dose, early-admission; continuous
+  rate-charting would be a separate observation-model addition); the
+  detailed SOFA cardiovascular scoring bands (which drug+dose → which
+  score — part of the deferred SOFA spec; this build provides the
+  structured, normalisable data those bands will read).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
