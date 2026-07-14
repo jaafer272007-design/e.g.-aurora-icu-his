@@ -149,6 +149,16 @@ static class ObservationCatalog
         // F6 (step-4 decision): EtCO₂ is chartable — standard for
         // ventilated patients; Compliance and SVV stay deferred.
         new("etco2", "ventilator", "EtCO₂", "mmHg", "numeric", 0, 100),
+        // Respiratory Support (SOFA Scoring Spec §1.1, validator option b):
+        // a manually-charted Yes/No flag — the REQUIRED condition for the
+        // Respiratory SOFA scores 3–4 (P/F < 200/100 caps at 2 without it).
+        // Deliberately a charted observation, NOT auto-inferred from vent
+        // settings (a future Device Adapter can supply it without changing
+        // SOFA). Enum so it extends to a support-type later. Appended as
+        // data — no schema change; seed-if-missing tops up existing
+        // deployments (incl. staging) on next boot.
+        new("resp_support", "ventilator", "Respiratory Support", "", "enum",
+            Values: ["Yes", "No"]),
     ];
 
     public static void Seed(AuroraDb db)

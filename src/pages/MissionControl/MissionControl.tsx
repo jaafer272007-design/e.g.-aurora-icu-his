@@ -19,6 +19,7 @@ import { DigitalTwin } from './DigitalTwin'
 import { AiPanel } from './AiPanel'
 import { LabsCard } from './LabsCard'
 import { WeightHeightCard } from './WeightHeightCard'
+import { SofaCard } from './SofaCard'
 
 type Filter = 'all' | 'vent' | 'pressor' | 'crrt' | 'ecmo' | 'iso' | 'alerts'
 const FILTERS: { key: Filter; label: string }[] = [
@@ -216,6 +217,12 @@ export function MissionControl() {
               the REAL identity endpoint; renders nothing in pure mock mode
               (no mock store behind this domain, nothing fabricated) */}
           {detail && <WeightHeightCard patientId={patientId} />}
+
+          {/* Classic SOFA v1 — real computed organ-dysfunction score (the
+              Clinical Scoring Engine's first score), computed at render from
+              the canonical reads; the honest replacement for the fabricated
+              bedside SOFA. Decision-support pending clinical validation. */}
+          {detail && <SofaCard patientId={patientId} />}
 
           {detail && (
             <Card id="vent" icon={<IconVent size={15} stroke="var(--blue)" />} title="Ventilator"
