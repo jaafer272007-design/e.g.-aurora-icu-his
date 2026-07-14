@@ -47,10 +47,10 @@ export function OrdersMedication() {
   const [labCatalog, setLabCatalog] = useState<LabTest[] | null>(null)
   const [rules, setRules] = useState<InteractionRule[]>([])
   const [setDefs, setSetDefs] = useState<OrderSetDef[]>([])
-  /* the imaging STUDY VOCABULARY — deliberately the same getOrderSets()
-     list the Doctor Workspace "+ Order" drawer renders (Portable CXR /
-     CT Abdomen-Pelvis / Bedside Echo), so the two entry points offer one
-     set of studies and can never drift apart */
+  /* the imaging STUDY VOCABULARY — the getOrderSets() Order Sets master
+     data (Portable CXR / CT Abdomen-Pelvis / Bedside Echo). The Doctor
+     Workspace demo drawer that once rendered the same list is retired;
+     this canonical screen is the imaging entry point. */
   const [imagingStudies, setImagingStudies] = useState<string[]>([])
   /* the OPEN encounter's recorded weight (PR #83, encounter-scoped) —
      drives the structured-infusion absolute-rate preview; undefined =
