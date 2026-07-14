@@ -1,6 +1,25 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through CLASSIC SOFA v1 (built — the
+**Last updated: 2026-07-14 · current through STANDARD NEWS2 v1 (built — the
+Clinical Scoring Engine's SECOND score, cleared once SOFA was clinically
+validated: all 7 NEWS2 parameters at the standard thresholds (RR, SpO₂
+Scale 1, air/supplemental O₂ from FiO₂, systolic BP, pulse, ACVPU,
+temperature; each 0–3, total 0–20) on the UNCHANGED generic engine —
+confirming a second score needs no engine change. Consciousness reads a NEW
+standalone `acvpu` observation DIRECTLY (never derived from GCS; AVPU
+missing → INCOMPLETE even with GCS present); any parameter missing →
+INCOMPLETE, never 0, never a stale value beyond the 24 h window; escalation
+bands + standard colours are DISPLAY-ONLY with the single-parameter-3
+trigger and NO automated alerts (v1); ventilated-patient limitation
+documented (D2), not invented; computed-at-render. Shown on Bed Board +
+Mission Control + Print from ONE engine. THE FABRICATED SOFA/EWS TILES ARE
+RETIRED everywhere (server columns via migration DropRosterSofaEws, wire,
+seed, mocks, every render site + the "Avg SOFA" KPI) — every fabricated
+number replaced by a real score or honest "Incomplete", verified by source
+sweep + live; the F8 drift is CLOSED. 74/74 headless + 21/21 browser
+checks. Decision-support — clinical validation before care use is the
+outstanding gate (as with SOFA). SpO₂ Scale 2, ICU-EWS v2 and alerting
+workflows deferred. Prior: CLASSIC SOFA v1 (built — the
 Clinical Scoring Engine's FIRST real score, filling the deferred §4 of the
 engine design now that every data source is built: a GENERIC engine
 (`src/lib/scoring/`) with SOFA as a score DEFINITION, all 6 organ
@@ -3654,7 +3673,9 @@ real score and the honest replacement for the fabricated bedside SOFA
   strategy (each tile would compute SOFA from four reads per patient). The
   F8 drift entry stands until that follow-up; this build delivers the real
   bedside severity score at the patient level without forcing a
-  cross-cutting wire-shape change.
+  cross-cutting wire-shape change. *(DONE 2026-07-14 with the NEWS2 v1
+  build — the fabricated roster/bed/print/KPI/seed/server SOFA+EWS integers
+  are all retired; F8 is now CLOSED. See "Standard NEWS2 v1 (built)".)*
 - **Deferred (recorded, spec §4)**: Modified SOFA and other scores (qSOFA,
   APACHE II, NEWS2, SAPS II) as separate definitions; the vasopressin/
   phenylephrine mapping (modified only); auto-detection of respiratory
@@ -3680,6 +3701,101 @@ real score and the honest replacement for the fabricated bedside SOFA
   the live `staging` catalogue serves `resp_support · group 'ventilator' ·
   Respiratory Support · enum ['Yes','No']` (53 types total) — no manual
   seeding step was needed (unlike the seed-if-empty formulary).
+
+### Standard NEWS2 v1 (built) — the Clinical Scoring Engine's SECOND score
+Built from the validator's EWS/NEWS2 v1 spec
+(`docs/design/ews-news2-specification.md`, transcribed verbatim from the
+provided `EWS_NEWS2_SPECIFICATION.md`) — the engine's second score, cleared
+to build because SOFA v1 was clinically validated (the spec's own
+sequencing gate). Standard NEWS2, faithful to the validated instrument (no
+home-made rules), on the UNCHANGED generic engine — confirming open item:
+a second score needed NO engine change.
+- **The 7 parameters (standard thresholds, spec §2)**: Respiration rate,
+  SpO₂ (Scale 1), air/supplemental O₂, systolic BP, pulse, consciousness
+  (ACVPU), temperature — each 0–3, total 0–20. `src/lib/scoring/news2.ts`
+  is the definition; `computeNews2` in `index.ts`.
+- **AVPU/ACVPU — new standalone observation (§3 / D3)**: `acvpu` (enum
+  Alert/Confusion/Voice/Pain/Unresponsive, neuro group) appended to the
+  catalogue (append-only data, seed-if-missing). NEWS2 reads it DIRECTLY:
+  Alert → 0, any other → 3. It is NEVER derived from GCS and GCS is never
+  derived from it (both stand independently — GCS for ICU/SOFA). **AVPU
+  missing → NEWS2 INCOMPLETE even when GCS is present** (verified live: GCS
+  charted, ACVPU absent → still Incomplete, naming ACVPU).
+- **DECISIONS STATED (spec open items)**: (1) authoritative source for
+  "supplemental oxygen" = the **FiO₂ observation** (FiO₂ > 21 % =
+  supplemental → 2; ≤ 21 % = room air → 0; not charted → the parameter is
+  MISSING, never assumed air). resp_support (ventilatory support) is a
+  distinct concept and deliberately NOT used. LIMITATION flagged: a ward
+  patient on nasal-cannula O₂ needs FiO₂ charted; a dedicated
+  oxygen-delivery observation is a clean future addition. (2) Recency
+  window = **24 h**, aligned with the engine's existing observation
+  windowing, STATED — with a flag that NEWS2 clinically reflects the
+  current observation set and a shorter window is a likely validator
+  refinement. Beyond the window → the parameter is missing (no stale
+  values, verified).
+- **Completeness → INCOMPLETE (§4, mirrors SOFA P1)**: all 7 required; any
+  missing → the parameter is "ND", the total is not computed as a
+  falsely-complete number, and the UI shows "NEWS2: Incomplete" naming the
+  missing parameter(s). Never 0 for missing, never a stale value.
+- **Escalation bands + colours — DISPLAY ONLY (§6, D6)**: 0/1–4 low,
+  single-parameter-3 → low–medium (urgent review), 5–6 medium, ≥7 high,
+  standard NEWS2 colours. **NO notifications / pop-ups / paging in v1**
+  (alerting workflows are v2) — verified live that no alert/toast/popup
+  fires. The single-parameter-3 trigger is surfaced.
+- **Ventilated patients (D2)**: NEWS2 is computed UNMODIFIED; where
+  mechanical ventilation makes elements unreliable the UI documents the
+  limitation (an amber panel on the card) — no invented rules. ICU-EWS v2
+  is the future separate definition.
+- **Computed-at-render, never stored (§5)**: recomputed from the real
+  observations; correcting an observation flows straight through (verified
+  live: correcting SBP 95 → 80 moved the SBP parameter 2 → 3 and the total
+  17 → 18).
+- **Display on Bed Board/Roster + Mission Control + Printing from ONE
+  engine (D5)**: a real NEWS2 card on Mission Control (next to the SOFA
+  card); a compact real-NEWS2 pill (`News2Pill` + `useNews2`) on the bed
+  board and the doctor-workspace rounding list; and the two print templates
+  (Admission Note, Daily Progress) print REAL computed SOFA + NEWS2 (or
+  "Incomplete …") via `buildPrintScores` in the print selectors. All
+  decision-support; the card carries the "no automated alerts · requires
+  clinical validation before use in care" banner (P7).
+- **THE FABRICATED SOFA/EWS TILES ARE RETIRED (the recorded follow-up, now
+  done)**: the demo `sofa`/`ews` integers are GONE from every surface —
+  the server `PatientRow.Sofa/Ews` columns (migration `DropRosterSofaEws`:
+  Up drops both, Down re-adds), the `RosterRecordDto` wire fields +
+  FromDto/ComposeDto, `roster-seed.json`, the `roster.ts` mock interface +
+  15 seed records, the `beds.ts`/`bedboard.ts`/`workspace.ts` mappers, the
+  `BedPatient`/`RosterRecordDto`/`RoundingPatient` types, the BedCard
+  SOFA/EWS chips, the DoctorWorkspace SOFA, the BedOverview "Avg SOFA" KPI,
+  and the two print templates' fabricated rows. Every fabricated score
+  number is replaced by a real score OR an honest "Incomplete" — verified
+  by a full source sweep (only comments + the real engine remain) and live
+  (bed board shows NEWS2 pills / honest "Incomplete", no SOFA/EWS chips, no
+  "Avg SOFA"). **Division of labour**: NEWS2 is the bedside/list
+  early-warning score; SOFA is the patient-page organ-dysfunction score
+  (not a list glance) — stated, not a silent drop. The F8 drift entry is
+  now CLOSED.
+- **EXPLICIT EXCLUSION (flagged)**: the AI risk domain's SIMULATED
+  narrative strings ("SOFA ↑2 in 24 h" in `ai.ts`/`ai-seed.json`, Screen 8)
+  are advisory text in a wholesale-SIMULATED domain, NOT roster/bed/print/
+  KPI score tiles — deliberately out of this build's scope; de-simulating
+  the AI domain is its own future work.
+- **Verification**: 74/74 headless boundary checks (every parameter at its
+  thresholds; O₂ via FiO₂; the single-parameter-3 trigger + all bands +
+  colours; INCOMPLETE when any parameter missing incl. AVPU-missing-with-
+  GCS; no stale-value use; amend-not-erase; ventilated flag) + 21/21
+  real-browser checks (the card at 17/20 HIGH with the trigger and all 7
+  params; the INCOMPLETE/ND state; computed-not-stored correction; the
+  ventilated limitation; the decision-support/no-alerts banner; the bed
+  board with real pills and zero fabricated chips; no alert fires). tsc +
+  vite + server build clean.
+- **OUTSTANDING GATE (P7)**: standard NEWS2 v1 ships DECISION-SUPPORT ONLY
+  with the banner; NOT cleared to inform care until the validator validates
+  the computed scores (the same gate SOFA carried).
+- **Deferred (spec §8)**: ICU-EWS v2 (ventilated-patient adaptations) and
+  SpO₂ Scale 2 (COPD/hypercapnic — needs a per-patient flag) as separate
+  later definitions; automated alerting workflows (v2); a dedicated
+  oxygen-delivery observation; a real unit-level NEWS2 aggregate KPI (the
+  retired "Avg SOFA" was not replaced with a fabricated one).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

@@ -20,6 +20,7 @@ import { AiPanel } from './AiPanel'
 import { LabsCard } from './LabsCard'
 import { WeightHeightCard } from './WeightHeightCard'
 import { SofaCard } from './SofaCard'
+import { News2Card } from './News2Card'
 
 type Filter = 'all' | 'vent' | 'pressor' | 'crrt' | 'ecmo' | 'iso' | 'alerts'
 const FILTERS: { key: Filter; label: string }[] = [
@@ -223,6 +224,11 @@ export function MissionControl() {
               the canonical reads; the honest replacement for the fabricated
               bedside SOFA. Decision-support pending clinical validation. */}
           {detail && <SofaCard patientId={patientId} />}
+
+          {/* Standard NEWS2 v1 — the engine's second real score, the honest
+              replacement for the fabricated bedside/roster EWS. Display-only
+              band/colour, no automated alerts. Decision-support. */}
+          {detail && <News2Card patientId={patientId} />}
 
           {detail && (
             <Card id="vent" icon={<IconVent size={15} stroke="var(--blue)" />} title="Ventilator"

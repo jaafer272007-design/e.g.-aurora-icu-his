@@ -18,8 +18,6 @@
     "isolation": false,
     "rhythm": "Sinus Tach",
     "severity": "crit",
-    "sofa": 11,
-    "ews": 9,
     "bedsideVitals": {
       "hr": 118,
       "map": 64,
@@ -82,8 +80,6 @@
     "isolation": false,
     "rhythm": "Sinus",
     "severity": "crit",
-    "sofa": 12,
-    "ews": 8,
     "bedsideVitals": {
       "hr": 96,
       "map": 76,
@@ -145,8 +141,6 @@
     "isolation": true,
     "rhythm": "Sinus",
     "severity": "high",
-    "sofa": 7,
-    "ews": 5,
     "bedsideVitals": {
       "hr": 64,
       "map": 96,
@@ -208,8 +202,6 @@
     "isolation": false,
     "rhythm": "AFib",
     "severity": "high",
-    "sofa": 8,
-    "ews": 4,
     "bedsideVitals": {
       "hr": 88,
       "map": 77,
@@ -271,8 +263,6 @@
     "isolation": false,
     "rhythm": "Paced",
     "severity": "high",
-    "sofa": 6,
-    "ews": 4,
     "bedsideVitals": {
       "hr": 90,
       "map": 71,
@@ -332,8 +322,6 @@
     "isolation": false,
     "rhythm": "Sinus",
     "severity": "stable",
-    "sofa": 2,
-    "ews": 2,
     "bedsideVitals": {
       "hr": 98,
       "map": 86,
@@ -395,8 +383,6 @@
     "isolation": true,
     "rhythm": "AFib RVR",
     "severity": "crit",
-    "sofa": 9,
-    "ews": 7,
     "bedsideVitals": {
       "hr": 112,
       "map": 69,
@@ -456,8 +442,6 @@
     "isolation": false,
     "rhythm": "Sinus",
     "severity": "high",
-    "sofa": 4,
-    "ews": 3,
     "bedsideVitals": {
       "hr": 104,
       "map": 77,
@@ -519,8 +503,6 @@
     "isolation": false,
     "rhythm": "Sinus Tach",
     "severity": "crit",
-    "sofa": 10,
-    "ews": 8,
     "bedsideVitals": {
       "hr": 108,
       "map": 66,
@@ -580,8 +562,6 @@
     "isolation": false,
     "rhythm": "Sinus",
     "severity": "stable",
-    "sofa": 3,
-    "ews": 2,
     "bedsideVitals": {
       "hr": 92,
       "map": 80,
@@ -641,8 +621,6 @@
     "isolation": false,
     "rhythm": "Sinus",
     "severity": "high",
-    "sofa": 5,
-    "ews": 5,
     "bedsideVitals": {
       "hr": 96,
       "map": 82,
@@ -705,8 +683,6 @@
     "isolation": false,
     "rhythm": "Sinus Tach",
     "severity": "crit",
-    "sofa": 10,
-    "ews": 7,
     "bedsideVitals": {
       "hr": 114,
       "map": 68,
@@ -766,8 +742,6 @@
     "isolation": false,
     "rhythm": "Sinus",
     "severity": "stable",
-    "sofa": 3,
-    "ews": 2,
     "bedsideVitals": {
       "hr": 78,
       "map": 88,
@@ -827,8 +801,6 @@
     "isolation": false,
     "rhythm": "Sinus Tach",
     "severity": "high",
-    "sofa": 6,
-    "ews": 5,
     "bedsideVitals": {
       "hr": 102,
       "map": 74,

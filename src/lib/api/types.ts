@@ -44,8 +44,6 @@ export interface BedPatient {
   flags: SupportFlag[]
   isolation: boolean
   codeStatus: string
-  sofa: number
-  ews: number
   vitals: BedCardVitals
   alert: BedAlert
   attending: string
@@ -116,8 +114,6 @@ export interface RosterRecordDto {
   rhythm: string
   isolation: boolean
   severity: Severity
-  sofa: number
-  ews: number
   flags: SupportFlag[]
   bedsideVitals: BedCardVitals
   bedAlert: BedAlert
@@ -309,7 +305,6 @@ export interface RoundingPatient {
   name: string
   diagnosis: string
   flags: SupportFlag[]
-  sofa: number
   severity: Severity
 }
 

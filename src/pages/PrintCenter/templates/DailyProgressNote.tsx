@@ -7,7 +7,7 @@ import type { DailyProgressData } from '../types'
  *  Observation model and are not fabricated), active medications, latest
  *  labs per panel, and the recent charted events. */
 export function DailyProgressNote({ data }: { data: DailyProgressData }) {
-  const { context, vitals, activeProblems, ventilation, activeMeds, latestLabs, recentEvents } = data
+  const { context, vitals, scores, activeProblems, ventilation, activeMeds, latestLabs, recentEvents } = data
   const mark = context.hasChartedTimes ? ' †' : ''
   return (
     <>
@@ -45,8 +45,8 @@ export function DailyProgressNote({ data }: { data: DailyProgressData }) {
             ['RR', pv(vitals.monitor.rr, '/min')],
             ['Temp', pv(vitals.bedside.temp, '°C')],
             ['Urine output', pv(vitals.bedside.uo, 'mL')],
-            ['SOFA', vitals.sofa],
-            ['EWS', vitals.ews],
+            ['SOFA', scores.sofa],
+            ['NEWS2', scores.news2],
           ]} />
         ) : (
           <p className="pd-empty">No bedside snapshot — the patient is not on the active roster.</p>

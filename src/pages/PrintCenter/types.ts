@@ -65,10 +65,19 @@ export interface PrintVitals {
   bedside: BedCardVitals
   monitor: MonitorVitals
   rhythm: string
-  sofa: number
-  ews: number
   flags: SupportFlag[]
   organs: Record<OrganName, OrganStatus>
+}
+
+/** REAL computed clinical scores for a printed document — from the
+ *  Clinical Scoring Engine (SOFA + NEWS2), never the retired fabricated
+ *  roster integers. Each is a display string: a computed value, or
+ *  "Incomplete …", or "—" when the observation source is unavailable —
+ *  never a fabricated number. Decision-support (clinical validation
+ *  required before care use). */
+export interface PrintScores {
+  sofa: string
+  news2: string
 }
 
 /** One medication line, rendered ONLY from the persisted order. */
@@ -93,6 +102,8 @@ export interface PrintMedLine {
 export interface AdmissionNoteData {
   context: PrintContext
   vitals: PrintVitals | null
+  /** real computed SOFA + NEWS2 (Clinical Scoring Engine) */
+  scores: PrintScores
   medicationOrders: PrintMedLine[]
   /** Lab / Imaging ORDERS on the encounter (investigations requested) */
   investigations: Order[]
@@ -101,6 +112,8 @@ export interface AdmissionNoteData {
 export interface DailyProgressData {
   context: PrintContext
   vitals: PrintVitals | null
+  /** real computed SOFA + NEWS2 (Clinical Scoring Engine) */
+  scores: PrintScores
   activeProblems: string[]
   /** null when the patient is not flagged ventilated; spo2/rr are the
    *  latest charted observations — null = not charted (§12 step 4) */

@@ -6,12 +6,13 @@ import type {
   Encounter, LabDraw, Observation, ObservationType, Order, PatientIdentity, RosterRecordDto,
 } from '../../lib/api/types'
 import { dayOffsetOf } from '../../lib/time'
+import { computeNews2, computeSofa } from '../../lib/scoring'
 import type {
   ActiveOrdersData, AdmissionNoteData, ConsultReportData, DailyProgressData, DischargeSummaryData,
   FaceSheetData, FlowsheetColumn, FlowsheetData, FlowsheetRow, FlowsheetSection,
   ImagingReportData, LabReportData, MarCell, MarMedRow, MarSheetData, MedicationOrdersData,
   PrintContext, PrintEncounterInfo, PrintMedLine, PrintOrderLine, PrintPatientIdentity,
-  PrintVitals, SbarData, TransferSummaryData, VentDeviceData, VentSnapshotLine,
+  PrintScores, PrintVitals, SbarData, TransferSummaryData, VentDeviceData, VentSnapshotLine,
 } from './types'
 
 /* ==================== Print Center selectors ====================
@@ -135,7 +136,31 @@ export async function resolveContext(patientId: string, preferredEncounterId?: s
 function toVitals(r: RosterRecordDto): PrintVitals {
   return {
     bedside: r.bedsideVitals, monitor: r.monitorVitals, rhythm: r.rhythm,
-    sofa: r.sofa, ews: r.ews, flags: r.flags, organs: r.organs,
+    flags: r.flags, organs: r.organs,
+  }
+}
+
+/** REAL computed SOFA + NEWS2 for a printed document (D5 — printing reads
+ *  the SAME scoring engine as the screens). Display strings only: a
+ *  computed value, "Incomplete …", or "—" when the observation source is
+ *  unreachable — never the retired fabricated roster integers. */
+async function buildPrintScores(patientId: string, encounter: Encounter | null): Promise<PrintScores> {
+  const [obs, draws, orders] = await Promise.all([
+    getObservations(patientId, encounter?.encounterId),
+    getLabDraws(patientId),
+    getPatientOrders(patientId),
+  ])
+  const now = new Date()
+  if (obs === null) return { sofa: '— (observation data unavailable)', news2: '— (observation data unavailable)' }
+  const sofa = computeSofa({ labs: draws, observations: obs, orders, weightKg: encounter?.weightKg ?? null, now })
+  const news2 = computeNews2({ observations: obs, now })
+  return {
+    sofa: sofa.worst.complete
+      ? `${sofa.worst.total} / 24 (worst 24 h)`
+      : `Incomplete — ${sofa.worst.computedCount}/6 systems scored`,
+    news2: news2.result.complete
+      ? `${news2.result.total} / 20 · ${news2.band!.label}`
+      : `Incomplete — ${news2.result.computedCount}/7 parameters`,
   }
 }
 
@@ -169,6 +194,7 @@ export async function buildAdmissionNote(patientId: string, encounterId?: string
   return {
     context: rc.context,
     vitals: rc.roster ? toVitals(rc.roster) : null,
+    scores: await buildPrintScores(patientId, rc.encounter),
     medicationOrders: medOrders(rc.orders).map(toMedLine),
     investigations: rc.orders.filter(o => o.category === 'Lab' || o.category === 'Imaging'),
   }
@@ -197,6 +223,7 @@ export async function buildDailyProgress(patientId: string, encounterId?: string
   return {
     context: rc.context,
     vitals: r ? toVitals(r) : null,
+    scores: await buildPrintScores(patientId, rc.encounter),
     activeProblems: problems,
     ventilation: r
       ? { flagged: r.flags.includes('vent'), rhythm: r.rhythm, spo2: r.bedsideVitals.spo2, rr: r.monitorVitals.rr }

@@ -17,9 +17,11 @@ namespace Aurora.Modules.Icu.Roster;
    Encounter.
 
    WHAT REMAINS of the roster table (`Patients`): ONLY the ICU bedside
-   snapshot columns are read (rhythm, SOFA, EWS, support flags,
-   bedside/monitor vitals, MAP trend, organs, LOS, code status) — module
-   scope, absorbed by the Stage 11 Observation model. Its identity/
+   snapshot columns are read (rhythm, support flags, bedside/monitor
+   vitals, MAP trend, organs, LOS, code status) — module scope, absorbed
+   by the Stage 11 Observation model. The former fabricated SOFA/EWS
+   columns were RETIRED once the Clinical Scoring Engine's real SOFA + NEWS2
+   existed (dropped via migration DropRosterSofaEws). Its identity/
    location columns are dead weight kept for schema stability until
    Stage 11 removes the table. A freshly admitted patient has no bedside
    row yet, so a DEFAULT snapshot is synthesized at read time (derived,
@@ -91,8 +93,6 @@ class PatientRow
     public string Rhythm { get; set; } = "";
     public bool Isolation { get; set; }
     public string Severity { get; set; } = "";
-    public int Sofa { get; set; }
-    public int Ews { get; set; }
     public string FlagsJson { get; set; } = "[]";
     public string BedsideVitalsJson { get; set; } = "{}";
     public string BedAlertJson { get; set; } = "{}";
@@ -106,7 +106,6 @@ class PatientRow
         Age = d.Age, Sex = d.Sex, Diagnosis = d.Diagnosis, Los = d.Los,
         Allergies = d.Allergies, Attending = d.Attending, CodeStatus = d.CodeStatus,
         Rhythm = d.Rhythm, Isolation = d.Isolation, Severity = d.Severity,
-        Sofa = d.Sofa, Ews = d.Ews,
         FlagsJson = JsonSerializer.Serialize(d.Flags, JsonOpts.Web),
         BedsideVitalsJson = JsonSerializer.Serialize(d.BedsideVitals, JsonOpts.Web),
         BedAlertJson = JsonSerializer.Serialize(d.BedAlert, JsonOpts.Web),
@@ -128,9 +127,10 @@ class PatientRow
          ("temp", "temp"), ("etco2", "etco2"), ("cvp", "cvp")];
 
     /* One composition for BOTH the demo-seeded and the fresh patient
-       (Layer 2 supplies identity/encounter fields; F8: the score/organ
-       snapshot columns stay as-is — derived clinical scores are a later
-       piece — while the VITALS are the step-4 read-swap):
+       (Layer 2 supplies identity/encounter fields; the fabricated SOFA/EWS
+       columns are GONE — real SOFA + NEWS2 are computed at render by the
+       Clinical Scoring Engine; the organ snapshot remains a demo view for a
+       later piece — while the VITALS are the step-4 read-swap):
        real observation → demo snapshot value (demo rows exist only in
        demo-seeded environments) → honest null. Rhythm is chartable
        (cardiac_rhythm) → real, else demo, else an honest "—" (the old
@@ -156,7 +156,7 @@ class PatientRow
             patientId, bedId, name, mrn, age, sex, diagnosis, b?.Los ?? 0, allergies,
             attending, b?.CodeStatus ?? "Full Code",
             latest.Text("cardiac_rhythm") ?? b?.Rhythm ?? "—",
-            b?.Isolation ?? false, b?.Severity ?? "stable", b?.Sofa ?? 0, b?.Ews ?? 0,
+            b?.Isolation ?? false, b?.Severity ?? "stable",
             b is null ? [] : JsonSerializer.Deserialize<List<string>>(b.FlagsJson, JsonOpts.Web)!,
             MergeVitals(BedCardMap, latest, demoBedCard),
             alert,
@@ -203,6 +203,6 @@ class PatientRow
 record RosterRecordDto(
     string PatientId, string BedId, string Name, string Mrn, int Age, string Sex,
     string Diagnosis, int Los, string Allergies, string Attending, string CodeStatus,
-    string Rhythm, bool Isolation, string Severity, int Sofa, int Ews,
+    string Rhythm, bool Isolation, string Severity,
     List<string> Flags, JsonElement BedsideVitals, JsonElement BedAlert,
     List<double> MapTrend, JsonElement MonitorVitals, JsonElement Organs);

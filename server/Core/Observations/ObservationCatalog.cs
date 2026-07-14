@@ -159,6 +159,15 @@ static class ObservationCatalog
         // deployments (incl. staging) on next boot.
         new("resp_support", "ventilator", "Respiratory Support", "", "enum",
             Values: ["Yes", "No"]),
+        // ACVPU (EWS/NEWS2 v1 Spec §3, validator D3): the standalone
+        // consciousness observation NEWS2 reads DIRECTLY. It is NEVER
+        // derived from GCS and GCS is never derived from it — both stand
+        // independently (GCS for ICU/SOFA, ACVPU for NEWS2). "Alert" scores
+        // 0; any of Confusion (new)/Voice/Pain/Unresponsive scores 3. In
+        // the neuro group; appended as DATA (no schema change; seed-if-
+        // missing tops up existing deployments incl. staging on next boot).
+        new("acvpu", "neuro", "Consciousness (ACVPU)", "", "enum",
+            Values: ["Alert", "Confusion", "Voice", "Pain", "Unresponsive"]),
     ];
 
     public static void Seed(AuroraDb db)

@@ -7,6 +7,7 @@ import { Card } from '../../components/Card'
 import { BedChip, TagList } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconFlask, IconNote, IconPencil, IconUsers } from '../../components/icons'
+import { News2Pill } from '../../components/News2Pill'
 import {
   acknowledgeResult, getActionQueues, getConsults, getOrderSets, getPendingOrders,
   getResultInbox, getRoundingList, signOrder,
@@ -33,8 +34,6 @@ const QUEUE_ICON: Record<QueueKey, JSX.Element> = {
 interface QueueRow extends ActionQueueItem {
   leaving: boolean
 }
-
-const sofaColor = (v: number) => (v >= 10 ? 'var(--red)' : v >= 6 ? 'var(--amber)' : 'var(--green)')
 
 export function DoctorWorkspace() {
   /* behind RequireSession(orders.sign) — session is present */
@@ -148,8 +147,9 @@ export function DoctorWorkspace() {
                       <div className="rflags"><TagList flags={p.flags} size="sm" /></div>
                     </div>
                     <div className="ract">
-                      <span className="sofa" style={{ color: sofaColor(p.sofa) }}>{p.sofa}</span>
-                      <span className="sk">SOFA</span>
+                      {/* real computed NEWS2 (early-warning) — replaces the
+                          fabricated SOFA; display-only, no alerts */}
+                      <News2Pill patientId={p.patientId} />
                       <button className="orderbtn" onClick={e => { e.stopPropagation(); openDrawer(p.name) }}>+ Order</button>
                     </div>
                   </div>

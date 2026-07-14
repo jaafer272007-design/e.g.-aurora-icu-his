@@ -22,8 +22,6 @@ export const toBedPatient = (r: RosterRecordDto): BedPatient => ({
   flags: r.flags,
   isolation: r.isolation,
   codeStatus: r.codeStatus,
-  sofa: r.sofa,
-  ews: r.ews,
   vitals: r.bedsideVitals,
   alert: r.bedAlert,
   attending: r.attending,

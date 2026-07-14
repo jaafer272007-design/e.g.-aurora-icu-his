@@ -1,0 +1,13 @@
+/* NEWS2 pill — compact glance score for list surfaces. Colour is the
+   standard NEWS2 band colour (display only). */
+.news2pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;
+ font-weight:600;letter-spacing:.3px;padding:2px 8px;border-radius:999px;
+ border:1px solid var(--stroke);background:rgba(6,12,22,.4);white-space:nowrap}
+.news2pill b{font-size:8.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+.news2pill .n2v{font-family:var(--mono);font-size:12px;font-weight:800}
+.news2pill.band-none,.news2pill.band-low,.news2pill.band-low-medium,
+.news2pill.band-medium,.news2pill.band-high{border-color:color-mix(in srgb, var(--n2c) 45%, transparent)}
+.news2pill .n2flag{font-size:10px;color:var(--amber)}
+.news2pill.incomplete{border-color:rgba(255,180,84,.4)}
+.news2pill.incomplete .n2v{font-size:10px;font-weight:700;color:var(--amber)}
+.news2pill.na .n2v,.news2pill.loading .n2v{color:var(--faint);font-weight:700}

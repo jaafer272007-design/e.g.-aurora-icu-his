@@ -4,15 +4,13 @@ import { SeverityDot } from '../../components/SeverityDot'
 import { Sparkline } from '../../components/Sparkline'
 import { VitalTile } from '../../components/VitalTile'
 import { IconAlertTriangle } from '../../components/icons'
+import { News2Pill } from '../../components/News2Pill'
 
 interface BedCardProps {
   bed: Bed
   index: number
   onOpen: (patientId: string) => void
 }
-
-const scoreColor = (v: number, red: number, amber: number) =>
-  v >= red ? 'var(--red)' : v >= amber ? 'var(--amber)' : 'var(--green)'
 
 /* §12 step 4: vitals are the LATEST CHARTED observations (or the demo
    snapshot in demo-seeded environments) — displayed as charted, no live
@@ -57,10 +55,10 @@ export function BedCard({ bed, index, onOpen }: BedCardProps) {
       <div className="bname">{p.name}<small>{p.age} · {p.sex}</small></div>
       <div className="bdx">{p.diagnosis}</div>
       <div className="btags"><TagList flags={p.flags} iso={p.isolation} /></div>
-      <div className="scores">
-        <div className="score"><span className="sk">SOFA</span><span className="sv" style={{ color: scoreColor(p.sofa, 10, 6) }}>{p.sofa}</span></div>
-        <div className="score"><span className="sk">EWS</span><span className="sv" style={{ color: scoreColor(p.ews, 7, 4) }}>{p.ews}</span></div>
-      </div>
+      {/* Real computed NEWS2 (the bedside early-warning score) — replaces
+          the fabricated SOFA/EWS chips. Display-only band colour, no alerts.
+          SOFA (organ dysfunction) lives on the patient page. */}
+      <div className="scores"><News2Pill patientId={p.patientId} /></div>
       <div className="vgrid">
         <VitalTile variant="vg" label="HR" value={shown(v.hr)} valueClass={hrClass(v.hr)} />
         <VitalTile variant="vg" label="MAP" value={shown(v.map)} valueClass={mapClass(v.map)} />

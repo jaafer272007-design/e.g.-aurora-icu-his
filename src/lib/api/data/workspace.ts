@@ -12,7 +12,7 @@ const toRoundingPatient = (patientId: string): RoundingPatient => {
   const r = ROSTER.find(x => x.patientId === patientId)!
   return {
     patientId: r.patientId, bedId: r.bedId, name: r.name, diagnosis: r.diagnosis,
-    flags: r.flags, sofa: r.sofa, severity: r.severity,
+    flags: r.flags, severity: r.severity,
   }
 }
 

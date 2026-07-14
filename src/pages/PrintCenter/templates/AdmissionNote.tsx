@@ -6,7 +6,7 @@ import type { AdmissionNoteData } from '../types'
  *  (past history, initial assessment, plan) print as ruled write-in
  *  areas rather than fabricated content. */
 export function AdmissionNote({ data }: { data: AdmissionNoteData }) {
-  const { context, vitals, medicationOrders, investigations } = data
+  const { context, vitals, scores, medicationOrders, investigations } = data
   const mark = context.hasChartedTimes ? ' †' : ''
   return (
     <>
@@ -35,8 +35,8 @@ export function AdmissionNote({ data }: { data: AdmissionNoteData }) {
             ['Temp', pv(vitals.bedside.temp, '°C')],
             ['Urine output', pv(vitals.bedside.uo, 'mL')],
             ['Rhythm', vitals.rhythm],
-            ['SOFA', vitals.sofa],
-            ['EWS', vitals.ews],
+            ['SOFA', scores.sofa],
+            ['NEWS2', scores.news2],
             ['Support', vitals.flags.length ? vitals.flags.join(', ') : 'none'],
           ]} />
         ) : (
