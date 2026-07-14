@@ -17,6 +17,7 @@ import type {
   RoundingListResponse,
 } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
+import { displayStamp } from '../../lib/time'
 
 const QUEUE_LABEL: Record<QueueKey, string> = {
   orders: 'Orders to Sign',
@@ -184,7 +185,7 @@ export function DoctorWorkspace() {
                       <div className="qt">
                         <b>{o.summary} — {o.bedId} {o.patientName}</b><br />
                         {o.priority} · {o.category}
-                        <small>{o.orderedTime} · {o.orderedBy} · {o.orderId}</small>
+                        <small>{displayStamp(o.orderedTime)} · {o.orderedBy} · {o.orderId}</small>
                       </div>
                       <button className="qbtn" aria-label={`Sign: ${o.summary}`} onClick={() => signPending(o.orderId)}>✓</button>
                     </div>
@@ -193,7 +194,7 @@ export function DoctorWorkspace() {
                   (results ?? []).map(item => (
                     <div className={`qrow${item.leaving ? ' done' : ''}`} key={item.id}>
                       <span className="qi">{QUEUE_ICON.results}</span>
-                      <div className="qt"><b>{item.title}</b><br />{item.detail}<small>{item.time} · {item.flag.toUpperCase()}</small></div>
+                      <div className="qt"><b>{item.title}</b><br />{item.detail}<small>{displayStamp(item.time)} · {item.flag.toUpperCase()}</small></div>
                       <button className="qbtn" aria-label={`Acknowledge: ${item.title}`} onClick={() => ackResult(item)}>✓</button>
                     </div>
                   ))

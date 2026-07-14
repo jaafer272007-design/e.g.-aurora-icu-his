@@ -1,6 +1,22 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through the PERSISTENT PATIENT CONTEXT
+**Last updated: 2026-07-14 · current through DATED EVENT TIMESTAMPS (built
+— the recorded date-less-stamp foundational gap resolved GOING FORWARD:
+every server EVENT stamp that was `HH:mm` (ADT admit/discharge/transfer +
+encounter events, the order lifecycle incl. orderedTime and every history
+event, MAR dose documentation, lab/imaging collected/resulted/
+acknowledged) now writes the dated UTC `yyyy-MM-dd HH:mm` — the SAME
+convention observations and audit events already use, so cross-day math
+is finally honest and the Statistics time-based metrics are unblocked.
+EXISTING/SEEDED records keep their original display strings byte-for-byte
+(dates are never fabricated — the honest-data rule); scheduled MAR
+administration times STAY `HH:mm` deliberately (a plan, not an event).
+Displays still show the short bedside form — the shared render-time
+`displayStamp()` shortens dated stamps (today → `HH:mm`, prior days →
+`D-n HH:mm`) while the STORED value keeps its full date; the Timeline
+sort key, age labels and SOFA lab-windowing use real epoch math for dated
+stamps. 21/21 API matrix + 21/21 browser + 24/24 headless unit checks.
+Prior: the PERSISTENT PATIENT CONTEXT
 (built — the assessed moderate case: pick a patient once and the selection
 follows through the nav sidebar (Ahmed → Lab Entry → Observations → Orders
 stays Ahmed); a tab-scoped last-viewed-patient module (cleared on
@@ -1094,7 +1110,12 @@ file.]*
 - **Recorded open questions (do NOT fix ad hoc)**: (1) administration
   timestamps are DATE-LESS (HH:mm) — masked today by the single-day
   simulation, but a real multi-day chart needs full timestamps;
-  Stage 11 Observation work is the natural owner. (2) Readmission
+  Stage 11 Observation work is the natural owner. *[Superseded
+  (2026-07-14): resolved GOING FORWARD by "Dated event timestamps"
+  below — every new EVENT stamp (order lifecycle, MAR documentation,
+  ADT, labs) is dated UTC; pre-fix records keep their original strings
+  (never fabricated); scheduled administration times remain HH:mm by
+  design (a plan, not an event).]* (2) Readmission
   chart PRESENTATION semantics — the longitudinal per-patient chart
   now correctly shows prior-encounter orders as discontinued, but how
   a readmission's chart should present/group prior-episode history
@@ -1132,7 +1153,11 @@ acknowledge-on-a-closed-encounter untestable.
   audit convention)** on every NEW resulted/acknowledged/unacknowledged
   event — result audit trails span discharges and readmissions. The
   acknowledgedAt SUMMARY field stays HH:mm (the bedside display
-  contract, byte-parity preserved). KNOWN LIMITATION: the 79 backfilled
+  contract, byte-parity preserved). *[Superseded (2026-07-14): the
+  summary field is now ALSO dated going forward — the UI derives the
+  short bedside display at render via `displayStamp()`; see "Dated
+  event timestamps". Pre-fix values keep their stored strings.]*
+  KNOWN LIMITATION: the 79 backfilled
   acknowledgment events carry whatever the pre-migration rows stored —
   bare HH:mm, "D-n HH:mm", or "" — a date was never recorded and is NOT
   fabricated; only post-migration events carry full dates.
@@ -1618,7 +1643,10 @@ logic touched.
 - **Surfaced, not buried (the two recorded open questions where print
   makes them visible)**: (a) date-less HH:mm/"D-n HH:mm" charted times
   print EXACTLY as charted with a † footnote explaining the recorded
-  open question — dates are never fabricated; (b) every document is
+  open question — dates are never fabricated *[superseded in part
+  (2026-07-14): NEW event stamps are dated UTC and print with their full
+  calendar date — see "Dated event timestamps"; pre-fix stamps keep
+  printing exactly as charted with the footnote]*; (b) every document is
   ENCOUNTER-scoped and says so; when other encounters exist a notice
   names the scope and the readmission-presentation open question.
 - **NEW recorded gap (found by this work, not fixed here)**: the roster
@@ -3913,6 +3941,65 @@ DEFAULT. UI-only: no server change, no RBAC change, no data-layer change.
   rail on fresh load, and bare paths drop to the normal default; the next
   pick overwrites the stale memory; sign-out clears the context and a
   nurse in the same tab starts clean. tsc + vite build clean.
+
+### Dated event timestamps (built) — the calendar-date gap resolved going forward
+The recorded foundational gap (the data-model audit's biggest cross-cutting
+blocker, and the "administration timestamps are DATE-LESS" open question):
+live ADT/order/lab EVENT stamps were written as bare `HH:mm`, so nothing
+that spans midnight — length-of-stay, time-to-acknowledge, any Statistics
+time-based metric — was honestly computable. **Every server EVENT stamp
+now writes dated UTC `yyyy-MM-dd HH:mm`**, the SAME convention the
+observation (`clinicalTime`) and audit trails already use — one
+convention for every new event in the system.
+- **The 15 write sites converted** (complete inventory before editing):
+  ADT admit (`admittedAt` + the encounter's admitted event), discharge
+  (`dischargedAt` + event), transfer (event) in `AdtApi.cs`; order create
+  (`orderedTime` + created/signed history events), sign, modify,
+  implement in `OrdersApi.cs`; the discharge-cascade discontinue event in
+  `OrderLogic.cs`; MAR dose documentation (`documentedTime`) in
+  `MarApi.cs`; lab/imaging `collectedAt`/`resultedAt` at every create/
+  document path plus lab AND imaging `acknowledgedAt` in `ResultsApi.cs`
+  (the acknowledgedAt HH:mm display contract is superseded by this work —
+  the UI now derives the short display at render).
+- **Deliberately NOT converted — scheduled administration times**
+  (`OrderLogic.cs` schedule generation): a scheduled dose time is a PLAN
+  within the MAR's operating day, not a recorded event; the due-state
+  clock logic (`dueStateFor`) consumes it as today's wall-clock time.
+  Converting it is future work if multi-day schedules arrive.
+- **Existing data untouched (honest-data rule)**: seeded display strings
+  (`"D-3 21:10"`, `"07:05"`, seeded encounters' `""`) stay byte-for-byte
+  — a date that was never recorded is NOT fabricated. Verified live:
+  seeded ORD-2001 / LAB-6001 / ENC-1001 unchanged after the fix.
+- **Displays stay short — derived at render**: new shared
+  `displayStamp()` in `src/lib/time.ts` shortens a dated stamp to the
+  bedside convention (today → `HH:mm`, prior days → `D-n HH:mm`) and
+  passes legacy forms through unchanged; applied at every event-stamp
+  render site (Orders list + history, Doctor Workspace queues, Nurse
+  Workspace orders/MAR/toast, Labs & Imaging cards, Result inbox, Lab
+  Entry, Discharges, Print Center hub + discharged picker, Mission
+  Control timeline strip). `dayOffsetOf`/`timestampMinutes` (the Timeline
+  sort key) and `agoLabel` use REAL epoch math for dated stamps, so
+  cross-day ordering and ages are now exact rather than
+  display-convention arithmetic; `labMinutesAgo` (SOFA lab-windowing)
+  likewise — a lab 26 h old now falls out of the 24 h window by real
+  date math. PRINT TEMPLATES deliberately render the full dated stamp
+  (a dated legal document is the improvement print asked for); the
+  pre-fix stamps keep their † footnote.
+- **The only server parser** (`TimelineApi.TimestampMinutes`) is
+  dated-aware (TryParseExact → real day offset), so the merged timeline
+  sorts mixed legacy + dated events correctly. No deployed suite asserts
+  the short format anywhere (checked all 14); deployed-users-e2e already
+  asserts the DATED audit regex — compatible.
+- **Verification**: 21/21 live API matrix (new admit/transfer/discharge/
+  order-lifecycle/MAR/lab/acknowledge stamps all dated; scheduled time
+  still `HH:mm`; seeded rows byte-unchanged; timeline serves mixed
+  formats) + 21/21 real-browser checks (every screen shows the SHORT
+  form — no raw dated string leaks anywhere; seeded `D-3 21:10` renders
+  untouched; MAR due states, SOFA card, Timeline grouping all intact; no
+  page errors) + 24/24 headless unit checks (`displayStamp`/
+  `dayOffsetOf`/`datedEpoch`/`agoLabel`/`timestampMinutes` cross-format
+  coherence + the dated `labMinutesAgo` window math). tsc + vite +
+  dotnet builds clean.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

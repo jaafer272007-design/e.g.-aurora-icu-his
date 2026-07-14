@@ -3,7 +3,7 @@ import { Card } from '../../components/Card'
 import { Badge } from '../../components/Badge'
 import { Sparkline } from '../../components/Sparkline'
 import { IconFlask } from '../../components/icons'
-import { agoLabel, useNow } from '../../lib/time'
+import { displayStamp, agoLabel, useNow } from '../../lib/time'
 import type { LabDraw, LabPanelKey, ResultFlag } from '../../lib/api/types'
 
 const FLAG_META: Record<ResultFlag, { label: string; cls: string }> = {
@@ -131,7 +131,7 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
 
   return (
     <Card icon={<IconFlask size={15} stroke="var(--blue)" />} title="Laboratory Results"
-      aside={latest ? <>latest {activePanel} resulted {latest.resultedAt} · {agoLabel(latest.resultedAt, now)}</> : 'canonical record'}>
+      aside={latest ? <>latest {activePanel} resulted {displayStamp(latest.resultedAt)} · {agoLabel(latest.resultedAt, now)}</> : 'canonical record'}>
       <div className="litabs" role="tablist">
         {panels.map(p => (
           <button key={p} role="tab" aria-selected={p === activePanel} className={`litab${p === activePanel ? ' on' : ''}`}
@@ -158,7 +158,7 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
         {latest && (
           <span className={latest.acknowledged ? 'liacked' : 'liunacked'}>
             {latest.acknowledged
-              ? `✓ acknowledged${latest.acknowledgedBy ? ` by ${latest.acknowledgedBy}` : ''}${latest.acknowledgedAt ? ` · ${latest.acknowledgedAt}` : ''}`
+              ? `✓ acknowledged${latest.acknowledgedBy ? ` by ${latest.acknowledgedBy}` : ''}${latest.acknowledgedAt ? ` · ${displayStamp(latest.acknowledgedAt)}` : ''}`
               : '● latest draw unacknowledged'}
           </span>
         )}
@@ -166,7 +166,7 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
       {/* display fix (bug 2): the note recorded with a draw was stored but
           never shown here — surface the latest draw's note with its time */}
       {latest?.note && (
-        <div className="linote">note ({latest.resultedAt}): {latest.note}</div>
+        <div className="linote">note ({displayStamp(latest.resultedAt)}): {latest.note}</div>
       )}
 
       <div className="lianalytes">

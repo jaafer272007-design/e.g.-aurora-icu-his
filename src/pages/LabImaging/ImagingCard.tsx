@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
-import { agoLabel, useNow } from '../../lib/time'
+import { displayStamp, agoLabel, useNow } from '../../lib/time'
 import type { ImagingStatus, ImagingStudy, ResultFlag } from '../../lib/api/types'
 
 const STATUS_STEPS: ImagingStatus[] = ['ordered', 'in-progress', 'preliminary', 'final']
@@ -45,7 +45,7 @@ function UnackReasonDialog(
       <div className="lidialog" role="dialog" aria-modal="true" aria-labelledby="liUnackTitle" onClick={e => e.stopPropagation()}>
         <h2 id="liUnackTitle">Reverse acknowledgment · <span className="num">{study.description}</span></h2>
         <p className="lidnote">
-          The original acknowledgment ({study.acknowledgedBy} · {study.acknowledgedAt}) is preserved in the
+          The original acknowledgment ({study.acknowledgedBy} · {displayStamp(study.acknowledgedAt)}) is preserved in the
           audit history; the study returns to the results inbox.
         </p>
         <div className="field">
@@ -126,7 +126,7 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, on
                 <div className="lisack">
                   {s.acknowledged ? (
                     <>
-                      <span className="liacked">✓ Acknowledged by {s.acknowledgedBy} · {s.acknowledgedAt}</span>
+                      <span className="liacked">✓ Acknowledged by {s.acknowledgedBy} · {displayStamp(s.acknowledgedAt)}</span>
                       {canAck && (
                         <button
                           className="liunackbtn"

@@ -113,7 +113,7 @@ static class ResultsApi
             var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var now = DateTime.UtcNow;
-            var time = now.ToString("HH:mm");
+            var time = now.ToString("yyyy-MM-dd HH:mm");
             var items = req.Items!.Select(i => new LabItemFull(
                 i.Analyte!, i.Value!.Value, i.Unit ?? "", i.RefRange!, i.RefLow!.Value, i.RefHigh!.Value, i.Flag!)).ToList();
             /* ORDER→RESULT LINKAGE (Layer 4 phase 2) — SERVER-derived,
@@ -187,7 +187,7 @@ static class ResultsApi
             var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var now = DateTime.UtcNow;
-            var time = now.ToString("HH:mm");
+            var time = now.ToString("yyyy-MM-dd HH:mm");
             var items = ResultsLogic.BuildDocumentedItems(req, test);
             /* ORDER→RESULT LINKAGE — the SAME server-derived rule as create:
                the oldest unfulfilled active Lab order for this panel on the
@@ -244,7 +244,7 @@ static class ResultsApi
             var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var now = DateTime.UtcNow;
-            var time = now.ToString("HH:mm");
+            var time = now.ToString("yyyy-MM-dd HH:mm");
             static string? Trimmed(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
             var row = new LabDrawRow
             {
@@ -400,7 +400,7 @@ static class ResultsApi
             var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var now = DateTime.UtcNow;
-            var time = now.ToString("HH:mm");
+            var time = now.ToString("yyyy-MM-dd HH:mm");
             var row = new ImagingStudyRow
             {
                 StudyId = ResultsLogic.NextStudyId(), PatientId = req.PatientId!,
@@ -426,8 +426,9 @@ static class ResultsApi
            resolve to nothing (the 403/404/409 convention codified by the
            encounter-scoping fix). Event times are DATED UTC (the users-
            audit convention — result audit trails span discharges and
-           readmissions); the acknowledgedAt SUMMARY stays HH:mm (the
-           bedside display contract, unchanged on the wire). */
+           readmissions); since the calendar-date fix the acknowledgedAt
+           SUMMARY is dated too ("yyyy-MM-dd HH:mm") — the UI derives the
+           short bedside display at render (displayStamp). */
         app.MapPost("/api/icu/results/labs/{labId}/acknowledge", (string labId, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "results.acknowledge") is IResult denied) return denied;
@@ -449,7 +450,7 @@ static class ResultsApi
             var now = DateTime.UtcNow;
             d.Acknowledged = true;
             d.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";
-            d.AcknowledgedAt = now.ToString("HH:mm");
+            d.AcknowledgedAt = now.ToString("yyyy-MM-dd HH:mm");
             d.EventsJson = ResultsLogic.AppendEvent(d.EventsJson,
                 new(now.ToString("yyyy-MM-dd HH:mm"), d.AcknowledgedBy, "acknowledged", null));
             db.SaveChanges();
@@ -468,7 +469,7 @@ static class ResultsApi
             var now = DateTime.UtcNow;
             s.Acknowledged = true;
             s.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";
-            s.AcknowledgedAt = now.ToString("HH:mm");
+            s.AcknowledgedAt = now.ToString("yyyy-MM-dd HH:mm");
             s.EventsJson = ResultsLogic.AppendEvent(s.EventsJson,
                 new(now.ToString("yyyy-MM-dd HH:mm"), s.AcknowledgedBy, "acknowledged", null));
             db.SaveChanges();

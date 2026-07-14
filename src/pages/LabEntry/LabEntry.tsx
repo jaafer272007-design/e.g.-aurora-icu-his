@@ -14,7 +14,7 @@ import type {
 } from '../../lib/api/types'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
-import { useNow } from '../../lib/time'
+import { displayStamp, useNow } from '../../lib/time'
 
 /* the pseudo-panel key for the Custom / Other tab (not a catalogue testId) */
 const CUSTOM = '__custom__'
@@ -533,7 +533,7 @@ export function LabEntry() {
                       {!d.custom && (d.orderId
                         ? <span className="lerorder" title="fulfils a lab order">↳ {d.orderId}</span>
                         : <span className="lerstandalone" title="documented without a prior order">standalone</span>)}
-                      <span className="lertime num">{d.resultedAt}</span>
+                      <span className="lertime num">{displayStamp(d.resultedAt)}</span>
                       {correctable && editing !== d.labId && (
                         <button className="lerfix" onClick={() => openEditor(d)}>
                           <IconPencil size={11} /> {selfTier ? `Amend (self · ${selfWindowLeft(d, now)} min left)` : 'Correct'}

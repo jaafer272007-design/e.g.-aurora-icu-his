@@ -234,7 +234,7 @@ static class AdtApi
             }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
             var enc = new Encounter
             {
                 EncounterId = AdtLogic.NextEncounterId(),
@@ -273,7 +273,7 @@ static class AdtApi
                     + (string.IsNullOrEmpty(enc.DischargedBy) ? "" : $" (by {enc.DischargedBy} at {enc.DischargedAt})")
                     + " — there is nothing to discharge");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
             enc.Status = "discharged";
             enc.DischargedAt = time;
             enc.DischargedBy = actor;
@@ -318,7 +318,7 @@ static class AdtApi
             if (occupant is not null)
                 return ApiError.StateConflict($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
             var from = enc.BedId;
             enc.BedId = req.BedId!;
             enc.EventsJson = AdtLogic.AppendEvent(enc.EventsJson, new(time, actor, "transferred", $"{from} → {req.BedId}"));

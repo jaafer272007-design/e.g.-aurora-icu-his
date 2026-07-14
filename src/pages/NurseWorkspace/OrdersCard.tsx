@@ -3,6 +3,7 @@ import { Badge, type BadgeColor } from '../../components/Badge'
 import { BedChip } from '../../components/Tag'
 import { IconPencil } from '../../components/icons'
 import type { Order, OrderPriority } from '../../lib/api/types'
+import { displayStamp } from '../../lib/time'
 
 const PRIORITY_COLOR: Record<OrderPriority, BadgeColor> = {
   STAT: 'red',
@@ -37,7 +38,7 @@ export function OrdersCard({ orders, completedIds, onComplete }: OrdersCardProps
               <Badge color={PRIORITY_COLOR[o.priority]}>{o.priority.toUpperCase()}</Badge>
               <div className="ordtext">
                 {o.summary}
-                <small className="num">{o.orderedTime} · {o.orderedBy} · <BedChip bedId={o.bedId} className="bedchip ordbed" /></small>
+                <small className="num">{displayStamp(o.orderedTime)} · {o.orderedBy} · <BedChip bedId={o.bedId} className="bedchip ordbed" /></small>
               </div>
               {done ? (
                 <span className="orddone">✓ Done</span>

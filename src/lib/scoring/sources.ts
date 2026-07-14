@@ -84,8 +84,15 @@ function labClockMinutes(t: string): number {
   return day * 1440 + (h || 0) * 60 + (m || 0)
 }
 
-/** minutesAgo for a lab display time, relative to `now` (UTC wall clock) */
+/** minutesAgo for a lab time, relative to `now`. Since the calendar-date
+ *  fix, NEW lab stamps are dated UTC ("yyyy-MM-dd HH:mm") — those use
+ *  REAL elapsed-time math (the honest improvement to SOFA's lab
+ *  windowing); pre-fix stamps keep the display-convention reading. */
 export function labMinutesAgo(resultedAt: string, now: Date): number {
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(resultedAt)) {
+    const ms = Date.parse(resultedAt.replace(' ', 'T') + ':00Z')
+    if (!Number.isNaN(ms)) return (now.getTime() - ms) / 60000
+  }
   const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes()
   return nowMin - labClockMinutes(resultedAt)
 }

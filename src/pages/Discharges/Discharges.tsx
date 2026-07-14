@@ -10,6 +10,7 @@ import { IconBed, IconDischarge, IconUsers } from '../../components/icons'
 import { dischargeEncounter, getAdtBeds, getEncounters, transferEncounter } from '../../lib/api'
 import type { AdtBed, Encounter } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
+import { displayStamp } from '../../lib/time'
 
 /** Layer 2 — ADT Discharges & Transfers (/discharges). Discharge closes the
  *  Encounter and frees the bed (doctor authority, adt.discharge); transfer
@@ -108,7 +109,7 @@ export function Discharges() {
                       </button>
                       <span className="dismeta">
                         <span className="num">{e.encounterId}</span>
-                        <small>{e.attending}{e.admittedAt ? ` · admitted ${e.admittedAt}` : ''}</small>
+                        <small>{e.attending}{e.admittedAt ? ` · admitted ${displayStamp(e.admittedAt)}` : ''}</small>
                       </span>
                       <span className="disacts">
                         {canTransfer && (
@@ -163,7 +164,7 @@ export function Discharges() {
                       </span>
                       <span className="dismeta">
                         <span className="num">{e.encounterId}</span>
-                        <small>{e.dischargedAt ? `discharged ${e.dischargedAt} · ${e.dischargedBy}` : 'discharged'}</small>
+                        <small>{e.dischargedAt ? `discharged ${displayStamp(e.dischargedAt)} · ${e.dischargedBy}` : 'discharged'}</small>
                       </span>
                     </div>
                   </div>

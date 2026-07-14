@@ -8,6 +8,7 @@ import { getEncounters, getPatients } from '../../lib/api'
 import type { Encounter, PatientSummary } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { PRINT_TEMPLATES } from './registry'
+import { displayStamp } from '../../lib/time'
 
 /** Print Center hub (/print) — pick a patient, an encounter where the
  *  template allows historical ones, and a document. Strictly read-only:
@@ -139,7 +140,7 @@ export function PrintCenter() {
                         {d.name || d.patientId} <span className="pc-dtag">Discharged</span>
                       </span>
                       <span className="pc-pmeta">
-                        {d.patientId} · discharged {d.lastDischargedAt || '—'} ·{' '}
+                        {d.patientId} · discharged {displayStamp(d.lastDischargedAt) || '—'} ·{' '}
                         {d.encounterCount} closed encounter{d.encounterCount === 1 ? '' : 's'}
                       </span>
                     </button>
@@ -165,8 +166,8 @@ export function PrintCenter() {
                     <span>
                       <strong>{e.encounterId}</strong> · {e.status}
                       <br /><span className="pc-pmeta">
-                        {e.diagnosis} · admitted {e.admittedAt || '—'}
-                        {e.status === 'discharged' && ` · discharged ${e.dischargedAt || '—'}`}
+                        {e.diagnosis} · admitted {displayStamp(e.admittedAt) || '—'}
+                        {e.status === 'discharged' && ` · discharged ${displayStamp(e.dischargedAt) || '—'}`}
                       </span>
                     </span>
                   </label>

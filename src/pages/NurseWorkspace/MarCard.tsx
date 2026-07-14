@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
-import { dueStateFor, useNow } from '../../lib/time'
+import { displayStamp, dueStateFor, useNow } from '../../lib/time'
 import type { AdministrationAction, AssignedPatient, MarRow } from '../../lib/api/types'
 
 const DOCUMENTED_META: Record<AdministrationAction, { label: string; cls: string }> = {
@@ -103,7 +103,7 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
                       <button className="mab refused" onClick={() => setPending({ row: r, action: 'refused' })} aria-label={`${r.medication}: refused`}>✕ Refused</button>
                     </div>
                   ) : (
-                    <span className="mardoc num">documented {r.documentedTime}</span>
+                    <span className="mardoc num">documented {displayStamp(r.documentedTime)}</span>
                   )}
                 </div>
               )
