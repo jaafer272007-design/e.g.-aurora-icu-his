@@ -461,6 +461,23 @@ export interface MedicationDetails {
   duration: string
   prn: boolean
   prnIndication?: string
+  /** STRUCTURED INFUSION ORDERING — present on continuous-infusion orders
+   *  placed through the structured form: the dose as ENTERED (faithful),
+   *  e.g. {value:0.3, massUnit:'mcg', timeBasis:'min'} = 0.3 µg/kg/min.
+   *  The weight basis is always per kg (the design's decision). The
+   *  free-text `dose` above is the DISPLAY string COMPOSED from this
+   *  entry server-side — never edited independently. Normalisation to
+   *  µg/kg/min is DERIVED at read (src/lib/infusion.ts), never stored.
+   *  Absent on non-infusion meds and every pre-feature order. */
+  infusion?: InfusionDose
+}
+
+/** the structured infusion dose (massUnit is ASCII 'mcg'|'mg' on the
+ *  wire, rendered µg/mg) */
+export interface InfusionDose {
+  value: number
+  massUnit: 'mcg' | 'mg'
+  timeBasis: 'min' | 'hour'
 }
 
 export interface MedAdministration {

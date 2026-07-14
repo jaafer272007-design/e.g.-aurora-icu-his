@@ -176,3 +176,24 @@
  border:1px solid var(--stroke);transition:.15s;min-height:36px}
 .om .omimgchip:hover{color:var(--text);border-color:var(--stroke2)}
 .om .omimgchip.on{color:var(--text);border-color:rgba(167,139,250,.6);background:rgba(167,139,250,.12)}
+
+/* structured infusion ordering — the µg|mg / kg / min|hour entry that
+   replaces the free-text dose for continuous mass-dosed infusions */
+.om .ominfusion{border:1px dashed rgba(53,224,208,.4);border-radius:11px;padding:10px 11px;margin:10px 0}
+.om .ominfhead{font-size:10px;letter-spacing:.5px;color:var(--cyan);text-transform:uppercase;margin-bottom:8px}
+.om .ominfhead i{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0}
+.om .ominfrow{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.om .ominfrow select{min-height:40px;background:rgba(255,255,255,.04);border:1px solid var(--stroke);
+ border-radius:10px;padding:8px 9px;font-size:12px;color:var(--text)}
+.om .ominfval{width:110px;min-height:40px;background:rgba(6,12,22,.55);border:1px solid var(--stroke2);
+ border-radius:10px;padding:8px 10px;font-size:13px}
+.om .ominfper{font-size:12px;color:var(--dim);letter-spacing:.5px}
+.om .ominfnorm{font-size:10.5px;color:var(--faint)}
+.om .ominfpresets{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.om .ominfpreset{font-size:10px;padding:4px 9px;border-radius:999px;color:var(--dim);
+ border:1px solid var(--stroke);transition:.15s;min-height:26px}
+.om .ominfpreset:hover{color:var(--text);border-color:rgba(53,224,208,.5)}
+.om .ominfpreview{font-size:11px;color:var(--dim);margin-top:9px;line-height:1.6}
+.om .ominfpreview b{color:var(--cyan);font-size:12px}
+.om .ominfnow{color:var(--amber);font-style:italic}
+.om .ooinfusion{font-size:10.5px;color:var(--cyan);margin-top:3px}

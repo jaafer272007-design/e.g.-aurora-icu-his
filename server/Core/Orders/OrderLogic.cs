@@ -95,12 +95,30 @@ static class OrderLogic
             if (d.RequiresImplementation == true)
                 return $"{at}: a medication order cannot set requiresImplementation";
             var m = d.Medication;
+            /* STRUCTURED INFUSION: when a structured dose is present the
+               display dose text is COMPOSED from it server-side — the
+               client may omit dose entirely; a provided dose must match
+               the composition exactly (the desync guard). Everything
+               else about the order is the shared medication machinery. */
             foreach (var (name, value, required) in new[] {
-                ("drugId", m.DrugId, true), ("drug", m.Drug, true), ("dose", m.Dose, true),
+                ("drugId", m.DrugId, true), ("drug", m.Drug, true), ("dose", m.Dose, m.Infusion is null),
                 ("route", m.Route, true), ("frequency", m.Frequency, true),
                 ("duration", m.Duration, true), ("prnIndication", m.PrnIndication, false) })
             {
                 if (CheckText($"{at}.medication.{name}", value, required) is string e) return e;
+            }
+            if (m.Infusion is InfusionDoseDto inf)
+            {
+                if (ValidateInfusion(inf) is string iErr) return $"{at}.medication.infusion: {iErr}";
+                /* SHAPE: a continuous-infusion dose on a non-continuous
+                   order can never be right, in any state → 400 */
+                if (m.Frequency != "continuous")
+                    return $"{at}.medication: a structured infusion dose requires frequency 'continuous'";
+                if (m.Prn)
+                    return $"{at}.medication: a structured infusion dose cannot be PRN — an infusion runs continuously";
+                var composed = ComposeInfusionDose(inf);
+                if (!string.IsNullOrWhiteSpace(m.Dose) && m.Dose != composed)
+                    return $"{at}.medication.dose '{m.Dose}' does not match the structured infusion dose '{composed}' — omit dose (the display text derives from the structured entry)";
             }
             /* SAFETY ENFORCEMENT: the FORMULARY IS AUTHORITATIVE — an
                unknown drugId is a validation 400 (the live ORD-168 finding
@@ -128,6 +146,8 @@ static class OrderLogic
         }
         if (c.Frequency is not null && !FormularyLogic.IsValidFrequency(db, c.Frequency))
             return $"changes.frequency '{c.Frequency}' is not a valid frequency — {FormularyLogic.FrequencyRule(db)}";
+        if (c.Infusion is not null && ValidateInfusion(c.Infusion) is string infErr)
+            return $"changes.infusion: {infErr}";
         /* formulary authority applies to the modify path's new selection
            too — unknown target drugId is validation (400); inactive stays
            the endpoint's 409 */
@@ -169,6 +189,37 @@ static class OrderLogic
     public static string MedSummary(MedicationDto m) =>
         $"{m.Drug} {m.Dose} · {m.Route} · {(m.Prn ? $"PRN ({m.PrnIndication ?? "as required"})" : m.Frequency)}";
 
+    /* ---- Structured Infusion Ordering (kg-based continuous infusions) ---- */
+
+    /** the structured entry's vocabulary: mass µg ("mcg" on the wire) or
+        mg; time per minute or per hour; the weight basis is always per kg
+        (the design's decision). Bounds reject unit mistakes without
+        constraining any real dose. */
+    public static string? ValidateInfusion(InfusionDoseDto inf)
+    {
+        if (!double.IsFinite(inf.Value) || inf.Value is <= 0 or > 100000)
+            return "value must be a number greater than 0 and at most 100000";
+        if (inf.MassUnit is not ("mcg" or "mg"))
+            return "massUnit must be one of: mcg, mg";
+        if (inf.TimeBasis is not ("min" or "hour"))
+            return "timeBasis must be one of: min, hour";
+        return null;
+    }
+
+    /** the DISPLAY dose string, composed from the structured entry —
+        "0.3 µg/kg/min" / "2 mg/kg/hour". The single source: the free-text
+        Dose field of an infusion order always equals this composition,
+        so display and structure can never desync. */
+    public static string ComposeInfusionDose(InfusionDoseDto inf) =>
+        $"{inf.Value.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)} "
+        + $"{(inf.MassUnit == "mcg" ? "µg" : "mg")}/kg/{inf.TimeBasis}";
+
+    /** medication as stored: when a structured infusion entry is present,
+        the display Dose is composed from it (validation already rejected
+        a mismatching client-supplied dose) */
+    public static MedicationDto NormaliseMedication(MedicationDto m) =>
+        m.Infusion is null ? m : m with { Dose = ComposeInfusionDose(m.Infusion) };
+
     /* mock schedule generation for newly signed med orders: next full hour,
        plus one interval for q\dh frequencies; PRN gets one availability row.
        Frequency is free text (mock parity) — the interval is bounds-checked
@@ -197,10 +248,15 @@ static class OrderLogic
        ("field: old → new" with lowercase booleans, comma-joined) */
     public static (MedicationDto merged, string diff) ApplyChanges(MedicationDto before, MedicationChanges c)
     {
+        /* a structured-infusion change composes the display dose (the
+           endpoint already rejected a dose-only change on an infusion
+           order and a mismatching supplied dose — single source holds) */
+        var newDose = c.Infusion is not null ? ComposeInfusionDose(c.Infusion) : c.Dose;
         var merged = new MedicationDto(
-            c.DrugId ?? before.DrugId, c.Drug ?? before.Drug, c.Dose ?? before.Dose,
+            c.DrugId ?? before.DrugId, c.Drug ?? before.Drug, newDose ?? before.Dose,
             c.Route ?? before.Route, c.Frequency ?? before.Frequency, c.Duration ?? before.Duration,
-            c.Prn ?? before.Prn, c.PrnIndication ?? before.PrnIndication);
+            c.Prn ?? before.Prn, c.PrnIndication ?? before.PrnIndication,
+            c.Infusion ?? before.Infusion);
         var parts = new List<string>();
         void Diff(string name, string? oldV, string? newV)
         {
@@ -208,7 +264,7 @@ static class OrderLogic
         }
         Diff("drugId", before.DrugId, c.DrugId);
         Diff("drug", before.Drug, c.Drug);
-        Diff("dose", before.Dose, c.Dose);
+        Diff("dose", before.Dose, newDose);
         Diff("route", before.Route, c.Route);
         Diff("frequency", before.Frequency, c.Frequency);
         Diff("duration", before.Duration, c.Duration);

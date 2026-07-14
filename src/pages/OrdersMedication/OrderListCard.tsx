@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
 import { dueStateFor, useNow } from '../../lib/time'
+import { formatInfusionDose, formatNormalised } from '../../lib/infusion'
 import type { Order, OrderPriority, OrderStatus } from '../../lib/api/types'
 
 const PRIORITY_COLOR: Record<OrderPriority, BadgeColor> = { STAT: 'red', Urgent: 'amber', Routine: 'blue' }
@@ -87,6 +88,12 @@ export function OrderListCard({ orders, canManage, onSign, onModify, onDiscontin
                   </span>
                 )}
               </div>
+              {o.medication?.infusion && (
+                <div className="ooinfusion num">
+                  ⚗ structured infusion · {formatInfusionDose(o.medication.infusion)} (per kg, as
+                  ordered) · normalised {formatNormalised(o.medication.infusion)}
+                </div>
+              )}
               {o.status === 'discontinued' && o.statusReason && (
                 <div className="ooreason">⛔ Discontinued: {o.statusReason}</div>
               )}
