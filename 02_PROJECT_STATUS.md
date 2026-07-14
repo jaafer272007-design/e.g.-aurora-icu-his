@@ -20,7 +20,11 @@ fabricated bedside SOFA at the patient level (the roster/print SOFA/EWS
 TILES recorded as a follow-up — they also need EWS + list-level scoring).
 87/87 headless boundary checks + 13/13 real-browser checks (full 14/24,
 the support cap, creatinine-only renal, free-text-dose vasopressor → 4,
-the INCOMPLETE state). Prior: the STAGING FORMULARY SYNC
+the INCOMPLETE state). Merged (PR #89, `acdf041`); Pages deploy + Render
+redeploy verified, `resp_support` directly confirmed on staging. OUTSTANDING
+GATE: clinical validation by the validator is REQUIRED before any care use
+— SOFA ships as decision-support only until then. Prior: the STAGING
+FORMULARY SYNC
 WORKFLOW (built — the operational gap seed-if-empty leaves: a drug added to
 `server/Data/formulary-seed.json` after a durable environment's first boot
 never reaches it through the seed. `staging-formulary-sync.yml` is a
@@ -3656,6 +3660,26 @@ real score and the honest replacement for the fabricated bedside SOFA
   phenylephrine mapping (modified only); auto-detection of respiratory
   support from ventilator data (Device Adapter); a real absolute
   lab-resulted timestamp; the roster SOFA/EWS-tile retirement above.
+- **OUTSTANDING GATE — clinical validation before care use (P7 / spec
+  §2.8), owner-directed 2026-07-14.** Classic SOFA v1 ships as
+  DECISION-SUPPORT ONLY, with the "requires clinical validation before use
+  in care" banner on the card. It is **NOT cleared to inform patient
+  care** until the clinical validator (Jaafer Aljanabi, ICU physician)
+  has validated the computed scores against the thresholds. This is the
+  single outstanding gate for SOFA v1: the code is built, deployed and
+  verified; the CLINICAL sign-off is pending and is a prerequisite before
+  any care use. "Approximately right" is not acceptable for a severity
+  score — the banner and this record stand until the validator clears it.
+- **Post-merge deploy record (PR #89 merged 2026-07-14 as `acdf041`)**:
+  Pages force-deploy run 29350037040 on main — deploy JOB steps all
+  success (built → artifact → deployed; not skipped), the SOFA card live.
+  deployed-observations-e2e run 29350038760 on main — all steps green
+  INCLUDING the server content gate → Render redeployed the merged server
+  tree. `resp_support` DIRECTLY CONFIRMED on staging (a one-off read
+  check, since seed-if-missing tops the type up on the redeploy's boot):
+  the live `staging` catalogue serves `resp_support · group 'ventilator' ·
+  Respiratory Support · enum ['Yes','No']` (53 types total) — no manual
+  seeding step was needed (unlike the seed-if-empty formulary).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
