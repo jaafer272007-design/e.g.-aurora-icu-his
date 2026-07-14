@@ -22,6 +22,7 @@ import { LabsCard } from './LabsCard'
 import { WeightHeightCard } from './WeightHeightCard'
 import { SofaCard } from './SofaCard'
 import { News2Card } from './News2Card'
+import { displayStamp } from '../../lib/time'
 
 type Filter = 'all' | 'vent' | 'pressor' | 'crrt' | 'ecmo' | 'iso' | 'alerts'
 const FILTERS: { key: Filter; label: string }[] = [
@@ -328,7 +329,7 @@ export function MissionControl() {
               <div className="tl">
                 {detail.timeline.map(ev => (
                   <div className="tle" key={ev.id}>
-                    <span className="tt">{ev.time}</span>
+                    <span className="tt">{displayStamp(ev.time)}</span>
                     <span className={`tc ${ev.category}`}>{ev.categoryLabel}</span>
                     <p>{ev.title}{ev.detail ? ` — ${ev.detail}` : ''}</p>
                   </div>

@@ -84,7 +84,7 @@ static class MarApi
                     + " — it is not awaiting documentation");
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
             var reason = needsReason ? req.Reason!.Trim() : null;
             admins[idx] = admins[idx] with
             {

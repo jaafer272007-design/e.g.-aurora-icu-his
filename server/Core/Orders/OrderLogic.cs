@@ -290,7 +290,7 @@ static class OrderLogic
             row.AdministrationsJson = JsonSerializer.Serialize(admins, JsonOpts.Web);
         }
         row.HistoryJson = AppendHistory(row.HistoryJson,
-            new(DateTime.UtcNow.ToString("HH:mm"), actor, "discontinued", reason));
+            new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "discontinued", reason));
     }
 
     /** THE DISCHARGE CASCADE — the explicitly-named LIFECYCLE path (never

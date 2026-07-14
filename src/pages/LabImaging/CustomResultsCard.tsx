@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
-import { agoLabel, useNow } from '../../lib/time'
+import { displayStamp, agoLabel, useNow } from '../../lib/time'
 import type { LabDraw } from '../../lib/api/types'
 
 interface CustomResultsCardProps {
@@ -41,7 +41,7 @@ function UnackReasonDialog(
       <div className="lidialog" role="dialog" aria-modal="true" aria-labelledby="liCusUnackTitle" onClick={e => e.stopPropagation()}>
         <h2 id="liCusUnackTitle">Reverse acknowledgment · <span className="num">{draw.label}</span></h2>
         <p className="lidnote">
-          The original acknowledgment ({draw.acknowledgedBy} · {draw.acknowledgedAt}) is preserved in the
+          The original acknowledgment ({draw.acknowledgedBy} · {displayStamp(draw.acknowledgedAt)}) is preserved in the
           audit history; the result returns to the results inbox.
         </p>
         <div className="field">
@@ -106,7 +106,7 @@ export function CustomResultsCard({ draws, canAcknowledge: canAck, onAcknowledge
             </div>
             {d.note && <div className="linote">note: {d.note}</div>}
             <div className="lismeta num">
-              documented {d.resultedAt} ({agoLabel(d.resultedAt, now)})
+              documented {displayStamp(d.resultedAt)} ({agoLabel(d.resultedAt, now)})
               {prov && <> · by {prov.actor}</>}
               {d.source === 'manual' && <> · ✎ manual</>}
               {(d.amendments?.length ?? 0) > 0 && <> · <span className="liedited">edited ×{d.amendments!.length}</span></>}
@@ -129,7 +129,7 @@ export function CustomResultsCard({ draws, canAcknowledge: canAck, onAcknowledge
               {d.acknowledged ? (
                 <>
                   <span className="liacked">
-                    ✓ Acknowledged by {d.acknowledgedBy} · {d.acknowledgedAt}
+                    ✓ Acknowledged by {d.acknowledgedBy} · {displayStamp(d.acknowledgedAt)}
                     {/* §2b safeguard: the acknowledged-then-edited ordering,
                         stated ON the sign-off line so the old acknowledgment
                         is never read as covering the corrected value */}

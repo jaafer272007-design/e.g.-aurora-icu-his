@@ -68,11 +68,23 @@ static class TimelineLogic
         return string.Join(" · ", flagged.Select(i => $"{i.Analyte} {Fmt(i.Value)}{(string.IsNullOrEmpty(i.Unit) ? "" : $" {i.Unit}")}"));
     }
 
-    /* sort key: minutes relative to today 00:00 ("D-n HH:MM" → negative days) */
+    /* sort key: minutes relative to today 00:00. Handles all three stamp
+       forms honestly: DATED "yyyy-MM-dd HH:mm" (every event stamp going
+       forward — the calendar-date fix; day offset from the real date),
+       "D-n HH:MM" (seeded display convention → negative days), and bare
+       "HH:MM" (pre-fix live stamps → today). */
     static int TimestampMinutes(string t)
     {
-        var m = System.Text.RegularExpressions.Regex.Match(t, @"^D-(\d+)");
-        var dayOffset = m.Success ? -int.Parse(m.Groups[1].Value) : 0;
+        int dayOffset;
+        if (DateTime.TryParseExact(t, "yyyy-MM-dd HH:mm",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dated))
+            dayOffset = (dated.Date - DateTime.UtcNow.Date).Days;
+        else
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(t, @"^D-(\d+)");
+            dayOffset = m.Success ? -int.Parse(m.Groups[1].Value) : 0;
+        }
         var hm = t.Split(' ')[^1].Split(':');
         var mins = hm.Length == 2 && int.TryParse(hm[0], out var h) && int.TryParse(hm[1], out var mn) ? h * 60 + mn : 0;
         return dayOffset * 1440 + mins;

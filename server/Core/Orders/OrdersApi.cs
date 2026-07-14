@@ -148,7 +148,7 @@ static class OrdersApi
             }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
             var created = new List<OrderDto>();
             foreach (var draft in req.Drafts)
             {
@@ -207,7 +207,7 @@ static class OrdersApi
             var o = row.ToDto();
             row.Status = "active";
             row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
-                new(DateTime.UtcNow.ToString("HH:mm"), actor, "signed", null));
+                new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "signed", null));
             if (o.Medication is not null && o.Administrations is null)
                 row.AdministrationsJson = JsonSerializer.Serialize(OrderLogic.GenerateAdministrations(o.Medication), JsonOpts.Web);
             db.SaveChanges();
@@ -273,7 +273,7 @@ static class OrdersApi
             row.MedicationJson = JsonSerializer.Serialize(merged, JsonOpts.Web);
             row.Summary = OrderLogic.MedSummary(merged);
             row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
-                new(DateTime.UtcNow.ToString("HH:mm"), actor, "modified",
+                new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "modified",
                     $"{(diff.Length > 0 ? diff : "no field change")} — {req.Reason.Trim()}"));
             db.SaveChanges();
             return Results.Json(row.ToDto(), JsonOpts.Web);
@@ -332,7 +332,7 @@ static class OrdersApi
                     ? $"order '{orderId}' is pending — it must be signed before it can be implemented"
                     : $"order '{orderId}' is {(row.Status == "completed" ? "already completed" : row.Status)} — it is not awaiting implementation");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("HH:mm");
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
             row.Status = "completed";
             row.HistoryJson = OrderLogic.AppendHistory(
                 OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, "implemented", null)),

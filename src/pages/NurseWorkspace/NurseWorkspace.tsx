@@ -3,7 +3,7 @@ import './NurseWorkspace.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Toast, useToast } from '../../components/Toast'
-import { dueStateFor, nowHm, useNow } from '../../lib/time'
+import { displayStamp, dueStateFor, nowHm, useNow } from '../../lib/time'
 import { IconCheck, IconPencil, IconUsers } from '../../components/icons'
 import {
   completeImplementation, documentAdministration, getImplementationQueue, getIoEntries,
@@ -59,7 +59,7 @@ export function NurseWorkspace() {
       const admin = updated.administrations?.find(a => a.adminId === adminId)
       setMar(prev => prev && prev.map(r =>
         r.adminId === adminId ? { ...r, status: action, documentedTime: admin?.documentedTime } : r))
-      if (row) showToast('Documented', `${row.medication} — ${action} ${admin?.documentedTime ?? nowHm()} · ${patientName(row.patientId)}`)
+      if (row) showToast('Documented', `${row.medication} — ${action} ${displayStamp(admin?.documentedTime) || nowHm()} · ${patientName(row.patientId)}`)
     })
   }
 

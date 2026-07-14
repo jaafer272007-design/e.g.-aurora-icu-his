@@ -1,6 +1,6 @@
 import { Card } from '../../components/Card'
 import { Badge } from '../../components/Badge'
-import { agoLabel, useNow } from '../../lib/time'
+import { displayStamp, agoLabel, useNow } from '../../lib/time'
 import type { ResultInboxItem } from '../../lib/api/types'
 
 interface ResultInboxCardProps {
@@ -38,7 +38,7 @@ export function ResultInboxCard({ items, canAcknowledge: canAck, onAcknowledge }
           <div className="liintext">
             <b>{item.title}</b>
             <span>{item.detail}</span>
-            <small className="num">{item.time} · {agoLabel(item.time, now)} · {item.flag ? item.flag.toUpperCase() : 'CUSTOM'}</small>
+            <small className="num">{displayStamp(item.time)} · {agoLabel(item.time, now)} · {item.flag ? item.flag.toUpperCase() : 'CUSTOM'}</small>
           </div>
           {inWindow(item.documentedAt, now) ? (
             <span className="liwindow" title="a documented result becomes acknowledgeable when its 5-minute self-correction window closes (server-enforced)">⏳ in window</span>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
-import { dueStateFor, useNow } from '../../lib/time'
+import { displayStamp, dueStateFor, useNow } from '../../lib/time'
 import { formatInfusionDose, formatNormalised } from '../../lib/infusion'
 import type { Order, OrderPriority, OrderStatus } from '../../lib/api/types'
 
@@ -80,7 +80,7 @@ export function OrderListCard({ orders, canManage, onSign, onModify, onDiscontin
                 <span className={`oostatus ${st.cls}`}>{st.label}</span>
               </div>
               <div className="oor2 num">
-                {o.orderId} · ordered {o.orderedTime} · {o.orderedBy}
+                {o.orderId} · ordered {displayStamp(o.orderedTime)} · {o.orderedBy}
                 {o.medication && <> · {o.medication.duration}{o.medication.prn && ' · PRN'}</>}
                 {adm && admState && (
                   <span className={`oonext oo-${admState}`}>
@@ -118,7 +118,7 @@ export function OrderListCard({ orders, canManage, onSign, onModify, onDiscontin
                 <div className="oohist">
                   {o.history.map((e, i) => (
                     <div className="oohrow" key={i}>
-                      <span className="oht num">{e.time}</span>
+                      <span className="oht num">{displayStamp(e.time)}</span>
                       <span className={`oha oha-${e.action}`}>{e.action.toUpperCase()}</span>
                       <span className="ohd">{e.actor}{e.detail ? ` — ${e.detail}` : ''}</span>
                     </div>
