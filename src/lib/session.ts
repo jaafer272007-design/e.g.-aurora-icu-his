@@ -1,3 +1,5 @@
+import { clearLastPatient } from './patientContext'
+
 /* Session + three-layer, permission-based RBAC (Stage 9, auth in Stage 10.2).
    User → Role (JobTitle) → PermissionProfile → Permissions — roles are
    NEVER bound to permissions directly; both the profile and the permission
@@ -210,6 +212,9 @@ export function signIn(name: string, jobTitle: JobTitle, token?: string): void {
 
 export function signOut(): void {
   sessionStorage.removeItem(STORAGE_KEY)
+  /* the cross-section patient context is USER context — a role switch in
+     the same tab must never inherit the previous user's patient */
+  clearLastPatient()
 }
 
 /** "Dr. Sara Rahman" → "sara.rahman" — deterministic demo username.

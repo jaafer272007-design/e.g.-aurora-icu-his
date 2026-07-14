@@ -11,6 +11,7 @@ import { Sparkline } from '../../components/Sparkline'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconBrain } from '../../components/icons'
 import { AI_ALERT_THRESHOLD, getPatientDetail, getRiskProfile, getRiskRanking } from '../../lib/api'
+import { lastPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import type { Patient, PatientRiskProfile, RiskRankingRow } from '../../lib/api/types'
 import { riskColor } from '../../lib/risk'
@@ -35,6 +36,18 @@ export function AiAssistant() {
   const [missing, setMissing] = useState(false)
 
   useEffect(() => { getRiskRanking().then(setRanking) }, [])
+
+  /* no patient in the URL → the remembered cross-section patient IF the
+     ranking lists them; otherwise this screen's normal default stands (the
+     unit ranking overview — never a silently-substituted patient) */
+  useEffect(() => {
+    if (patientId || !ranking?.length) return
+    const remembered = lastPatientId()
+    if (remembered && ranking.some(r => r.patientId === remembered)) navigate(`/ai/${remembered}`, { replace: true })
+  }, [patientId, ranking, navigate])
+  /* record the viewed patient as the cross-section context (only once the
+     ranking confirms the id resolves) */
+  useRememberPatient(patientId, ranking)
 
   useEffect(() => {
     if (!patientId) {

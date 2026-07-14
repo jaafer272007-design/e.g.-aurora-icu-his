@@ -12,6 +12,7 @@ import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/ico
 import { useClock } from '../../hooks/useClock'
 import { getObservations, getPatientDetail, getPatients } from '../../lib/api'
 import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
+import { useRememberPatient } from '../../lib/patientContext'
 import { signOut } from '../../lib/session'
 import type { PatientAlert, PatientDetailResponse, PatientSummary } from '../../lib/api/types'
 import { LatestObservationsCard } from './LatestObservationsCard'
@@ -61,6 +62,10 @@ export function MissionControl() {
   const [latestObs, setLatestObs] = useState<Map<string, LatestObservation>>(new Map())
 
   useEffect(() => { getPatients().then(setPatients) }, [])
+
+  /* opening a chart records the cross-section patient context (only once
+     the roster confirms the id resolves) */
+  useRememberPatient(patientId, patients)
 
   useEffect(() => {
     let stale = false

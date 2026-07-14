@@ -17,6 +17,7 @@ import type {
   FormularyDrug, InteractionRule, LabTest, MedicationDetails, NewOrderDraft, Order, OrderPriority,
   OrderSetDef, OrderSetItemTemplate, Patient, PatientSummary,
 } from '../../lib/api/types'
+import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { OrderListCard } from './OrderListCard'
 import { NewOrderCard } from './NewOrderCard'
@@ -68,10 +69,14 @@ export function OrdersMedication() {
     getOrderSets().then(s => setImagingStudies(s.Imaging ?? []))
   }, [])
 
-  /* no patient in the URL → default to the first patient */
+  /* no patient in the URL → the remembered cross-section patient when
+     this screen lists them, else the first patient (honest fallback) */
   useEffect(() => {
-    if (!patientId && patients?.length) navigate(`/orders/${patients[0].patientId}`, { replace: true })
+    if (!patientId && patients?.length) navigate(`/orders/${defaultPatientId(patients)}`, { replace: true })
   }, [patientId, patients, navigate])
+  /* record the viewed patient as the cross-section context (only once
+     this screen's own list confirms the id resolves) */
+  useRememberPatient(patientId, patients)
 
   const refresh = useCallback(() => {
     if (patientId) getPatientOrders(patientId).then(setOrders)

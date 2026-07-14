@@ -12,6 +12,7 @@ import { correctLabResult, documentCustomLabResult, documentLabResult, getLabCat
 import type {
   DocumentLabItem, LabDraw, LabPanelKey, LabTest, PatientSummary, RosterRecordDto,
 } from '../../lib/api/types'
+import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { useNow } from '../../lib/time'
 
@@ -163,8 +164,11 @@ export function LabEntry() {
   }, [])
 
   useEffect(() => {
-    if (!patientId && patients?.length) navigate(`/lab-entry/${patients[0].patientId}`, { replace: true })
+    if (!patientId && patients?.length) navigate(`/lab-entry/${defaultPatientId(patients)}`, { replace: true })
   }, [patientId, patients, navigate])
+  /* record the viewed patient as the cross-section context (only once
+     this screen's own list confirms the id resolves) */
+  useRememberPatient(patientId, patients)
 
   const loadDraws = useCallback(() => {
     if (!patientId) return

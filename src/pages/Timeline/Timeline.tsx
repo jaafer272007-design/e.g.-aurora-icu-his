@@ -9,6 +9,7 @@ import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconClock, IconNote, IconPill } from '../../components/icons'
 import { getPatientDetail, getPatients, getTimeline } from '../../lib/api'
+import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import type { Patient, PatientSummary, TimelineCategory, TimelineEvent } from '../../lib/api/types'
 import { dayOffsetOf, hmOf, toMinutes } from '../../lib/time'
@@ -60,8 +61,11 @@ export function Timeline() {
   useEffect(() => { getPatients().then(setPatients) }, [])
 
   useEffect(() => {
-    if (!patientId && patients?.length) navigate(`/timeline/${patients[0].patientId}`, { replace: true })
+    if (!patientId && patients?.length) navigate(`/timeline/${defaultPatientId(patients)}`, { replace: true })
   }, [patientId, patients, navigate])
+  /* record the viewed patient as the cross-section context (only once
+     this screen's own list confirms the id resolves) */
+  useRememberPatient(patientId, patients)
 
   useEffect(() => {
     if (!patientId) return

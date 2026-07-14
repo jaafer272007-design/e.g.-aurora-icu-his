@@ -3,6 +3,7 @@ import './NavSidebar.css'
 import {
   IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPencil, IconPill, IconPrinter, IconPulse, IconSettings, IconStats, IconUsers,
 } from './icons'
+import { lastPatientId } from '../lib/patientContext'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 
 export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'formulary' | 'labcatalog' | 'ordersets' | 'alerts' | 'statistics' | 'settings'
@@ -33,15 +34,23 @@ export function NavSidebar({ active, alertCount = 0, footerLines }: NavSidebarPr
   const title = session?.jobTitle
   const allowed = (p?: Permission) => !p || (!!title && hasPermission(title, p))
 
+  /* Persistent patient context: the six patient-scoped sections carry the
+     last-viewed patient across section switches (pick Ahmed → Lab Entry →
+     Observations → Orders stays Ahmed). The route param remains the source
+     of truth — this only changes where the sidebar POINTS; with no
+     remembered patient the bare path behaves exactly as before. */
+  const pid = lastPatientId()
+  const withPatient = (base: string) => (pid ? `${base}/${pid}` : base)
+
   const all: NavItem[] = [
     { key: 'dashboard', label: 'Dashboard', icon: <IconGrid />, to: title ? landingRouteOf(title) : '/login' },
     { key: 'beds', label: 'ICU Beds', icon: <IconBed />, to: '/beds', perm: 'patients.view' },
-    { key: 'observations', label: 'Observations', icon: <IconPulse />, to: '/observations', perm: 'patients.view' },
-    { key: 'orders', label: 'Orders & Meds', icon: <IconPill />, to: '/orders', perm: 'orders.view' },
-    { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: '/labs', perm: 'results.view' },
-    { key: 'labentry', label: 'Lab Entry', icon: <IconPencil size={16} />, to: '/lab-entry', perm: 'results.document' },
-    { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: '/timeline', perm: 'patients.view' },
-    { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: '/ai', perm: 'ai.view' },
+    { key: 'observations', label: 'Observations', icon: <IconPulse />, to: withPatient('/observations'), perm: 'patients.view' },
+    { key: 'orders', label: 'Orders & Meds', icon: <IconPill />, to: withPatient('/orders'), perm: 'orders.view' },
+    { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: withPatient('/labs'), perm: 'results.view' },
+    { key: 'labentry', label: 'Lab Entry', icon: <IconPencil size={16} />, to: withPatient('/lab-entry'), perm: 'results.document' },
+    { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: withPatient('/timeline'), perm: 'patients.view' },
+    { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: withPatient('/ai'), perm: 'ai.view' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge />, to: '/discharges', perm: 'patients.view' },
     { key: 'print', label: 'Print Center', icon: <IconPrinter />, to: '/print', perm: 'patients.view' },
