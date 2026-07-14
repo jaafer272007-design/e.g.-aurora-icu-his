@@ -1,6 +1,26 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through the STAGING FORMULARY SYNC
+**Last updated: 2026-07-14 · current through CLASSIC SOFA v1 (built — the
+Clinical Scoring Engine's FIRST real score, filling the deferred §4 of the
+engine design now that every data source is built: a GENERIC engine
+(`src/lib/scoring/`) with SOFA as a score DEFINITION, all 6 organ
+components at the validator-confirmed thresholds, reading each input from
+its canonical source — labs (platelets/bilirubin/creatinine/PaO₂ ABG),
+observations (GCS Total/MAP/FiO₂/urine + the NEW `resp_support` type), the
+structured Infusion Module (µg/kg/min bands, vasopressin AND phenylephrine
+EXCLUDED), and encounter weight. P/F scores 3–4 only with charted
+respiratory support else capped at 2; renal worst-of creatinine vs a
+COMPLETE rolling-24h urine total, never extrapolated; missing input →
+component INCOMPLETE with a partial total, never 0 (P1); 24h windows;
+worst-in-24h primary + current-latest secondary + ΔSOFA trend; COMPUTED AT
+RENDER, never stored (P5 — no migration, the only server change is the
+additive `resp_support` catalogue row); surfaced as decision-support with
+a clinical-validation-required banner (P7). The honest replacement for the
+fabricated bedside SOFA at the patient level (the roster/print SOFA/EWS
+TILES recorded as a follow-up — they also need EWS + list-level scoring).
+87/87 headless boundary checks + 13/13 real-browser checks (full 14/24,
+the support cap, creatinine-only renal, free-text-dose vasopressor → 4,
+the INCOMPLETE state). Prior: the STAGING FORMULARY SYNC
 WORKFLOW (built — the operational gap seed-if-empty leaves: a drug added to
 `server/Data/formulary-seed.json` after a durable environment's first boot
 never reaches it through the seed. `staging-formulary-sync.yml` is a
@@ -3543,6 +3563,100 @@ GitHub runners reach it reliably). `staging-formulary-sync.yml`
   pattern (PR #82) is unaffected — it works because those files are
   already registered from main.
 
+### Classic SOFA v1 (built) — the Clinical Scoring Engine's first real score
+Built from the clinical validator's detailed SOFA spec
+(`docs/design/sofa-scoring-specification.md`, transcribed verbatim from
+the provided `SOFA_SCORING_SPECIFICATION.md`) on the Clinical Scoring
+Engine architecture (`docs/design/clinical-scoring-engine.md`) — filling
+in that design's deliberately-deferred §4 now that every data source it
+reads is built (labs incl. ABG PaO₂, the Stage 11 observations, the
+structured Infusion Module, encounter weight). This is the engine's FIRST
+real score and the honest replacement for the fabricated bedside SOFA
+(P6).
+- **Generic engine, SOFA as a definition (architecture §1)**:
+  `src/lib/scoring/engine.ts` is score-agnostic (a `ScoreDefinition` of
+  components + the P1/P3 aggregation); `sofa.ts` is the classic SOFA v1
+  definition; `sources.ts` resolves the canonical reads; `index.ts` is the
+  public compute API. qSOFA / APACHE II / NEWS2 follow as more definitions
+  with no engine change — the Observation-Type-Catalogue pattern.
+- **COMPUTED AT RENDER, never stored (P5)**: SOFA is a client-side derived
+  value (the GCS-Total / Net-Balance / infusion-normalisation discipline),
+  reading the REAL adapters `getLabDraws` / `getObservations` /
+  `getPatientOrders` / `getEncounters`. NO stored score, NO endpoint, NO
+  migration — correcting an underlying lab/observation flows straight
+  through. The ONLY server change is the additive `resp_support`
+  observation type.
+- **The 6 components at the validator-confirmed thresholds (spec §1)**:
+  Respiratory P/F = PaO₂ ÷ (FiO₂ % ÷ 100), scores 3–4 REQUIRE a charted
+  "Respiratory Support" = Yes, else capped at 2; Coagulation (platelets);
+  Liver (bilirubin mg/dL); CNS (GCS Total — DERIVED from the `gcs`
+  compound, the flowsheet's computation); Renal (creatinine mg/dL OR
+  urine, WORST-of when both, urine used ONLY as a COMPLETE rolling-24h
+  total — never extrapolated: a partial frame falls back to
+  creatinine-only); Cardiovascular (MAP + structured vasopressor
+  µg/kg/min bands, highest applicable). **Vasopressin AND phenylephrine
+  EXCLUDED** (classic SOFA) — a modified SOFA would be a SEPARATE
+  definition, never an edit here (versioned, spec §2.7).
+- **The new "Respiratory Support" observation type**: `resp_support` (enum
+  Yes/No, Respiratory/Ventilator group) appended to the Observation Type
+  Catalogue — append-only DATA, no schema change, seed-if-missing tops up
+  existing deployments (incl. staging) on next boot. Charted, not
+  auto-inferred (a future Device Adapter can supply it without changing
+  SOFA logic). Spec open item 2 (catalogue takes it cleanly) → confirmed,
+  no engine work needed.
+- **Missing data → INCOMPLETE, never 0 (P1)**: a component with no value
+  in its 24h window is "insufficient data" (shown "ND"); the total is the
+  sum of the COMPUTED components only, flagged PARTIAL with the
+  uncomputed ones named — never a falsely-complete or fabricated number.
+  (Also: an active vasopressor whose dose is NOT machine-readable makes
+  Cardiovascular INCOMPLETE rather than silently understating severity.)
+- **Windows / views / trend (spec §2)**: 24h recency windows; worst-in-24h
+  is the PRIMARY view, current-latest the SECONDARY toggle; ΔSOFA trend
+  over prior daily windows, with the delta shown only between two COMPLETE
+  points (never a fabricated delta).
+- **DECISION-SUPPORT (P7 / spec §2.8)**: the Mission Control SOFA card is
+  surfaced as decision-support with an explicit "requires clinical
+  validation before use in care" banner — never as an authoritative
+  vital. No new RBAC atom (it reads data the viewer already sees under
+  `patients.view`).
+- **Lab-time honesty (FLAGGED)**: observations carry a real dated UTC
+  `clinicalTime`, but lab draws carry the store-wide DISPLAY convention
+  ("HH:mm" / "D-n HH:mm"), NOT an absolute resulted timestamp. SOFA
+  windows labs with the app's own established reading (D-n = n days ago);
+  a real absolute lab-resulted timestamp is a recorded future improvement
+  (like coded analyte identity). The "complete 24h urine frame" test (data
+  bracketing both ends of the window) is a conservative honest heuristic —
+  flagged for validator confirmation (spec open item 3 territory).
+- **Verification**: 87/87 headless boundary checks (every component
+  threshold; the P/F support cap with and without support; renal worst-of
+  and creatinine-only-when-no-complete-urine with NO extrapolation;
+  cardiovascular bands incl. mg/kg/hour normalisation and free-text-dose
+  parsing, vasopressin/phenylephrine excluded, unreadable-dose →
+  INCOMPLETE; missing→INCOMPLETE partial-total; worst-vs-latest; 24h
+  window exclusion; ΔSOFA; amend-not-erase effective value) + 13/13
+  real-browser checks on P-1001 (full 14/24 with per-component values +
+  times; the support cap live; creatinine-only renal with the
+  no-extrapolation note; noradrenaline 0.32 µg/kg/min read from a
+  free-text dose → 4; worst/current toggle; the decision-support banner;
+  the INCOMPLETE state on a data-sparse patient). tsc + vite + server
+  build clean.
+- **Replaces fabrication — scope + FLAG (P6)**: the real computed SOFA is
+  shown on the Mission Control patient page. The FABRICATED roster
+  `sofa`/`ews` integer tiles (bed board, Doctor Workspace, the two print
+  templates, the BedOverview "Avg SOFA" KPI — server `PatientRow.Sofa`/
+  `Ews` seed columns) are a DIFFERENT surface and are LEFT as-is,
+  recorded as a FOLLOW-UP: retiring them needs (a) EWS, which is NOT part
+  of this SOFA-only build, and (b) a list-level per-patient scoring
+  strategy (each tile would compute SOFA from four reads per patient). The
+  F8 drift entry stands until that follow-up; this build delivers the real
+  bedside severity score at the patient level without forcing a
+  cross-cutting wire-shape change.
+- **Deferred (recorded, spec §4)**: Modified SOFA and other scores (qSOFA,
+  APACHE II, NEWS2, SAPS II) as separate definitions; the vasopressin/
+  phenylephrine mapping (modified only); auto-detection of respiratory
+  support from ventilator data (Device Adapter); a real absolute
+  lab-resulted timestamp; the roster SOFA/EWS-tile retirement above.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
@@ -3988,6 +4102,15 @@ instruction, source stated per the documentation rule.]*
     Consistent with Aurora's discipline of not building on incomplete
     foundations. Nothing is built now — this is the recorded engine
     architecture + locked principles only.
+  - **UPDATE (2026-07-14) — the engine AND classic SOFA v1 are now BUILT.**
+    The deferred detailed SOFA spec was provided
+    (`docs/design/sofa-scoring-specification.md`) once the data sources
+    were complete, and built as the engine's first score — see "Classic
+    SOFA v1 (built)" above. The generic engine (`src/lib/scoring/`) stands
+    ready for qSOFA / APACHE II / NEWS2 as further definitions. The
+    fabricated bedside SOFA is replaced at the patient level; the roster
+    SOFA/EWS TILES remain the recorded follow-up (they also need EWS +
+    list-level scoring).
 
 - **Lab Result-Entry — future items (recorded 2026-07-13).** Source: the
   clinical validator's Lab Result-Entry design (`LAB_RESULT_ENTRY_DESIGN.md`,
