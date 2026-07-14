@@ -7,7 +7,7 @@ import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { AlertRow } from '../../components/AlertRow'
 import { VitalTile } from '../../components/VitalTile'
 import { Toast, useToast } from '../../components/Toast'
-import { IconAlertTriangle, IconBed, IconSearch, IconStats, IconVent } from '../../components/icons'
+import { IconAlertTriangle, IconBed, IconSearch, IconVent } from '../../components/icons'
 import { getBeds, getUnitSummary } from '../../lib/api'
 import type { Bed, BedsResponse, UnitSummaryResponse } from '../../lib/api/types'
 import { BedCard } from './BedCard'
@@ -64,7 +64,6 @@ export function BedOverview() {
       avail: data.capacity - n,
       crit: occupied.filter(b => b.patient!.severity === 'crit').length,
       vent: occupied.filter(b => b.patient!.flags.includes('vent')).length,
-      sofa: (occupied.reduce((s, b) => s + b.patient!.sofa, 0) / n).toFixed(1),
       /* unit-average MAP over beds with a CHARTED (or demo-fallback) MAP —
          null vitals are "not charted" and never count as zero */
       map: (() => {
@@ -96,7 +95,10 @@ export function BedOverview() {
     },
     { icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(255,93,108,.14)', value: stats ? stats.crit : '—', label: 'Critical', valueStyle: { color: 'var(--red)' } },
     { icon: <IconVent size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: stats ? stats.vent : '—', label: 'Ventilated' },
-    { icon: <IconStats size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: stats ? stats.sofa : '—', label: 'Avg SOFA' },
+    /* the fabricated "Avg SOFA" KPI is RETIRED — per-bed real NEWS2 is on
+       each bed card; a real unit-severity aggregate (needs per-patient
+       scoring lifted to this level) is a recorded follow-up, not a
+       fabricated number. */
   ]
 
   const toggle = (k: 'vent' | 'iso' | 'crit') => setFilters(f => ({ ...f, [k]: !f[k] }))
