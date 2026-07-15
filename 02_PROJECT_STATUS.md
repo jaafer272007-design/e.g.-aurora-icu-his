@@ -4411,7 +4411,51 @@ nav/header.**
   registry; licence; in-app backup status. Score configurability —
   deliberately NEVER.
 
-## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
+### Ultrawide layout + patient-screen back-button fixes (hands-on-testing bugs)
+
+Two bugs found and diagnosed by the owner live on an ultrawide/short
+monitor (3840×889), fixed together on one branch.
+
+- **Bug 1 — Statistics/Alerts/Settings rendered nearly empty (content
+  pushed off-screen).** Root cause confirmed exactly as diagnosed: the
+  `.shell` two-column grid is defined PER PAGE PREFIX (`.bo .shell`,
+  `.dw .shell`, …) and none of the three new pages defined theirs, so
+  `.shell` computed to `display:block` — the nav sidebar went full-width,
+  `main` was pushed below the viewport, and `.app-frame`'s
+  `overflow:hidden` clipped it. This is the SAME trap the Print Center
+  hub hit (recorded in PrintCenter.css); it slipped through because the
+  build-time browser checks asserted content via innerText/screenshots
+  without asserting the computed shell geometry. Fix: each page now
+  carries the established rule (`display:grid; grid-template-columns:
+  198px 1fr; min-height:0` + the ≤1500px 64px collapse), which also
+  re-engages the PR #84 row-pinning (`grid-auto-rows:minmax(0,1fr)`) so
+  each main scrolls itself.
+- **Bug 1b (found fixing 1) — the Alerts page prefix collided with a
+  component class.** The shared AlertRow component owns `.al`
+  (AlertRow.css), and the Alerts page had reused `al` as its root page
+  prefix — so the whole `app-frame` was styled as a flex alert-row card
+  and the shell row inflated past the frame even with the grid rule in
+  place. The Alerts page prefix is renamed to `att` (root class + the
+  26 scoped selectors in Alerts.css; inner `al-*` class names are
+  unchanged). LESSON for every future screen: a new page prefix must be
+  checked against existing component classes before use.
+- **Bug 2 — the in-app back button was absent on the patient screen.**
+  Mission Control (`/patients/:id`) is the one authenticated screen with
+  its own custom header instead of AppHeader, so the BackButton (which
+  lived inside AppHeader) never rendered there. Fix: BackButton is now
+  exported and rendered in Mission Control's header row with the same
+  honest edges (hidden at history index ≤ 0, tab-scoped, sign-out
+  re-checked). Login remains chrome-less and back-free by design — it is
+  the first screen.
+- **Verification**: 41/41 real-browser checks at BOTH 3840×889 (the
+  owner's monitor) and 1024×640 (the PR #84 territory): computed
+  `.shell` geometry asserted on all three fixed pages (grid, 198px
+  sidebar column, nav+main side-by-side, main on-screen and
+  self-scrolling inside the frame); no regression on Bed Overview /
+  Doctor Workspace / Mission Control; back button present on the
+  patient screen via in-app navigation, hidden on a direct load,
+  returning to /beds, visible at the small viewport; zero page errors.
+  tsc + vite clean; frontend-only.
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
 onto a still-mock store. Per "Platform Direction" above, Layers 2–4 are

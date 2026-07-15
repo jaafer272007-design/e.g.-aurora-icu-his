@@ -92,8 +92,11 @@ export function Alerts() {
     { icon: <IconAlertTriangle size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: total ?? '—', label: 'Attention Items' },
   ]
 
+  // page prefix "att", NOT "al" — the shared AlertRow component already
+  // owns the `.al` class (AlertRow.css), and using it as the page root
+  // turned the whole frame into a flex alert-row card.
   return (
-    <div className="app-frame al">
+    <div className="app-frame att">
       <AppHeader
         subtitle="Alerts · Clinical Attention Center"
         kpis={kpis}
