@@ -8,6 +8,7 @@ import { LabImaging } from './pages/LabImaging/LabImaging'
 import { LabEntry } from './pages/LabEntry/LabEntry'
 import { Timeline } from './pages/Timeline/Timeline'
 import { Observations } from './pages/Observations/Observations'
+import { Statistics } from './pages/Statistics/Statistics'
 import { AiAssistant } from './pages/AiAssistant/AiAssistant'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
@@ -87,6 +88,10 @@ export default function App() {
         <Route path="/lab-entry/:patientId" element={<RequireSession permission="results.document"><LabEntry /></RequireSession>} />
         <Route path="/timeline" element={<RequireSession permission="patients.view"><Timeline /></RequireSession>} />
         <Route path="/timeline/:patientId" element={<RequireSession permission="patients.view"><Timeline /></RequireSession>} />
+        {/* Statistics — unit-level AGGREGATES only (no patient identifiers),
+            so patients.view is the right gate: every profile carries it and
+            the office Administrator's core use is exactly this page */}
+        <Route path="/statistics" element={<RequireSession permission="patients.view"><Statistics /></RequireSession>} />
         <Route path="/observations" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/observations/:patientId" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/ai" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />
