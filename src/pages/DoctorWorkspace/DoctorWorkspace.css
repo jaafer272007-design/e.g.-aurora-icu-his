@@ -6,7 +6,7 @@
 /* rounding list */
 .dw .rlist{display:flex;flex-direction:column;gap:9px}
 .dw .rcard{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;border:1px solid var(--stroke);
- border-radius:14px;padding:10px 13px;background:rgba(255,255,255,.025);cursor:pointer;transition:.18s;position:relative;
+ border-radius:14px;padding:10px 13px;background:rgba(var(--lift-rgb),.025);cursor:pointer;transition:.18s;position:relative;
  min-height:44px}
 .dw .rcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:4px}
 .dw .rcard.sev-crit::before{background:var(--red);box-shadow:0 0 12px var(--red)}
@@ -19,34 +19,34 @@
 .dw .ract{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
 .dw .ract .sofa{font-family:var(--mono);font-size:15px;font-weight:700}
 .dw .ract .sk{font-size:8.5px;color:var(--faint);letter-spacing:.8px;text-transform:uppercase}
-.dw .orderbtn{font-size:11px;font-weight:600;padding:7px 12px;border-radius:9px;border:1px solid rgba(77,163,255,.4);
- color:var(--blue);background:rgba(77,163,255,.08);transition:.15s;min-height:36px}
-.dw .orderbtn:hover,.dw .orderbtn:focus-visible{background:rgba(77,163,255,.18)}
+.dw .orderbtn{font-size:11px;font-weight:600;padding:7px 12px;border-radius:9px;border:1px solid rgba(var(--blue-rgb),.4);
+ color:var(--blue);background:rgba(var(--blue-rgb),.08);transition:.15s;min-height:36px}
+.dw .orderbtn:hover,.dw .orderbtn:focus-visible{background:rgba(var(--blue-rgb),.18)}
 
 /* action queues */
 .dw .qtabs{display:flex;gap:6px;margin-bottom:11px;flex-wrap:wrap}
 .dw .qtab{padding:8px 12px;border-radius:10px;font-size:11.5px;color:var(--dim);border:1px solid var(--stroke);transition:.15s;min-height:38px;display:flex;align-items:center;gap:6px}
 .dw .qtab:hover{color:var(--text)}
-.dw .qtab.on{background:rgba(77,163,255,.16);border-color:rgba(77,163,255,.5);color:var(--blue);font-weight:600}
-.dw .qtab .n{font-family:var(--mono);font-size:10px;background:rgba(130,170,230,.16);border-radius:6px;padding:1px 6px}
+.dw .qtab.on{background:rgba(var(--blue-rgb),.16);border-color:rgba(var(--blue-rgb),.5);color:var(--blue);font-weight:600}
+.dw .qtab .n{font-family:var(--mono);font-size:10px;background:rgba(var(--steel-rgb),.16);border-radius:6px;padding:1px 6px}
 .dw .qlist{display:flex;flex-direction:column;gap:8px;max-height:305px;overflow-y:auto}
 .dw .qrow{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;
- background:rgba(255,255,255,.02);transition:.2s}
-.dw .qrow .qi{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;background:rgba(255,255,255,.04)}
+ background:rgba(var(--lift-rgb),.02);transition:.2s}
+.dw .qrow .qi{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex:none;background:rgba(var(--lift-rgb),.04)}
 .dw .qrow .qt{flex:1;font-size:12.5px;line-height:1.42}
 .dw .qrow .qt b{font-weight:600}
 .dw .qrow .qt small{display:block;color:var(--faint);font-family:var(--mono);font-size:10px;margin-top:3px}
 .dw .qrow .qbtn{font-size:11px;font-weight:600;padding:7px 13px;border-radius:9px;border:1px solid var(--stroke2);
- color:var(--green);background:rgba(61,232,160,.08);flex:none;transition:.15s;min-height:38px}
-.dw .qrow .qbtn:hover,.dw .qrow .qbtn:focus-visible{background:rgba(61,232,160,.18)}
+ color:var(--green);background:rgba(var(--green-rgb),.08);flex:none;transition:.15s;min-height:38px}
+.dw .qrow .qbtn:hover,.dw .qrow .qbtn:focus-visible{background:rgba(var(--green-rgb),.18)}
 .dw .qrow.done{opacity:0;transform:translateX(14px)}
 .dw .qempty{text-align:center;color:var(--faint);font-size:12px;padding:30px 0}
 
 /* consults */
 .dw .consult{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;
- background:rgba(255,255,255,.02);margin-bottom:8px}
+ background:rgba(var(--lift-rgb),.02);margin-bottom:8px}
 .dw .consult .cav{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none;
- background:linear-gradient(135deg,rgba(167,139,250,.28),rgba(77,163,255,.16));border:1px solid var(--stroke2)}
+ background:linear-gradient(135deg,rgba(var(--violet-rgb),.28),rgba(var(--blue-rgb),.16));border:1px solid var(--stroke2)}
 .dw .consult .ct{flex:1;font-size:12px;line-height:1.4}
 .dw .consult .ct small{display:block;color:var(--faint);font-family:var(--mono);font-size:10px;margin-top:2px}
 

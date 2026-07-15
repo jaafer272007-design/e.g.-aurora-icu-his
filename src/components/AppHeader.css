@@ -1,15 +1,15 @@
 .app-header{display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--stroke);
- background:linear-gradient(180deg,rgba(14,22,37,.94),rgba(9,14,24,.86));backdrop-filter:blur(18px);flex-wrap:wrap}
+ background:linear-gradient(180deg,rgba(var(--glass5-rgb),.94),rgba(var(--glass-rgb),.86));backdrop-filter:blur(18px);flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:11px;font-weight:700;letter-spacing:.4px;padding-right:16px;border-right:1px solid var(--stroke2)}
 .logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;
- background:linear-gradient(135deg,#1e5fb4,#35e0d0);box-shadow:0 0 20px rgba(53,224,208,.35)}
+ background:linear-gradient(135deg,var(--grad-a),var(--cyan));box-shadow:0 0 20px rgba(var(--cyan-rgb),.35)}
 .brand small{display:block;font-weight:500;color:var(--dim);letter-spacing:1.6px;font-size:10px;text-transform:uppercase}
 .datetime{padding-right:16px;border-right:1px solid var(--stroke2)}
 .datetime b{font-family:var(--mono);font-size:17px;letter-spacing:.5px}
 .datetime span{display:block;font-size:11px;color:var(--dim)}
 .kpis{display:flex;gap:10px;flex-wrap:wrap}
 .kpi{display:flex;align-items:center;gap:9px;padding:7px 13px;border-radius:12px;border:1px solid var(--stroke);
- background:rgba(255,255,255,.03);transition:.18s;min-height:44px}
+ background:rgba(var(--lift-rgb),.03);transition:.18s;min-height:44px}
 .kpi:hover{border-color:var(--stroke2);transform:translateY(-1px)}
 .kpi .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none}
 .kpi .kv{font-family:var(--mono);font-size:16px;font-weight:700;line-height:1}
@@ -21,12 +21,12 @@
 .user{display:flex;align-items:center;gap:10px;padding:5px 12px 5px 6px;border-radius:13px;border:1px solid var(--stroke);transition:.18s;cursor:pointer;min-height:44px;text-align:left}
 .user:hover,.user:focus-visible{border-color:var(--stroke2)}
 .uav{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;font-weight:700;font-size:12px;
- background:linear-gradient(135deg,rgba(77,163,255,.3),rgba(53,224,208,.2));border:1px solid var(--stroke2)}
+ background:linear-gradient(135deg,rgba(var(--blue-rgb),.3),rgba(var(--cyan-rgb),.2));border:1px solid var(--stroke2)}
 .user .un{font-size:12.5px;font-weight:600;line-height:1.15}
 .user .ur{font-size:10px;color:var(--dim)}
 
 /* sign-out / switch-role (Stage 9 local session) */
 .app-header .hsignout{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:var(--dim);
- border:1px solid var(--stroke);background:rgba(255,255,255,.03);transition:.15s;margin-left:8px}
-.app-header .hsignout:hover,.app-header .hsignout:focus-visible{color:var(--red);border-color:rgba(255,93,108,.4);
- background:rgba(255,93,108,.08)}
+ border:1px solid var(--stroke);background:rgba(var(--lift-rgb),.03);transition:.15s;margin-left:8px}
+.app-header .hsignout:hover,.app-header .hsignout:focus-visible{color:var(--red);border-color:rgba(var(--red-rgb),.4);
+ background:rgba(var(--red-rgb),.08)}

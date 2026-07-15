@@ -127,14 +127,14 @@ export function Timeline() {
 
   const today = (events ?? []).filter(e => dayOffsetOf(e.time) === 0)
   const kpis: KpiSpec[] = [
-    { icon: <IconClock size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: events ? today.length : '—', label: 'Events Today' },
+    { icon: <IconClock size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: events ? today.length : '—', label: 'Events Today' },
     {
-      icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(255,93,108,.14)',
+      icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)',
       value: events ? events.filter(e => e.flag === 'critical').length : '—', label: 'Critical Flags',
       valueStyle: events?.some(e => e.flag === 'critical') ? { color: 'var(--red)' } : undefined,
     },
-    { icon: <IconPill size={14} stroke="var(--cyan)" />, iconBg: 'rgba(53,224,208,.13)', value: events ? today.filter(e => e.category === 'med').length : '—', label: 'Med Events Today' },
-    { icon: <IconNote size={14} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: events ? today.filter(e => e.category === 'note' || e.category === 'consult').length : '—', label: 'Notes · Consults' },
+    { icon: <IconPill size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)', value: events ? today.filter(e => e.category === 'med').length : '—', label: 'Med Events Today' },
+    { icon: <IconNote size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: events ? today.filter(e => e.category === 'note' || e.category === 'consult').length : '—', label: 'Notes · Consults' },
   ]
 
   const clearFilters = () => { setCats(new Set()); setDay('all'); setShift('all') }

@@ -167,10 +167,10 @@ export function Formulary() {
   }, [drugs])
 
   const kpis: KpiSpec[] = [
-    { icon: <IconPill size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: drugs ? stats.total : '—', label: 'Drugs' },
-    { icon: <IconCheck size={12} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: drugs ? stats.active : '—', label: 'Active' },
-    { icon: <IconClock size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: drugs ? stats.inactive : '—', label: 'Inactive' },
-    { icon: <IconAdmit size={14} stroke="var(--violet)" />, iconBg: 'rgba(167,139,250,.14)', value: drugs ? stats.prn : '—', label: 'PRN-capable' },
+    { icon: <IconPill size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: drugs ? stats.total : '—', label: 'Drugs' },
+    { icon: <IconCheck size={12} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: drugs ? stats.active : '—', label: 'Active' },
+    { icon: <IconClock size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: drugs ? stats.inactive : '—', label: 'Inactive' },
+    { icon: <IconAdmit size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.14)', value: drugs ? stats.prn : '—', label: 'PRN-capable' },
   ]
 
   const offlineMsg = (what: string) => `Formulary management requires the live server — ${what} was NOT saved`

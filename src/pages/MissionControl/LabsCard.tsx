@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { IconFlask } from '../../components/icons'
 import type { Labs } from '../../lib/api/types'
+import { tokenRgba, useThemeVersion } from '../../hooks/useCanvasTheme'
 
 export function LabsCard({ labs }: { labs: Labs }) {
   const [tab, setTab] = useState(labs.panels[0]?.name ?? 'CBC')
   const [hover, setHover] = useState<number | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const themeV = useThemeVersion() // canvas colours re-resolve on theme change
   const panel = labs.panels.find(p => p.name === tab) ?? labs.panels[0]
   const times = labs.drawTimes
 
@@ -28,10 +30,10 @@ export function LabsCard({ labs }: { labs: Labs }) {
     mx += sp * 0.12
     const X = (i: number) => padL + (i / (times.length - 1)) * (W - padL - padR)
     const Y = (v: number) => padT + (1 - (v - mn) / (mx - mn)) * (H - padT - padB)
-    c.strokeStyle = 'rgba(130,170,230,.12)'
+    c.strokeStyle = tokenRgba('--steel-rgb', .12)
     c.lineWidth = 1
     c.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono')
-    c.fillStyle = 'rgba(143,163,188,.8)'
+    c.fillStyle = tokenRgba('--dim-rgb', .8)
     c.textAlign = 'center'
     for (let i = 0; i < times.length; i++) {
       c.beginPath(); c.moveTo(X(i), padT); c.lineTo(X(i), H - padB); c.stroke()
@@ -59,7 +61,7 @@ export function LabsCard({ labs }: { labs: Labs }) {
       })
     })
     if (hover !== null) {
-      c.strokeStyle = 'rgba(233,241,251,.35)'
+      c.strokeStyle = tokenRgba('--text-rgb', .35)
       c.setLineDash([3, 4])
       c.beginPath(); c.moveTo(X(hover), padT); c.lineTo(X(hover), H - padB); c.stroke()
       c.setLineDash([])
@@ -67,8 +69,8 @@ export function LabsCard({ labs }: { labs: Labs }) {
       const bw = 54, bh = 14 * lines.length + 10
       let bx = X(hover) + 10
       if (bx + bw > W - 6) bx = X(hover) - bw - 10
-      c.fillStyle = 'rgba(10,16,28,.94)'
-      c.strokeStyle = 'rgba(130,170,230,.3)'
+      c.fillStyle = tokenRgba('--glass2-rgb', .94)
+      c.strokeStyle = tokenRgba('--steel-rgb', .3)
       c.beginPath(); c.roundRect(bx, padT + 4, bw, bh, 8); c.fill(); c.stroke()
       lines.forEach((l, k) => {
         c.fillStyle = l.col
@@ -76,7 +78,7 @@ export function LabsCard({ labs }: { labs: Labs }) {
         c.fillText(l.t, bx + 10, padT + 20 + k * 14)
       })
     }
-  }, [panel, times, hover])
+  }, [panel, times, hover, themeV])
 
   useEffect(() => {
     draw()

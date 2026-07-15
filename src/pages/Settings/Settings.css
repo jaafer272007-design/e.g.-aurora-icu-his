@@ -53,7 +53,7 @@
   cursor: pointer;
   transition: .15s;
 }
-.se .se-opt.on { border-color: var(--blue); background: rgba(77, 163, 255, .08); }
+.se .se-opt.on { border-color: var(--blue); background: rgba(var(--blue-rgb),.08); }
 .se .se-opt.se-disabled { opacity: .5; cursor: not-allowed; border-style: dashed; }
 
 .se .se-sub { font-size: 11px; color: var(--faint); margin-top: 6px; line-height: 1.45; }
@@ -62,8 +62,8 @@
 .se .se-flag {
   margin-top: 8px;
   padding: 8px 12px;
-  border: 1px solid rgba(255, 180, 84, .35);
-  background: rgba(255, 180, 84, .06);
+  border: 1px solid rgba(var(--amber-rgb),.35);
+  background: rgba(var(--amber-rgb),.06);
   border-radius: 9px;
   font-size: 11.5px;
   color: var(--dim);
@@ -88,8 +88,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px dashed rgba(255, 180, 84, .45);
-  background: rgba(255, 180, 84, .04);
+  border: 1px dashed rgba(var(--amber-rgb),.45);
+  background: rgba(var(--amber-rgb),.04);
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 13px;
@@ -102,7 +102,7 @@
   letter-spacing: .7px;
   text-transform: uppercase;
   color: var(--amber);
-  border: 1px dashed rgba(255, 180, 84, .5);
+  border: 1px dashed rgba(var(--amber-rgb),.5);
   border-radius: 5px;
   padding: 2px 7px;
   flex: 0 0 auto;
@@ -141,5 +141,5 @@
   color: var(--dim);
   line-height: 1.5;
 }
-.se .se-health.ok { border-color: rgba(61, 232, 160, .4); background: rgba(61, 232, 160, .06); color: var(--green); }
-.se .se-health.down { border-color: rgba(255, 93, 108, .4); background: rgba(255, 93, 108, .06); color: var(--red); }
+.se .se-health.ok { border-color: rgba(var(--green-rgb),.4); background: rgba(var(--green-rgb),.06); color: var(--green); }
+.se .se-health.down { border-color: rgba(var(--red-rgb),.4); background: rgba(var(--red-rgb),.06); color: var(--red); }

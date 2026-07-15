@@ -109,7 +109,7 @@ export function IconVent({ size = 16, stroke = 'currentColor', strokeWidth = 2 }
   )
 }
 
-export function IconCheck({ size = 11, stroke = '#06121f', strokeWidth = 3.4 }: IconProps) {
+export function IconCheck({ size = 11, stroke = 'var(--ink)', strokeWidth = 3.4 }: IconProps) {
   return (
     <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
       <path d="M20 6L9 17l-5-5" />

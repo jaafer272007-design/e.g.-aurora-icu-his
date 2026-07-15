@@ -31,12 +31,12 @@
   margin-bottom: 8px;
   padding: 8px 10px;
   border-radius: 9px;
-  border: 1px solid rgba(130, 170, 230, .25);
-  background: rgba(8, 15, 26, .6);
-  color: #dfe5ee;
+  border: 1px solid rgba(var(--steel-rgb),.25);
+  background: rgba(var(--well2-rgb),.6);
+  color: var(--txt2);
   font-size: 13px;
 }
-.pc-search:focus-visible { outline: 2px solid #4da3ff; outline-offset: 1px; }
+.pc-search:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 
 .pc-plist { display: flex; flex-direction: column; gap: 4px; max-height: 60vh; overflow: auto; }
 .pc-prow {
@@ -46,15 +46,15 @@
   border-radius: 9px;
   border: 1px solid transparent;
   background: transparent;
-  color: #dfe5ee;
+  color: var(--txt2);
   cursor: pointer;
   text-align: left;
 }
-.pc-prow:hover { background: rgba(77, 163, 255, .08); }
-.pc-prow:focus-visible { outline: 2px solid #4da3ff; outline-offset: 1px; }
-.pc-prow.on { border-color: rgba(77, 163, 255, .55); background: rgba(77, 163, 255, .12); }
+.pc-prow:hover { background: rgba(var(--blue-rgb),.08); }
+.pc-prow:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.pc-prow.on { border-color: rgba(var(--blue-rgb),.55); background: rgba(var(--blue-rgb),.12); }
 .pc-pname { font-weight: 600; font-size: 13px; }
-.pc-pmeta { font-size: 11px; color: #9fb1c9; }
+.pc-pmeta { font-size: 11px; color: var(--txt3); }
 
 .pc-elist { display: flex; flex-direction: column; gap: 6px; }
 .pc-erow {
@@ -62,19 +62,19 @@
   min-height: 44px;
   padding: 7px 10px;
   border-radius: 9px;
-  border: 1px solid rgba(130, 170, 230, .13);
-  color: #dfe5ee;
+  border: 1px solid rgba(var(--steel-rgb),.13);
+  color: var(--txt2);
   font-size: 13px;
   cursor: pointer;
 }
-.pc-erow.on { border-color: rgba(77, 163, 255, .55); background: rgba(77, 163, 255, .1); }
+.pc-erow.on { border-color: rgba(var(--blue-rgb),.55); background: rgba(var(--blue-rgb),.1); }
 .pc-erow input { margin-top: 3px; }
 
 .pc-trow {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 0;
-  border-bottom: 1px solid rgba(130, 170, 230, .13);
-  color: #dfe5ee;
+  border-bottom: 1px solid rgba(var(--steel-rgb),.13);
+  color: var(--txt2);
 }
 .pc-trow > div { flex: 1; }
 .pc-trow p { margin: 3px 0 0; }
@@ -82,14 +82,14 @@
   min-width: 74px;
   min-height: 44px;
   border-radius: 9px;
-  border: 1px solid #4da3ff;
-  background: #4da3ff;
-  color: #06121f;
+  border: 1px solid var(--blue);
+  background: var(--blue);
+  color: var(--ink);
   font-weight: 600;
   cursor: pointer;
 }
 .pc-open:disabled { opacity: .35; cursor: not-allowed; }
-.pc-open:focus-visible { outline: 2px solid #dfe5ee; outline-offset: 2px; }
+.pc-open:focus-visible { outline: 2px solid var(--txt2); outline-offset: 2px; }
 
 /* discharged-patient group — a STATE distinction, deliberately neutral
    (the fixed severity palette is never reassigned) */
@@ -99,22 +99,22 @@
   font-weight: 600;
   letter-spacing: .04em;
   text-transform: uppercase;
-  color: #9fb1c9;
+  color: var(--txt3);
 }
-.pc-drow { border-color: rgba(159, 177, 201, .18); }
+.pc-drow { border-color: rgba(var(--dim2-rgb),.18); }
 .pc-dtag {
   display: inline-block;
   margin-left: 6px;
   padding: 1px 7px;
-  border: 1px solid rgba(159, 177, 201, .45);
+  border: 1px solid rgba(var(--dim2-rgb),.45);
   border-radius: 999px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: .04em;
   text-transform: uppercase;
-  color: #9fb1c9;
+  color: var(--txt3);
 }
 
-.pc-warn { color: #ffb454; font-size: 11px; }
-.pc-empty { color: #9fb1c9; font-size: 12px; }
-.pc-note { color: #9fb1c9; font-size: 11px; margin-top: 10px; }
+.pc-warn { color: var(--amber); font-size: 11px; }
+.pc-empty { color: var(--txt3); font-size: 12px; }
+.pc-note { color: var(--txt3); font-size: 11px; margin-top: 10px; }

@@ -10,12 +10,12 @@
 .ua .anlegend i{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0}
 
 .ua .anblock{border:1px solid var(--stroke);border-radius:11px;padding:9px 10px;
- display:grid;grid-template-columns:repeat(6,1fr);gap:7px 9px;background:rgba(255,255,255,.015);position:relative}
+ display:grid;grid-template-columns:repeat(6,1fr);gap:7px 9px;background:rgba(var(--lift-rgb),.015);position:relative}
 .ua .anblock .anfield{display:flex;flex-direction:column;gap:3px;min-width:0}
 .ua .anblock .anfield label{font-size:9px;letter-spacing:.5px;color:var(--dim);text-transform:uppercase;white-space:nowrap}
 .ua .anblock .anfield label i{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0}
 .ua .anblock .anfield input{width:100%;min-width:0;min-height:34px;padding:6px 8px;border-radius:8px;font-size:11.5px;
- background:rgba(6,12,22,.55);border:1px solid var(--stroke2);outline:none}
+ background:rgba(var(--well-rgb),.55);border:1px solid var(--stroke2);outline:none}
 .ua .anblock .anfield input:focus-visible{box-shadow:var(--focus)}
 /* field spans: analyte name wide; unit narrow; ref low/high; range text;
    crit low/high (optional pair, red-tinted labels) */
@@ -23,17 +23,17 @@
 .ua .anblock .an-unit{grid-column:span 2}
 .ua .anblock .an-num{grid-column:span 1}
 .ua .anblock .an-range{grid-column:span 2}
-.ua .anblock .an-crit label{color:rgba(255,93,108,.8)}
+.ua .anblock .an-crit label{color:rgba(var(--red-rgb),.8)}
 .ua .anblock .anhead{grid-column:1/-1;display:flex;align-items:baseline;gap:8px}
 .ua .anblock .anhead b{font-size:10.5px;letter-spacing:.4px;color:var(--cyan);text-transform:uppercase}
 .ua .anblock .anremove{margin-left:auto;font-size:10px;color:var(--dim);border:1px solid var(--stroke);
  border-radius:8px;padding:3px 9px;min-height:26px;transition:.15s}
-.ua .anblock .anremove:hover:not(:disabled){color:var(--red);border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.06)}
+.ua .anblock .anremove:hover:not(:disabled){color:var(--red);border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.06)}
 .ua .anblock .anremove:disabled{opacity:.35;cursor:not-allowed}
 
 .ua .anadd{align-self:flex-start;font-size:11px;font-weight:600;color:var(--blue);
- border:1px solid rgba(77,163,255,.4);border-radius:9px;padding:7px 13px;min-height:36px;transition:.15s}
-.ua .anadd:hover:not(:disabled){background:rgba(77,163,255,.1)}
+ border:1px solid rgba(var(--blue-rgb),.4);border-radius:9px;padding:7px 13px;min-height:36px;transition:.15s}
+.ua .anadd:hover:not(:disabled){background:rgba(var(--blue-rgb),.1)}
 .ua .anadd:disabled{opacity:.35;cursor:not-allowed}
 
 @media(max-width:1500px){

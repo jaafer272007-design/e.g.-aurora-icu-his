@@ -84,7 +84,7 @@ export function Login() {
       <main className="lgwrap">
         <section className="lgcard card">
           <div className="lgbrand">
-            <div className="logo"><IconPulse size={20} stroke="#06121f" strokeWidth={2.6} /></div>
+            <div className="logo"><IconPulse size={20} stroke="var(--ink)" strokeWidth={2.6} /></div>
             <div className="lgtitle">AURORA ICU<small>Hospital Information System · Unit 4B</small></div>
           </div>
 

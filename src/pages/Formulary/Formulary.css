@@ -3,9 +3,9 @@
    the same .ua frame class) — these are the formulary-only additions. */
 .ua .fmtags{display:flex;gap:4px;flex-wrap:wrap}
 .ua .fmtag{font-size:9.5px;letter-spacing:.3px;padding:2px 7px;border-radius:999px;white-space:nowrap;
- color:var(--dim);border:1px solid var(--stroke);background:rgba(255,255,255,.03)}
-.ua .fmtag.block{color:var(--red);border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.07)}
-.ua .fmtag.warn{color:var(--amber);border-color:rgba(255,180,84,.4);background:rgba(255,180,84,.07)}
+ color:var(--dim);border:1px solid var(--stroke);background:rgba(var(--lift-rgb),.03)}
+.ua .fmtag.block{color:var(--red);border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.07)}
+.ua .fmtag.warn{color:var(--amber);border-color:rgba(var(--amber-rgb),.4);background:rgba(var(--amber-rgb),.07)}
 .ua .fmvocab{font-size:10.5px;line-height:1.6;color:var(--faint)}
 .ua .fmvocab b{color:var(--dim);font-weight:600}
 .ua .fmlimits{font-size:10px;color:var(--faint);display:flex;gap:8px;flex-wrap:wrap}

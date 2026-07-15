@@ -61,10 +61,10 @@ export function Admissions() {
   const occupied = useMemo(() => (beds ?? []).filter(b => b.patientId), [beds])
 
   const kpis: KpiSpec[] = [
-    { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: beds ? `${occupied.length} / ${beds.length}` : '—', label: 'Census' },
-    { icon: <IconBed size={14} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: beds ? freeBeds.length : '—', label: 'Beds Free' },
-    { icon: <IconAdmit size={14} stroke="var(--cyan)" />, iconBg: 'rgba(53,224,208,.13)', value: openEncounters?.filter(e => e.admittedAt !== '').length ?? '—', label: 'New Admissions' },
-    { icon: <IconUsers size={14} stroke="var(--violet)" />, iconBg: 'rgba(167,139,250,.15)', value: openEncounters?.length ?? '—', label: 'Open Encounters' },
+    { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: beds ? `${occupied.length} / ${beds.length}` : '—', label: 'Census' },
+    { icon: <IconBed size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: beds ? freeBeds.length : '—', label: 'Beds Free' },
+    { icon: <IconAdmit size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)', value: openEncounters?.filter(e => e.admittedAt !== '').length ?? '—', label: 'New Admissions' },
+    { icon: <IconUsers size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.15)', value: openEncounters?.length ?? '—', label: 'Open Encounters' },
   ]
 
   async function submit(e: React.FormEvent) {

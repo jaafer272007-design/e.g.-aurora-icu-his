@@ -1,28 +1,28 @@
 /* Administrator landing view — Stage 9. Read-only census/performance. */
 .ad .shell{display:grid;grid-template-columns:198px 1fr;min-height:0}
 .ad main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
-.ad .adnote{font-size:11.5px;line-height:1.5;color:var(--text);border:1px solid rgba(77,163,255,.35);
- background:rgba(77,163,255,.07);border-radius:12px;padding:10px 14px}
+.ad .adnote{font-size:11.5px;line-height:1.5;color:var(--text);border:1px solid rgba(var(--blue-rgb),.35);
+ background:rgba(var(--blue-rgb),.07);border-radius:12px;padding:10px 14px}
 .ad .adcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start}
 .ad .adtiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:12px}
 .ad .adpods{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 .ad .adpod{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;font-size:11.5px}
 .ad .adpodname{color:var(--dim)}
-.ad .adpodbar{height:7px;border-radius:4px;background:rgba(130,170,230,.1);overflow:hidden}
+.ad .adpodbar{height:7px;border-radius:4px;background:rgba(var(--steel-rgb),.1);overflow:hidden}
 .ad .adpodbar i{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--blue),var(--cyan))}
 .ad .adpodnum{font-size:11px;color:var(--text)}
 .ad .adlink{font-size:11.5px;font-weight:600;color:var(--blue);padding:9px 13px;border-radius:9px;align-self:flex-start;
- border:1px solid rgba(77,163,255,.4);background:rgba(77,163,255,.08);transition:.15s;min-height:40px}
-.ad .adlink:hover,.ad .adlink:focus-visible{background:rgba(77,163,255,.18)}
+ border:1px solid rgba(var(--blue-rgb),.4);background:rgba(var(--blue-rgb),.08);transition:.15s;min-height:40px}
+.ad .adlink:hover,.ad .adlink:focus-visible{background:rgba(var(--blue-rgb),.18)}
 .ad .adstats{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
-.ad .adstat{border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;background:rgba(255,255,255,.02);position:relative}
+.ad .adstat{border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;background:rgba(var(--lift-rgb),.02);position:relative}
 .ad .adsv{font-size:17px;font-weight:700}
 .ad .adsl{font-size:10px;color:var(--dim);margin-top:2px}
 .ad .adsd{position:absolute;top:9px;right:10px;font-size:9.5px;font-weight:600;color:var(--faint)}
 .ad .adsd.up{color:var(--green)}
 .ad .adops{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
 .ad .adop{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--dim);
- border-bottom:1px dashed rgba(130,170,230,.1);padding-bottom:7px}
+ border-bottom:1px dashed rgba(var(--steel-rgb),.1);padding-bottom:7px}
 .ad .adop b{font-size:14px;color:var(--text)}
 .ad .adalerthead{font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
 @media(max-width:1500px){.ad .shell{grid-template-columns:64px 1fr}}

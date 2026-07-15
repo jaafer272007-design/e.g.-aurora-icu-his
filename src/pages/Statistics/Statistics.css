@@ -30,8 +30,8 @@
 /* the page-level going-forward honesty banner (§0.1) */
 .st .st-honesty {
   padding: 10px 14px;
-  border: 1px solid rgba(255, 180, 84, .35);
-  background: rgba(255, 180, 84, .07);
+  border: 1px solid rgba(var(--amber-rgb),.35);
+  background: rgba(var(--amber-rgb),.07);
   border-radius: 10px;
   color: var(--txt-2);
   font-size: 12px;
@@ -81,8 +81,8 @@
    muted amber text label instead of a number (§2) */
 .st .st-nottracked {
   border-style: dashed;
-  border-color: rgba(255, 180, 84, .45);
-  background: rgba(255, 180, 84, .04);
+  border-color: rgba(var(--amber-rgb),.45);
+  background: rgba(var(--amber-rgb),.04);
 }
 .st .st-nottracked .st-value {
   font-size: 14px;
@@ -164,7 +164,7 @@
 .st .st-bar {
   width: 100%;
   max-width: 26px;
-  background: rgba(77, 163, 255, .55);
+  background: rgba(var(--blue-rgb),.55);
   border-radius: 3px 3px 0 0;
 }
 .st .st-barval { font-size: 10px; color: var(--txt-2); }

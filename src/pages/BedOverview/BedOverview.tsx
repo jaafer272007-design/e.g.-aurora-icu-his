@@ -87,13 +87,13 @@ export function BedOverview() {
   const critAlerts = summary ? summary.highPriorityAlerts.filter(a => a.severity === 'crit').length : 0
 
   const kpis: KpiSpec[] = [
-    { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: stats ? `${stats.n} / ${data!.capacity}` : '—', label: 'Occupied' },
+    { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: stats ? `${stats.n} / ${data!.capacity}` : '—', label: 'Occupied' },
     {
       icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>,
-      iconBg: 'rgba(61,232,160,.13)', value: stats ? stats.avail : '—', label: 'Available',
+      iconBg: 'rgba(var(--green-rgb),.13)', value: stats ? stats.avail : '—', label: 'Available',
     },
-    { icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(255,93,108,.14)', value: stats ? stats.crit : '—', label: 'Critical', valueStyle: { color: 'var(--red)' } },
-    { icon: <IconVent size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: stats ? stats.vent : '—', label: 'Ventilated' },
+    { icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)', value: stats ? stats.crit : '—', label: 'Critical', valueStyle: { color: 'var(--red)' } },
+    { icon: <IconVent size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: stats ? stats.vent : '—', label: 'Ventilated' },
     /* the fabricated "Avg SOFA" KPI is RETIRED — per-bed real NEWS2 is on
        each bed card; a real unit-severity aggregate (needs per-patient
        scoring lifted to this level) is a recorded follow-up, not a
@@ -172,7 +172,7 @@ export function BedOverview() {
           <h3><span className="live" />Real-Time ICU Summary</h3>
           <div className="ring">
             <svg width="66" height="66" viewBox="0 0 66 66">
-              <circle cx="33" cy="33" r="27" fill="none" stroke="rgba(130,170,230,.14)" strokeWidth="7" />
+              <circle cx="33" cy="33" r="27" fill="none" stroke="rgba(var(--steel-rgb),.14)" strokeWidth="7" />
               <circle
                 cx="33" cy="33" r="27" fill="none" stroke="url(#occ-ring-grad)" strokeWidth="7" strokeLinecap="round"
                 strokeDasharray={RING_CIRC} strokeDashoffset={ringOffset} transform="rotate(-90 33 33)"
@@ -180,10 +180,10 @@ export function BedOverview() {
               />
               <defs>
                 <linearGradient id="occ-ring-grad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0" stopColor="#4da3ff" /><stop offset="1" stopColor="#35e0d0" />
+                  <stop offset="0" stopColor="var(--blue)" /><stop offset="1" stopColor="var(--cyan)" />
                 </linearGradient>
               </defs>
-              <text x="33" y="38" textAnchor="middle" fill="#e9f1fb" fontSize="14" fontWeight="700" fontFamily="SF Mono,ui-monospace,monospace">
+              <text x="33" y="38" textAnchor="middle" fill="var(--text)" fontSize="14" fontWeight="700" fontFamily="SF Mono,ui-monospace,monospace">
                 {stats ? `${Math.round(stats.pct * 100)}%` : '—'}
               </text>
             </svg>

@@ -2,6 +2,6 @@
    .notfound card styling from NotFoundCard.css. */
 .deniedwrap{display:grid;place-items:center;min-height:100vh;padding:24px}
 .deniedwrap .card{max-width:560px;width:100%}
-.deniedwrap code{font-family:var(--mono);font-size:11.5px;color:var(--amber);background:rgba(255,180,84,.1);
+.deniedwrap code{font-family:var(--mono);font-size:11.5px;color:var(--amber);background:rgba(var(--amber-rgb),.1);
  padding:2px 7px;border-radius:6px}
 .deniedbtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}

@@ -99,10 +99,10 @@ export function Statistics() {
   }, [])
 
   const kpis: KpiSpec[] = [
-    { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: m ? `${m.occupancyPct}%` : '—', label: 'Occupancy' },
-    { icon: <IconAdmit size={14} stroke="var(--cyan)" />, iconBg: 'rgba(53,224,208,.13)', value: m?.admissionsToday ?? '—', label: 'Admissions Today' },
-    { icon: <IconDischarge size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: m?.dischargesToday ?? '—', label: 'Discharges Today' },
-    { icon: <IconStats size={14} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: m?.mortality.pct === null || m === null ? '—' : `${m.mortality.pct}%`, label: 'ICU Mortality' },
+    { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: m ? `${m.occupancyPct}%` : '—', label: 'Occupancy' },
+    { icon: <IconAdmit size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)', value: m?.admissionsToday ?? '—', label: 'Admissions Today' },
+    { icon: <IconDischarge size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: m?.dischargesToday ?? '—', label: 'Discharges Today' },
+    { icon: <IconStats size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: m?.mortality.pct === null || m === null ? '—' : `${m.mortality.pct}%`, label: 'ICU Mortality' },
   ]
 
   return (

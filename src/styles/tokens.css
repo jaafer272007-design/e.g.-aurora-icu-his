@@ -9,6 +9,74 @@
   --mono:"SF Mono","Cascadia Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
   --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
   --r:18px; --shadow:0 12px 34px rgba(0,0,0,.38); --focus:0 0 0 3px rgba(77,163,255,.5);
+
+  /* ---- THE LIGHT-THEME PASS: the token-layer migration ----
+     Every colour that was hardcoded in component/page CSS (and inline in
+     TSX) now routes through these tokens. The DARK values below are the
+     exact literals they replaced — the dark theme is unchanged by
+     construction. rgba() usages keep their per-usage alpha and reference
+     an RGB TRIPLET token: rgba(var(--blue-rgb),.16).
+     Left literal on purpose (theme-agnostic): black shadows/scrims, the
+     fixed modal backdrops, the body's aurora glows, white ink on red
+     badges, EnvironmentChrome (environment identity must look identical
+     everywhere), and print.css (paper is paper). */
+  /* accent triplets (tinted backgrounds / borders) */
+  --blue-rgb:77,163,255; --red-rgb:255,93,108; --amber-rgb:255,180,84;
+  --green-rgb:61,232,160; --cyan-rgb:53,224,208; --violet-rgb:167,139,250;
+  --pink-rgb:255,120,160;
+  /* neutral triplets */
+  --steel-rgb:130,170,230; --steel2-rgb:140,175,225; --steel3-rgb:150,185,235;
+  --steel4-rgb:140,180,240; --dim-rgb:143,163,188; --dim2-rgb:159,177,201;
+  --text-rgb:233,241,251;
+  /* panel-lift overlays (white-alpha in dark; a dark tint in light) */
+  --lift-rgb:255,255,255;
+  /* inset input/well surfaces + glass panel surfaces */
+  --well-rgb:6,12,22; --well2-rgb:8,15,26;
+  --glass-rgb:9,14,24; --glass2-rgb:10,16,28; --glass3-rgb:11,17,29;
+  --glass4-rgb:8,12,21; --glass5-rgb:14,22,37; --glass6-rgb:13,21,36;
+  --glass7-rgb:10,15,26;
+  /* solid roles */
+  --ink:#06121f; --ink2:#04222b;         /* dark ink on bright accent fills */
+  --txt2:#dfe5ee; --txt3:#9fb1c9;        /* secondary/tertiary text */
+  --grad-a:#1e5fb4;                      /* primary-button gradient start */
+  --optbg:#0d1524;                       /* native <option> background */
+  --dlg:#0b1322; --dlg-a:#0d1626; --dlg-b:#0a0f1c;  /* dialog surfaces */
+  --pinktx:#ff8fb0; --tealtx:#79cfc6;    /* order / io tag text */
+  --yellowtx:#ffe07a;                    /* medium-severity text (between amber and green) */
+}
+
+/* ---- LIGHT THEME (Settings → Theme; Follow system honours the device).
+   Hue meanings are PRESERVED — red stays red, amber stays amber, the
+   NEWS2/SOFA band colours and lab-flag colours keep their clinical
+   meaning; only lightness shifts so text meets WCAG AA on the light
+   surfaces (accents darken, glass panels whiten, white-lift overlays
+   become subtle dark tints). */
+:root[data-theme="light"]{
+  --bg:#eef2f8; --bg2:#e4eaf3;
+  --panel:linear-gradient(160deg,rgba(255,255,255,.92),rgba(247,250,254,.88));
+  --stroke:rgba(30,70,140,.16); --stroke2:rgba(30,70,140,.3);
+  --text:#152538; --dim:#3f5a76; --faint:#4c5f76;
+  --blue:#0c4a9b; --cyan:#076a62; --green:#096b47; --amber:#7c5203; --red:#a51a2c; --violet:#5533b8;
+  --shadow:0 12px 34px rgba(30,50,90,.16); --focus:0 0 0 3px rgba(18,95,194,.4);
+
+  --blue-rgb:18,95,194; --red-rgb:165,26,44; --amber-rgb:176,116,12;
+  --green-rgb:13,127,86; --cyan-rgb:10,127,118; --violet-rgb:105,71,209;
+  --pink-rgb:200,40,110;
+  --steel-rgb:30,70,140; --steel2-rgb:30,70,140; --steel3-rgb:30,70,140;
+  --steel4-rgb:30,70,140; --dim-rgb:68,96,125; --dim2-rgb:74,95,120;
+  --text-rgb:21,37,56;
+  --lift-rgb:16,42,77;
+  --well-rgb:214,225,238; --well2-rgb:214,225,238;
+  --glass-rgb:252,253,255; --glass2-rgb:252,253,255; --glass3-rgb:252,253,255;
+  --glass4-rgb:252,253,255; --glass5-rgb:250,252,255; --glass6-rgb:250,252,255;
+  --glass7-rgb:250,252,255;
+  --ink:#f7fafd; --ink2:#f7fafd;
+  --txt2:#24364e; --txt3:#44607d;
+  --grad-a:#125fc2;
+  --optbg:#ffffff;
+  --dlg:#ffffff; --dlg-a:#ffffff; --dlg-b:#f2f6fc;
+  --pinktx:#8f1e4b; --tealtx:#07615a;
+  --yellowtx:#6d6400; /* olive, NOT amber — medium severity stays hue-distinct from high in light */
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body,#root{height:100%}
@@ -19,7 +87,7 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 input,select,textarea{font:inherit;color:var(--text)}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 ::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-thumb{background:rgba(130,170,230,.18);border-radius:8px}
+::-webkit-scrollbar-thumb{background:rgba(var(--steel-rgb),.18);border-radius:8px}
 ::-webkit-scrollbar-track{background:transparent}
 
 /* accessibility baseline — visible focus ring on every interactive element */

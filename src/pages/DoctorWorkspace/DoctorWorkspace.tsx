@@ -93,10 +93,10 @@ export function DoctorWorkspace() {
     : queues?.notes.length ?? 0
 
   const kpis: KpiSpec[] = [
-    { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: rounding ? rounding.patients.length : '—', label: 'My Patients' },
-    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: pendingOrders ? queueCount('orders') : '—', label: 'Orders to Sign' },
-    { icon: <IconFlask size={14} stroke="var(--red)" />, iconBg: 'rgba(255,93,108,.14)', value: results ? queueCount('results') : '—', label: 'Results to Ack.' },
-    { icon: <IconNote size={14} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: queues ? queueCount('notes') : '—', label: 'Notes Due' },
+    { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: rounding ? rounding.patients.length : '—', label: 'My Patients' },
+    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: pendingOrders ? queueCount('orders') : '—', label: 'Orders to Sign' },
+    { icon: <IconFlask size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)', value: results ? queueCount('results') : '—', label: 'Results to Ack.' },
+    { icon: <IconNote size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: queues ? queueCount('notes') : '—', label: 'Notes Due' },
   ]
 
   return (

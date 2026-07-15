@@ -293,10 +293,10 @@ export function Observations() {
   const amendedCount = (obs ?? []).filter(o => o.amendments.length > 0).length
 
   const kpis: KpiSpec[] = [
-    { icon: <IconPulse size={14} stroke="var(--cyan)" />, iconBg: 'rgba(53,224,208,.13)', value: obs ? todayObs.length : '—', label: 'Charted Today' },
-    { icon: <IconClock size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: obs ? new Set(todayObs.map(o => `${o.clinicalTime}|${o.recordedBy}`)).size : '—', label: 'Rounds Today' },
-    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: obs ? amendedCount : '—', label: 'Amended Entries' },
-    { icon: <IconStats size={14} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: catalog ? `${enabledGroups.length}/${catalog.length}` : '—', label: 'Groups Enabled' },
+    { icon: <IconPulse size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)', value: obs ? todayObs.length : '—', label: 'Charted Today' },
+    { icon: <IconClock size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: obs ? new Set(todayObs.map(o => `${o.clinicalTime}|${o.recordedBy}`)).size : '—', label: 'Rounds Today' },
+    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: obs ? amendedCount : '—', label: 'Amended Entries' },
+    { icon: <IconStats size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: catalog ? `${enabledGroups.length}/${catalog.length}` : '—', label: 'Groups Enabled' },
   ]
 
   const setField = (typeCode: string, v: string) => {

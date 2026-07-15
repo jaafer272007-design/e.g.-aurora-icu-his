@@ -12,25 +12,25 @@
 .li .litabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px}
 .li .litab{padding:6px 12px;border-radius:9px;font-size:11px;color:var(--dim);border:1px solid var(--stroke);transition:.15s;min-height:34px}
 .li .litab:hover{color:var(--text)}
-.li .litab.on{background:rgba(77,163,255,.16);border-color:rgba(77,163,255,.5);color:var(--blue);font-weight:600}
+.li .litab.on{background:rgba(var(--blue-rgb),.16);border-color:rgba(var(--blue-rgb),.5);color:var(--blue);font-weight:600}
 .li .lichart{width:100%;height:210px}
 .li .lichartmeta{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:10.5px;color:var(--faint);margin:6px 2px 10px}
-.li .liband{display:inline-block;width:14px;height:8px;border-radius:3px;background:rgba(61,232,160,.18);border:1px dashed rgba(61,232,160,.4);vertical-align:-1px;margin-right:4px}
+.li .liband{display:inline-block;width:14px;height:8px;border-radius:3px;background:rgba(var(--green-rgb),.18);border:1px dashed rgba(var(--green-rgb),.4);vertical-align:-1px;margin-right:4px}
 .li .liacked{color:var(--green)}
 .li .liunacked{color:var(--red);font-weight:600}
 .li .lisource{color:var(--violet)}
 /* the note recorded with a draw (display fix — stored, previously unshown) */
 .li .linote{font-size:11px;color:var(--dim);margin:6px 2px 8px;line-height:1.5;
- border-left:2px solid rgba(130,170,230,.3);padding-left:8px}
+ border-left:2px solid rgba(var(--steel-rgb),.3);padding-left:8px}
 
 /* ===== custom / other results (display fix — the permanent home for
    unstructured results, visible in BOTH acknowledged states; a violet
    dashed frame + "custom · unflagged" tag replace the flag badge so an
    un-interpreted result is never mistaken for a flagged one) ===== */
-.li .licustom{border:1px dashed rgba(167,139,250,.45);border-radius:13px;padding:11px 13px;
- background:rgba(167,139,250,.04);margin-bottom:9px}
+.li .licustom{border:1px dashed rgba(var(--violet-rgb),.45);border-radius:13px;padding:11px 13px;
+ background:rgba(var(--violet-rgb),.04);margin-bottom:9px}
 .li .licustag{font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;
- padding:2px 8px;color:var(--violet);border:1px solid rgba(167,139,250,.5);background:rgba(167,139,250,.1);flex:none}
+ padding:2px 8px;color:var(--violet);border:1px solid rgba(var(--violet-rgb),.5);background:rgba(var(--violet-rgb),.1);flex:none}
 .li .licusval{font-size:14px;font-weight:700}
 .li .licusval small{font-size:9.5px;color:var(--dim);font-weight:500;margin-left:4px}
 .li .licusref{font-size:10px;color:var(--faint);font-style:italic}
@@ -40,20 +40,20 @@
 .li .liedited{color:var(--amber);font-weight:600}
 .li .lihistory{margin:5px 0;display:flex;flex-direction:column;gap:2px}
 .li .liamend{font-size:10px;color:var(--dim);line-height:1.6;
- border-left:2px solid rgba(255,180,84,.4);padding-left:8px}
+ border-left:2px solid rgba(var(--amber-rgb),.4);padding-left:8px}
 .li .liamend s{color:var(--faint)}
 .li .liamend b{color:var(--text)}
 .li .liamend i{color:var(--faint)}
 .li .lipostack{margin-left:8px;font-size:8.5px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;
- padding:1px 6px;color:var(--amber);border:1px solid rgba(255,180,84,.5);background:rgba(255,180,84,.1);font-weight:700}
+ padding:1px 6px;color:var(--amber);border:1px solid rgba(var(--amber-rgb),.5);background:rgba(var(--amber-rgb),.1);font-weight:700}
 .li .lipostackinline{color:var(--amber);font-weight:600}
 .li .liwindow{font-size:10.5px;color:var(--amber)}
 .li .lianalytes{display:flex;flex-direction:column;gap:6px}
 .li .liarow{display:grid;grid-template-columns:1fr auto auto auto 64px;gap:10px;align-items:center;
- padding:8px 11px;border-radius:11px;border:1px solid var(--stroke);background:rgba(255,255,255,.02);
+ padding:8px 11px;border-radius:11px;border:1px solid var(--stroke);background:rgba(var(--lift-rgb),.02);
  cursor:pointer;transition:.15s;text-align:left;color:var(--text);min-height:44px;width:100%}
 .li .liarow:hover{border-color:var(--stroke2)}
-.li .liarow.on{border-color:rgba(77,163,255,.6);background:rgba(77,163,255,.08)}
+.li .liarow.on{border-color:rgba(var(--blue-rgb),.6);background:rgba(var(--blue-rgb),.08)}
 .li .lianame{font-size:12.5px;font-weight:600}
 .li .liaval{font-size:14px;font-weight:700}
 .li .liaval small{font-size:9.5px;color:var(--dim);font-weight:500;margin-left:4px}
@@ -64,59 +64,59 @@
 .li .liempty{text-align:center;color:var(--faint);font-size:12px;padding:32px 0}
 
 /* ===== imaging ===== */
-.li .listudy{border:1px solid var(--stroke);border-radius:13px;padding:11px 13px;background:rgba(255,255,255,.02);margin-bottom:9px}
-.li .listudy.crit{border-color:rgba(255,93,108,.4)}
+.li .listudy{border:1px solid var(--stroke);border-radius:13px;padding:11px 13px;background:rgba(var(--lift-rgb),.02);margin-bottom:9px}
+.li .listudy.crit{border-color:rgba(var(--red-rgb),.4)}
 .li .lisr1{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .li .limod{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:7px;
- background:rgba(167,139,250,.16);color:var(--violet)}
+ background:rgba(var(--violet-rgb),.16);color:var(--violet)}
 .li .lidesc{font-size:12.5px;flex:1}
 .li .listeps{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
 .li .listep{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:3px 8px;border-radius:7px;
- background:rgba(130,170,230,.08);color:var(--faint);border:1px solid transparent}
-.li .listep.done{background:rgba(61,232,160,.1);color:var(--green)}
-.li .listep.cur{background:rgba(77,163,255,.16);color:var(--blue);border-color:rgba(77,163,255,.45)}
+ background:rgba(var(--steel-rgb),.08);color:var(--faint);border:1px solid transparent}
+.li .listep.done{background:rgba(var(--green-rgb),.1);color:var(--green)}
+.li .listep.cur{background:rgba(var(--blue-rgb),.16);color:var(--blue);border-color:rgba(var(--blue-rgb),.45)}
 .li .lismeta{font-size:10px;color:var(--faint);margin-top:7px}
 .li .lisexp{font-size:11px;font-weight:600;color:var(--blue);padding:7px 0;min-height:36px;margin-top:2px}
 .li .lisexp:hover,.li .lisexp:focus-visible{text-decoration:underline}
-.li .lisreport{border-top:1px dashed rgba(130,170,230,.12);padding-top:8px;margin-top:4px;display:flex;flex-direction:column;gap:8px}
+.li .lisreport{border-top:1px dashed rgba(var(--steel-rgb),.12);padding-top:8px;margin-top:4px;display:flex;flex-direction:column;gap:8px}
 .li .lisrsec span{display:block;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
 .li .lisrsec p{font-size:12px;line-height:1.5;color:var(--text)}
 .li .lisrsec p.critimp{color:var(--red)}
 .li .lisack{margin-top:9px}
 .li .lispending{margin-top:9px;font-size:11px;color:var(--dim);font-style:italic}
-.li .liackbtn{font-size:11px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid rgba(61,232,160,.4);
- color:var(--green);background:rgba(61,232,160,.08);transition:.15s;min-height:44px}
-.li .liackbtn:hover,.li .liackbtn:focus-visible{background:rgba(61,232,160,.18)}
+.li .liackbtn{font-size:11px;font-weight:600;padding:8px 14px;border-radius:9px;border:1px solid rgba(var(--green-rgb),.4);
+ color:var(--green);background:rgba(var(--green-rgb),.08);transition:.15s;min-height:44px}
+.li .liackbtn:hover,.li .liackbtn:focus-visible{background:rgba(var(--green-rgb),.18)}
 .li .liviewonly{font-size:10.5px;color:var(--amber)}
 /* reverse acknowledgment (results audit) — the destructive-adjacent action
    sits visually subordinate to the acknowledged state it reverses */
 .li .lisack{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.li .liunackbtn{font-size:10.5px;font-weight:600;padding:6px 12px;border-radius:9px;border:1px solid rgba(255,93,108,.35);
- color:var(--red);background:rgba(255,93,108,.06);transition:.15s;min-height:44px}
-.li .liunackbtn:hover,.li .liunackbtn:focus-visible{background:rgba(255,93,108,.16)}
+.li .liunackbtn{font-size:10.5px;font-weight:600;padding:6px 12px;border-radius:9px;border:1px solid rgba(var(--red-rgb),.35);
+ color:var(--red);background:rgba(var(--red-rgb),.06);transition:.15s;min-height:44px}
+.li .liunackbtn:hover,.li .liunackbtn:focus-visible{background:rgba(var(--red-rgb),.16)}
 /* required-reason dialog (same pattern as the MAR held/refused prompt) */
 .li .liscrim{position:fixed;inset:0;background:rgba(4,8,16,.66);backdrop-filter:blur(3px);z-index:60;
  display:flex;align-items:center;justify-content:center;padding:20px}
-.li .lidialog{width:min(460px,100%);background:#0b1322;border:1px solid rgba(130,170,230,.22);border-radius:18px;
+.li .lidialog{width:min(460px,100%);background:var(--dlg);border:1px solid rgba(var(--steel-rgb),.22);border-radius:18px;
  box-shadow:0 12px 34px rgba(0,0,0,.38);padding:18px 20px}
 .li .lidialog h2{font-size:14px;margin-bottom:8px}
 .li .lidnote{font-size:11px;color:var(--dim);line-height:1.5;margin-bottom:12px}
 .li .lidialog .field label{display:block;font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
-.li .lidialog .field textarea{width:100%;min-height:74px;background:rgba(255,255,255,.03);border:1px solid var(--stroke2);
+.li .lidialog .field textarea{width:100%;min-height:74px;background:rgba(var(--lift-rgb),.03);border:1px solid var(--stroke2);
  border-radius:11px;color:var(--text);font-size:12.5px;padding:9px 11px;resize:vertical}
 .li .lidialog .field textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 .li .lidfoot{display:flex;justify-content:flex-end;gap:9px;margin-top:14px}
 .li .lidfoot .btn{font-size:11.5px;font-weight:600;padding:9px 15px;border-radius:10px;min-height:44px;transition:.15s}
 .li .lidfoot .btn.ghost{border:1px solid var(--stroke2);color:var(--dim)}
 .li .lidfoot .btn.ghost:hover,.li .lidfoot .btn.ghost:focus-visible{color:var(--text)}
-.li .lidfoot .btn.danger{border:1px solid rgba(255,93,108,.45);color:var(--red);background:rgba(255,93,108,.1)}
-.li .lidfoot .btn.danger:hover:not(:disabled),.li .lidfoot .btn.danger:focus-visible{background:rgba(255,93,108,.2)}
+.li .lidfoot .btn.danger{border:1px solid rgba(var(--red-rgb),.45);color:var(--red);background:rgba(var(--red-rgb),.1)}
+.li .lidfoot .btn.danger:hover:not(:disabled),.li .lidfoot .btn.danger:focus-visible{background:rgba(var(--red-rgb),.2)}
 .li .lidfoot .btn.danger:disabled{opacity:.45;cursor:not-allowed}
 
 /* ===== result inbox ===== */
 .li .liinrow{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;
- background:rgba(255,255,255,.02);margin-bottom:8px}
-.li .liinrow.crit{border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.05)}
+ background:rgba(var(--lift-rgb),.02);margin-bottom:8px}
+.li .liinrow.crit{border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.05)}
 .li .liinrow .badge{flex:none;margin-top:2px}
 .li .liintext{flex:1;font-size:12px;line-height:1.4}
 .li .liintext b{display:block;font-weight:600}

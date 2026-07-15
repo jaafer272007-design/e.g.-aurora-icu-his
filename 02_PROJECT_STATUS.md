@@ -4456,6 +4456,71 @@ monitor (3840×889), fixed together on one branch.
   patient screen via in-app navigation, hidden on a direct load,
   returning to /beds, visible at the small viewport; zero page errors.
   tsc + vite clean; frontend-only.
+
+### Light theme SHIPPED — the token-layer styling pass (closes the PR #101 headline open item)
+
+The "LIGHT-THEME STYLING PASS" recorded as deferred in the Settings
+section above is DONE: the Light option in Settings is enabled, and
+Follow system now genuinely follows the device preference (live, no
+reload). Supersedes that deferred line.
+
+- **The token-layer migration** (the pass's substance, and a foundation
+  for any future styling/responsive work): the ~640 colour usages that
+  were hardcoded across 35 component/page CSS files and ~96 TSX inline
+  styles now route through tokens in `src/styles/tokens.css`. rgba()
+  usages keep their per-usage alpha and reference an RGB TRIPLET token
+  (`rgba(var(--blue-rgb),.16)`); solid hexes became role tokens (--ink
+  on accent fills, --txt2/--txt3, dialog/option surfaces, tag text).
+  THE DARK VALUES ARE THE EXACT LITERALS THEY REPLACED — dark is
+  unchanged BY CONSTRUCTION, and proven: an old-bundle-vs-new-bundle
+  computed-style comparison (colour, background, borders, shadow,
+  fill/stroke of EVERY element) passed 22/22 screens element-for-element
+  identical in dark.
+- **Deliberately left literal** (theme-agnostic): black shadows/scrims
+  and fixed modal backdrops; the body's aurora glows; white ink on red
+  count badges; `EnvironmentChrome.css` (the staging banner and the
+  production refusal are environment identity — identical in every
+  theme, by design); `print.css` (the paper preview/print output ignores
+  the app theme — "what you see is what prints" — unchanged).
+- **The light palette** (`:root[data-theme="light"]`): hues PRESERVED —
+  red stays red, amber stays amber; the NEWS2/SOFA band colours and
+  lab-flag colours keep their clinical meaning with only lightness
+  shifted for legibility on light surfaces. No validated clinical
+  signal was re-mapped. One deliberate nuance: the medium-severity
+  text colour is olive in light (dark uses a light yellow) because a
+  yellow readable on white converges on amber — the hue separation
+  from high/amber is preserved, not the exact yellow.
+- **WCAG AA, checked programmatically**: a whole-DOM contrast sweep
+  (every visible text node vs its composited effective background)
+  across all 23 screens started at 2011 flags and ended at 0 real
+  failures after palette tuning (worst-case pairings — accent text on
+  its own tinted background — now ≥4.96:1). The 8 remaining flags are
+  verified false positives: white ink on gradient-image button fills
+  the checker cannot composite (actual ratios 6.1:1/6.5:1) — confirmed
+  readable in the rendered screenshots.
+- **The canvas gotcha (found by rendered verification, not the style
+  audit)**: canvas 2D `fillStyle` cannot resolve CSS `var()` — the two
+  canvas charts (Labs trends, Mission Control lab trends) silently drew
+  their reference band BLACK. Canvas code now resolves tokens at draw
+  time (`cssToken`/`tokenRgba`, `src/hooks/useCanvasTheme.ts`) and
+  redraws on a theme change via `useThemeVersion()` (preference event +
+  device matchMedia). LESSON: SVG resolves var() fine; canvas never
+  does — canvas drawing code must use the resolver.
+- **Verified end-to-end** (all four layers, all 23 screens + the
+  Access Restricted state): 22/22 dark computed-style parity; 45/45
+  light loads with zero page errors; 9/9 semantics/switching (severity
+  colours distinct in light; NOT TRACKED YET dashed amber intact and
+  distinct from a real 0 and from "insufficient data"; Light→Dark
+  switch applies app-wide without reload and persists in aurora.prefs;
+  Follow-system flips LIVE with the device signal both directions;
+  Access Restricted readable in light); 47 rendered screenshots (every
+  screen, both themes) reviewed — including the print document (paper
+  stays paper in both) and the staging banner (identical in both).
+  tsc + vite clean; frontend-only; no server changes.
+- Also restored in this PR: the "## Post-Phase-3 Roadmap" heading below,
+  accidentally dropped by the ultrawide-fix docs edit (content intact).
+
+## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
 onto a still-mock store. Per "Platform Direction" above, Layers 2–4 are
