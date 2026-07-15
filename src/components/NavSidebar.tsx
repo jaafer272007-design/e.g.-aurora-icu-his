@@ -59,7 +59,11 @@ export function NavSidebar({ active, alertCount = 0, footerLines }: NavSidebarPr
     { key: 'labcatalog', label: 'Lab Catalogue', icon: <IconFlask size={16} />, to: '/lab-catalog', perm: 'labcatalog.manage' },
     { key: 'ordersets', label: 'Order Sets', icon: <IconGrid />, to: '/order-sets', perm: 'ordersets.manage' },
     { key: 'alerts', label: 'Alerts', icon: <IconAlertTriangle />, badge: alertCount },
-    { key: 'statistics', label: 'Statistics', icon: <IconStats /> },
+    /* Statistics — the ICU Analytics Dashboard (was the first dead nav
+       item; now a real screen). Gated like the other census-level reads
+       on patients.view, which every profile carries — the office
+       Administrator's core use is these unit-level aggregates. */
+    { key: 'statistics', label: 'Statistics', icon: <IconStats />, to: '/statistics', perm: 'patients.view' },
     { key: 'settings', label: 'Settings', icon: <IconSettings /> },
   ]
   const items = all.filter(it => allowed(it.perm))
