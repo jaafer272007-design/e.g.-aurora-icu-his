@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
 import { displayStamp, agoLabel, useNow } from '../../lib/time'
-import type { ImagingStatus, ImagingStudy, ResultFlag } from '../../lib/api/types'
+import type { CorrectImagingDraft, ImagingStatus, ImagingStudy, ResultFlag } from '../../lib/api/types'
 
 const STATUS_STEPS: ImagingStatus[] = ['ordered', 'in-progress', 'preliminary', 'final']
 const STATUS_LABEL: Record<ImagingStatus, string> = {
@@ -20,14 +20,63 @@ const FLAG_BADGE: Record<ResultFlag, { color: BadgeColor; label: string }> = {
 const documentedBy = (s: ImagingStudy): string | null =>
   s.history?.find(e => e.action === 'documented')?.actor ?? null
 
+/* Imaging Report Correction — the PR #80 two-tier hints, verbatim from the
+   lab entry screen. The SERVER decides the tier; everything here is display. */
+const SELF_WINDOW_MS = 5 * 60_000
+
+const documentedAtMs = (s: ImagingStudy) =>
+  s.documentedAt ? Date.parse(`${s.documentedAt.replace(' ', 'T')}Z`) : NaN
+
+const withinSelfWindow = (s: ImagingStudy, now: Date) =>
+  !!s.documentedAt && now.getTime() - documentedAtMs(s) <= SELF_WINDOW_MS
+
+const selfWindowLeft = (s: ImagingStudy, now: Date) =>
+  Math.min(SELF_WINDOW_MS / 60_000, Math.max(0, Math.ceil((SELF_WINDOW_MS - (now.getTime() - documentedAtMs(s))) / 60_000)))
+
+/** what a correction can target — the report's correctable surface (the
+ *  order linkage and derived study identity are facts of what was
+ *  documented against, immutable here) */
+const TARGETS = [
+  ['findings', 'Findings'],
+  ['impression', 'Impression'],
+  ['performedAt', 'Study performed at'],
+  ['reportingRadiologist', 'Reporting radiologist'],
+  ['note', 'Note'],
+  ['critical', 'Critical flag (clinician-marked)'],
+] as const
+type Target = (typeof TARGETS)[number][0]
+
+const currentValueOf = (s: ImagingStudy, target: Target): string => {
+  switch (target) {
+    case 'findings': return s.report ?? ''
+    case 'impression': return s.impression ?? ''
+    case 'performedAt': return s.performedAt ?? ''
+    case 'reportingRadiologist': return s.reportingRadiologist ?? ''
+    case 'note': return s.note ?? ''
+    case 'critical': return s.flag === 'critical' ? 'critical' : ''
+  }
+}
+
+/** amendment display: narrative previous/new values can be thousands of
+ *  characters — truncate the render, keep the full text in the title */
+const clip = (v: string) => (v.length > 90 ? `${v.slice(0, 90)}…` : v)
+
 interface ImagingCardProps {
   studies: ImagingStudy[]
   /** derived from the session's permissions (results.acknowledge) */
   canAcknowledge: boolean
+  /** Imaging Report Correction: results.document (Tier-1 self) /
+   *  results.correct (Tier-2 Consultant-tier) + the session identity for
+   *  the self-window hint — the server re-decides everything */
+  canDocument: boolean
+  canCorrect: boolean
+  sessionName: string
   onAcknowledge: (studyId: string) => void
   /** reverse an acknowledgment — requires a documented reason (results
    *  audit PR); same permission as acknowledge */
   onUnacknowledge: (studyId: string, reason: string) => void
+  /** submit a correction — resolves to an error message, or null on success */
+  onCorrect: (studyId: string, draft: CorrectImagingDraft) => Promise<string | null>
 }
 
 /* Reversing an acknowledgment requires a documented reason (validated
@@ -73,11 +122,25 @@ function UnackReasonDialog(
 }
 
 /** Imaging study list with report/impression text and status progression.
- *  Acknowledge is doctor RBAC — nurses view only. */
-export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, onUnacknowledge }: ImagingCardProps) {
-  const now = useNow()
+ *  Acknowledge is doctor RBAC — nurses view only. Documented reports carry
+ *  the PR #80 correction model: Tier-1 self within 5 minutes, Tier-2
+ *  Consultant-tier with a reason; amend-not-erase history renders below. */
+export function ImagingCard({
+  studies, canAcknowledge: canAck, canDocument, canCorrect, sessionName,
+  onAcknowledge, onUnacknowledge, onCorrect,
+}: ImagingCardProps) {
+  const now = useNow(10_000)
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [unackTarget, setUnackTarget] = useState<ImagingStudy | null>(null)
+
+  /* the open correction editor (one at a time — the lab entry pattern) */
+  const [editing, setEditing] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<Target>('impression')
+  const [editValue, setEditValue] = useState('')
+  const [editCritical, setEditCritical] = useState(false)
+  const [editReason, setEditReason] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
   const toggle = (id: string) =>
     setOpen(prev => {
@@ -86,6 +149,45 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, on
       else next.add(id)
       return next
     })
+
+  function openEditor(s: ImagingStudy) {
+    setEditing(s.studyId)
+    setEditError(null)
+    setEditReason('')
+    setEditTarget('impression')
+    setEditValue(s.impression ?? '')
+    setEditCritical(s.flag === 'critical')
+  }
+
+  function switchTarget(s: ImagingStudy, target: Target) {
+    setEditTarget(target)
+    setEditError(null)
+    if (target === 'critical') setEditCritical(s.flag === 'critical')
+    else setEditValue(currentValueOf(s, target))
+  }
+
+  async function submitCorrection(s: ImagingStudy) {
+    if (busy) return
+    const selfTier = withinSelfWindow(s, now) && documentedBy(s) === sessionName && canDocument
+    const draft: CorrectImagingDraft = {}
+    if (editTarget === 'critical') {
+      draft.critical = editCritical
+    } else {
+      const raw = editValue.trim()
+      if (raw === '') { setEditError(`enter the corrected ${editTarget}`); return }
+      draft[editTarget] = raw
+    }
+    if (!selfTier && !editReason.trim()) { setEditError('a reason is required for a Consultant-tier correction'); return }
+    /* tier-1 sends no reason; if the window expired between render and
+       submit, the server answers with the tier rule — shown here */
+    if (!selfTier && editReason.trim()) draft.reason = editReason.trim()
+    setBusy(true)
+    setEditError(null)
+    const err = await onCorrect(s.studyId, draft)
+    setBusy(false)
+    if (err === null) setEditing(null)
+    else setEditError(err)
+  }
 
   return (
     <Card
@@ -98,6 +200,12 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, on
         const stepIdx = STATUS_STEPS.indexOf(s.status)
         const reported = s.status === 'preliminary' || s.status === 'final'
         const isOpen = open.has(s.studyId)
+        /* correction: only DOCUMENTED reports carry the model (server 409s
+           everything else); self tier = documenter + inside the window */
+        const selfTier = !!s.documentedAt && withinSelfWindow(s, now) && documentedBy(s) === sessionName && canDocument
+        const correctable = !!s.documentedAt && (selfTier || canCorrect)
+        const edited = (s.amendments?.length ?? 0) > 0
+        const editedAfterAck = !!s.acknowledged && !!s.amendments?.some(a => a.afterAcknowledgment)
         return (
           <div className={`listudy${s.flag === 'critical' ? ' crit' : ''}`} key={s.studyId}>
             <div className="lisr1">
@@ -115,6 +223,12 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, on
               {s.source === 'manual' && (s.orderId
                 ? <span className="lerorder" title="fulfils this imaging order — the study identity came from it">↳ {s.orderId}</span>
                 : <span className="lerstandalone" title="documented without an order (outside film / pre-order study) — never a fabricated order">unlinked</span>)}
+              {edited && <span className="lisedited" title="corrected — the original stays on the record below">edited ×{s.amendments!.length}</span>}
+              {correctable && editing !== s.studyId && (
+                <button className="lisfix" onClick={() => openEditor(s)}>
+                  ✎ {selfTier ? `Amend (self · ${selfWindowLeft(s, now)} min left)` : 'Correct'}
+                </button>
+              )}
             </div>
             <div className="listeps" aria-label={`Status: ${STATUS_LABEL[s.status]}`}>
               {STATUS_STEPS.map((st, i) => (
@@ -134,6 +248,73 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, on
                 <b>{s.reportingRadiologist ?? '—'}</b>
               </div>
             )}
+
+            {/* amend-not-erase history — every correction with the original
+                preserved; §2b entries carry their marker */}
+            {edited && (
+              <div className="lisamends">
+                {s.amendments!.map((a, i) => (
+                  <div className="lisamend" key={i}>
+                    {a.target}: <s title={a.previousValue || undefined}>{clip(a.previousValue) || '—'}</s>
+                    {' → '}<b title={a.newValue}>{clip(a.newValue)}</b>
+                    {' '}by {a.amendedBy} ({a.amenderRole}) at <span className="num">{a.amendedAt}</span>
+                    {a.reason && <i> — “{a.reason}”</i>}
+                    {a.afterAcknowledgment && <span className="lispostacktag" title="this correction happened AFTER the report was acknowledged — the earlier sign-off covers the previous content, not this one">after acknowledgment</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* the inline correction editor (one at a time) */}
+            {editing === s.studyId && (
+              <div className="liseditor">
+                <select
+                  aria-label="What to correct"
+                  value={editTarget}
+                  onChange={e => switchTarget(s, e.target.value as Target)}
+                >
+                  {TARGETS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+                </select>
+                {editTarget === 'critical' ? (
+                  <label className="liseditcrit">
+                    <input type="checkbox" checked={editCritical} onChange={e => { setEditCritical(e.target.checked); setEditError(null) }} />
+                    <span>marked as a critical finding — <b>clinician-marked</b>, never system-derived; moving this moves the report into/out of the critical results</span>
+                  </label>
+                ) : editTarget === 'findings' || editTarget === 'impression' ? (
+                  <textarea
+                    rows={3}
+                    aria-label={`Corrected ${editTarget}`}
+                    placeholder={`corrected ${editTarget}`}
+                    value={editValue}
+                    onChange={e => { setEditValue(e.target.value); setEditError(null) }}
+                  />
+                ) : (
+                  <input
+                    className={editTarget === 'performedAt' ? 'num' : undefined}
+                    aria-label={`Corrected ${editTarget}`}
+                    placeholder={editTarget === 'performedAt' ? 'yyyy-MM-dd HH:mm (UTC)' : `corrected ${editTarget}`}
+                    value={editValue}
+                    onChange={e => { setEditValue(e.target.value); setEditError(null) }}
+                  />
+                )}
+                {!selfTier && (
+                  <input
+                    className="lisreason"
+                    placeholder="Reason (required — Consultant-tier correction)"
+                    aria-label="Correction reason"
+                    value={editReason}
+                    onChange={e => { setEditReason(e.target.value); setEditError(null) }}
+                  />
+                )}
+                {selfTier && <span className="lisselfnote">Self-correction inside the 5-minute window — no reason needed; the amendment still records you, the original and the time.</span>}
+                {editError && <span className="liserr" role="alert">{editError}</span>}
+                <span className="liseditbtns">
+                  <button className="btn ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</button>
+                  <button className="btn" onClick={() => submitCorrection(s)} disabled={busy}>✓ Save correction</button>
+                </span>
+              </div>
+            )}
+
             {reported ? (
               <>
                 <button className="lisexp" aria-expanded={isOpen} onClick={() => toggle(s.studyId)}>
@@ -148,7 +329,13 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, on
                 <div className="lisack">
                   {s.acknowledged ? (
                     <>
-                      <span className="liacked">✓ Acknowledged by {s.acknowledgedBy} · {displayStamp(s.acknowledgedAt)}</span>
+                      <span className="liacked">
+                        ✓ Acknowledged by {s.acknowledgedBy} · {displayStamp(s.acknowledgedAt)}
+                        {/* §2b safeguard: someone acknowledged one thing and it
+                            then changed — visible right where the sign-off
+                            shows, never hidden */}
+                        {editedAfterAck && <b className="lispostack"> — then EDITED after acknowledgment (history above)</b>}
+                      </span>
                       {canAck && (
                         <button
                           className="liunackbtn"

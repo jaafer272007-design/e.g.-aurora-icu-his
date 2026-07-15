@@ -159,6 +159,13 @@ class ImagingStudyRow
     public string Source { get; set; } = "";
     public string? ReportingRadiologist { get; set; }
     public string? DocumentedAt { get; set; }
+    /* Imaging Report Correction (mirrors LabDrawRow.AmendmentsJson — the
+       PR #80 model applied to imaging): append-only, amend-not-erase.
+       Every correction preserves previous→new with actor/tier/time/reason
+       and the §2b AfterAcknowledgment fact; the row's Report/Impression/
+       PerformedAt/ReportingRadiologist/Note/Flag stay the CURRENT-STATE
+       summary (the store's convention). "[]" on every uncorrected row. */
+    public string AmendmentsJson { get; set; } = "[]";
 
     public static ImagingStudyRow FromDto(ImagingStudyDto d) => new()
     {
@@ -174,13 +181,15 @@ class ImagingStudyRow
     public ImagingStudyDto ToDto()
     {
         var events = JsonSerializer.Deserialize<List<ResultEventDto>>(EventsJson, JsonOpts.Web)!;
+        var amendments = JsonSerializer.Deserialize<List<LabAmendmentDto>>(AmendmentsJson, JsonOpts.Web)!;
         return new(
             StudyId, PatientId, EncounterId == "" ? null : EncounterId, BedId, PatientName,
             Modality, Description, OrderedAt,
             PerformedAt, ReportedAt, Status, Report, Impression, Flag, Note,
             Acknowledged, AcknowledgedBy, AcknowledgedAt,
             events.Count == 0 ? null : events,
-            OrderId, Source == "" ? null : Source, ReportingRadiologist);
+            OrderId, Source == "" ? null : Source, ReportingRadiologist,
+            DocumentedAt, amendments.Count == 0 ? null : amendments);
     }
 }
 
@@ -212,7 +221,10 @@ record ImagingStudyDto(
     string Status, string? Report, string? Impression, string Flag, string? Note,
     bool Acknowledged, string? AcknowledgedBy, string? AcknowledgedAt,
     List<ResultEventDto>? History,
-    string? OrderId = null, string? Source = null, string? ReportingRadiologist = null);
+    string? OrderId = null, string? Source = null, string? ReportingRadiologist = null,
+    /* Imaging Report Correction (mirrors LabDrawDto): the window anchor and
+       the amend-not-erase history — absent on seeded / uncorrected rows */
+    string? DocumentedAt = null, List<LabAmendmentDto>? Amendments = null);
 
 /* Imaging Result Entry: a clinician documents the PAPER radiology report
    (results.document authority). Linked form: OrderId picks the pending
@@ -226,6 +238,24 @@ record DocumentImagingRequest(
     string? PatientId, string? OrderId, string? Modality, string? Description,
     string? PerformedAt, string? Findings, string? Impression,
     string? ReportingRadiologist, bool Critical, string? Note);
+
+/* ---------- IMAGING CORRECTION REQUEST (Imaging Report Correction) ----------
+   Corrects a DOCUMENTED imaging report — the PR #80 lab model applied to
+   imaging's correctable surface: the two separate narratives (Findings /
+   Impression), the study-performed stamp, the reporting radiologist (free
+   text from the paper report), the note, and the CLINICIAN-MARKED critical
+   flag (a report marked critical in error, or one that should have been and
+   wasn't, are both fixable — the marking stays a clinician judgment either
+   way). At least one field must be provided. Reason is REQUIRED on Tier-2
+   (Consultant-tier — outside the 5-minute window or on another clinician's
+   entry), optional on Tier-1; the SERVER decides the tier. Everything else
+   about the report is immutable here — the order linkage and the study
+   identity it derived are facts of what was documented against, and a
+   payload with any other field fails binding. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record CorrectImagingRequest(
+    string? Findings, string? Impression, string? PerformedAt,
+    string? ReportingRadiologist, string? Note, bool? Critical, string? Reason);
 
 /* append-only result audit event — mirrors OrderEventDto's shape */
 record ResultEventDto(string Time, string Actor, string Action, string? Detail);

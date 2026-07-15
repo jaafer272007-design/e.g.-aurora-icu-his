@@ -90,9 +90,13 @@ static class ResultsApi
                     d.Note ?? $"{d.Panel} panel resulted", d.ResultedAt, d.Flag, docAt);
             });
             var imaging = db.ImagingStudies.AsNoTracking().Where(s => !s.Acknowledged).AsEnumerable().Select(s =>
+                /* the §2a hint rides for DOCUMENTED imaging reports too now
+                   that the correction model covers them (null on seeded /
+                   producing-service rows — no window exists) */
                 new InboxItemDto("imaging", s.StudyId, s.PatientId, s.BedId, s.PatientName,
                     $"{s.Description} {(s.Status == "preliminary" ? "prelim" : s.Status)} — {s.BedId} {s.PatientName}",
-                    s.Note ?? s.Impression ?? "", s.ReportedAt ?? s.OrderedAt, s.Flag));
+                    s.Note ?? s.Impression ?? "", s.ReportedAt ?? s.OrderedAt, s.Flag,
+                    string.IsNullOrEmpty(s.DocumentedAt) ? null : s.DocumentedAt));
             return Results.Json(labs.Concat(imaging)
                 .OrderByDescending(x => x.Time, StringComparer.Ordinal), JsonOpts.Web);
         }).RequireAuthorization();
@@ -565,6 +569,135 @@ static class ResultsApi
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* POST /api/icu/results/imaging/{studyId}/correct — the two-tier
+           CORRECTION of a DOCUMENTED imaging report: the PR #80 lab model
+           applied verbatim (a mis-transcribed impression — "no pneumothorax"
+           vs "pneumothorax" — is one word with major clinical consequences;
+           without this it is stuck in the record permanently).
+           TIER 1 (self): the documenter, within the flat 5-minute window
+           from the DocumentedAt anchor (#105 stored it for exactly this) —
+           needs results.document, reason OPTIONAL (recorded when given).
+           TIER 2 (everything else — another's entry, or the window closed):
+           needs results.correct (Consultant-tier, the SAME atom as labs —
+           the authority being exercised is "retrospectively correct a
+           documented result", identical for both stores), reason REQUIRED,
+           and the report renders as "edited".
+           Editable: the two separate narratives (Findings / Impression),
+           the study-performed stamp, the reporting radiologist free text,
+           the note, and the CLINICIAN-MARKED critical flag — marked in
+           error or missed both fixable; the corrected state is still a
+           clinician judgment, never system-derived, and the change moves
+           the report into/out of the one-truth inbox (and therefore
+           Alerts) with no Alerts code at all.
+           Amend-not-erase: the row keeps CURRENT STATE while the amendment
+           preserves previous→new with actor/ACTIVE ROLE (the #104 audit
+           rule — the role comes from the session's jobTitle claim)/time/
+           reason; a "corrected" audit event is appended too.
+           §2b: correcting an ALREADY-ACKNOWLEDGED report is ALLOWED, the
+           original acknowledgment is KEPT, and the amendment is stamped
+           AfterAcknowledgment=true — someone acknowledged one thing and it
+           then changed; that fact is stored at correction time and rendered,
+           never hidden, never re-derived.
+           Only manually DOCUMENTED reports carry the model — a seeded /
+           producing-service study answers 409 (no bedside correction window
+           exists for it). Corrections complete the record → allowed on a
+           CLOSED encounter, no EncounterGuard. RBAC ordering keeps the 403
+           oracle-free: the weakest gate (results.document — held by every
+           possible corrector) answers before the lookup; the tier gate
+           answers after. */
+        app.MapPost("/api/icu/results/imaging/{studyId}/correct",
+            (string studyId, CorrectImagingRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "results.document") is IResult denied) return denied;
+            var s = db.ImagingStudies.FirstOrDefault(x => x.StudyId == studyId);
+            if (s is null) return ApiError.NotFound();
+            if (string.IsNullOrEmpty(s.DocumentedAt))
+                return ApiError.StateConflict(
+                    $"report '{studyId}' was not manually documented — the bedside correction model applies to the documentation path only");
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var now = DateTime.UtcNow;
+            var selfTier = ResultsLogic.IsSelfTier(s, actor, now);
+            if (!selfTier)
+            {
+                if (Rbac.Deny(user, "results.correct") is IResult deniedTier) return deniedTier;
+                if (string.IsNullOrWhiteSpace(req.Reason))
+                    return ApiError.BadRequest("reason is required for a Consultant-tier correction (outside the 5-minute self-correction window or on another clinician's entry)");
+            }
+            if (req.Reason is not null && req.Reason.Length > OrderLogic.MaxTextLength)
+                return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
+            if (req.Findings is null && req.Impression is null && req.PerformedAt is null
+                && req.ReportingRadiologist is null && req.Note is null && req.Critical is null)
+                return ApiError.BadRequest("nothing to correct — provide at least one corrected field (findings, impression, performedAt, reportingRadiologist, note, critical)");
+
+            var role = Rbac.ProfileOf(user.FindFirst("jobTitle")?.Value ?? "") ?? "Unknown";
+            var stamp = now.ToString("yyyy-MM-dd HH:mm");
+            var reason = req.Reason?.Trim() ?? "";
+            var amendments = JsonSerializer.Deserialize<List<LabAmendmentDto>>(s.AmendmentsJson, JsonOpts.Web)!;
+            var applied = new List<string>();
+
+            /* ---- the corrected TEXT fields (same limits as documentation;
+               a no-op "correction" is a state conflict — nothing changed) ---- */
+            var texts = new (string Target, string? Incoming, string Current, int Max, Action<string> Set)[]
+            {
+                ("findings", req.Findings, s.Report ?? "", 8000, v => s.Report = v),
+                ("impression", req.Impression, s.Impression ?? "", 4000, v => s.Impression = v),
+                ("reportingRadiologist", req.ReportingRadiologist, s.ReportingRadiologist ?? "", 200, v => s.ReportingRadiologist = v),
+                ("note", req.Note, s.Note ?? "", 2000, v => s.Note = v),
+            };
+            foreach (var t in texts)
+            {
+                if (t.Incoming is null) continue;
+                var v = t.Incoming.Trim();
+                if (v.Length == 0) return ApiError.BadRequest($"{t.Target} must be non-empty when provided");
+                if (v.Length > t.Max) return ApiError.BadRequest($"{t.Target} exceeds {t.Max} characters");
+                if (v == t.Current)
+                    return ApiError.StateConflict($"the {t.Target} already reads that — there is nothing to correct");
+                amendments.Add(new(t.Target, t.Current, v, actor, stamp, reason, role, s.Acknowledged));
+                t.Set(v);
+                applied.Add($"{t.Target} corrected");
+            }
+
+            /* ---- the corrected study-performed stamp (same rules as entry) ---- */
+            if (req.PerformedAt is not null)
+            {
+                var performedAt = req.PerformedAt.Trim();
+                if (!System.Text.RegularExpressions.Regex.IsMatch(performedAt, @"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+                    || !DateTime.TryParse(performedAt, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var performed))
+                    return ApiError.BadRequest("performedAt must be a real 'yyyy-MM-dd HH:mm' timestamp (UTC) — when the study was performed");
+                if (performed > now.AddMinutes(5))
+                    return ApiError.BadRequest("performedAt is in the future — a study cannot be performed after it is documented");
+                if (performedAt == (s.PerformedAt ?? ""))
+                    return ApiError.StateConflict("the performedAt stamp already reads that — there is nothing to correct");
+                amendments.Add(new("performedAt", s.PerformedAt ?? "", performedAt, actor, stamp, reason, role, s.Acknowledged));
+                s.PerformedAt = performedAt;
+                applied.Add("performedAt corrected");
+            }
+
+            /* ---- the corrected CLINICIAN-MARKED critical flag ---- */
+            if (req.Critical is bool critical)
+            {
+                var isCritical = s.Flag == "critical";
+                if (critical == isCritical)
+                    return ApiError.StateConflict(critical
+                        ? $"report '{studyId}' is already marked critical — there is nothing to correct"
+                        : $"report '{studyId}' carries no critical marking — there is nothing to correct");
+                amendments.Add(new("critical", isCritical ? "critical" : "unflagged",
+                    critical ? "critical" : "unflagged", actor, stamp, reason, role, s.Acknowledged));
+                s.Flag = critical ? "critical" : "";
+                applied.Add(critical
+                    ? "marked critical (clinician-marked — imaging has no thresholds; nothing is system-derived)"
+                    : "critical marking removed (clinician judgment corrected)");
+            }
+
+            s.AmendmentsJson = JsonSerializer.Serialize(amendments, JsonOpts.Web);
+            s.EventsJson = ResultsLogic.AppendEvent(s.EventsJson,
+                new(stamp, actor, "corrected",
+                    $"{string.Join(" · ", applied)}{(selfTier ? " (self, within window)" : $" — {reason}")}{(s.Acknowledged ? " [after acknowledgment]" : "")}"));
+            db.SaveChanges();
+            return Results.Json(s.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* POST /api/icu/results/imaging/{studyId}/acknowledge — doctor RBAC. */
         app.MapPost("/api/icu/results/imaging/{studyId}/acknowledge", (string studyId, ClaimsPrincipal user, AuroraDb db) =>
         {
@@ -574,6 +707,14 @@ static class ResultsApi
             if (s.Acknowledged)
                 return ApiError.StateConflict(
                     $"result '{studyId}' is already acknowledged (by {s.AcknowledgedBy} at {s.AcknowledgedAt}) — it is not awaiting acknowledgment");
+            /* §2a, mirrored from labs with the correction model: a DOCUMENTED
+               report cannot be acknowledged inside its 5-minute
+               self-correction window — the narrative stabilises before anyone
+               signs off on it. Seeded / producing-service studies carry no
+               anchor and acknowledge exactly as before. */
+            if (ResultsLogic.WithinSelfWindow(s, DateTime.UtcNow))
+                return ApiError.StateConflict(
+                    $"report '{studyId}' is still in its {ResultsLogic.SelfCorrectWindowMinutes}-minute self-correction window (documented {s.DocumentedAt} UTC) — it becomes acknowledgeable when the window closes");
             var now = DateTime.UtcNow;
             s.Acknowledged = true;
             s.AcknowledgedBy = user.FindFirst("name")?.Value ?? "Unknown";

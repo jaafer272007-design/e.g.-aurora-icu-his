@@ -38,7 +38,11 @@ export function ResultInboxCard({ items, canAcknowledge: canAck, onAcknowledge }
           <div className="liintext">
             <b>{item.title}</b>
             <span>{item.detail}</span>
-            <small className="num">{displayStamp(item.time)} · {agoLabel(item.time, now)} · {item.flag ? item.flag.toUpperCase() : 'CUSTOM'}</small>
+            {/* '' on a LAB item = a custom/unstructured result; '' on an
+                IMAGING item = a documented report the clinician did not mark
+                critical — say the honest thing for each, never "CUSTOM" on a
+                report that simply carries no clinician marking */}
+            <small className="num">{displayStamp(item.time)} · {agoLabel(item.time, now)} · {item.flag ? item.flag.toUpperCase() : item.kind === 'imaging' ? 'UNFLAGGED' : 'CUSTOM'}</small>
           </div>
           {inWindow(item.documentedAt, now) ? (
             <span className="liwindow" title="a documented result becomes acknowledgeable when its 5-minute self-correction window closes (server-enforced)">⏳ in window</span>

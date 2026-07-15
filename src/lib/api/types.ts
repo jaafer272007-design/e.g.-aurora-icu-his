@@ -942,8 +942,37 @@ export interface ImagingStudy {
   /** FREE TEXT from the paper report — the radiologist is not a system
    *  user; distinct from the documenting clinician (locked provenance) */
   reportingRadiologist?: string
+  /** Imaging Report Correction: the precise UTC documentation anchor
+   *  ('yyyy-MM-dd HH:mm:ss') — present ONLY on manually documented reports.
+   *  Anchors the 5-minute Tier-1 self-correction window and the §2a rule
+   *  that a report is not acknowledgeable until the window closes (the
+   *  LabDraw.documentedAt pattern, verbatim). */
+  documentedAt?: string
+  /** Imaging Report Correction: append-only correction history
+   *  (amend-not-erase) — the SAME shape as lab amendments; present once a
+   *  report has been corrected. "Edited" is DERIVED from this being
+   *  non-empty, never stored. Targets: 'findings' | 'impression' |
+   *  'performedAt' | 'reportingRadiologist' | 'note' | 'critical'. */
+  amendments?: LabAmendment[]
   /** see LabDraw.history — same never-destroy audit record */
   history?: ResultEvent[]
+}
+
+/** Imaging Report Correction — the PR #80 two-tier request applied to the
+ *  imaging correctable surface. At least one field; reason required on
+ *  Tier-2 (the SERVER decides the tier). */
+export interface CorrectImagingDraft {
+  findings?: string
+  impression?: string
+  /** 'yyyy-MM-dd HH:mm' UTC — same rules as documentation (never future) */
+  performedAt?: string
+  reportingRadiologist?: string
+  note?: string
+  /** the corrected CLINICIAN-MARKED critical state — marked in error or
+   *  missed, both fixable; still a clinician judgment, never system-derived */
+  critical?: boolean
+  /** required on Tier-2 — the server decides the tier */
+  reason?: string
 }
 
 /* ---------- GET /api/icu/results/inbox — unit-wide unacknowledged ---------- */
