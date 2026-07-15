@@ -24,7 +24,16 @@ static class Rbac
         ["Physiotherapist"] = "AlliedHealth", ["Dietitian"] = "AlliedHealth",
         ["Receptionist"] = "Administrator", ["Billing Officer"] = "Administrator",
         ["Medical Records Officer"] = "Administrator", ["Hospital Administrator"] = "Administrator",
-        ["IT Administrator"] = "Administrator",
+        /* User Management design (§5): the System Administrator is IT/
+           system — they manage WHO EXISTS and WHAT ACCESS they have, and
+           get NO clinical access, ever (they control who may reach patient
+           data; they do not reach it). The seeded "IT Administrator" title
+           moves to this profile (it was always the IT role; deriving the
+           office profile — which carries patients.view — contradicted the
+           new principle), and "System Administrator" is the design's name
+           for the same authority. */
+        ["IT Administrator"] = "SystemAdministrator",
+        ["System Administrator"] = "SystemAdministrator",
     };
 
     static readonly Dictionary<string, string[]> ProfilePermissions = new()
@@ -77,7 +86,20 @@ static class Rbac
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record", "patients.measure"],
-        ["Administrator"] = ["admin.view", "patients.view", "users.manage"],
+        /* users.manage MOVED to the System Administrator (User Management
+           design §5: the atoms are held ONLY by that role) — the office
+           Administrator (receptionist/billing/records) keeps the
+           administrative landing + the operational patient list but no
+           longer manages accounts. A FLAGGED authority change, stated in
+           the PR — the office profile held users.manage since Layer 3
+           only because no IT/system role existed yet. */
+        ["Administrator"] = ["admin.view", "patients.view"],
+        /* the highest-privilege authority in the system: whoever holds it
+           controls who can reach patient data — while never reaching it
+           themselves (NO clinical atoms, not even patients.view; the
+           locked office-Administrator clinical exclusion applies a
+           fortiori here) */
+        ["SystemAdministrator"] = ["users.manage", "users.view"],
         /* formulary.manage (Layer 4): maintaining the drug formulary is
            PHARMACY's authority — the same polarity flip as results.create
            on Ancillary (doctor/nurse/administrator tokens are 403'd on

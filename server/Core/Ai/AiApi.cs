@@ -21,8 +21,9 @@ static class AiApi
     {
         /* GET /api/icu/ai/ranking — unit-wide ranking by highest current risk;
            top.trend/top.delta and alsoElevated all derived server-side at read. */
-        app.MapGet("/api/icu/ai/ranking", (HttpContext ctx, AuroraDb db) =>
+        app.MapGet("/api/icu/ai/ranking", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            if (Identity.Rbac.Deny(user, "ai.view") is IResult denied) return denied;
             foreach (var key in ctx.Request.Query.Keys)
                 return ApiError.BadRequest($"unknown query parameter '{key}'");
             return Results.Json(AiLogic.Ranking(db), JsonOpts.Web);
@@ -30,8 +31,9 @@ static class AiApi
 
         /* GET /api/icu/ai/risks?patientId — one patient's simulated risk profile
            (categories, probabilities, q15min history, factors, suggestions). */
-        app.MapGet("/api/icu/ai/risks", (HttpContext ctx, AuroraDb db) =>
+        app.MapGet("/api/icu/ai/risks", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            if (Identity.Rbac.Deny(user, "ai.view") is IResult denied) return denied;
             foreach (var key in ctx.Request.Query.Keys)
                 if (key != "patientId") return ApiError.BadRequest($"unknown query parameter '{key}'");
             var patientId = ctx.Request.Query["patientId"].ToString();

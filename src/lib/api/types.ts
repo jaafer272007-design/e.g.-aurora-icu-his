@@ -1157,15 +1157,24 @@ export interface UserAuditEvent {
   time: string
   /** ALWAYS the acting token's name claim — never a request field */
   actor: string
-  action: string // created | job title changed | renamed | deactivated | reactivated | password reset
+  /** the ACTIVE role the actor exercised (decision 5) — absent on events
+   *  written before the User Management design */
+  actorRole?: string
+  action: string // created | roles changed | renamed | deactivated | reactivated | password reset | password changed
   detail?: string
 }
 
 export interface UserAccount {
   username: string
   name: string
+  /** the PRIMARY role (always roles[0]) — kept for legacy readers */
   jobTitle: string
+  /** the SET of roles this person HOLDS (User Management design §3);
+   *  they act as exactly ONE per session, chosen at login */
+  roles: string[]
   active: boolean
+  /** §4: a change is forced at the next sign-in (new account / admin reset) */
+  mustChangePassword: boolean
   events: UserAuditEvent[]
 }
 
@@ -1174,10 +1183,12 @@ export interface UserAccount {
 export interface CreateUserDraft {
   username: string
   name: string
-  jobTitle: string
+  /** one or more roles the person will HOLD */
+  roles: string[]
   initialPassword: string
-  /** REQUIRED when jobTitle derives the Doctor or Nurse profile (granting
-   *  clinical authority) — recorded in the audit event */
+  /** REQUIRED when any role derives a clinical profile (Doctor/Nurse/
+   *  SeniorDoctor) or the System Administrator authority — recorded in
+   *  the audit event */
   justification?: string
 }
 
@@ -1185,7 +1196,8 @@ export interface CreateUserDraft {
 
 export interface EditUserDraft {
   name?: string
-  jobTitle?: string
+  /** full replacement of the role SET (assign/remove roles) */
+  roles?: string[]
   justification?: string
 }
 

@@ -15,9 +15,17 @@ import {
   type JobTitle, type PermissionProfile,
 } from '../../lib/session'
 
-/** Layer 3 — User Administration (/admin/users, Aurora Core). Administrator
- *  profile only (users.manage — the route guard renders Access Restricted
- *  for everyone else; the server re-enforces it on every endpoint).
+/** User Management (/admin/users, Aurora Core). SYSTEM ADMINISTRATOR only
+ *  (users.manage/users.view — held ONLY by that profile since the User
+ *  Management design moved the authority off the office Administrator; the
+ *  route guard renders Access Restricted for everyone else and the server
+ *  re-enforces it on every endpoint). This screen shows NO patient or
+ *  clinical data — the System Administrator controls who may reach
+ *  patient data without ever reaching it.
+ *
+ *  A person may HOLD several roles (assigned here) but ACTS AS exactly one
+ *  per session, chosen at login — permissions always derive from the one
+ *  active role, so every deliberate authority separation survives.
  *
  *  The privilege-escalation surface is the screen's central concern: the
  *  DERIVATION CHAIN (JobTitle → PermissionProfile → Permissions) is shown
@@ -38,6 +46,29 @@ const CLINICAL_PROFILES: readonly PermissionProfile[] = ['Doctor', 'SeniorDoctor
 const isClinical = (title: string): boolean => {
   const p = titleProfileOf(title)
   return p !== null && CLINICAL_PROFILES.includes(p)
+}
+
+const isSysAdmin = (title: string): boolean => titleProfileOf(title) === 'SystemAdministrator'
+
+/** granting clinical authority OR the System Administrator authority
+ *  itself requires a written justification (recorded in the audit) */
+const needsJustification = (titles: string[]): boolean =>
+  titles.some(t => isClinical(t) || isSysAdmin(t))
+
+/** a small multi-select for the ROLE SET a person holds */
+function RolePicker({ value, onChange, disabled }: { value: string[]; onChange: (roles: string[]) => void; disabled: boolean }) {
+  const toggle = (t: string) =>
+    onChange(value.includes(t) ? value.filter(r => r !== t) : [...value, t])
+  return (
+    <div className="uaroles" role="group" aria-label="Roles this person holds">
+      {JOB_TITLES.map(t => (
+        <label key={t} className={`uarolechk${value.includes(t) ? ' on' : ''}`}>
+          <input type="checkbox" checked={value.includes(t)} disabled={disabled} onChange={() => toggle(t)} />
+          {t}
+        </label>
+      ))}
+    </div>
+  )
 }
 
 /** the JobTitle → Profile → Permissions chain, live for the selected title —
@@ -79,14 +110,14 @@ export function UsersAdmin() {
   /* create form */
   const [cUsername, setCUsername] = useState('')
   const [cName, setCName] = useState('')
-  const [cTitle, setCTitle] = useState('')
+  const [cRoles, setCRoles] = useState<string[]>([])
   const [cPassword, setCPassword] = useState('')
   const [cJustification, setCJustification] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
 
   /* edit / reset panel fields */
   const [eName, setEName] = useState('')
-  const [eTitle, setETitle] = useState('')
+  const [eRoles, setERoles] = useState<string[]>([])
   const [eJustification, setEJustification] = useState('')
   const [rPassword, setRPassword] = useState('')
 
@@ -99,7 +130,7 @@ export function UsersAdmin() {
       total: all.length,
       active: all.filter(u => u.active).length,
       deactivated: all.filter(u => !u.active).length,
-      admins: all.filter(u => u.active && titleProfileOf(u.jobTitle) === 'Administrator').length,
+      sysadmins: all.filter(u => u.active && u.roles.some(isSysAdmin)).length,
     }
   }, [users])
 
@@ -107,7 +138,7 @@ export function UsersAdmin() {
     { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: users ? stats.total : '—', label: 'Accounts' },
     { icon: <IconCheck size={12} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: users ? stats.active : '—', label: 'Active' },
     { icon: <IconClock size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: users ? stats.deactivated : '—', label: 'Deactivated' },
-    { icon: <IconAdmit size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.14)', value: users ? stats.admins : '—', label: 'Active Administrators' },
+    { icon: <IconAdmit size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.14)', value: users ? stats.sysadmins : '—', label: 'Active System Admins' },
   ]
 
   const offlineMsg = (what: string) => `User administration requires the live server — ${what} was NOT saved`
@@ -124,23 +155,26 @@ export function UsersAdmin() {
 
   async function doCreate() {
     await applyWrite(null, 'the account', () => createUser({
-      username: cUsername.trim(), name: cName.trim(), jobTitle: cTitle,
+      username: cUsername.trim(), name: cName.trim(), roles: cRoles,
       initialPassword: cPassword,
       ...(cJustification.trim() ? { justification: cJustification.trim() } : {}),
     }), u => {
-      showToast('Account created', `${u.name} (${u.username}) — ${u.jobTitle}`)
-      setCUsername(''); setCName(''); setCTitle(''); setCPassword(''); setCJustification('')
+      showToast('Account created', `${u.name} (${u.username}) — ${u.roles.join(' · ')} — password change forced at first sign-in`)
+      setCUsername(''); setCName(''); setCRoles([]); setCPassword(''); setCJustification('')
     })
   }
+
+  const sameRoles = (a: string[], b: string[]) =>
+    a.length === b.length && a.every(r => b.includes(r))
 
   async function doEdit(u: UserAccount) {
     const draft = {
       ...(eName.trim() && eName.trim() !== u.name ? { name: eName.trim() } : {}),
-      ...(eTitle && eTitle !== u.jobTitle ? { jobTitle: eTitle } : {}),
+      ...(sameRoles(eRoles, u.roles) ? {} : { roles: eRoles }),
       ...(eJustification.trim() ? { justification: eJustification.trim() } : {}),
     }
     await applyWrite(u.username, 'the change', () => editUser(u.username, draft), upd => {
-      showToast('Account updated', `${upd.name} — ${upd.jobTitle}`)
+      showToast('Account updated', `${upd.name} — ${upd.roles.join(' · ')} (applies at the next sign-in)`)
       setPanel(null)
     })
   }
@@ -160,7 +194,7 @@ export function UsersAdmin() {
 
   async function doReset(u: UserAccount) {
     await applyWrite(u.username, 'the password reset', () => resetUserPassword(u.username, rPassword), upd => {
-      showToast('Password reset', `${upd.username} — a new password is set (the old one is never shown)`)
+      showToast('Password reset', `${upd.username} — temporary password set; a change is forced at the next sign-in`)
       setPanel(null); setRPassword('')
     })
   }
@@ -168,7 +202,7 @@ export function UsersAdmin() {
   function openPanel(kind: 'edit' | 'reset' | 'deactivate' | 'history', u: UserAccount) {
     setRowError(null); setRPassword('')
     if (panel?.kind === kind && panel.username === u.username) { setPanel(null); return }
-    if (kind === 'edit') { setEName(u.name); setETitle(u.jobTitle); setEJustification('') }
+    if (kind === 'edit') { setEName(u.name); setERoles(u.roles); setEJustification('') }
     setPanel({ kind, username: u.username })
   }
 
@@ -180,7 +214,7 @@ export function UsersAdmin() {
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
-        <NavSidebar active="users" alertCount={0} footerLines={['Role: Administrator', 'Identity · Aurora Core']} />
+        <NavSidebar active="users" alertCount={0} footerLines={['System Administrator only', 'No clinical data on this screen']} />
 
         <main>
           <div className="uanote" role="note">
@@ -194,7 +228,6 @@ export function UsersAdmin() {
             <Card icon={<IconUsers size={15} stroke="var(--blue)" />} title="Staff Accounts" aside={users ? `${stats.active} active · ${stats.deactivated} deactivated` : '—'}>
               <div className="uarows">
                 {(users ?? []).map(u => {
-                  const prof = titleProfileOf(u.jobTitle)
                   const self = u.username === selfUsername
                   const open = panel?.username === u.username ? panel.kind : null
                   return (
@@ -205,9 +238,16 @@ export function UsersAdmin() {
                           <small className="num">{u.username}</small>
                         </span>
                         <span className="uarole">
-                          <span>{u.jobTitle}</span>
-                          <small className={`uaprofile${prof !== null && CLINICAL_PROFILES.includes(prof) ? ' clinical' : ''}`}>
-                            {prof ?? 'unknown title'} profile · derived
+                          <span className="uarolechips">
+                            {u.roles.map(r => (
+                              <i key={r} className={`uarchip${isClinical(r) ? ' clinical' : ''}${isSysAdmin(r) ? ' sys' : ''}`}>{r}</i>
+                            ))}
+                          </span>
+                          <small className="uaprofile">
+                            {u.roles.length > 1
+                              ? `holds ${u.roles.length} roles — acts as ONE per session (chosen at login)`
+                              : `${titleProfileOf(u.roles[0]) ?? 'unknown title'} profile · derived`}
+                            {u.mustChangePassword ? ' · password change pending' : ''}
                           </small>
                         </span>
                         <span className={`uastatus ${u.active ? 'on' : 'offed'}`}>{u.active ? 'Active' : 'Deactivated'}</span>
@@ -233,7 +273,7 @@ export function UsersAdmin() {
                             <div className="uaevent" key={i}>
                               <span className="num">{e.time || '—'}</span>
                               <span><b>{e.action}</b>{e.detail ? ` — ${e.detail}` : ''}</span>
-                              <small>by {e.actor}</small>
+                              <small>by {e.actor}{e.actorRole ? ` · acting as ${e.actorRole}` : ''}</small>
                             </div>
                           ))}
                         </div>
@@ -245,19 +285,17 @@ export function UsersAdmin() {
                             <label>Full name
                               <input value={eName} onChange={ev => setEName(ev.target.value)} disabled={busy} />
                             </label>
-                            <label>Job title
-                              <select value={eTitle} onChange={ev => { setETitle(ev.target.value) }} disabled={busy}>
-                                {JOB_TITLES.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
+                            <label className="uawide">Roles this person holds (they act as ONE per session, chosen at login)
+                              <RolePicker value={eRoles} onChange={setERoles} disabled={busy} />
                             </label>
-                            {isClinical(eTitle) && eTitle !== u.jobTitle && (
-                              <label className="uawide">Justification (required — clinical authority)
+                            {needsJustification(eRoles.filter(r => !u.roles.includes(r))) && (
+                              <label className="uawide">Justification (required — clinical or System Administrator authority)
                                 <input value={eJustification} onChange={ev => setEJustification(ev.target.value)} disabled={busy}
-                                  placeholder="why this account needs ordering/administering authority" />
+                                  placeholder="why this account needs the added authority" />
                               </label>
                             )}
                           </div>
-                          {eTitle !== u.jobTitle && <DerivationChain title={eTitle} />}
+                          {eRoles.filter(r => !u.roles.includes(r)).map(r => <DerivationChain key={r} title={r} />)}
                           <div className="uapanelacts">
                             <button className="uaact go" disabled={busy} onClick={() => doEdit(u)}>{busy ? 'Saving…' : 'Save changes'}</button>
                             <button className="uaact" onClick={() => setPanel(null)}>Cancel</button>
@@ -312,26 +350,23 @@ export function UsersAdmin() {
                   <label>Full name
                     <input value={cName} onChange={ev => setCName(ev.target.value)} disabled={busy} placeholder="Dr. Full Name" />
                   </label>
-                  <label>Job title
-                    <select value={cTitle} onChange={ev => setCTitle(ev.target.value)} disabled={busy}>
-                      <option value="" disabled>Select a job title…</option>
-                      {JOB_TITLES.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                  <label className="uawide">Roles (one or more — the person acts as ONE per session, chosen at login)
+                    <RolePicker value={cRoles} onChange={setCRoles} disabled={busy} />
                   </label>
-                  <label>Initial password (min 8 characters)
+                  <label>Initial password (min 8 characters — a change is forced at first sign-in)
                     <input type="password" value={cPassword} onChange={ev => setCPassword(ev.target.value)} disabled={busy} autoComplete="new-password" />
                   </label>
-                  {isClinical(cTitle) && (
-                    <label className="uawide">Justification (required — clinical authority)
+                  {needsJustification(cRoles) && (
+                    <label className="uawide">Justification (required — clinical or System Administrator authority)
                       <input value={cJustification} onChange={ev => setCJustification(ev.target.value)} disabled={busy}
-                        placeholder="why this account needs ordering/administering authority" />
+                        placeholder="why this account needs this authority" />
                     </label>
                   )}
                 </div>
-                {cTitle && <DerivationChain title={cTitle} />}
+                {cRoles.map(r => <DerivationChain key={r} title={r} />)}
                 {formError && <div className="uaerr" role="alert">{formError}</div>}
                 <button className="uasubmit" type="submit"
-                  disabled={busy || !cUsername.trim() || !cName.trim() || !cTitle || !cPassword || (isClinical(cTitle) && !cJustification.trim())}>
+                  disabled={busy || !cUsername.trim() || !cName.trim() || cRoles.length === 0 || !cPassword || (needsJustification(cRoles) && !cJustification.trim())}>
                   {busy ? 'Creating…' : 'Create account'}
                 </button>
               </form>

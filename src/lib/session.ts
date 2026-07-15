@@ -26,7 +26,7 @@ export const JOB_TITLES = [
   'Laboratory Technician', 'Radiology Technician',
   'Respiratory Therapist', 'Physiotherapist', 'Dietitian',
   'Receptionist', 'Billing Officer', 'Medical Records Officer',
-  'Hospital Administrator', 'IT Administrator',
+  'Hospital Administrator', 'IT Administrator', 'System Administrator',
 ] as const
 
 export type JobTitle = (typeof JOB_TITLES)[number]
@@ -35,7 +35,7 @@ export type JobTitle = (typeof JOB_TITLES)[number]
 
 export type PermissionProfile =
   | 'Doctor' | 'SeniorDoctor' | 'Nurse' | 'Administrator' | 'Pharmacist'
-  | 'RespiratoryTherapist' | 'Ancillary' | 'AlliedHealth'
+  | 'RespiratoryTherapist' | 'Ancillary' | 'AlliedHealth' | 'SystemAdministrator'
 
 const TITLE_PROFILE: Record<JobTitle, PermissionProfile> = {
   /* Stage 11 F4 decision: Consultant derives SeniorDoctor — Doctor's
@@ -59,7 +59,13 @@ const TITLE_PROFILE: Record<JobTitle, PermissionProfile> = {
   'Billing Officer': 'Administrator',
   'Medical Records Officer': 'Administrator',
   'Hospital Administrator': 'Administrator',
-  'IT Administrator': 'Administrator',
+  /* User Management design (§5): the System Administrator is IT/system —
+     manages who exists and what access they have, and gets NO clinical
+     access ever. The IT Administrator title moves to this profile (it was
+     always the IT role); "System Administrator" is the design's name for
+     the same authority. */
+  'IT Administrator': 'SystemAdministrator',
+  'System Administrator': 'SystemAdministrator',
 }
 
 /* ---------------- Layer 3 — Permissions ---------------- */
@@ -84,7 +90,8 @@ export type Permission =
   | 'adt.admit'            // Layer 2 ADT: open an encounter (doctor authority)
   | 'adt.discharge'        // Layer 2 ADT: close an encounter (doctor authority)
   | 'adt.transfer'         // Layer 2 ADT: move within the unit (nursing action)
-  | 'users.manage'         // Layer 3: user administration (Administrator only)
+  | 'users.manage'         // user administration mutations (System Administrator ONLY — moved from the office profile by the User Management design)
+  | 'users.view'           // read the account list (System Administrator ONLY)
   | 'formulary.manage'     // Layer 4: maintain the drug formulary (Pharmacy authority)
   | 'labcatalog.manage'    // Layer 4 phase 2: maintain the lab test catalogue (Laboratory authority)
   | 'ordersets.manage'     // Layer 4 phase 2: author order sets (stewarded with the formulary)
@@ -129,7 +136,13 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'observations.record', 'patients.measure',
   ],
   /* administrative landing view + census-level board + user administration */
-  Administrator: ['admin.view', 'patients.view', 'users.manage'],
+  /* users.manage MOVED to the System Administrator (User Management
+     design §5) — the office profile keeps its administrative landing and
+     operational patient list but no longer manages accounts */
+  Administrator: ['admin.view', 'patients.view'],
+  /* the highest-privilege authority: controls who can reach patient data
+     while never reaching it (no clinical atoms, not even patients.view) */
+  SystemAdministrator: ['users.manage', 'users.view'],
   /* medication-chart review + Layer 4: maintaining the formulary is
      PHARMACY's authority (the same polarity flip as results.create on
      Ancillary — doctors/nurses/administrators are 403'd on mutations) */
@@ -153,6 +166,7 @@ const PROFILE_LANDING: Record<PermissionProfile, string> = {
   SeniorDoctor: '/workspace',
   Nurse: '/nurse',
   Administrator: '/admin',
+  SystemAdministrator: '/admin/users',
   Pharmacist: '/beds',
   RespiratoryTherapist: '/beds',
   Ancillary: '/beds',

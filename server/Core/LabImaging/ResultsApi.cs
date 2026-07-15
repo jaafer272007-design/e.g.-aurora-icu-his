@@ -42,8 +42,8 @@ static class ResultsApi
     public static void Map(WebApplication app)
     {
         /* GET /api/icu/results/labs?patientId — all lab draws for a patient, oldest first. */
-        app.MapGet("/api/icu/results/labs", (string patientId, AuroraDb db) =>
-            Results.Json(db.LabDraws.AsNoTracking()
+        app.MapGet("/api/icu/results/labs", (string patientId, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
+            Rbac.Deny(user, "results.view") ?? Results.Json(db.LabDraws.AsNoTracking()
                 .Where(d => d.PatientId == patientId)
                 .OrderBy(d => d.LabId)
                 .AsEnumerable()
@@ -51,8 +51,8 @@ static class ResultsApi
             .RequireAuthorization();
 
         /* GET /api/icu/results/imaging?patientId — imaging studies incl. reports. */
-        app.MapGet("/api/icu/results/imaging", (string patientId, AuroraDb db) =>
-            Results.Json(db.ImagingStudies.AsNoTracking()
+        app.MapGet("/api/icu/results/imaging", (string patientId, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
+            Rbac.Deny(user, "results.view") ?? Results.Json(db.ImagingStudies.AsNoTracking()
                 .Where(s => s.PatientId == patientId)
                 .OrderBy(s => s.StudyId)
                 .AsEnumerable()
@@ -61,8 +61,9 @@ static class ResultsApi
 
         /* GET /api/icu/results/inbox — unit-wide unacknowledged results, DERIVED at
            read time from the stored draws/studies (derived state is never stored). */
-        app.MapGet("/api/icu/results/inbox", (AuroraDb db) =>
+        app.MapGet("/api/icu/results/inbox", (System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            if (Rbac.Deny(user, "results.view") is IResult denied) return denied;
             var labs = db.LabDraws.AsNoTracking().Where(d => !d.Acknowledged).AsEnumerable().Select(d =>
             {
                 /* Custom / Other results are UNSTRUCTURED — the numeric items

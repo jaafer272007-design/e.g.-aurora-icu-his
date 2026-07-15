@@ -4520,6 +4520,103 @@ reload). Supersedes that deferred line.
 - Also restored in this PR: the "## Post-Phase-3 Roadmap" heading below,
   accidentally dropped by the ultrawide-fix docs edit (content intact).
 
+### User Management + Multi-Role Login (built — USER_MANAGEMENT_DESIGN.md)
+
+**Verify-first findings (reported per the design's own instruction):**
+- The design's premise "no user management at all" was PARTLY stale
+  against the code: Layer 3 user administration already existed
+  (create/deactivate/reactivate/reset-password, self/last-admin guards,
+  append-only audit) — held by the OFFICE Administrator. This build
+  REWORKS it to the design rather than duplicating it.
+- Passwords were ALREADY properly hashed (bcrypt, work factor 10, a
+  decoy-hash compare so unknown-user timing matches wrong-password) —
+  no plaintext defect existed. The "password not verified" fallback the
+  design quotes is the CLIENT's Stage 9 local-session fallback, which
+  is dev/staging-only and compiled out of production bundles (a
+  production sign-in is server-verified or does not happen).
+- REAL GAP FOUND AND FIXED: eight patient-data READ endpoints carried
+  no server-side permission check (roster, orders list, results
+  labs/imaging/inbox, ADT beds/encounters, MAR, timeline, AI) —
+  invisible while every profile held the .view atoms; the new
+  clinical-access-free System Administrator exposed it. All now enforce
+  their .view permission. Master-data reads (formulary, lab catalogue,
+  order sets, observation catalogue) stay open reference data.
+
+**What was built:**
+- **The System Administrator role** (profile `SystemAdministrator`,
+  titles "System Administrator" + the seeded "IT Administrator"):
+  holds `users.manage` + the new `users.view` ONLY — no clinical atoms,
+  not even patients.view. **Authority MOVED (flagged)**: the office
+  Administrator no longer manages accounts (it kept admin.view +
+  patients.view). Bootstrap (§5.1): dev/staging — alex.novak, the
+  seeded IT Administrator; production — the existing ADMIN_BOOTSTRAP_
+  PASSWORD account's title changed to System Administrator, now with a
+  forced first-login change (the surface finally exists).
+- **Multi-role identity (§1/§3)**: the user record holds a SET of roles
+  (RolesJson; JobTitle stays the primary = roles[0] for legacy
+  readers); a person ACTS AS exactly ONE active role per session —
+  the session token's jobTitle claim IS the active role, so the locked
+  RBAC derivation is untouched and every deliberate authority
+  separation (results.create vs results.document, etc.) survives.
+  Seeded users = sets of one, identical behaviour. Additive migration
+  `AddUserRolesMultiRole`; unbackfilled rows behave as [JobTitle] via a
+  read-time fallback.
+- **The login role-chooser (§2, flagged mechanism)**: authenticate →
+  forced password change FIRST if pending → one role signs straight
+  in / several return the role list. Intermediate steps ride 5-minute
+  STEP TOKENS whose JWT audience is "<env>#role-select"/"<env>#pw-change"
+  — structurally invalid on every API endpoint (the session validation
+  requires audience == APP_ENV exactly), verified live. No usable
+  session exists before the steps complete. No mid-session switching —
+  sign out to change role. Roles are revealed ONLY after a correct
+  password; wrong password/unknown account/deactivated account all get
+  the SAME generic 401 (flagged wording choice: honesty over an
+  account-state leak).
+- **Credentials Option A (§4)**: admin-set initial password; FORCED
+  CHANGE on first login and after every admin reset (server-enforced —
+  login yields only the change step, never a session); new password
+  must differ; every credential action audited with no password
+  material. **HONEST STATUS: credential management is minimum-viable
+  and GATED ON THE INDEPENDENT SECURITY REVIEW — password policy,
+  lockout/brute-force, session expiry/rotation, self-service reset and
+  MFA are all deferred there. This is not a reviewed auth system.**
+- **Audit (§6, decision 5)**: every user-management event now records
+  the actor AND the ACTIVE ROLE exercised (actorRole, from the token's
+  jobTitle claim — older events render without it). Clinical
+  amendment trails already recorded the actor's profile (existing
+  precedent, unchanged).
+- **Guards (§5.2)**: cannot deactivate yourself; cannot strip the
+  System Administrator role from your own account; the LAST active
+  System Administrator can be neither deactivated nor stripped (409,
+  transient state). **Flagged decision: a System Administrator MAY
+  create/grant another System Administrator** — succession must be
+  possible — and that grant requires an explicit justification (the
+  clinical-grant pattern).
+- **Deactivation (§7)**: unchanged never-delete semantics; history stays
+  fully attributed. **Flagged decision: a deactivated clinician's
+  pending/active orders stay UNTOUCHED** — they belong to the patient;
+  any cascade is a clinical workflow decision, deliberately not
+  invented here.
+- **UI**: the login gains the forced-change and role-chooser steps; the
+  User Management screen gains role-set checkboxes, per-role derivation
+  chains, role chips, pending-password badges and actor-role audit
+  lines; the ACTIVE role remains visible in the header throughout a
+  session (open item 6 — the existing header pattern, confirmed).
+- **deployed-users-e2e reworked**: sysadmin actor, roles arrays, the
+  forced-change path exercised on every created account, a two-role
+  isolation leg (chooser only after the correct password; acting as
+  Consultant does NOT grant results.create; the same person acting as
+  Lab Technician has it; a step token 401s on a real endpoint), and the
+  office-administrator-403 assertion.
+- **Verified locally**: 40/40 API matrix (fresh DB; everything above
+  including guard order, role isolation both directions, reset-forces-
+  change, generic-401 equivalence) + 19/19 real-browser (wrong password
+  reveals nothing; forced change → chooser → exactly one role's
+  permissions; single-role skip; SysAdmin lands on User Management with
+  a clinical-free nav and Access Restricted on /beds; office admin +
+  doctor get Access Restricted on /admin/users; zero page errors).
+  tsc + vite + dotnet build clean.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature

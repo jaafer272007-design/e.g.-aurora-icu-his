@@ -28,8 +28,9 @@ static class TimelineApi
 {
     public static void Map(WebApplication app)
     {
-        app.MapGet("/api/icu/timeline", (HttpContext ctx, AuroraDb db) =>
+        app.MapGet("/api/icu/timeline", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            if (Identity.Rbac.Deny(user, "patients.view") is IResult denied) return denied;
             /* codified validation rule: unknown query params are a malformed
                request, not silently ignored */
             foreach (var key in ctx.Request.Query.Keys)

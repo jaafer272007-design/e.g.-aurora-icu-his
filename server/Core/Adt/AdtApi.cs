@@ -24,8 +24,9 @@ static class AdtApi
            (open encounters joined at read; occupancy is never stored).
            Both roles read: feeds the admission form's free-bed picker, the
            transfer target picker, and the bed board layout. */
-        app.MapGet("/api/icu/adt/beds", (HttpContext ctx, AuroraDb db) =>
+        app.MapGet("/api/icu/adt/beds", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            if (Identity.Rbac.Deny(user, "patients.view") is IResult denied) return denied;
             foreach (var key in ctx.Request.Query.Keys)
                 return ApiError.BadRequest($"unknown query parameter '{key}'");
             var open = db.Encounters.AsNoTracking().Where(e => e.Status == "open").ToList();
@@ -42,8 +43,9 @@ static class AdtApi
 
         /* GET /api/icu/adt/encounters?patientId&status — encounter list
            (open census, discharge history, per-patient lookup). Both roles. */
-        app.MapGet("/api/icu/adt/encounters", (HttpContext ctx, AuroraDb db) =>
+        app.MapGet("/api/icu/adt/encounters", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            if (Identity.Rbac.Deny(user, "patients.view") is IResult denied) return denied;
             foreach (var key in ctx.Request.Query.Keys)
                 if (key is not ("patientId" or "status"))
                     return ApiError.BadRequest($"unknown query parameter '{key}'");

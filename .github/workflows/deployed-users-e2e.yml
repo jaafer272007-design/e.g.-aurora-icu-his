@@ -121,18 +121,27 @@ jobs:
           fi
           echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
 
-      - name: Bootstrap — seeded ADMIN login (read-only dependency) + run-unique names
+      - name: Bootstrap — seeded SYSTEM ADMINISTRATOR login (read-only dependency) + run-unique names
         run: |
+          # users.manage moved to the System Administrator (User Management
+          # design) — alex.novak (IT Administrator title) derives that
+          # profile; the office Administrator (yusuf.karim) is now 403
+          # on every management endpoint (asserted below).
           t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
-            -d '{"username":"yusuf.karim","password":"Aurora2026!"}' \
+            -d '{"username":"alex.novak","password":"Aurora2026!"}' \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
           echo "ADM=$t" >> "$GITHUB_ENV"
+          off=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+            -d '{"username":"yusuf.karim","password":"Aurora2026!"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          echo "OFFADM=$off" >> "$GITHUB_ENV"
           { echo "UDOC=e2e.doc.${GITHUB_RUN_ID}"; echo "UNUR=e2e.nur.${GITHUB_RUN_ID}";
             echo "UPHA=e2e.pha.${GITHUB_RUN_ID}"; echo "UADM=e2e.adm.${GITHUB_RUN_ID}";
+            echo "UMLT=e2e.mlt.${GITHUB_RUN_ID}";
             echo "MRN=MRN-L3E2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
-          echo "admin token issued; run users e2e.*.${GITHUB_RUN_ID}"
+          echo "system administrator token issued; run users e2e.*.${GITHUB_RUN_ID}"
 
-      - name: Admin list works (+ CORS); doctor-permission surface untouched
+      - name: SysAdmin list works (+ CORS, roles arrays); OFFICE administrator now 403 (moved authority)
         run: |
           curl -sf -D /tmp/h -H "Authorization: Bearer $ADM" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/users" -o /tmp/users.json
           grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
@@ -142,42 +151,63 @@ jobs:
           assert "passwordHash" not in json.dumps(d), "hash on the wire!"
           seeded=[u for u in d if u["username"]=="yusuf.karim"][0]
           assert seeded["active"] is True, seeded
-          print(f"accounts: {len(d)} (seeded present; prior-run e2e accounts accumulate deactivated)")'
+          assert seeded["roles"]==["Hospital Administrator"], seeded
+          print(f"accounts: {len(d)} — every row carries its role SET (seeded = a set of one)")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OFFADM" "$API/api/icu/users")
+          echo "OFFICE administrator list -> HTTP $rc (users.manage/users.view moved to the System Administrator)"
+          [ "$rc" = "403" ] || exit 1
 
       - name: Validation — unknown field / unknown title / weak password / clinical w/o justification → 400
         run: |
           post() { curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' -d "$1" "$API/api/icu/users"; }
           out=$(post '{"username":"'$UADM'","bogus":1}'); echo "unknown field -> $(echo "$out"|tail -1)"; [ "$(echo "$out"|tail -1)" = "400" ] || exit 1
-          out=$(post '{"username":"'$UADM'","name":"X","jobTitle":"Wizard","initialPassword":"Password1!"}')
-          echo "$out" | head -1 | grep -q "not a recognized job title" || exit 1; echo "unknown title -> 400 naming it"
-          out=$(post '{"username":"'$UADM'","name":"X","jobTitle":"IT Administrator","initialPassword":"short"}')
+          out=$(post '{"username":"'$UADM'","name":"X","roles":["Wizard"],"initialPassword":"Password1!"}')
+          echo "$out" | head -1 | grep -q "not a recognized job title" || exit 1; echo "unknown role -> 400 naming it"
+          out=$(post '{"username":"'$UADM'","name":"X","roles":["Pharmacist"],"initialPassword":"short"}')
           echo "$out" | head -1 | grep -q "too weak" || exit 1; echo "weak password -> 400 naming the minimum"
-          out=$(post '{"username":"'$UDOC'","name":"X","jobTitle":"Consultant","initialPassword":"Password1!"}')
+          out=$(post '{"username":"'$UDOC'","name":"X","roles":["Consultant"],"initialPassword":"Password1!"}')
           echo "$out" | head -1 | grep -q "requires a justification" || exit 1; echo "clinical grant w/o justification -> 400"
+          out=$(post '{"username":"'$UADM'","name":"X","roles":["IT Administrator"],"initialPassword":"Password1!"}')
+          echo "$out" | head -1 | grep -q "System Administrator authority" || exit 1; echo "SysAdmin grant w/o justification -> 400 (flagged decision: allowed WITH justification)"
+          out=$(post '{"username":"'$UADM'","name":"X","roles":[],"initialPassword":"Password1!"}')
+          echo "$out" | head -1 | grep -q "at least one role" || exit 1; echo "empty role set -> 400"
 
-      - name: Create the run's accounts (actor from token; justification audited; admin title needs none)
+      - name: Create the run's accounts (actor + ACTIVE ROLE from token; justification audited; pharmacist needs none)
         run: |
           mk() { curl -sf -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' -d "$1" "$API/api/icu/users"; }
-          mk '{"username":"'$UADM'","name":"E2E Admin","jobTitle":"IT Administrator","initialPassword":"E2eAdmin99!"}' \
-            | python3 -c 'import json,sys,re; d=json.load(sys.stdin); e=d["events"][0]; assert e["actor"]=="Yusuf Karim" and e["action"]=="created", e; assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", e["time"]), e; print("admin-title account created — no justification required, audit actor from token")'
-          mk '{"username":"'$UDOC'","name":"Dr. E2E Doctor","jobTitle":"Consultant","initialPassword":"E2eDoctor99!","justification":"deployed users E2E — clinical authority proof"}' \
+          mk '{"username":"'$UADM'","name":"E2E Admin","roles":["IT Administrator"],"initialPassword":"E2eAdmin99!Tmp","justification":"deployed users E2E — SysAdmin succession proof"}' \
+            | python3 -c 'import json,sys,re; d=json.load(sys.stdin); e=d["events"][0]; assert e["actor"]=="Alex Novak" and e["actorRole"]=="IT Administrator" and e["action"]=="created", e; assert re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", e["time"]), e; assert d["mustChangePassword"] is True, d; print("SysAdmin account created (justified) — audit actor + ACTIVE ROLE from token; change forced at first login")'
+          mk '{"username":"'$UDOC'","name":"Dr. E2E Doctor","roles":["Consultant"],"initialPassword":"E2eDoctor99!Tmp","justification":"deployed users E2E — clinical authority proof"}' \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); e=d["events"][0]; assert "justification: deployed users E2E" in e["detail"], e; print("doctor account created — justification recorded in the audit")'
-          mk '{"username":"'$UNUR'","name":"RN E2E Nurse","jobTitle":"Staff Nurse","initialPassword":"E2eNurse99!","justification":"deployed users E2E — nurse polarity proof"}' >/dev/null && echo "nurse account created"
-          mk '{"username":"'$UPHA'","name":"E2E Pharm","jobTitle":"Pharmacist","initialPassword":"E2ePharm99!"}' >/dev/null && echo "pharmacist account created"
+          mk '{"username":"'$UNUR'","name":"RN E2E Nurse","roles":["Staff Nurse"],"initialPassword":"E2eNurse99!Tmp","justification":"deployed users E2E — nurse polarity proof"}' >/dev/null && echo "nurse account created"
+          mk '{"username":"'$UPHA'","name":"E2E Pharm","roles":["Pharmacist"],"initialPassword":"E2ePharm99!Tmp"}' >/dev/null && echo "pharmacist account created (no justification needed — non-clinical, non-SysAdmin)"
+          # the TWO-ROLE account (§1/§2): holds Consultant AND Laboratory Technician
+          mk '{"username":"'$UMLT'","name":"Dr. E2E TwoRoles","roles":["Consultant","Laboratory Technician"],"initialPassword":"E2eMulti99!Tmp","justification":"deployed users E2E — multi-role isolation proof"}' \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["roles"]==["Consultant","Laboratory Technician"], d; print("two-role account created")'
           # duplicate username → 400
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
-            -d '{"username":"'$UADM'","name":"Dup","jobTitle":"IT Administrator","initialPassword":"Password1!"}' "$API/api/icu/users")
+            -d '{"username":"'$UADM'","name":"Dup","roles":["Pharmacist"],"initialPassword":"Password1!"}' "$API/api/icu/users")
           echo "duplicate username -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
 
-      - name: RBAC matrix — created doctor/nurse/pharmacist → 403 on EVERY management endpoint; created admin → 200
+      - name: Forced first-login change + RBAC matrix — clinical profiles 403 everywhere; created SysAdmin 200
         run: |
-          tok() { curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d "{\"username\":\"$1\",\"password\":\"$2\"}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])'; }
+          # first login returns NO session token — only a change step token
+          # (§4); completing the change continues the login. tok() proves
+          # the whole path for every created single-role account.
+          tok() {
+            resp=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d "{\"username\":\"$1\",\"password\":\"$2Tmp\"}")
+            echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("mustChangePassword") is True and "token" not in d, d' >&2
+            ct=$(echo "$resp" | python3 -c 'import json,sys;print(json.load(sys.stdin)["changeToken"])')
+            curl -sf -X POST "$API/api/auth/change-password" -H 'Content-Type: application/json' \
+              -d "{\"token\":\"$ct\",\"newPassword\":\"$2\"}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])'
+          }
           DOC=$(tok $UDOC 'E2eDoctor99!'); NUR=$(tok $UNUR 'E2eNurse99!'); PHA=$(tok $UPHA 'E2ePharm99!'); ADM2=$(tok $UADM 'E2eAdmin99!')
+          echo "forced change exercised on all four accounts (login gave a change token, never a session)"
           { echo "DOC=$DOC"; echo "NUR=$NUR"; echo "PHA=$PHA"; echo "ADM2=$ADM2"; } >> "$GITHUB_ENV"
           for role in DOC NUR PHA; do
             t=$(eval echo \$$role)
             for probe in "GET|/api/icu/users|" \
-              "POST|/api/icu/users|{\"username\":\"x.y.z\",\"name\":\"X\",\"jobTitle\":\"Intern\",\"initialPassword\":\"Password1!\",\"justification\":\"j\"}" \
+              "POST|/api/icu/users|{\"username\":\"x.y.z\",\"name\":\"X\",\"roles\":[\"Intern\"],\"initialPassword\":\"Password1!\",\"justification\":\"j\"}" \
               "PUT|/api/icu/users/$UPHA|{\"name\":\"X\"}" \
               "POST|/api/icu/users/$UPHA/deactivate|" \
               "POST|/api/icu/users/$UPHA/reactivate|" \
@@ -215,18 +245,18 @@ jobs:
       - name: Escalation via edit — audited old → new; justification enforced
         run: |
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
-            -d '{"jobTitle":"Consultant"}' "$API/api/icu/users/$UPHA")
+            -d '{"roles":["Consultant"]}' "$API/api/icu/users/$UPHA")
           echo "escalate w/o justification -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
           curl -sf -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
-            -d '{"jobTitle":"Consultant","justification":"deployed users E2E — escalation audit proof"}' "$API/api/icu/users/$UPHA" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); e=[x for x in d["events"] if x["action"]=="job title changed"][0]; assert "Pharmacist → Consultant" in e["detail"] and e["actor"]=="Yusuf Karim", e; print("escalation audited:", e["detail"][:80])'
+            -d '{"roles":["Consultant"],"justification":"deployed users E2E — escalation audit proof"}' "$API/api/icu/users/$UPHA" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); e=[x for x in d["events"] if x["action"]=="roles changed"][0]; assert "[Pharmacist] → [Consultant]" in e["detail"] and e["actor"]=="Alex Novak" and e["actorRole"]=="IT Administrator", e; print("role change audited with actor + ACTIVE ROLE:", e["detail"][:80])'
 
       - name: Self-guards — created admin cannot deactivate or demote ITSELF
         run: |
           body=$(curl -s -X POST -H "Authorization: Bearer $ADM2" "$API/api/icu/users/$UADM/deactivate")
           echo "$body" | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "cannot deactivate your own account" in e, e; print("self-deactivation blocked:", e)'
-          body=$(curl -s -X PUT -H "Authorization: Bearer $ADM2" -H 'Content-Type: application/json' -d '{"jobTitle":"Staff Nurse","justification":"x"}' "$API/api/icu/users/$UADM")
-          echo "$body" | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "cannot demote your own account" in e, e; print("self-demotion blocked:", e)'
+          body=$(curl -s -X PUT -H "Authorization: Bearer $ADM2" -H 'Content-Type: application/json' -d '{"roles":["Staff Nurse"],"justification":"x"}' "$API/api/icu/users/$UADM")
+          echo "$body" | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "cannot remove the System Administrator role from your own account" in e, e; print("self-role-strip blocked:", e)'
 
       - name: Deactivation blocks login with the SAME generic 401; reactivation restores
         run: |
@@ -249,21 +279,63 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UPHA'","password":"E2ePharm99!"}')
           echo "reactivated login -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
 
-      - name: Password reset — old rejected, new works, audit clean of password material
+      - name: Password reset — old rejected; the temp credential FORCES a change; audit clean of password material
         run: |
           curl -sf -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
             -d '{"newPassword":"E2eRotated77!"}' "$API/api/icu/users/$UNUR/reset-password" >/dev/null
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UNUR'","password":"E2eNurse99!"}')
           echo "old password -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UNUR'","password":"E2eRotated77!"}')
-          echo "new password -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          # the temp credential authenticates but yields NO session — only
+          # the forced-change step (§4), which then continues the login
+          resp=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UNUR'","password":"E2eRotated77!"}')
+          echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("mustChangePassword") is True and "token" not in d, d; print("temp credential -> forced change, no session token")'
+          ct=$(echo "$resp" | python3 -c 'import json,sys;print(json.load(sys.stdin)["changeToken"])')
+          curl -sf -X POST "$API/api/auth/change-password" -H 'Content-Type: application/json' \
+            -d '{"token":"'$ct'","newPassword":"E2eRotated88!"}' \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["token"] and d["jobTitle"]=="Staff Nurse", d; print("change completed -> session issued (single role, no chooser)")'
           curl -sf -H "Authorization: Bearer $ADM" "$API/api/icu/users" | python3 -c "
           import json,sys; d=json.load(sys.stdin)
           n=[u for u in d if u['username']=='$UNUR'][0]
-          assert any(e['action']=='password reset' and e['actor']=='Yusuf Karim' for e in n['events']), n['events']
+          assert any(e['action']=='password reset' and e['actor']=='Alex Novak' for e in n['events']), n['events']
+          assert any(e['action']=='password changed' for e in n['events']), n['events']
           raw=json.dumps(d)
-          assert 'E2eRotated77' not in raw and 'E2eNurse99' not in raw, 'password material on the wire!'
-          print('reset audited; no password material anywhere in the account list')"
+          assert 'E2eRotated77' not in raw and 'E2eRotated88' not in raw and 'E2eNurse99' not in raw, 'password material on the wire!'
+          print('reset + forced change audited; no password material anywhere in the account list')"
+
+      - name: Multi-role login — roles only after the correct password; ONE active role; the OTHER role's permissions ABSENT
+        run: |
+          # wrong password reveals NOTHING (no roles, no account existence)
+          out=$(curl -s -w '\n%{http_code}' -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UMLT'","password":"WrongPass1!"}')
+          echo "wrong password -> $(echo "$out"|tail -1)"; [ "$(echo "$out"|tail -1)" = "401" ] || exit 1
+          echo "$out" | head -1 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "roles" not in d and d["error"]=="Invalid credentials", d; print("nothing revealed on a wrong password")'
+          # correct TEMP password -> forced change first
+          resp=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UMLT'","password":"E2eMulti99!Tmp"}')
+          ct=$(echo "$resp" | python3 -c 'import json,sys;print(json.load(sys.stdin)["changeToken"])')
+          resp=$(curl -sf -X POST "$API/api/auth/change-password" -H 'Content-Type: application/json' -d '{"token":"'$ct'","newPassword":"E2eMulti99!"}')
+          # NOW the role list + select token appear — and still NO session
+          echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert sorted(d["roles"])==["Consultant","Laboratory Technician"] and "token" not in d and d["selectToken"], d; print("chooser offered AFTER the correct password; no session before a role is chosen")'
+          st=$(echo "$resp" | python3 -c 'import json,sys;print(json.load(sys.stdin)["selectToken"])')
+          # a role the account does NOT hold -> 400
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/auth/select-role" -H 'Content-Type: application/json' -d '{"token":"'$st'","role":"Staff Nurse"}')
+          echo "unheld role -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # act as CONSULTANT: results.create (Ancillary authority) must be ABSENT
+          MLT=$(curl -sf -X POST "$API/api/auth/select-role" -H 'Content-Type: application/json' -d '{"token":"'$st'","role":"Consultant"}' \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["jobTitle"]=="Consultant", d; print(d["token"])')
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $MLT" -H 'Content-Type: application/json' \
+            -d '{}' "$API/api/icu/results/labs")
+          echo "acting-as-Consultant results.create -> HTTP $rc (the OTHER held role does NOT leak)"; [ "$rc" = "403" ] || exit 1
+          # the SAME person, acting as LAB TECH: the create authority exists
+          # (validation may 400 the body — the point is it is NOT 403)
+          resp=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"'$UMLT'","password":"E2eMulti99!"}')
+          st=$(echo "$resp" | python3 -c 'import json,sys;print(json.load(sys.stdin)["selectToken"])')
+          LAB=$(curl -sf -X POST "$API/api/auth/select-role" -H 'Content-Type: application/json' -d '{"token":"'$st'","role":"Laboratory Technician"}' \
+            | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
+            -d '{}' "$API/api/icu/results/labs")
+          echo "acting-as-LabTech results.create -> HTTP $rc (authority present; body validation may 400)"; [ "$rc" != "403" ] || exit 1
+          # a STEP token is NOT a session: it must fail on a normal endpoint
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $st" "$API/api/icu/users")
+          echo "select-step token on an API endpoint -> HTTP $rc (structurally unusable)"; [ "$rc" = "401" ] || exit 1
 
       - name: Cleanup — discharge the run's patient + deactivate every created account (ASSERTED; runs on failure/cancel too)
         if: always()
@@ -284,7 +356,7 @@ jobs:
           else
             echo "no encounter was created by this run"
           fi
-          for u in ${UDOC:-} ${UNUR:-} ${UPHA:-} ${UADM:-}; do
+          for u in ${UDOC:-} ${UNUR:-} ${UPHA:-} ${UADM:-} ${UMLT:-}; do
             out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $ADM" "$API/api/icu/users/$u/deactivate")
             rc=$(echo "$out" | tail -1)
             if [ "$rc" = "200" ]; then echo "deactivated $u"

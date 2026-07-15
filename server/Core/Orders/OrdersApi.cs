@@ -24,8 +24,9 @@ static class OrdersApi
         /* GET /api/icu/orders?patientId&status&implement — filtered order list
            (per-patient full list incl. audit history, pending signature queue,
            nursing implementation queue — the same derived views the mock serves). */
-        app.MapGet("/api/icu/orders", (string? patientId, string? status, bool? implement, AuroraDb db) =>
+        app.MapGet("/api/icu/orders", (string? patientId, string? status, bool? implement, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            if (Identity.Rbac.Deny(user, "orders.view") is IResult denied) return denied;
             var q = db.Orders.AsNoTracking().AsQueryable();
             if (patientId is not null) q = q.Where(o => o.PatientId == patientId);
             if (status is not null) q = q.Where(o => o.Status == status);

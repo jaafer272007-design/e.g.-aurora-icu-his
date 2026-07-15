@@ -35,8 +35,12 @@ static class RosterApi
        the frontend adapter derives it, same as before. */
     public static void Map(WebApplication app)
     {
-        app.MapGet("/api/icu/patients", (AuroraDb db) =>
+        app.MapGet("/api/icu/patients", (System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            /* patients.view — previously unchecked (every profile held it,
+               so the gap was invisible); the SystemAdministrator must
+               never read patient data (User Management design §5) */
+            if (Aurora.Core.Identity.Rbac.Deny(user, "patients.view") is IResult denied) return denied;
             var bedside = db.Patients.AsNoTracking().AsEnumerable().ToDictionary(r => r.PatientId);
             var identity = db.AdtPatients.AsNoTracking().AsEnumerable().ToDictionary(p => p.PatientId);
             var open = db.Encounters.AsNoTracking()
