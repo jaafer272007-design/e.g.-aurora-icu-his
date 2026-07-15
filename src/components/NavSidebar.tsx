@@ -20,6 +20,11 @@ interface NavItem {
 
 interface NavSidebarProps {
   active: NavKey
+  /** accepted for caller compatibility but NO LONGER RENDERED: the Alerts
+   *  badge was a hardcoded fabricated count (the dead-nav "5") — removed
+   *  with the Attention Center build. A real live count would need the
+   *  full multi-source derivation on every screen; the Alerts page itself
+   *  shows the real counts (never a fabricated number). */
   alertCount?: number
   /** Lines shown under "AURORA HIS v4.2" in the sidebar footer. */
   footerLines: string[]
@@ -28,7 +33,7 @@ interface NavSidebarProps {
 /** Primary navigation rail. "Dashboard" resolves to the signed-in profile's
  *  landing view, and items are filtered by the profile's permissions —
  *  both derived from the session's JobTitle at render (Stage 9 RBAC). */
-export function NavSidebar({ active, alertCount = 0, footerLines }: NavSidebarProps) {
+export function NavSidebar({ active, footerLines }: NavSidebarProps) {
   const navigate = useNavigate()
   const session = getSession()
   const title = session?.jobTitle
@@ -58,7 +63,12 @@ export function NavSidebar({ active, alertCount = 0, footerLines }: NavSidebarPr
     { key: 'formulary', label: 'Formulary', icon: <IconPill />, to: '/formulary', perm: 'formulary.manage' },
     { key: 'labcatalog', label: 'Lab Catalogue', icon: <IconFlask size={16} />, to: '/lab-catalog', perm: 'labcatalog.manage' },
     { key: 'ordersets', label: 'Order Sets', icon: <IconGrid />, to: '/order-sets', perm: 'ordersets.manage' },
-    { key: 'alerts', label: 'Alerts', icon: <IconAlertTriangle />, badge: alertCount },
+    /* Alerts — the Clinical Attention Center (was the second dead nav
+       item; now a real screen). CLINICAL, patient-identifiable — gated on
+       results.view, which every clinical profile carries and the office
+       Administrator does NOT (the locked no-clinical-data rule). The old
+       hardcoded "5" badge is gone — never a fabricated count. */
+    { key: 'alerts', label: 'Alerts', icon: <IconAlertTriangle />, to: '/alerts', perm: 'results.view' },
     /* Statistics — the ICU Analytics Dashboard (was the first dead nav
        item; now a real screen). Gated like the other census-level reads
        on patients.view, which every profile carries — the office
