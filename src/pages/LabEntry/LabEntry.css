@@ -118,3 +118,15 @@
 .le .lereditor .lerreason{flex:2;min-width:200px}
 .le .lerselfnote{font-size:9.5px;color:var(--faint);flex-basis:100%}
 .le .lereditbtns{display:flex;gap:8px;margin-left:auto}
+
+/* ---- Imaging Result Entry ---- */
+.le .leimg .leimgfields{grid-template-columns:repeat(2,1fr)}
+.le .leimgwide{grid-column:1/-1}
+.le .leimg textarea{background:rgba(var(--well-rgb),.6);border:1px solid var(--stroke2);border-radius:9px;
+ padding:8px 10px;color:var(--text);resize:vertical;min-height:56px;font:inherit;font-size:13px}
+.le .leimgnone{display:block;margin-top:5px;font-size:11px;color:var(--amber)}
+.le .leimgcrit{grid-column:1/-1;display:flex;gap:9px;align-items:flex-start;border:1px dashed rgba(var(--red-rgb),.45);
+ background:rgba(var(--red-rgb),.05);border-radius:9px;padding:9px 12px;font-size:12px;color:var(--dim);cursor:pointer}
+.le .leimgcrit input{margin-top:2px}
+.le .leimgcrit b{color:var(--red)}
+.le .lefootnote{font-size:11px;color:var(--faint);margin-right:auto;max-width:520px;line-height:1.4}

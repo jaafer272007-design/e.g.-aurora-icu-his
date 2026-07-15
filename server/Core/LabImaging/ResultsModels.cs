@@ -140,6 +140,25 @@ class ImagingStudyRow
     public string? AcknowledgedAt { get; set; }
     /* see LabDrawRow.EventsJson — same never-destroy audit record */
     public string EventsJson { get; set; } = "[]";
+    /* ---- Imaging Result Entry (additive; null/"" on every seeded row) ----
+       OrderId: the pending imaging ORDER this report fulfils — the person
+       entering PICKS it, so the study identity comes from the order (the
+       design's key simplification; no coded imaging catalogue needed).
+       Null = an honest UNLINKED report (outside film, pre-order emergency
+       study) — never a fabricated order.
+       Source: "manual" for clinician-documented reports (the locked
+       results.document vs results.create provenance split) — "" on seeded
+       rows so nothing pretends a provenance it lacks.
+       ReportingRadiologist: FREE TEXT from the paper report — the
+       radiologist is not a system user; recorded as reported, distinct
+       from the documenting clinician.
+       DocumentedAt: seconds-precision correction anchor (the lab
+       DocumentedAt pattern) — the imaging-correction PR that follows
+       (mirroring PR #80) needs it. */
+    public string? OrderId { get; set; }
+    public string Source { get; set; } = "";
+    public string? ReportingRadiologist { get; set; }
+    public string? DocumentedAt { get; set; }
 
     public static ImagingStudyRow FromDto(ImagingStudyDto d) => new()
     {
@@ -160,7 +179,8 @@ class ImagingStudyRow
             Modality, Description, OrderedAt,
             PerformedAt, ReportedAt, Status, Report, Impression, Flag, Note,
             Acknowledged, AcknowledgedBy, AcknowledgedAt,
-            events.Count == 0 ? null : events);
+            events.Count == 0 ? null : events,
+            OrderId, Source == "" ? null : Source, ReportingRadiologist);
     }
 }
 
@@ -191,7 +211,21 @@ record ImagingStudyDto(
     string Description, string OrderedAt, string? PerformedAt, string? ReportedAt,
     string Status, string? Report, string? Impression, string Flag, string? Note,
     bool Acknowledged, string? AcknowledgedBy, string? AcknowledgedAt,
-    List<ResultEventDto>? History);
+    List<ResultEventDto>? History,
+    string? OrderId = null, string? Source = null, string? ReportingRadiologist = null);
+
+/* Imaging Result Entry: a clinician documents the PAPER radiology report
+   (results.document authority). Linked form: OrderId picks the pending
+   imaging order (study identity from the order; Description ignored).
+   Unlinked form: no OrderId — Modality + Description picked directly.
+   Findings/Impression are separate narratives (how radiology reports are
+   structured; the impression is the actionable part). Critical is
+   CLINICIAN-MARKED — imaging has no thresholds, nothing is system-derived. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record DocumentImagingRequest(
+    string? PatientId, string? OrderId, string? Modality, string? Description,
+    string? PerformedAt, string? Findings, string? Impression,
+    string? ReportingRadiologist, bool Critical, string? Note);
 
 /* append-only result audit event — mirrors OrderEventDto's shape */
 record ResultEventDto(string Time, string Actor, string Action, string? Detail);

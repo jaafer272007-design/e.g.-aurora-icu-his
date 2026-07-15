@@ -6,7 +6,7 @@
 
 import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
-  ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
+  DocumentImagingDraft, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
   RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse, UserAccount,
@@ -858,6 +858,15 @@ export function documentLabResult(draft: DocumentLabDraft): Promise<AdtWriteResu
  *  for a test the catalogue lacks. Same results.document authority and
  *  REAL-ONLY discipline as the structured path; the server stamps provenance
  *  + source=manual and stores it tagged custom with NO clinical flag. */
+/** POST /api/icu/results/imaging/document — Imaging Result Entry: document
+ *  the PAPER radiology report (same results.document authority as labs).
+ *  Linked (orderId → the order supplies the study identity and is
+ *  fulfilled) or honestly UNLINKED (study type picked directly). Critical
+ *  is CLINICIAN-MARKED — never system-derived. REAL-ONLY write. */
+export function documentImagingReport(draft: DocumentImagingDraft): Promise<AdtWriteResult<ImagingStudy>> {
+  return usersWrite<ImagingStudy>('/api/icu/results/imaging/document', 'imaging report documentation', draft)
+}
+
 export function documentCustomLabResult(draft: DocumentCustomLabDraft): Promise<AdtWriteResult<LabDraw>> {
   return usersWrite<LabDraw>('/api/icu/results/labs/document-custom', 'custom lab result documentation', draft)
 }
