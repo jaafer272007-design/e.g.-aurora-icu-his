@@ -44,6 +44,9 @@ export interface PrintEncounterInfo {
   admittedBy: string
   dischargedAt?: string
   dischargedBy?: string
+  /** recorded discharge disposition code (the stay's outcome); absent on
+   *  pre-feature discharges — printed as "not recorded", never fabricated */
+  disposition?: string
   /** discharged encounters that exist for this patient BESIDES the target
    *  — surfaced on the document (readmission presentation is a recorded
    *  open question; a printed document must say what it does NOT cover) */

@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
   ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -1052,9 +1052,32 @@ export function admitPatient(draft: AdmitDraft): Promise<AdtWriteResult<AdmitRes
   return adtPost<AdmitResponse>('/api/icu/adt/admissions', 'ADT admission', draft)
 }
 
-/** POST /api/icu/adt/encounters/:id/discharge — doctor RBAC (adt.discharge). REAL-ONLY write. */
-export function dischargeEncounter(encounterId: string): Promise<AdtWriteResult<Encounter>> {
-  return adtPost<Encounter>(`/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/discharge`, 'ADT discharge')
+/** Discharge-disposition vocabulary (matches the server's AdtLogic.Dispositions)
+ *  with display labels — the OUTCOME of the ICU stay, captured at discharge.
+ *  "died" over dispositioned discharges = ICU mortality (computable going
+ *  forward; discharges without a recorded disposition are excluded from the
+ *  denominator, never fabricated). */
+export const DISPOSITIONS: { code: DispositionCode; label: string }[] = [
+  { code: 'home', label: 'Home' },
+  { code: 'ward', label: 'Ward (step-down / general floor)' },
+  { code: 'transfer_out', label: 'Another facility / transfer out' },
+  { code: 'higher_care', label: 'Higher care / another ICU' },
+  { code: 'died', label: 'Died' },
+  { code: 'other', label: 'Other' },
+]
+
+/** display label for a stored disposition code ('' for absent/unknown) */
+export const dispositionLabel = (code: string | undefined): string =>
+  DISPOSITIONS.find(d => d.code === code)?.label ?? ''
+
+/** POST /api/icu/adt/encounters/:id/discharge — doctor RBAC (adt.discharge).
+ *  REAL-ONLY write. The disposition (the stay's outcome) is REQUIRED by the
+ *  UI flow; the API accepts its absence (recorded as "not recorded" — the
+ *  body-less form every deployed suite's discharge/cleanup legs use). */
+export function dischargeEncounter(encounterId: string, disposition?: DispositionCode): Promise<AdtWriteResult<Encounter>> {
+  return adtPost<Encounter>(
+    `/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/discharge`, 'ADT discharge',
+    disposition ? { disposition } : undefined)
 }
 
 /** POST /api/icu/adt/encounters/:id/transfer — NURSE RBAC (adt.transfer). REAL-ONLY write. */

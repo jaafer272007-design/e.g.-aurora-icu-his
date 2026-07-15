@@ -80,6 +80,14 @@ class Encounter
     public string AdmittedBy { get; set; } = "";
     public string? DischargedAt { get; set; }
     public string? DischargedBy { get; set; }
+    /* DISCHARGE DISPOSITION — the OUTCOME of the ICU stay, selected by the
+       discharging clinician as part of the discharge flow (Statistics
+       prerequisite: ICU mortality = "died" over discharges WITH a recorded
+       disposition). One of AdtLogic.Dispositions. NULL = not recorded —
+       every pre-feature discharge (and any API discharge without a body)
+       stays honestly blank; an outcome is NEVER fabricated, and null rows
+       are EXCLUDED from any mortality denominator. */
+    public string? Disposition { get; set; }
     public string EventsJson { get; set; } = "[]";
     /* WEIGHT & HEIGHT (Patient Weight & Height Capture — the clinical
        validator's design): ENCOUNTER-SCOPED attributes, not observations —
@@ -115,7 +123,8 @@ class Encounter
             WeightKg, HeightCm,
             /* empty history serves as ABSENT (WhenWritingNull) — rows
                without measurements keep their pre-feature wire bytes */
-            measurements.Count == 0 ? null : measurements);
+            measurements.Count == 0 ? null : measurements,
+            Disposition);
     }
 }
 
@@ -159,7 +168,10 @@ record EncounterDto(
     string Attending, string Status, string AdmittedAt, string AdmittedBy, string? DischargedAt,
     string? DischargedBy, List<AdtEventDto> Events,
     double? WeightKg = null, double? HeightCm = null,
-    List<MeasurementEventDto>? Measurements = null);
+    List<MeasurementEventDto>? Measurements = null,
+    /* discharge disposition — additive nullable tail (WhenWritingNull:
+       encounters without one keep their pre-feature wire bytes) */
+    string? Disposition = null);
 
 /* bed registry row incl. derived occupancy — feeds the admission form's
    free-bed picker, transfer target picker, and the bed board layout */
@@ -179,6 +191,15 @@ record AdmitRequest(
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record TransferRequest(string? BedId);
+
+/* discharge body — OPTIONAL at the API, deliberately (flagged design
+   point): the discharge POST took no body for its whole life, and every
+   deployed suite's discharge legs AND failure-path cleanups rely on the
+   body-less form, so requiring one would break them all. The UI discharge
+   flow REQUIRES a disposition; a body-less API discharge records none
+   (honest null — see Encounter.Disposition). */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record DischargeRequest(string? Disposition);
 
 /* PUT /adt/encounters/{id}/measurements — add-if-omitted / correct-with-
    history within the encounter; at least one field required
