@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -880,6 +880,17 @@ export function documentCustomLabResult(draft: DocumentCustomLabDraft): Promise<
 export function correctLabResult(labId: string, draft: CorrectLabDraft): Promise<AdtWriteResult<LabDraw>> {
   return usersWrite<LabDraw>(
     `/api/icu/results/labs/${encodeURIComponent(labId)}/correct`, 'lab result correction', draft)
+}
+
+/** POST /api/icu/results/imaging/:studyId/correct — the SAME two-tier
+ *  correction for a documented imaging report (Imaging Report Correction —
+ *  the PR #80 model, verbatim). Correctable: findings, impression,
+ *  performedAt, reportingRadiologist, note, and the clinician-marked
+ *  critical flag. Amend-not-erase; §2b visibility on acknowledged reports.
+ *  REAL-ONLY write. */
+export function correctImagingReport(studyId: string, draft: CorrectImagingDraft): Promise<AdtWriteResult<ImagingStudy>> {
+  return usersWrite<ImagingStudy>(
+    `/api/icu/results/imaging/${encodeURIComponent(studyId)}/correct`, 'imaging report correction', draft)
 }
 
 /** GET /api/icu/results/imaging?patientId — REAL endpoint; mock fallback. */

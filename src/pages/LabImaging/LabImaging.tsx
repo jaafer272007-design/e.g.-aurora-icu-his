@@ -9,13 +9,13 @@ import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconFlask } from '../../components/icons'
 import {
-  acknowledgeImaging, acknowledgeLab, getImagingStudies, getLabDraws, getPatientDetail,
-  getPatients, getResultInbox, unacknowledgeImaging, unacknowledgeLab,
+  acknowledgeImaging, acknowledgeLab, correctImagingReport, getImagingStudies, getLabDraws,
+  getPatientDetail, getPatients, getResultInbox, unacknowledgeImaging, unacknowledgeLab,
 } from '../../lib/api'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import type {
-  ImagingStudy, LabDraw, Patient, PatientSummary, ResultInboxItem,
+  CorrectImagingDraft, ImagingStudy, LabDraw, Patient, PatientSummary, ResultInboxItem,
 } from '../../lib/api/types'
 import { LabTrendsCard } from './LabTrendsCard'
 import { CustomResultsCard } from './CustomResultsCard'
@@ -33,6 +33,11 @@ export function LabImaging() {
      the service layer, mirrored here for the UI */
   const session = getSession()!
   const canAck = hasPermission(session.jobTitle, 'results.acknowledge')
+  /* Imaging Report Correction (the PR #80 model): results.document backs
+     the Tier-1 self window, results.correct the Consultant tier — mirrored
+     for the UI affordance, re-enforced server-side */
+  const canDocument = hasPermission(session.jobTitle, 'results.document')
+  const canCorrect = hasPermission(session.jobTitle, 'results.correct')
 
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [patient, setPatient] = useState<Patient | null>(null)
@@ -108,6 +113,20 @@ export function LabImaging() {
       refresh()
       showToast('Acknowledgment reversed', `${ok.description} · returned to the results inbox`)
     })
+  }
+
+  /* Imaging Report Correction: submit and report the server's verdict back
+     to the card's editor (error string, or null on success). Amend-not-
+     erase — the toast says so; the history renders on the card. */
+  const correctImaging = async (studyId: string, draft: CorrectImagingDraft): Promise<string | null> => {
+    const r = await correctImagingReport(studyId, draft)
+    if (r.kind === 'ok') {
+      refresh()
+      showToast('Report corrected', 'amended, not erased — the original stays on the record')
+      return null
+    }
+    if (r.kind === 'rejected') return r.error
+    return 'The AURORA API is unreachable — corrections are never applied to local mock state'
   }
 
   /* same reversal for a lab result — used by the custom-results card (the
@@ -196,7 +215,16 @@ export function LabImaging() {
               </div>
               <div className="licolR">
                 <ResultInboxCard items={patientInbox} canAcknowledge={canAck} onAcknowledge={ackInboxItem} />
-                <ImagingCard studies={studies} canAcknowledge={canAck} onAcknowledge={ackImaging} onUnacknowledge={unackImaging} />
+                <ImagingCard
+                  studies={studies}
+                  canAcknowledge={canAck}
+                  canDocument={canDocument}
+                  canCorrect={canCorrect}
+                  sessionName={session.name}
+                  onAcknowledge={ackImaging}
+                  onUnacknowledge={unackImaging}
+                  onCorrect={correctImaging}
+                />
               </div>
             </div>
           )}

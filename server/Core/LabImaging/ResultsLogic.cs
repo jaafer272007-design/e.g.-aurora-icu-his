@@ -228,6 +228,26 @@ static class ResultsLogic
     public static bool IsSelfTier(LabDrawRow d, string actor, DateTime utcNow) =>
         DocumenterOf(d) == actor && WithinSelfWindow(d, utcNow);
 
+    /* ---- the SAME two-tier helpers for a documented IMAGING report
+       (Imaging Report Correction — the PR #80 model applied to imaging;
+       DocumentedAt is nullable on the imaging row, null on seeded and
+       producing-service rows, which therefore carry no window) ---- */
+    public static string DocumenterOf(ImagingStudyRow s)
+    {
+        var events = JsonSerializer.Deserialize<List<ResultEventDto>>(s.EventsJson, JsonOpts.Web)!;
+        return events.FirstOrDefault(e => e.Action == "documented")?.Actor ?? "";
+    }
+
+    public static bool WithinSelfWindow(ImagingStudyRow s, DateTime utcNow) =>
+        !string.IsNullOrEmpty(s.DocumentedAt)
+        && DateTime.TryParseExact(s.DocumentedAt, "yyyy-MM-dd HH:mm:ss",
+               System.Globalization.CultureInfo.InvariantCulture,
+               System.Globalization.DateTimeStyles.None, out var documented)
+        && (utcNow - documented) <= TimeSpan.FromMinutes(SelfCorrectWindowMinutes);
+
+    public static bool IsSelfTier(ImagingStudyRow s, string actor, DateTime utcNow) =>
+        DocumenterOf(s) == actor && WithinSelfWindow(s, utcNow);
+
     public static string? ValidateImagingCreate(CreateImagingRequest r, AuroraDb db)
     {
         if (CheckText("patientId", r.PatientId, required: true) is string p) return p;

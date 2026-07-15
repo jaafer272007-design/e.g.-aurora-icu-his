@@ -4688,10 +4688,68 @@ clean.
   lab; mirror the proven PR #80 lab model exactly (Tier-1 ≤5 min
   self-correction; Tier-2 Consultant-tier with a reason, marked
   "edited"; amend-not-erase). The DocumentedAt anchor is already stored.
+  *[BUILT — see "Imaging Report Correction" below.]*
 - A coded, managed **Imaging Catalogue** (mirroring the Lab Catalogue) —
   only needed for RIS/PACS auto-matching.
 - A **Radiologist JobTitle / RIS-PACS integration** — the future
   producing-service authority (results.create), a clean added source.
+
+### Imaging Report Correction (built — mirrors PR #80)
+
+The recorded NEXT step after Imaging Result Entry, built as specified: a
+mis-transcribed impression — "no pneumothorax" vs "pneumothorax" — is one
+word with major clinical consequences and was stuck in the record
+permanently. The proven PR #80 two-tier lab model applied to imaging
+verbatim, not reinvented:
+
+- **`POST /api/icu/results/imaging/{studyId}/correct`** — Tier-1: the
+  documenter, within the flat 5-minute window from the `DocumentedAt`
+  anchor #105 already stored, no reason required (recorded when given).
+  Tier-2: `results.correct` (Consultant-tier — the SAME atom as labs;
+  the authority exercised is "retrospectively correct a documented
+  result", identical for both stores) with a REQUIRED reason, and the
+  report renders "edited ×N". The server decides the tier.
+- **Correctable surface**: findings, impression (separate narratives,
+  separately correctable), the study-performed stamp (same format/no-
+  future rules as entry), the reporting radiologist free text, the note,
+  and the **clinician-marked critical flag** — marked in error or missed,
+  both fixable; the corrected state stays a clinician judgment, never
+  system-derived. A critical-flag correction moves the report into/out of
+  the one-truth inbox — **and therefore Alerts — with zero Alerts code**
+  (verified in the browser both directions).
+- **Amend-not-erase**: `ImagingStudyRow.AmendmentsJson` (migration
+  `AddImagingAmendments`, hand-set "[]" default per the
+  AddLabResultEditing lesson) reuses the lab amendment shape —
+  previous→new, actor + ACTIVE ROLE (the #104 audit rule), time, reason,
+  `afterAcknowledgment`; a "corrected" audit event appends; the row stays
+  the current-state summary. Only manually DOCUMENTED reports carry the
+  model — seeded/producing-service studies 409. No EncounterGuard —
+  corrections complete the record on a closed encounter.
+- **§2b (acknowledged-then-edited)**: the original acknowledgment is
+  KEPT and rendered honestly — "✓ Acknowledged by X · T — then EDITED
+  after acknowledgment" plus a dashed "after acknowledgment" tag on the
+  amendment itself. Someone acknowledged one thing and it then changed;
+  that is visible, never hidden. **§2a is mirrored too**: a documented
+  imaging report is not acknowledgeable inside its 5-minute window (the
+  narrative stabilises before sign-off; seeded rows have no window and
+  acknowledge as before), and the inbox's "in window" hint now rides for
+  imaging items.
+- **UI**: the correction affordance lives on the Imaging Studies card on
+  Labs & Imaging (where the full report renders) — "✎ Amend (self · N min
+  left)" / "✎ Correct", target picker over the correctable surface,
+  amendment history with the original struck through. Display fix folded
+  in: an unflagged documented imaging report in the inbox now reads
+  "UNFLAGGED", not "CUSTOM" (a label that belongs to custom lab results).
+
+**Verified**: 35/35 API matrix (fresh DB: both tiers incl. the documenter
+expiring out of Tier-1; §2a in-window 409 then post-window acknowledge;
+§2b with the original acknowledgment asserted intact; critical both
+directions with the inbox flag moving; no-op 409s; malformed 400s;
+Pharmacist/SysAdmin 403; seeded 409 + byte-parity; closed-encounter 200)
++ 18/18 real-browser (Tier-1 nurse self-amend with countdown; Tier-2
+consultant critical fix with reason enforcement; the corrected critical
+SURFACING on Alerts; the §2b line rendering; seeded studies carrying no
+affordance; zero page errors). tsc + vite + dotnet clean.
 
 ### Auth-suite seeded-census assertion fixed (deployed-auth-e2e)
 
