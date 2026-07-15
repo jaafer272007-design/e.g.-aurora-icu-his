@@ -9,6 +9,7 @@ import { LabEntry } from './pages/LabEntry/LabEntry'
 import { Timeline } from './pages/Timeline/Timeline'
 import { Observations } from './pages/Observations/Observations'
 import { Statistics } from './pages/Statistics/Statistics'
+import { Alerts } from './pages/Alerts/Alerts'
 import { AiAssistant } from './pages/AiAssistant/AiAssistant'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
@@ -92,6 +93,10 @@ export default function App() {
             so patients.view is the right gate: every profile carries it and
             the office Administrator's core use is exactly this page */}
         <Route path="/statistics" element={<RequireSession permission="patients.view"><Statistics /></RequireSession>} />
+        {/* Alerts — CLINICAL (patient-identifiable), so results.view: every
+            clinical profile carries it; the office Administrator does NOT
+            (the locked no-clinical-data rule keeps them out) */}
+        <Route path="/alerts" element={<RequireSession permission="results.view"><Alerts /></RequireSession>} />
         <Route path="/observations" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/observations/:patientId" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/ai" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />

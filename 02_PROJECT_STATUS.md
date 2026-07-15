@@ -1,6 +1,33 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-15 · current through the STATISTICS PAGE (built —
+**Last updated: 2026-07-15 · current through the ALERTS PAGE (built — the
+Clinical Attention Center closes the SECOND dead nav item: `/alerts` is a
+DISPLAY-ONLY attention board (the validator's locked D6 — no
+notifications/pop-ups/paging/escalation; v2 after clinical experience,
+verified none fire). Six real sources computed at render
+(`src/lib/attention.ts`, no stored alerts): unacknowledged critical labs,
+abnormal vitals via NEWS2's OWN computed component scores (≥2 medium, 3 =
+the score's single-parameter trigger — thresholds read from the validated
+definition, never re-implemented; boundary-tested at rr 21→2 and 25→3),
+the unit-wide unacknowledged-results inbox, orders pending signature,
+pending imaging reports (in-progress/preliminary), and ventilation
+duration honestly derived from the charted dated resp_support history
+(contiguous-run walk; a charted "No" bounds the run; never claimed when
+not charted). Acknowledging from Alerts calls the EXISTING inbox
+acknowledgment — one truth, no parallel alert state (live-verified: the
+inbox shrinks by exactly the acknowledged result). Five "not tracked yet"
+placeholders (consults/med-expiry/allergy-review/documentation/
+line-catheter duration) render dashed-amber naming the missing
+capability, distinct from the green "nothing needs attention" empty
+state. The hardcoded "5" nav badge is REMOVED (a real count would need
+the full derivation on every screen — the page shows the real counts).
+RBAC: results.view — all seven clinical profiles; the office
+Administrator is EXCLUDED (Access Restricted, locked no-clinical-data
+rule) while keeping Statistics; the acknowledge action additionally
+requires results.acknowledge (authority never widened). 18/18 headless +
+33/33 browser checks. Design recorded verbatim at
+docs/design/alerts-attention-center-design.md). Prior: the STATISTICS
+PAGE (built —
 the ICU Analytics Dashboard closes the FIRST of the three dead nav items:
 `/statistics` is a real screen with five sections — Current Unit Status,
 Admissions, Outcomes, Clinical Quality, Trends — EVERY metric computed at
@@ -4165,7 +4192,89 @@ deaths / ICU mortality / the outcome breakdown.
   medication-error reporting entity (or the flagged safety-override
   metric); a note store + a documentation-completeness definition;
   retroactive dating/disposition — NEVER. Remaining dead nav items:
-  Alerts, then Settings.
+  Alerts, then Settings. *[Alerts is now BUILT — next section.]*
+
+### Alerts page (built) — the Clinical Attention Center, second dead nav item closed
+Built in full from docs/design/alerts-attention-center-design.md
+(recorded verbatim; clinical source: the validator). `Alerts` was the
+second dead nav item — it even carried a hardcoded "5" badge; it is now a
+real screen at `/alerts` and the nav item navigates. **DISPLAY-ONLY, the
+defining decision (the validator's locked D6)**: a board you look at —
+no notifications, no pop-ups, no paging, no escalation workflows (v2,
+after clinical experience). Verified: nothing fires (no dialogs, no
+notification APIs anywhere in the code or the browser run).
+- **Six real sources, computed at render** (`src/lib/attention.ts` —
+  pure, headless-tested; no stored alert entities): (1) unacknowledged
+  CRITICAL lab results (the inbox's own flag), (2) ABNORMAL VITALS from
+  NEWS2's validated thresholds — read from the score's OWN computed
+  components (a parameter scoring ≥2 = medium; 3 = the score's
+  single-parameter escalation trigger = high; NEVER re-implemented or
+  invented; boundary-verified rr 21→2 and rr 25→3 against the engine
+  itself; a missing parameter is ABSENCE, not abnormality), (3) the
+  unit-wide unacknowledged-results inbox (non-critical), (4) orders
+  pending signature (the getPendingOrders queue; signing stays in the
+  ordering flow), (5) pending imaging reports (in-progress /
+  preliminary), (6) VENTILATION DURATION honestly derived from the
+  charted dated `resp_support` history — the current contiguous "Yes"
+  run (amendment-aware, a charted "No" bounds the run, latest vent_mode
+  named); never claimed when not charted.
+- **Acknowledgments REUSED, never paralleled**: acknowledging from
+  Alerts calls the EXISTING result acknowledgment — live-verified as one
+  truth (the inbox shrank by exactly the acknowledged result; the lab
+  row carries the actor; the board item disappears on reload because
+  everything is derived).
+- **The five "not tracked yet" placeholders** (§3): pending
+  consultations (consults are a MOCK store — deliberately not read),
+  expired medications (free-text duration, no machine-readable end
+  date), allergies requiring review (no review state), missing
+  documentation (no note store), central-line/catheter device reminders
+  (no insertion-time capture — ventilator duration IS real). Dashed
+  amber naming the missing capability — distinct from the green
+  "nothing needs attention" empty state (a real, good answer).
+- **The badge is gone, not faked**: the nav item's hardcoded "5" is
+  removed (a REAL live count would need the full multi-source derivation
+  on every screen load — disproportionate; the page itself shows the
+  real per-group counts and an Attention Items KPI). NavSidebar's
+  `alertCount` prop is retired from rendering (accepted for caller
+  compatibility, no longer displayed). FLAGGED as recorded debt: the
+  AppHeader bell on some screens still shows a hardcoded count — a
+  separate pre-existing fabricated artifact, out of this scope.
+- **RBAC (open item 1, the flagged set)**: route + nav gated on
+  `results.view` — Doctor, SeniorDoctor, Nurse, Pharmacist,
+  RespiratoryTherapist, Ancillary, AlliedHealth. The office
+  ADMINISTRATOR is EXCLUDED (no results.view — the locked
+  no-clinical-data rule): browser-verified they get the explicit Access
+  Restricted screen naming the permission, their nav hides Alerts, and
+  they keep Statistics. The acknowledge ACTION additionally requires
+  `results.acknowledge` (Doctor tiers only) — per-source authority
+  reused, never widened (nurse sees the board with no acknowledge
+  buttons, verified).
+- **Presentation (open item 2, the stated choice)**: GROUPED BY SOURCE
+  with groups in fixed severity order (critical labs first) — grouped
+  wins over a flat severity sort because the available actions differ
+  per source; severity chips still lead each row.
+- **Responsible clinician (open item 3, flagged)**: pending orders carry
+  their orderer; the results inbox, observations-derived items (abnormal
+  vitals, vent duration) and pending imaging carry NO clinician on their
+  reads — those rows say "no responsible clinician on this source"
+  rather than inventing attribution.
+- **Recency window (open item 4, the stated choice)**: abnormal vitals
+  use NEWS2's own validated 24 h window (the score's windowing
+  decision); the recorded flag that a shorter window may suit a
+  current-state score stands unchanged.
+- **Verification**: 18/18 headless derivation checks (NEWS2 2/3
+  boundaries against the engine's own components; missing-parameter =
+  absence; vent run-walk incl. stop and re-start cases; ack-shape rules;
+  the real count) + 33/33 real-browser checks (nav navigates with NO
+  badge digit; all six groups + the D6 banner; exactly 5 placeholder
+  rows naming capabilities; items traced to seeded records incl. the
+  critical-count spot-check against a fresh inbox read; one-truth
+  acknowledgment; no dialogs/notifications; Administrator Access
+  Restricted + nav polarity; nurse authority not widened; zero page
+  errors). tsc + vite clean; no server changes.
+- **Deferred / recorded as future (v2+)**: automated alerting
+  (notifications/escalation/alert audit — D6); the five placeholder
+  capabilities. Remaining dead nav item: Settings (the last page).
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
