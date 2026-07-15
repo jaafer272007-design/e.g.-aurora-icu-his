@@ -272,6 +272,70 @@ static class OrderLogic
         Diff("prnIndication", before.PrnIndication, c.PrnIndication);
         return (merged, string.Join(", ", parts));
     }
+    /* ---------- DERIVED COMPLETION (order-completion fix) ----------
+       Fulfilment and Completed were two unrelated concepts that never
+       talked: fulfilment is the derived result↔order linkage (a
+       LabDraw/ImagingStudy row carrying the OrderId) that drives the
+       pending-order pickers and the 409 second-report rule, while
+       Completed was a stored status set only by the nurse implement
+       action — so a performed-and-resulted lab/imaging order displayed
+       Active forever and clinicians discontinued it instead ("cancelled"
+       recorded for work that was DONE — a false clinical record).
+       Completion is now DERIVED from the truth the system already holds,
+       never from a manual claim:
+       - Lab/Imaging order  → completed when a result/report is documented
+         against it (the linkage IS the fact; re-pointing a report off an
+         order un-completes it automatically — nothing stored to revert).
+       - one-off medication (frequency 'once') → completed when its dose
+         is administered on the MAR ('given'). Continuous/scheduled
+         frequencies STAY active — an ongoing order produces doses until
+         discontinued or the encounter closes; it is never "done".
+       - Nursing/task orders → the implement action (stored completed).
+       Derivation applies while the encounter is OPEN; discharge
+       CRYSTALLIZES it (see DischargeCascade) so the stored invariant
+       "a closed encounter's orders are terminal" holds unchanged.
+       Reading LabImaging from Orders is the same deliberate Core-internal
+       coupling as the discharge cascade (Adt → Orders). */
+
+    /** every order id a documented result/report is linked to — the
+        fulfilment fact, computed once per read */
+    public static HashSet<string> FulfilledOrderIds(AuroraDb db) =>
+        db.LabDraws.AsNoTracking().Where(x => x.OrderId != null).Select(x => x.OrderId!)
+          .Concat(db.ImagingStudies.AsNoTracking().Where(x => x.OrderId != null).Select(x => x.OrderId!))
+          .ToHashSet();
+
+    /** targeted single-order fulfilment lookup (mutation guards) */
+    public static bool IsFulfilled(AuroraDb db, string orderId) =>
+        db.LabDraws.AsNoTracking().Any(x => x.OrderId == orderId)
+        || db.ImagingStudies.AsNoTracking().Any(x => x.OrderId == orderId);
+
+    /** a one-off medication order whose dose has been GIVEN on the MAR —
+        done by definition; anything with a repeating frequency is not */
+    public static bool OneOffGiven(OrderRow row)
+    {
+        if (row.MedicationJson is null || row.AdministrationsJson is null) return false;
+        var med = JsonSerializer.Deserialize<MedicationDto>(row.MedicationJson, JsonOpts.Web)!;
+        if (med.Frequency != "once") return false;
+        return JsonSerializer.Deserialize<List<AdminDto>>(row.AdministrationsJson, JsonOpts.Web)!
+            .Any(a => a.Status == "given");
+    }
+
+    /** the order's EFFECTIVE status: stored status with completion derived
+        from the underlying fact. Fulfilment wins over a stored
+        'discontinued' too — a performed test IS done; the pre-fix false
+        records ("discontinued: no need" on a resulted order) heal to the
+        honest state, with the discontinue event still in the audit
+        history. One-off-given derives from 'active' only (a one-off
+        discontinued after a partial give stays the cancelled record). */
+    public static string DeriveStatus(OrderRow row, HashSet<string> fulfilled)
+    {
+        if ((row.Status == "active" || row.Status == "discontinued") && fulfilled.Contains(row.OrderId))
+            return "completed";
+        if (row.Status == "active" && OneOffGiven(row))
+            return "completed";
+        return row.Status;
+    }
+
     /** THE single discontinue mechanics — status + reason, remaining
         scheduled administrations cancelled, audited history entry with the
         acting clinician (or the backfill system actor). Shared by the
@@ -300,11 +364,31 @@ static class OrderLogic
         discharge transaction; SaveChanges belongs to the caller. */
     public static int DischargeCascade(AuroraDb db, string encounterId, string actor)
     {
+        /* CRYSTALLIZE derived completion at the encounter boundary: an
+           order whose work is DONE (result documented against it, or its
+           one-off dose given) is stored COMPLETED — discontinuing it here
+           would record "cancelled" for performed work, the exact false
+           record this fix removes. Everything else active/pending is
+           discontinued as before; the invariant "a closed encounter's
+           orders are terminal" holds either way. */
+        var fulfilled = FulfilledOrderIds(db);
         var n = 0;
         foreach (var row in db.Orders.Where(o =>
             o.EncounterId == encounterId && (o.Status == "active" || o.Status == "pending")))
         {
-            Discontinue(row, actor, "patient discharged — auto-discontinued at discharge");
+            if (row.Status == "active" && (fulfilled.Contains(row.OrderId) || OneOffGiven(row)))
+            {
+                row.Status = "completed";
+                row.HistoryJson = AppendHistory(row.HistoryJson,
+                    new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "completed",
+                        fulfilled.Contains(row.OrderId)
+                            ? "fulfilled by its documented result — recorded at encounter close"
+                            : "one-off dose administered — recorded at encounter close"));
+            }
+            else
+            {
+                Discontinue(row, actor, "patient discharged — auto-discontinued at discharge");
+            }
             n++;
         }
         return n;
