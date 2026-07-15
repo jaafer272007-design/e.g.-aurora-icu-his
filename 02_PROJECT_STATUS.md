@@ -4795,6 +4795,50 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### Recently Discharged sorts by discharge recency (live-diagnosed fix)
+
+Live report: a just-discharged patient did not appear in the Recently
+Discharged panel. Diagnosed against staging with a temporary READ-ONLY
+CI job (removed from the branch after the diagnosis), which established
+two separate facts:
+
+1. **The panel never sorted by discharge time.** The encounters read is
+   ordered by `encounterId` (a stable contract for every consumer) and
+   the panel just reversed it — so "Recently Discharged" was actually
+   "highest encounter ids". Discharging any patient whose encounter id
+   predates newer admissions buried them below every E2E ENC-12xx row
+   regardless of recency. Staging stamp census: **189 of 203 discharged
+   encounters carry legacy `HH:mm` stamps**, 14 dated (post-#95).
+   **Fix (client-side, the server contract untouched)**: the panel sorts
+   dated-aware — dated `yyyy-MM-dd HH:mm` stamps first, newest on top
+   (every post-#95 discharge is dated, so a just-discharged patient
+   always tops the panel); legacy `HH:mm` stamps carry no date, so their
+   cross-day recency is UNKNOWABLE — they sort after all dated rows,
+   never interleaved by a fabricated guess, id-desc as the honest
+   tiebreak.
+2. **ENC-1204 was never discharged** — the live row reads
+   `status='open', dischargedAt=None` (patient P-1184). The bed-audit's
+   other three discharges landed (ENC-1193/1198 at 22:20, ENC-1205 at
+   22:18 on 07-14); 1204's did not, and nothing in the system reopens an
+   encounter. Not a panel bug — an open encounter for the owner to
+   discharge from the UI (flagged, not written to staging from here).
+
+**Flagged, not decided — E2E patients burying real discharges**: the
+panel's entire top-12 on staging is deployed-suite patients. Suite
+cleanup-by-delete is off the table (the ADT durable record and
+deactivate-never-delete are locked — discharged encounters ARE the
+record); excluding rows by name pattern would fabricate a distinction
+the data model does not have. The recency sort resolves the practical
+complaint (a real discharge now always tops the panel). If the test rows
+should be visually distinguished or filterable, the honest route is a
+real model fact (e.g. an origin marker set at admission by the suites) —
+a design decision recorded as an open question, not made silently.
+
+**Verified**: 6/6 real-browser (fresh DB: two newer encounters
+discharged first, the seeded lowest-id encounter discharged LAST tops
+the panel; an earlier dated discharge second; a legacy-stamped row sorts
+below all dated rows; nothing dropped; zero page errors).
+
 ### Auth-suite seeded-census assertion fixed (deployed-auth-e2e)
 
 Found during the PR #104/#105 post-merge sweep (2026-07-15): the auth

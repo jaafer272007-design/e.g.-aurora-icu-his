@@ -39,10 +39,31 @@ export function Discharges() {
 
   const reload = useCallback(() => {
     getEncounters({ status: 'open' }).then(setOpen)
-    getEncounters({ status: 'discharged' }).then(d => setDischarged(d.slice().reverse()))
+    getEncounters({ status: 'discharged' }).then(setDischarged)
     getAdtBeds().then(setBeds)
   }, [])
   useEffect(() => { reload() }, [reload])
+
+  /* "Recently Discharged" sorts by DISCHARGE RECENCY — the server list is
+     ordered by encounterId (a stable read for every consumer), which is NOT
+     recency: discharging a patient whose encounter id is older than the
+     newest admissions buried them below every newer encounter (the live
+     ENC-10xx-under-ENC-12xx failure). Dated-aware post-#95: dated
+     'yyyy-MM-dd HH:mm' stamps order lexicographically = chronologically and
+     come FIRST (newest on top — every discharge since the calendar-date fix
+     is dated, so a just-discharged patient always tops the panel); legacy
+     'HH:mm' stamps carry no date, so their recency across days is
+     UNKNOWABLE — they sort after all dated ones (never interleaved by a
+     fabricated guess), newest encounter id first as the honest tiebreak. */
+  const recentlyDischarged = useMemo(() => {
+    const dated = (s?: string) => !!s && /^\d{4}-/.test(s)
+    return [...(discharged ?? [])].sort((a, b) => {
+      const da = dated(a.dischargedAt), db = dated(b.dischargedAt)
+      if (da !== db) return da ? -1 : 1
+      if (da && a.dischargedAt !== b.dischargedAt) return a.dischargedAt! < b.dischargedAt! ? 1 : -1
+      return a.encounterId < b.encounterId ? 1 : a.encounterId > b.encounterId ? -1 : 0
+    })
+  }, [discharged])
 
   const freeBeds = useMemo(() => (beds ?? []).filter(b => !b.patientId), [beds])
 
@@ -164,7 +185,7 @@ export function Discharges() {
 
             <Card icon={<IconDischarge size={15} stroke="var(--amber)" />} title="Recently Discharged" aside="closed encounters — durable record">
               <div className="disrows">
-                {(discharged ?? []).slice(0, 12).map(e => (
+                {recentlyDischarged.slice(0, 12).map(e => (
                   <div className="disrow done" key={e.encounterId}>
                     <div className="dismain">
                       <BedChip bedId={e.bedId} />
