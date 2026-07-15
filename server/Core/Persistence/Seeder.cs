@@ -127,6 +127,7 @@ static class Seeder
                 Username = s.Username,
                 Name = s.Name,
                 JobTitle = s.JobTitle,
+                RolesJson = JsonSerializer.Serialize(new[] { s.JobTitle }, JsonOpts.Web),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPassword, workFactor: 10),
             }));
             db.SaveChanges();
@@ -306,11 +307,18 @@ static class Seeder
         {
             Username = "admin",
             Name = "Bootstrap Administrator",
-            JobTitle = "Hospital Administrator",
+            /* User Management design (§5.1): the bootstrap account IS the
+               seeded System Administrator — users.manage moved to that
+               role, so a Hospital Administrator bootstrap could no longer
+               provision accounts. Forced first-login change now applies
+               (the §4 surface exists). */
+            JobTitle = "System Administrator",
+            RolesJson = JsonSerializer.Serialize(new[] { "System Administrator" }, JsonOpts.Web),
+            MustChangePassword = true,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(pw, workFactor: 10),
             EventsJson = JsonSerializer.Serialize(new List<UserEventDto>
             {
-                new(UserLogic.Now(), "System", "created",
+                new(UserLogic.Now(), "System", null, "created",
                     "bootstrap administrator — credential supplied at provision time (ADMIN_BOOTSTRAP_PASSWORD, never hardcoded); rotate via user administration after first login; every further account is created individually through Layer 3"),
             }, JsonOpts.Web),
         });
@@ -340,11 +348,12 @@ static class Seeder
             Username = "system",
             Name = "System",
             JobTitle = "System",
+            RolesJson = "[\"System\"]",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString(), workFactor: 10),
             Active = false,
             EventsJson = JsonSerializer.Serialize(new List<UserEventDto>
             {
-                new(UserLogic.Now(), "System", "created",
+                new(UserLogic.Now(), "System", null, "created",
                     "reserved system principal — records system/migration actions in audit trails; can never authenticate"),
             }, JsonOpts.Web),
         });

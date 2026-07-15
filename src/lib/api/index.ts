@@ -171,9 +171,17 @@ export async function getFrontendBuild(): Promise<string | null> {
   }
 }
 
+/* Multi-role login (User Management design §2): two intermediate outcomes
+   exist between "rejected" and "signed in" — a forced password change
+   (first login / after an admin reset) and, for a multi-role account, the
+   role choice. Both ride short-lived STEP tokens that no API endpoint
+   accepts (their JWT audience is a "#step" variant the session validation
+   never matches) — a usable session token exists only after every step. */
 export type LoginResult =
-  | { ok: true; name: string; jobTitle: string; token: string }
-  | { ok: false; reason: 'invalid' | 'unreachable' }
+  | { ok: true; name: string; jobTitle: string; token: string; roles?: string[] }
+  | { ok: 'change-password'; changeToken: string }
+  | { ok: 'choose-role'; name: string; roles: string[]; selectToken: string }
+  | { ok: false; reason: 'invalid' | 'unreachable'; message?: string }
 
 /** POST /api/auth/login — real credential check (Stage 10 Phase 2). */
 export async function login(username: string, password: string): Promise<LoginResult> {
@@ -190,9 +198,16 @@ export async function login(username: string, password: string): Promise<LoginRe
     clearTimeout(timer)
     if (res.status === 401) return { ok: false, reason: 'invalid' }
     if (res.ok) {
-      const body = (await res.json()) as { token?: string; name?: string; jobTitle?: string }
+      const body = (await res.json()) as {
+        token?: string; name?: string; jobTitle?: string; roles?: string[]
+        mustChangePassword?: boolean; changeToken?: string; selectToken?: string
+      }
+      if (body.mustChangePassword && body.changeToken)
+        return { ok: 'change-password', changeToken: body.changeToken }
+      if (body.selectToken && body.roles && body.name)
+        return { ok: 'choose-role', name: body.name, roles: body.roles, selectToken: body.selectToken }
       if (body.token && body.name && body.jobTitle)
-        return { ok: true, name: body.name, jobTitle: body.jobTitle, token: body.token }
+        return { ok: true, name: body.name, jobTitle: body.jobTitle, token: body.token, roles: body.roles }
     }
     console.info(`[aurora] auth API responded ${res.status} — falling back to local session`)
   } catch {
@@ -200,6 +215,47 @@ export async function login(username: string, password: string): Promise<LoginRe
   }
   return { ok: false, reason: 'unreachable' }
 }
+
+/** the auth continuation steps share login's response shape */
+async function authStep(path: string, payload: object): Promise<LoginResult> {
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    })
+    clearTimeout(timer)
+    if (res.status === 400) {
+      const body = (await res.json().catch(() => null)) as { error?: string } | null
+      return { ok: false, reason: 'invalid', message: body?.error }
+    }
+    if (res.status === 401) return { ok: false, reason: 'invalid' }
+    if (res.ok) {
+      const body = (await res.json()) as {
+        token?: string; name?: string; jobTitle?: string; roles?: string[]
+        mustChangePassword?: boolean; changeToken?: string; selectToken?: string
+      }
+      if (body.selectToken && body.roles && body.name)
+        return { ok: 'choose-role', name: body.name, roles: body.roles, selectToken: body.selectToken }
+      if (body.token && body.name && body.jobTitle)
+        return { ok: true, name: body.name, jobTitle: body.jobTitle, token: body.token, roles: body.roles }
+    }
+  } catch { /* fall through */ }
+  return { ok: false, reason: 'unreachable' }
+}
+
+/** POST /api/auth/select-role — the multi-role choice step (§2): exchanges
+ *  the role-select step token + the chosen role for the session token. */
+export const selectRole = (selectToken: string, role: string): Promise<LoginResult> =>
+  authStep('/api/auth/select-role', { token: selectToken, role })
+
+/** POST /api/auth/change-password — the forced-change step (§4): replaces
+ *  the temporary credential, then continues the login where it left off. */
+export const changePassword = (changeToken: string, newPassword: string): Promise<LoginResult> =>
+  authStep('/api/auth/change-password', { token: changeToken, newPassword })
 
 /** Authorization header for the real endpoints (empty when the session is
  *  a Stage 9 local fallback — the server then answers 401 and the adapter
@@ -1175,7 +1231,7 @@ export async function getUsers(): Promise<UserAccount[]> {
     const offline = SAMPLE_STAFF
       .map((s): UserAccount => ({
         username: usernameOf(s.name), name: s.name, jobTitle: s.jobTitle,
-        active: true, events: [],
+        roles: [s.jobTitle], active: true, mustChangePassword: false, events: [],
       }))
       .sort((a, b) => (a.username < b.username ? -1 : 1))
     return respond(offline, 120)

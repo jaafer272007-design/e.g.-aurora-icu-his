@@ -27,8 +27,9 @@ static class MarApi
            from the orders' administrations (derived state is never stored). The
            nurse-assignment narrowing stays a client-side derivation, same as the
            orders implement queue. */
-        app.MapGet("/api/icu/mar", (AuroraDb db) =>
+        app.MapGet("/api/icu/mar", (System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
+            if (Identity.Rbac.Deny(user, "orders.view") is IResult denied) return denied;
             /* ENCOUNTER SCOPE (defense in depth): MAR rows derive only from
                orders on OPEN encounters — a discharged admission's schedule
                must never surface as current doses (the ORD-113 class). On

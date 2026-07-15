@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './Login.css'
 import { IconPulse } from '../../components/icons'
-import { authApiConfigured, login } from '../../lib/api'
+import { authApiConfigured, changePassword, login, selectRole } from '../../lib/api'
+import type { LoginResult } from '../../lib/api'
 import {
   SAMPLE_STAFF, getSession, initialsOf, landingRouteOf, permissionsOf, profileOf,
   signIn, usernameOf,
@@ -31,6 +32,13 @@ export function Login() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [fallbackNote, setFallbackNote] = useState(false)
+  /* multi-role login steps (User Management design §2): the server issues
+     NO usable session token until every step completes — these hold the
+     short-lived step tokens between calls */
+  const [chooser, setChooser] = useState<{ name: string; roles: string[]; selectToken: string } | null>(null)
+  const [pwChange, setPwChange] = useState<{ changeToken: string } | null>(null)
+  const [newPw, setNewPw] = useState('')
+  const [newPw2, setNewPw2] = useState('')
 
   /* the live RBAC preview matches against the DEMO staff presets —
      dev/staging only; the branch (and with it the preset directory) is
@@ -45,19 +53,65 @@ export function Login() {
     navigate(landingRouteOf(jobTitle))
   }
 
+  /* one continuation for every auth response: session → in; forced
+     change → the change form; multi-role → the chooser (roles are only
+     ever present AFTER a correct password — decision 7) */
+  const applyResult = (result: LoginResult): boolean => {
+    if (result.ok === true) {
+      setPwChange(null); setChooser(null)
+      enter(result.name, result.jobTitle as JobTitle, result.token)
+      return true
+    }
+    if (result.ok === 'change-password') {
+      setChooser(null)
+      setPwChange({ changeToken: result.changeToken })
+      return true
+    }
+    if (result.ok === 'choose-role') {
+      setPwChange(null) // the change step is done — show the chooser
+      setChooser({ name: result.name, roles: result.roles, selectToken: result.selectToken })
+      return true
+    }
+    return false
+  }
+
+  const pick = async (role: string) => {
+    if (!chooser || busy) return
+    setError('')
+    setBusy(true)
+    const result = await selectRole(chooser.selectToken, role)
+    setBusy(false)
+    if (applyResult(result)) return
+    /* expired/refused step token → start over */
+    setChooser(null)
+    setError('Role selection expired — sign in again.')
+  }
+
+  const submitNewPassword = async () => {
+    if (!pwChange || busy) return
+    setError('')
+    if (newPw !== newPw2) { setError('The two entries do not match.'); return }
+    setBusy(true)
+    const result = await changePassword(pwChange.changeToken, newPw)
+    setBusy(false)
+    setNewPw(''); setNewPw2('')
+    if (applyResult(result)) return
+    if (result.ok === false && result.message) { setError(result.message); return }
+    setPwChange(null)
+    setError('Password change expired — sign in again.')
+  }
+
   const submit = async () => {
     if (busy) return
     setError('')
     setBusy(true)
     const result = await login(username.trim(), password)
     setBusy(false)
-    if (result.ok) {
-      /* server-verified identity — trust its name/jobTitle over local presets */
-      enter(result.name, result.jobTitle as JobTitle, result.token)
-      return
-    }
-    if (result.reason === 'invalid') {
-      /* real rejection from the auth API — generic on purpose */
+    if (applyResult(result)) return
+    if (result.ok === false && result.reason === 'invalid') {
+      /* real rejection from the auth API — generic on purpose: wrong
+         password, unknown account and deactivated account are all the
+         SAME message (no account-state oracle) */
       setError('Invalid credentials.')
       return
     }
@@ -127,6 +181,54 @@ export function Login() {
               )}
             </div>
 
+            {pwChange ? (
+              /* ---- §4: forced password change (first login / after an
+                 admin reset) — no session exists until this completes ---- */
+              <form className="lgform" onSubmit={e => { e.preventDefault(); void submitNewPassword() }}>
+                <div className="lgstep" role="note">
+                  <b>Set a new password to continue.</b> Your credential was set by an
+                  administrator (new account or reset) — replace it with one only you know.
+                  Minimum 8 characters.
+                </div>
+                <label className="lglabel" htmlFor="lgnew1">New password</label>
+                <input id="lgnew1" className="lginput num" type="password" value={newPw}
+                  autoComplete="new-password" autoFocus
+                  onChange={e => { setNewPw(e.target.value); setError('') }} />
+                <label className="lglabel" htmlFor="lgnew2">New password (again)</label>
+                <input id="lgnew2" className="lginput num" type="password" value={newPw2}
+                  autoComplete="new-password"
+                  onChange={e => { setNewPw2(e.target.value); setError('') }} />
+                {error && <div className="lgerror" role="alert">⚠ {error}</div>}
+                <button type="submit" className="lgsubmit" disabled={busy || !newPw || !newPw2}>
+                  {busy ? 'Saving…' : 'Set password and continue →'}
+                </button>
+                <button type="button" className="lgcontinue" onClick={() => { setPwChange(null); setError('') }}>
+                  ← Back to sign-in
+                </button>
+              </form>
+            ) : chooser ? (
+              /* ---- §2: the role chooser — this person HOLDS several
+                 roles and acts as exactly ONE this session. Shown only
+                 AFTER a correct password (decision 7); the session token
+                 is issued only once a role is chosen. ---- */
+              <div className="lgform" role="group" aria-label="Choose the role for this session">
+                <div className="lgstep" role="note">
+                  <b>{chooser.name}</b> — you hold {chooser.roles.length} roles. Choose the ONE
+                  role to act as for this session; your permissions derive from it alone.
+                  Changing role later means signing out and back in.
+                </div>
+                {chooser.roles.map(r => (
+                  <button key={r} type="button" className="lgrole" disabled={busy} onClick={() => void pick(r)}>
+                    <b>{r}</b>
+                    <small>{profileOf(r as JobTitle)} profile · lands on {landingRouteOf(r as JobTitle)}</small>
+                  </button>
+                ))}
+                {error && <div className="lgerror" role="alert">⚠ {error}</div>}
+                <button type="button" className="lgcontinue" onClick={() => { setChooser(null); setError('') }}>
+                  ← Back to sign-in
+                </button>
+              </div>
+            ) : (
             <form className="lgform" onSubmit={e => { e.preventDefault(); void submit() }}>
               <label className="lglabel" htmlFor="lguser">Username</label>
               <input
@@ -185,6 +287,7 @@ export function Login() {
                 </div>
               )}
             </form>
+            )}
           </div>
         </section>
         <footer className="lgfoot">

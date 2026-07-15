@@ -71,3 +71,13 @@
 @media(max-width:1500px){.ua .shell{grid-template-columns:64px 1fr}}
 @media(max-width:1280px){.ua .uacols{grid-template-columns:1fr}}
 @media(max-width:1180px){.ua.app-frame{height:auto;overflow:visible}.ua main{overflow:visible}}
+
+/* ---- multi-role (User Management design): the role SET a person holds ---- */
+.ua .uaroles{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.ua .uarolechk{display:flex;align-items:center;gap:5px;border:1px solid var(--stroke);border-radius:8px;
+ padding:4px 9px;font-size:11.5px;cursor:pointer;transition:.15s;color:var(--dim)}
+.ua .uarolechk.on{border-color:var(--blue);background:rgba(var(--blue-rgb),.08);color:var(--text)}
+.ua .uarolechips{display:flex;flex-wrap:wrap;gap:4px}
+.ua .uarchip{font-style:normal;font-size:11px;border:1px solid var(--stroke);border-radius:6px;padding:1px 7px}
+.ua .uarchip.clinical{border-color:rgba(var(--red-rgb),.4);color:var(--red)}
+.ua .uarchip.sys{border-color:rgba(var(--violet-rgb),.5);color:var(--violet)}

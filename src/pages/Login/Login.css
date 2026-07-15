@@ -67,3 +67,12 @@
  .lg .lgcols{grid-template-columns:1fr}
  .lg .lgform{border-left:none;padding-left:0;border-top:1px solid var(--stroke);padding-top:20px}
 }
+
+/* ---- multi-role login steps (User Management design §2/§4) ---- */
+.lg .lgstep{padding:10px 14px;border:1px solid rgba(var(--blue-rgb),.3);background:rgba(var(--blue-rgb),.06);
+ border-radius:10px;font-size:12.5px;color:var(--dim);line-height:1.5;margin-bottom:4px}
+.lg .lgrole{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;
+ border:1px solid var(--stroke);border-radius:12px;padding:10px 14px;cursor:pointer;transition:.15s}
+.lg .lgrole:hover,.lg .lgrole:focus-visible{border-color:var(--blue);background:rgba(var(--blue-rgb),.07)}
+.lg .lgrole b{font-size:14px}
+.lg .lgrole small{font-size:11px;color:var(--faint)}
