@@ -46,7 +46,7 @@ interface AppHeaderProps {
  *  - PATIENT CONTEXT: back replays real navigation history only — the
  *    route's patient stays the truth (it complements, never overrides,
  *    the persistent patient context). */
-function BackButton() {
+export function BackButton() {
   const navigate = useNavigate()
   useLocation() // re-evaluate the history index on every navigation
   const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0

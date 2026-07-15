@@ -5,6 +5,7 @@ import { Card } from '../../components/Card'
 import { Badge } from '../../components/Badge'
 import { BedChip, TagList } from '../../components/Tag'
 import { AlertRow } from '../../components/AlertRow'
+import { BackButton } from '../../components/AppHeader'
 import { NotFoundCard } from '../../components/NotFoundCard'
 import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
@@ -128,6 +129,9 @@ export function MissionControl() {
     <div className="app-frame mc">
       <header className="top">
         <div className="brandrow">
+          {/* Mission Control has its own header (not AppHeader) — the
+              app-wide back control must render here too, same edges. */}
+          <BackButton />
           <div className="brand">
             <div className="logo"><IconPulse size={16} stroke="#06121f" strokeWidth={2.6} /></div>
             <div>AURORA ICU<small>Mission Control · Unit 4B</small></div>

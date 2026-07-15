@@ -4,7 +4,16 @@
    "not tracked yet" rows are dashed amber (as on Statistics) so a missing
    capability never reads as an empty-but-tracked source. */
 
-.al main.al-main {
+/* Every screen defines its own `.shell` grid (the PrintCenter-hub lesson:
+   without it `.shell` computes to display:block, the sidebar goes
+   full-width and main is pushed below the viewport and clipped).
+   The page prefix is `att`, NOT `al`: the shared AlertRow component owns
+   `.al` (AlertRow.css) — reusing it as the page root styled the whole
+   app frame as a flex alert-row card. */
+.att .shell { display: grid; grid-template-columns: 198px 1fr; min-height: 0; }
+@media (max-width: 1500px) { .att .shell { grid-template-columns: 64px 1fr; } }
+
+.att main.al-main {
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -13,7 +22,7 @@
   padding-right: 2px;
 }
 
-.al .al-note {
+.att .al-note {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -21,7 +30,7 @@
   font-size: 13px;
 }
 
-.al .al-honesty {
+.att .al-honesty {
   padding: 10px 14px;
   border: 1px solid rgba(77, 163, 255, .3);
   background: rgba(77, 163, 255, .06);
@@ -32,7 +41,7 @@
 }
 
 /* the honest good-news state — distinct from "not tracked yet" */
-.al .al-allclear {
+.att .al-allclear {
   padding: 12px 16px;
   border: 1px solid rgba(61, 232, 160, .4);
   background: rgba(61, 232, 160, .07);
@@ -42,14 +51,14 @@
   font-weight: 600;
 }
 
-.al .al-gnote {
+.att .al-gnote {
   margin: 0 0 10px;
   font-size: 11px;
   color: var(--txt-3);
   line-height: 1.45;
 }
 
-.al .al-empty {
+.att .al-empty {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -57,9 +66,9 @@
   font-size: 12px;
 }
 
-.al .al-list { display: flex; flex-direction: column; gap: 8px; }
+.att .al-list { display: flex; flex-direction: column; gap: 8px; }
 
-.al .al-row {
+.att .al-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -68,12 +77,12 @@
   border-radius: 8px;
   padding: 8px 12px;
 }
-.al .al-row.al-critical { border-left-color: var(--red); }
-.al .al-row.al-high { border-left-color: var(--red); }
-.al .al-row.al-medium { border-left-color: var(--amber); }
-.al .al-row.al-info { border-left-color: var(--blue); }
+.att .al-row.al-critical { border-left-color: var(--red); }
+.att .al-row.al-high { border-left-color: var(--red); }
+.att .al-row.al-medium { border-left-color: var(--amber); }
+.att .al-row.al-info { border-left-color: var(--blue); }
 
-.al .al-sev {
+.att .al-sev {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .6px;
@@ -81,16 +90,16 @@
   padding: 2px 7px;
   flex: 0 0 auto;
 }
-.al .al-sev-critical { background: rgba(255, 93, 108, .18); color: var(--red); }
-.al .al-sev-high { background: rgba(255, 93, 108, .14); color: var(--red); }
-.al .al-sev-medium { background: rgba(255, 180, 84, .16); color: var(--amber); }
-.al .al-sev-info { background: rgba(77, 163, 255, .14); color: var(--blue); }
+.att .al-sev-critical { background: rgba(255, 93, 108, .18); color: var(--red); }
+.att .al-sev-high { background: rgba(255, 93, 108, .14); color: var(--red); }
+.att .al-sev-medium { background: rgba(255, 180, 84, .16); color: var(--amber); }
+.att .al-sev-info { background: rgba(77, 163, 255, .14); color: var(--blue); }
 
-.al .al-body { flex: 1 1 auto; min-width: 0; font-size: 13px; }
-.al .al-body small { display: block; color: var(--txt-3); font-size: 11px; margin-top: 2px; }
+.att .al-body { flex: 1 1 auto; min-width: 0; font-size: 13px; }
+.att .al-body small { display: block; color: var(--txt-3); font-size: 11px; margin-top: 2px; }
 
-.al .al-acts { display: flex; gap: 6px; flex: 0 0 auto; }
-.al .al-btn {
+.att .al-acts { display: flex; gap: 6px; flex: 0 0 auto; }
+.att .al-btn {
   border: 1px solid var(--line);
   background: none;
   color: var(--txt-2);
@@ -99,11 +108,11 @@
   font-size: 12px;
   cursor: pointer;
 }
-.al .al-btn:hover { border-color: var(--blue); color: var(--txt-1); }
+.att .al-btn:hover { border-color: var(--blue); color: var(--txt-1); }
 
 /* NOT TRACKED YET — dashed amber, the Statistics precedent */
-.al .al-ntlist { display: flex; flex-direction: column; gap: 8px; }
-.al .al-ntrow {
+.att .al-ntlist { display: flex; flex-direction: column; gap: 8px; }
+.att .al-ntrow {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -112,7 +121,7 @@
   border-radius: 8px;
   padding: 8px 12px;
 }
-.al .al-ntbadge {
+.att .al-ntbadge {
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .7px;
