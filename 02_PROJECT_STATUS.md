@@ -4693,6 +4693,26 @@ clean.
 - A **Radiologist JobTitle / RIS-PACS integration** — the future
   producing-service authority (results.create), a clean added source.
 
+### Auth-suite seeded-census assertion fixed (deployed-auth-e2e)
+
+Found during the PR #104/#105 post-merge sweep (2026-07-15): the auth
+suite's final leg failed on staging because three seeded patients
+(P-1003, P-1008, P-1014) had been legitimately discharged during live
+use since the suite's last run (2026-07-13, pre discharge-disposition).
+The auth legs themselves — generic 401, aud rider, token rejection,
+CORS — were all green; this was staging data drift hitting a stale
+assumption, not a regression. The suite's header always declared the
+census "idempotent under ADT", and the assertion message even named the
+exemption ("unless discharged by ADT") — but never checked it. The
+finite-seeded-resources lesson, again.
+
+**Fix**: the seeded-subset leg now PROVES the exemption — each seeded
+patient absent from the roster is looked up via
+`GET /api/icu/adt/encounters?patientId=…` and must have at least one
+encounter with every one discharged. No encounter record at all, or an
+open encounter while absent from the roster, stays a loud failure. No
+server code changed.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
