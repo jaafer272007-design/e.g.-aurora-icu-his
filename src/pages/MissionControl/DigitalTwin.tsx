@@ -4,9 +4,9 @@ import type { OrganName, OrganStatus } from '../../lib/api/types'
 const STATUS_TEXT: Record<OrganStatus, string> = { ok: 'Stable', watch: 'Watch', crit: 'Critical' }
 
 const CIRC_STROKE: Record<OrganStatus, string> = {
-  ok: 'rgba(61,232,160,.5)',
-  watch: 'rgba(255,180,84,.65)',
-  crit: 'rgba(255,93,108,.75)',
+  ok: 'rgba(var(--green-rgb),.5)',
+  watch: 'rgba(var(--amber-rgb),.65)',
+  crit: 'rgba(var(--red-rgb),.75)',
 }
 
 export function DigitalTwin({ organs }: { organs: Record<OrganName, OrganStatus> }) {
@@ -20,11 +20,11 @@ export function DigitalTwin({ organs }: { organs: Record<OrganName, OrganStatus>
         <svg viewBox="0 0 120 240" aria-label="Body diagram">
           <defs>
             <linearGradient id="bodyG" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="rgba(140,175,225,.16)" /><stop offset="1" stopColor="rgba(140,175,225,.06)" />
+              <stop offset="0" stopColor="rgba(var(--steel2-rgb),.16)" /><stop offset="1" stopColor="rgba(var(--steel2-rgb),.06)" />
             </linearGradient>
           </defs>
           {/* silhouette */}
-          <g fill="url(#bodyG)" stroke="rgba(150,185,235,.35)" strokeWidth="1.4">
+          <g fill="url(#bodyG)" stroke="rgba(var(--steel3-rgb),.35)" strokeWidth="1.4">
             <circle cx="60" cy="26" r="16" />
             <path d="M60 42c-14 0-22 8-24 20l-4 34c-1 8 2 12 6 12l2 44c0 6 3 10 8 10h24c5 0 8-4 8-10l2-44c4 0 7-4 6-12l-4-34c-2-12-10-20-24-20z" />
             <path d="M36 66l-10 40c-1 5 1 8 4 9l4 1 8-46" />

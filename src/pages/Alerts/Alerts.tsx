@@ -89,7 +89,7 @@ export function Alerts() {
 
   const total = groups ? attentionCount(groups) : null
   const kpis: KpiSpec[] = [
-    { icon: <IconAlertTriangle size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: total ?? '—', label: 'Attention Items' },
+    { icon: <IconAlertTriangle size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: total ?? '—', label: 'Attention Items' },
   ]
 
   // page prefix "att", NOT "al" — the shared AlertRow component already

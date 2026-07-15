@@ -1,20 +1,20 @@
 /* full variant — Mission Control smart alerts */
 .al{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--stroke);border-radius:12px;padding:9px 11px;
- background:rgba(255,255,255,.02);transition:.3s}
+ background:rgba(var(--lift-rgb),.02);transition:.3s}
 .al .dot{width:10px;height:10px;border-radius:50%;margin-top:3px;flex:none;box-shadow:0 0 9px currentColor;background:currentColor}
 .al .at{font-size:12px;line-height:1.4;flex:1}
 .al .at small{display:block;color:var(--faint);font-size:10px;font-family:var(--mono);margin-top:2px}
 .al .ack{color:var(--faint);border:1px solid var(--stroke);border-radius:8px;width:44px;height:44px;flex:none;transition:.15s}
 .al .ack:hover,.al .ack:focus-visible{color:var(--green);border-color:var(--green)}
 .al.gone{opacity:0;transform:translateX(14px)}
-.s-crit{color:var(--red)} .s-high{color:var(--amber)} .s-med{color:#ffe07a} .s-info{color:var(--blue)}
-.al.s-critB{border-color:rgba(255,93,108,.35);background:rgba(255,93,108,.06)}
+.s-crit{color:var(--red)} .s-high{color:var(--amber)} .s-med{color:var(--yellowtx)} .s-info{color:var(--blue)}
+.al.s-critB{border-color:rgba(var(--red-rgb),.35);background:rgba(var(--red-rgb),.06)}
 
 /* compact variant — Bed Overview right-panel high-priority list */
 .hal{display:flex;gap:9px;align-items:flex-start;border:1px solid var(--stroke);border-radius:11px;padding:8px 10px;
- background:rgba(255,255,255,.02);margin-bottom:7px;font-size:11px;line-height:1.4}
+ background:rgba(var(--lift-rgb),.02);margin-bottom:7px;font-size:11px;line-height:1.4}
 .hal .dot{width:8px;height:8px;border-radius:50%;margin-top:3px;flex:none;box-shadow:0 0 8px currentColor;background:currentColor}
 .hal small{display:block;color:var(--faint);font-family:var(--mono);font-size:9.5px;margin-top:2px}
-.hal.crit{color:var(--red);border-color:rgba(255,93,108,.3)}
+.hal.crit{color:var(--red);border-color:rgba(var(--red-rgb),.3)}
 .hal.high{color:var(--amber)}
 .hal .ht{color:var(--text)}

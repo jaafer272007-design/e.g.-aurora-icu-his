@@ -51,16 +51,13 @@ export function clearPreferences(): void {
 }
 
 /* ---------- theme ----------
-   LIGHT THEME — FLAGGED, NOT SHIPPED (design open item 1): the app is
-   styled dark-first across 18 screens with ~630 colour usages hardcoded
-   OUTSIDE the token layer (solid dark backgrounds, white-alpha panel
-   overlays). Flipping tokens alone would ship broken contrast, so per
-   the design's own fallback the LIGHT option is present but DISABLED
-   until a dedicated styling pass builds a readable light palette. The
-   resolution mechanism below is real (it stamps data-theme on the root
-   and follows the device preference), so the styling pass only has to
-   add the `[data-theme="light"]` token set. */
-export const LIGHT_THEME_AVAILABLE = false
+   LIGHT THEME — SHIPPED (the styling pass closed the PR #101 open item):
+   the ~640 colour usages that were hardcoded outside the token layer now
+   route through tokens (rgba triplet tokens + solid role tokens in
+   tokens.css) whose dark values are the exact literals they replaced —
+   dark is unchanged — and a `[data-theme="light"]` set provides the
+   light palette (hues preserved; lightness shifted for WCAG AA). */
+export const LIGHT_THEME_AVAILABLE = true
 
 /** what the preference RESOLVES to today (the device signal is read for
  *  real, so "system" is honest about what it would do once light exists) */

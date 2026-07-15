@@ -17,9 +17,9 @@
 /* ---- entry: group chips ---- */
 .obs .obsgroups{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 .obs .obsgchip{font-size:10.5px;letter-spacing:.3px;padding:5px 11px;border-radius:999px;
- border:1px solid var(--stroke);color:var(--dim);background:rgba(255,255,255,.03);display:flex;gap:6px;align-items:center}
-.obs .obsgchip.on{color:var(--text);border-color:rgba(53,224,208,.5);background:rgba(53,224,208,.09)}
-.obs .obsgchip .n{font-size:9px;background:rgba(53,224,208,.16);color:var(--cyan);border-radius:999px;padding:1px 6px}
+ border:1px solid var(--stroke);color:var(--dim);background:rgba(var(--lift-rgb),.03);display:flex;gap:6px;align-items:center}
+.obs .obsgchip.on{color:var(--text);border-color:rgba(var(--cyan-rgb),.5);background:rgba(var(--cyan-rgb),.09)}
+.obs .obsgchip .n{font-size:9px;background:rgba(var(--cyan-rgb),.16);color:var(--cyan);border-radius:999px;padding:1px 6px}
 .obs .obsdisabled{font-size:9.5px;color:var(--faint);font-style:italic;margin-left:4px}
 
 /* ---- entry: fields ---- */
@@ -28,7 +28,7 @@
 .obs .obsfield label{font-size:10px;letter-spacing:.4px;color:var(--dim);text-transform:uppercase}
 .obs .obsfield label .opt{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0}
 .obs .obsfield input,.obs .obsfield select,.obs .obseditor input,.obs .obseditor select{
- background:rgba(6,12,22,.6);border:1px solid var(--stroke2);border-radius:9px;
+ background:rgba(var(--well-rgb),.6);border:1px solid var(--stroke2);border-radius:9px;
  padding:6px 9px;font-size:12px;min-width:0;width:100%}
 .obs .obsfield.derived .obsderivednote{font-size:10px;color:var(--faint);font-style:italic;padding:6px 0}
 .obs .obsnumwrap{display:flex;align-items:center;gap:6px}
@@ -42,12 +42,12 @@
 .obs .obssubmit{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
 .obs .obsstaged{font-size:10.5px;color:var(--dim);flex:1;min-width:200px}
 .obs .obschart{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
- padding:7px 14px;border-radius:10px;color:#06121f;background:var(--green)}
+ padding:7px 14px;border-radius:10px;color:var(--ink);background:var(--green)}
 .obs .obschart:disabled{opacity:.35;cursor:not-allowed}
 .obs .obsclear,.obs .obscancel{font-size:10.5px;color:var(--dim);border:1px solid var(--stroke);
  border-radius:10px;padding:6px 12px}
-.obs .obserr{font-size:11px;color:var(--red);background:rgba(255,93,108,.08);
- border:1px solid rgba(255,93,108,.35);border-radius:9px;padding:7px 10px;margin-top:10px}
+.obs .obserr{font-size:11px;color:var(--red);background:rgba(var(--red-rgb),.08);
+ border:1px solid rgba(var(--red-rgb),.35);border-radius:9px;padding:7px 10px;margin-top:10px}
 
 /* ---- the chart: rounds ---- */
 .obs .obsround{border-top:1px solid var(--stroke);padding:10px 0 4px;margin-top:6px}
@@ -56,14 +56,14 @@
 .obs .obsby{color:var(--dim);font-size:10.5px}
 .obs .obssource{font-size:9px;letter-spacing:.5px;text-transform:uppercase;border-radius:999px;padding:1px 7px;
  color:var(--dim);border:1px solid var(--stroke)}
-.obs .obssource.manual{color:var(--blue);border-color:rgba(77,163,255,.4)}
-.obs .obssource.device{color:var(--violet);border-color:rgba(167,139,250,.4)}
-.obs .obssource.hybrid{color:var(--cyan);border-color:rgba(53,224,208,.4)}
+.obs .obssource.manual{color:var(--blue);border-color:rgba(var(--blue-rgb),.4)}
+.obs .obssource.device{color:var(--violet);border-color:rgba(var(--violet-rgb),.4)}
+.obs .obssource.hybrid{color:var(--cyan);border-color:rgba(var(--cyan-rgb),.4)}
 .obs .obsroundhead small{color:var(--faint);font-size:9.5px;margin-left:auto}
 
 .obs .obsrows{display:flex;flex-direction:column}
 .obs .obsrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:5px 2px;
- border-bottom:1px dashed rgba(130,170,230,.08)}
+ border-bottom:1px dashed rgba(var(--steel-rgb),.08)}
 .obs .obsrow:last-child{border-bottom:none}
 .obs .obsname{font-size:11.5px;color:var(--dim);min-width:210px}
 .obs .obsval{font-size:12.5px}
@@ -71,9 +71,9 @@
 .obs .obsrow.derived .obsname,.obs .obsrow.derived .obsval{color:var(--faint);font-style:italic}
 .obs .obsderivedtag,.obs .obsamendtag{font-size:9px;letter-spacing:.4px;border-radius:999px;padding:1px 7px}
 .obs .obsderivedtag{color:var(--faint);border:1px dashed var(--stroke)}
-.obs .obsamendtag{color:var(--amber);border:1px solid rgba(255,180,84,.4);background:rgba(255,180,84,.07)}
+.obs .obsamendtag{color:var(--amber);border:1px solid rgba(var(--amber-rgb),.4);background:rgba(var(--amber-rgb),.07)}
 .obs .obsfix{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--blue);
- border:1px solid rgba(77,163,255,.35);border-radius:999px;padding:3px 10px;margin-left:auto}
+ border:1px solid rgba(var(--blue-rgb),.35);border-radius:999px;padding:3px 10px;margin-left:auto}
 
 /* amendment history — the original is preserved, layers shown in order */
 .obs .obshistory{flex-basis:100%;display:flex;flex-direction:column;gap:2px;
@@ -84,7 +84,7 @@
 
 /* ---- inline correction editor ---- */
 .obs .obseditor{flex-basis:100%;display:flex;flex-direction:column;gap:8px;
- background:rgba(6,12,22,.45);border:1px solid var(--stroke);border-radius:12px;
+ background:rgba(var(--well-rgb),.45);border:1px solid var(--stroke);border-radius:12px;
  padding:10px 12px;margin:4px 0 6px}
 .obs .obseditor .obserr{margin-top:0}
 .obs .obsreason{width:100%}

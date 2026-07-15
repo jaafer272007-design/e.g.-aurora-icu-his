@@ -19,59 +19,59 @@
 /* ---- entry: panel chips ---- */
 .le .lepanels{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
 .le .lepchip{font-size:10.5px;letter-spacing:.3px;padding:5px 11px;border-radius:999px;
- border:1px solid var(--stroke);color:var(--dim);background:rgba(255,255,255,.03);display:flex;gap:6px;align-items:center}
-.le .lepchip.on{color:var(--text);border-color:rgba(53,224,208,.5);background:rgba(53,224,208,.09)}
-.le .lepchip .n{font-size:9px;background:rgba(53,224,208,.16);color:var(--cyan);border-radius:999px;padding:1px 6px}
+ border:1px solid var(--stroke);color:var(--dim);background:rgba(var(--lift-rgb),.03);display:flex;gap:6px;align-items:center}
+.le .lepchip.on{color:var(--text);border-color:rgba(var(--cyan-rgb),.5);background:rgba(var(--cyan-rgb),.09)}
+.le .lepchip .n{font-size:9px;background:rgba(var(--cyan-rgb),.16);color:var(--cyan);border-radius:999px;padding:1px 6px}
 .le .lepmeta{font-size:10.5px;color:var(--dim);margin-bottom:12px;line-height:1.5}
 .le .lepmeta b{color:var(--text)}
 /* the Custom / Other tab — a violet accent marks it apart from the catalogue panels */
 .le .lepcustom{border-style:dashed}
-.le .lepcustom.on{color:var(--text);border-color:rgba(167,139,250,.6);background:rgba(167,139,250,.1)}
+.le .lepcustom.on{color:var(--text);border-color:rgba(var(--violet-rgb),.6);background:rgba(var(--violet-rgb),.1)}
 .le .lecustomfields .lefield .req{color:var(--red);text-transform:none;font-style:italic;letter-spacing:0}
 .le .lefield label i{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0;font-size:9.5px}
 .le .lecustomnote{font-size:10px;color:var(--amber);line-height:1.5;margin:10px 0 0;
- border-left:2px solid rgba(255,180,84,.4);padding-left:9px}
+ border-left:2px solid rgba(var(--amber-rgb),.4);padding-left:9px}
 
 /* ---- entry: fields ---- */
 .le .lefields{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px 14px}
 .le .lefield{display:flex;flex-direction:column;gap:4px;min-width:0}
 .le .lefield label{font-size:10px;letter-spacing:.4px;color:var(--dim);text-transform:uppercase}
-.le .lefield input{background:rgba(6,12,22,.6);border:1px solid var(--stroke2);border-radius:9px;
+.le .lefield input{background:rgba(var(--well-rgb),.6);border:1px solid var(--stroke2);border-radius:9px;
  padding:6px 9px;font-size:12px;min-width:0;width:100%}
 .le .lenumwrap{display:flex;align-items:center;gap:6px}
 .le .lenumwrap input{flex:1}
 .le .leunit{font-size:10px;color:var(--faint);white-space:nowrap}
 .le .leref{font-size:9.5px;color:var(--faint)}
 .le .leflag{font-size:9px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:1px 7px;width:fit-content}
-.le .leflag.normal{color:var(--green);border:1px solid rgba(61,232,160,.35);background:rgba(61,232,160,.08)}
-.le .leflag.abnormal{color:var(--amber);border:1px solid rgba(255,180,84,.4);background:rgba(255,180,84,.1)}
-.le .leflag.critical{color:var(--red);border:1px solid rgba(255,93,108,.5);background:rgba(255,93,108,.12);font-weight:700}
+.le .leflag.normal{color:var(--green);border:1px solid rgba(var(--green-rgb),.35);background:rgba(var(--green-rgb),.08)}
+.le .leflag.abnormal{color:var(--amber);border:1px solid rgba(var(--amber-rgb),.4);background:rgba(var(--amber-rgb),.1)}
+.le .leflag.critical{color:var(--red);border:1px solid rgba(var(--red-rgb),.5);background:rgba(var(--red-rgb),.12);font-weight:700}
 
 /* ---- entry: note + submit strip ---- */
 .le .lenote{display:flex;flex-direction:column;gap:4px;margin-top:12px}
 .le .lenote label{font-size:10px;letter-spacing:.4px;color:var(--dim);text-transform:uppercase}
 .le .lenote label i{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0}
-.le .lenote input{background:rgba(6,12,22,.6);border:1px solid var(--stroke2);border-radius:9px;
+.le .lenote input{background:rgba(var(--well-rgb),.6);border:1px solid var(--stroke2);border-radius:9px;
  padding:6px 9px;font-size:12px;width:100%}
 
 .le .lesubmit{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
 .le .lestaged{font-size:10.5px;color:var(--dim);flex:1;min-width:200px}
 .le .ledoc{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;
- padding:7px 14px;border-radius:10px;color:#06121f;background:var(--green)}
+ padding:7px 14px;border-radius:10px;color:var(--ink);background:var(--green)}
 .le .ledoc:disabled{opacity:.35;cursor:not-allowed}
 .le .leclear{font-size:10.5px;color:var(--dim);border:1px solid var(--stroke);border-radius:10px;padding:6px 12px}
-.le .leerr{font-size:11px;color:var(--red);background:rgba(255,93,108,.08);
- border:1px solid rgba(255,93,108,.35);border-radius:9px;padding:7px 10px;margin-top:10px}
+.le .leerr{font-size:11px;color:var(--red);background:rgba(var(--red-rgb),.08);
+ border:1px solid rgba(var(--red-rgb),.35);border-radius:9px;padding:7px 10px;margin-top:10px}
 
 /* ---- results on file ---- */
 .le .lerow{border-top:1px solid var(--stroke);padding:10px 0 8px}
-.le .lerow.manual{border-left:2px solid rgba(167,139,250,.5);padding-left:10px;margin-left:-12px}
+.le .lerow.manual{border-left:2px solid rgba(var(--violet-rgb),.5);padding-left:10px;margin-left:-12px}
 /* a custom result is visually distinct — a violet dashed rail + a "custom" tag
    instead of a normal/abnormal/critical flag, so it is never mistaken for a
    properly-flagged structured result */
-.le .lerow.custom{border-left:2px dashed rgba(167,139,250,.6)}
+.le .lerow.custom{border-left:2px dashed rgba(var(--violet-rgb),.6)}
 .le .lercustomtag{font-size:9px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:1px 8px;
- color:var(--violet);border:1px solid rgba(167,139,250,.5);background:rgba(167,139,250,.1)}
+ color:var(--violet);border:1px solid rgba(var(--violet-rgb),.5);background:rgba(var(--violet-rgb),.1)}
 .le .lercustomval b{color:var(--text)}
 .le .lercustomref{margin-left:10px;font-size:9.5px;color:var(--faint);font-style:italic}
 .le .lerowtop{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;font-size:11px}
@@ -92,27 +92,27 @@
 .le .leritem.critical b{color:var(--red)}
 .le .leru{color:var(--faint);font-style:normal;font-size:9.5px}
 .le .lernote{font-size:10.5px;color:var(--dim);margin:3px 0;line-height:1.5;
- border-left:2px solid rgba(130,170,230,.3);padding-left:8px}
+ border-left:2px solid rgba(var(--steel-rgb),.3);padding-left:8px}
 .le .lerprov{font-size:9.5px;color:var(--faint);font-style:italic}
 .le .lerpostack{color:var(--amber);font-style:normal}
 
 /* ---- Lab Result Editing: correction UI + amend-not-erase history ---- */
 .le .leredited{font-size:9px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;padding:1px 7px;
- color:var(--amber);border:1px solid rgba(255,180,84,.45);background:rgba(255,180,84,.08)}
+ color:var(--amber);border:1px solid rgba(var(--amber-rgb),.45);background:rgba(var(--amber-rgb),.08)}
 .le .lerfix{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--blue);
- border:1px solid rgba(77,163,255,.35);border-radius:8px;padding:3px 9px;min-height:26px}
-.le .lerfix:hover{background:rgba(77,163,255,.1)}
+ border:1px solid rgba(var(--blue-rgb),.35);border-radius:8px;padding:3px 9px;min-height:26px}
+.le .lerfix:hover{background:rgba(var(--blue-rgb),.1)}
 .le .lerhistory{margin:4px 0;display:flex;flex-direction:column;gap:2px}
 .le .leramend{font-size:10px;color:var(--dim);line-height:1.6;
- border-left:2px solid rgba(255,180,84,.4);padding-left:8px}
+ border-left:2px solid rgba(var(--amber-rgb),.4);padding-left:8px}
 .le .leramend s{color:var(--faint)}
 .le .leramend b{color:var(--text)}
 .le .leramend i{color:var(--faint)}
 .le .lerpostacktag{margin-left:8px;font-size:8.5px;letter-spacing:.4px;text-transform:uppercase;border-radius:999px;
- padding:1px 6px;color:var(--amber);border:1px solid rgba(255,180,84,.5);background:rgba(255,180,84,.1);font-weight:700}
+ padding:1px 6px;color:var(--amber);border:1px solid rgba(var(--amber-rgb),.5);background:rgba(var(--amber-rgb),.1);font-weight:700}
 .le .lereditor{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0 4px;
- border:1px dashed rgba(77,163,255,.35);border-radius:10px;padding:9px 10px}
-.le .lereditor select,.le .lereditor input{background:rgba(6,12,22,.6);border:1px solid var(--stroke2);
+ border:1px dashed rgba(var(--blue-rgb),.35);border-radius:10px;padding:9px 10px}
+.le .lereditor select,.le .lereditor input{background:rgba(var(--well-rgb),.6);border:1px solid var(--stroke2);
  border-radius:9px;padding:6px 9px;font-size:11.5px;min-width:0}
 .le .lereditor input{flex:1;min-width:130px}
 .le .lereditor .lerreason{flex:2;min-width:200px}

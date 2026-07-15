@@ -102,14 +102,14 @@ export function NurseWorkspace() {
   const tasksOpen = tasks?.filter(t => !t.done).length
 
   const kpis: KpiSpec[] = [
-    { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: assignment ? patients.length : '—', label: 'My Patients' },
+    { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: assignment ? patients.length : '—', label: 'My Patients' },
     {
       icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round"><rect x="7" y="2" width="10" height="20" rx="4" /><path d="M7 9h10M7 15h10" /></svg>,
-      iconBg: 'rgba(53,224,208,.13)', value: medsDue ?? '—', label: 'Meds Due',
+      iconBg: 'rgba(var(--cyan-rgb),.13)', value: medsDue ?? '—', label: 'Meds Due',
       valueStyle: medsDue ? { color: 'var(--amber)' } : undefined,
     },
-    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: ordersPending ?? '—', label: 'Orders to Impl.' },
-    { icon: <IconCheck size={14} stroke="var(--green)" strokeWidth={2} />, iconBg: 'rgba(61,232,160,.13)', value: tasksOpen ?? '—', label: 'Tasks Open' },
+    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: ordersPending ?? '—', label: 'Orders to Impl.' },
+    { icon: <IconCheck size={14} stroke="var(--green)" strokeWidth={2} />, iconBg: 'rgba(var(--green-rgb),.13)', value: tasksOpen ?? '—', label: 'Tasks Open' },
   ]
 
   return (

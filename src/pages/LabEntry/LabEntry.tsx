@@ -233,10 +233,10 @@ export function LabEntry() {
   const manualCount = draws?.filter(d => d.source === 'manual').length ?? 0
 
   const kpis: KpiSpec[] = [
-    { icon: <IconFlask size={14} stroke="var(--cyan)" />, iconBg: 'rgba(53,224,208,.13)', value: catalog ? activeTests.length : '—', label: 'Panels Available' },
-    { icon: <IconPencil size={14} stroke="var(--violet)" />, iconBg: 'rgba(167,139,250,.15)', value: draws ? manualCount : '—', label: 'Manually Documented' },
-    { icon: <IconFlask size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: draws ? draws.length : '—', label: 'Results on File' },
-    { icon: <IconClock size={14} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: isCustom ? 'free text' : (activeTest ? activeTest.analytes.length : '—'), label: isCustom ? 'Custom Entry' : 'Analytes in Panel' },
+    { icon: <IconFlask size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)', value: catalog ? activeTests.length : '—', label: 'Panels Available' },
+    { icon: <IconPencil size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.15)', value: draws ? manualCount : '—', label: 'Manually Documented' },
+    { icon: <IconFlask size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: draws ? draws.length : '—', label: 'Results on File' },
+    { icon: <IconClock size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: isCustom ? 'free text' : (activeTest ? activeTest.analytes.length : '—'), label: isCustom ? 'Custom Entry' : 'Analytes in Panel' },
   ]
 
   const setField = (analyte: string, v: string) => {

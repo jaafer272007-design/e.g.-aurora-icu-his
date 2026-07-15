@@ -5,6 +5,7 @@ import { Sparkline } from '../../components/Sparkline'
 import { IconFlask } from '../../components/icons'
 import { displayStamp, agoLabel, useNow } from '../../lib/time'
 import type { LabDraw, LabPanelKey, ResultFlag } from '../../lib/api/types'
+import { cssToken, tokenRgba, useThemeVersion } from '../../hooks/useCanvasTheme'
 
 const FLAG_META: Record<ResultFlag, { label: string; cls: string }> = {
   normal: { label: 'NORMAL', cls: 'fl-normal' },
@@ -13,9 +14,13 @@ const FLAG_META: Record<ResultFlag, { label: string; cls: string }> = {
 }
 
 const FLAG_COLOR: Record<ResultFlag, string> = {
-  normal: '#3de8a0',
-  abnormal: '#ffb454',
-  critical: '#ff5d6c',
+  normal: 'var(--green)',
+  abnormal: 'var(--amber)',
+  critical: 'var(--red)',
+}
+/* canvas can't resolve var() — resolved at draw time via cssToken */
+const FLAG_TOKEN: Record<ResultFlag, string> = {
+  normal: '--green', abnormal: '--amber', critical: '--red',
 }
 
 /** Per-patient lab results with trend charts — one analyte charted at a time
@@ -31,6 +36,7 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
   const [panel, setPanel] = useState<LabPanelKey | null>(null)
   const [analyte, setAnalyte] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const themeV = useThemeVersion() // canvas colours re-resolve on theme change
 
   const activePanel = panel && panels.includes(panel) ? panel : panels[0]
   const panelDraws = useMemo(
@@ -71,9 +77,9 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
     /* reference band */
     const bandTop = Y(Math.min(refItem.refHigh, mx))
     const bandBot = Y(Math.max(refItem.refLow, mn))
-    c.fillStyle = 'rgba(61,232,160,.08)'
+    c.fillStyle = tokenRgba('--green-rgb', .08)
     c.fillRect(padL, bandTop, W - padL - padR, Math.max(bandBot - bandTop, 0))
-    c.strokeStyle = 'rgba(61,232,160,.3)'
+    c.strokeStyle = tokenRgba('--green-rgb', .3)
     c.setLineDash([4, 5])
     for (const bound of [refItem.refLow, refItem.refHigh]) {
       if (bound > mn && bound < mx) {
@@ -83,10 +89,10 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
     c.setLineDash([])
 
     /* grid + labels */
-    c.strokeStyle = 'rgba(130,170,230,.12)'
+    c.strokeStyle = tokenRgba('--steel-rgb', .12)
     c.lineWidth = 1
     c.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono')
-    c.fillStyle = 'rgba(143,163,188,.8)'
+    c.fillStyle = tokenRgba('--dim-rgb', .8)
     c.textAlign = 'center'
     series.forEach((s, i) => {
       c.beginPath(); c.moveTo(X(i), padT); c.lineTo(X(i), H - padB); c.stroke()
@@ -101,19 +107,19 @@ export function LabTrendsCard({ draws: allDraws }: { draws: LabDraw[] }) {
     }
 
     /* series line + flag-colored points */
-    c.strokeStyle = '#4da3ff'
+    c.strokeStyle = cssToken('--blue')
     c.lineWidth = 2
     c.lineJoin = 'round'
     c.beginPath()
     series.forEach((s, i) => (i ? c.lineTo(X(i), Y(s.value)) : c.moveTo(X(i), Y(s.value))))
     c.stroke()
     series.forEach((s, i) => {
-      c.fillStyle = FLAG_COLOR[s.flag]
+      c.fillStyle = cssToken(FLAG_TOKEN[s.flag])
       c.beginPath()
       c.arc(X(i), Y(s.value), s.flag === 'normal' ? 3 : 4.2, 0, 7)
       c.fill()
     })
-  }, [series, refItem])
+  }, [series, refItem, themeV])
 
   useEffect(() => {
     draw()

@@ -136,15 +136,15 @@ export function LabImaging() {
   const imagingPending = studies?.filter(s => s.status === 'ordered' || s.status === 'in-progress').length
 
   const kpis: KpiSpec[] = [
-    { icon: <IconFlask size={14} stroke="var(--red)" />, iconBg: 'rgba(255,93,108,.14)', value: inbox.length, label: 'Unacked · Unit', valueStyle: inbox.length ? { color: 'var(--red)' } : undefined },
-    { icon: <IconAlertTriangle size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: draws ? criticalCount : '—', label: 'Critical · Patient' },
+    { icon: <IconFlask size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)', value: inbox.length, label: 'Unacked · Unit', valueStyle: inbox.length ? { color: 'var(--red)' } : undefined },
+    { icon: <IconAlertTriangle size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: draws ? criticalCount : '—', label: 'Critical · Patient' },
     {
       icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="11" r="2.2" /><path d="M21 15l-4.5-4.5L9 18" /></svg>,
-      iconBg: 'rgba(167,139,250,.15)', value: imagingPending ?? '—', label: 'Imaging Pending',
+      iconBg: 'rgba(var(--violet-rgb),.15)', value: imagingPending ?? '—', label: 'Imaging Pending',
     },
     {
       icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round"><path d="M12 3v8m0 0c-3 0-5 2-5 5s2 5 5 5 5-2 5-5-2-5-5-5z" /></svg>,
-      iconBg: 'rgba(53,224,208,.13)', value: draws ? latestByPanel.size : '—', label: 'Panels on File',
+      iconBg: 'rgba(var(--cyan-rgb),.13)', value: draws ? latestByPanel.size : '—', label: 'Panels on File',
     },
   ]
 

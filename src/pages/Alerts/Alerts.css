@@ -32,8 +32,8 @@
 
 .att .al-honesty {
   padding: 10px 14px;
-  border: 1px solid rgba(77, 163, 255, .3);
-  background: rgba(77, 163, 255, .06);
+  border: 1px solid rgba(var(--blue-rgb),.3);
+  background: rgba(var(--blue-rgb),.06);
   border-radius: 10px;
   color: var(--txt-2);
   font-size: 12px;
@@ -43,8 +43,8 @@
 /* the honest good-news state — distinct from "not tracked yet" */
 .att .al-allclear {
   padding: 12px 16px;
-  border: 1px solid rgba(61, 232, 160, .4);
-  background: rgba(61, 232, 160, .07);
+  border: 1px solid rgba(var(--green-rgb),.4);
+  background: rgba(var(--green-rgb),.07);
   border-radius: 10px;
   color: var(--green);
   font-size: 13px;
@@ -90,10 +90,10 @@
   padding: 2px 7px;
   flex: 0 0 auto;
 }
-.att .al-sev-critical { background: rgba(255, 93, 108, .18); color: var(--red); }
-.att .al-sev-high { background: rgba(255, 93, 108, .14); color: var(--red); }
-.att .al-sev-medium { background: rgba(255, 180, 84, .16); color: var(--amber); }
-.att .al-sev-info { background: rgba(77, 163, 255, .14); color: var(--blue); }
+.att .al-sev-critical { background: rgba(var(--red-rgb),.18); color: var(--red); }
+.att .al-sev-high { background: rgba(var(--red-rgb),.14); color: var(--red); }
+.att .al-sev-medium { background: rgba(var(--amber-rgb),.16); color: var(--amber); }
+.att .al-sev-info { background: rgba(var(--blue-rgb),.14); color: var(--blue); }
 
 .att .al-body { flex: 1 1 auto; min-width: 0; font-size: 13px; }
 .att .al-body small { display: block; color: var(--txt-3); font-size: 11px; margin-top: 2px; }
@@ -116,8 +116,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  border: 1px dashed rgba(255, 180, 84, .45);
-  background: rgba(255, 180, 84, .04);
+  border: 1px dashed rgba(var(--amber-rgb),.45);
+  background: rgba(var(--amber-rgb),.04);
   border-radius: 8px;
   padding: 8px 12px;
 }
@@ -127,7 +127,7 @@
   letter-spacing: .7px;
   text-transform: uppercase;
   color: var(--amber);
-  border: 1px dashed rgba(255, 180, 84, .5);
+  border: 1px dashed rgba(var(--amber-rgb),.5);
   border-radius: 5px;
   padding: 2px 7px;
   flex: 0 0 auto;

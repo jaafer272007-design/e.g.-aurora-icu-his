@@ -133,7 +133,7 @@ export function MissionControl() {
               app-wide back control must render here too, same edges. */}
           <BackButton />
           <div className="brand">
-            <div className="logo"><IconPulse size={16} stroke="#06121f" strokeWidth={2.6} /></div>
+            <div className="logo"><IconPulse size={16} stroke="var(--ink)" strokeWidth={2.6} /></div>
             <div>AURORA ICU<small>Mission Control · Unit 4B</small></div>
           </div>
           <div className="unitstats">
@@ -280,7 +280,7 @@ export function MissionControl() {
                     <div className="medrow" key={m.name}>
                       <div><div className="mn">{m.name}</div><div className="md">{m.dose}</div></div>
                       <div className="mr">{m.rate}</div>
-                      <Sparkline data={m.trend} color={running ? 'var(--cyan)' : 'rgba(130,170,230,.3)'} width={62} height={22} baseline="zero" />
+                      <Sparkline data={m.trend} color={running ? 'var(--cyan)' : 'rgba(var(--steel-rgb),.3)'} width={62} height={22} baseline="zero" />
                       <span className={`mwarn ${m.status}`} title={m.status === 'hi' ? 'High-dose warning' : m.status === 'md' ? 'Review due' : 'Nominal'} />
                     </div>
                   )

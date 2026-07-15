@@ -7,7 +7,7 @@
 /* ===== assigned patients ===== */
 .nw .aplist{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
 .nw .apcard{position:relative;border:1px solid var(--stroke);border-radius:14px;padding:12px 14px;cursor:pointer;
- background:rgba(255,255,255,.025);transition:.18s;text-align:left;color:var(--text);overflow:hidden;display:block;width:100%}
+ background:rgba(var(--lift-rgb),.025);transition:.18s;text-align:left;color:var(--text);overflow:hidden;display:block;width:100%}
 .nw .apcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3.5px;border-radius:4px}
 .nw .apcard.sev-crit::before{background:var(--red);box-shadow:0 0 14px var(--red)}
 .nw .apcard.sev-high::before{background:var(--amber);box-shadow:0 0 12px var(--amber)}
@@ -17,12 +17,12 @@
 .nw .apname{font-size:14.5px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nw .apname small{font-weight:500;color:var(--dim);font-size:11px;margin-left:6px}
 .nw .apcode{font-size:9px;font-weight:700;letter-spacing:.7px;padding:2.5px 8px;border-radius:7px;text-transform:uppercase}
-.nw .apcode.full{background:rgba(61,232,160,.13);color:var(--green)}
-.nw .apcode.dnr{background:rgba(255,180,84,.15);color:var(--amber)}
+.nw .apcode.full{background:rgba(var(--green-rgb),.13);color:var(--green)}
+.nw .apcode.dnr{background:rgba(var(--amber-rgb),.15);color:var(--amber)}
 .nw .apdx{font-size:11.5px;color:var(--dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nw .aprow2{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
-.nw .apallergy{font-size:10.5px;font-weight:600;color:var(--red);background:rgba(255,93,108,.1);
- border:1px solid rgba(255,93,108,.35);padding:3px 9px;border-radius:8px}
+.nw .apallergy{font-size:10.5px;font-weight:600;color:var(--red);background:rgba(var(--red-rgb),.1);
+ border:1px solid rgba(var(--red-rgb),.35);padding:3px 9px;border-radius:8px}
 .nw .aptags{display:flex;gap:5px;flex-wrap:wrap}
 .nw .apvitals{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:9px}
 .nw .apfoot{margin-top:9px;font-size:11px;color:var(--blue);font-weight:600}
@@ -30,10 +30,10 @@
 /* ===== MAR ===== */
 .nw .margroup{margin-bottom:12px}
 .nw .margroup:last-child{margin-bottom:0}
-.nw .marpt{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid rgba(130,170,230,.1);font-size:12.5px}
+.nw .marpt{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid rgba(var(--steel-rgb),.1);font-size:12.5px}
 .nw .marpt .marallergy{margin-left:auto;font-size:10px;color:var(--red)}
 .nw .marrow{display:grid;grid-template-columns:44px 1fr auto auto;gap:10px;align-items:center;
- padding:9px 4px;border-bottom:1px dashed rgba(130,170,230,.09)}
+ padding:9px 4px;border-bottom:1px dashed rgba(var(--steel-rgb),.09)}
 .nw .margroup .marrow:last-child{border-bottom:none}
 .nw .martime{font-size:12px;font-weight:700;color:var(--dim)}
 .nw .marrow.st-overdue .martime{color:var(--red)}
@@ -42,42 +42,42 @@
 .nw .marmed .mdose{font-size:11px;color:var(--cyan);font-weight:600;margin-left:5px}
 .nw .marmed .mroute{font-size:10.5px;color:var(--faint);font-family:var(--mono);margin-top:2px}
 .nw .marstate{font-size:9px;font-weight:700;letter-spacing:.7px;padding:2.5px 8px;border-radius:7px;text-transform:uppercase}
-.nw .marstate.st-overdue{background:rgba(255,93,108,.15);color:var(--red)}
-.nw .marstate.st-due{background:rgba(255,180,84,.16);color:var(--amber)}
-.nw .marstate.st-upcoming{background:rgba(130,170,230,.12);color:var(--dim)}
-.nw .marstate.st-prn{background:rgba(167,139,250,.16);color:var(--violet)}
-.nw .marstate.st-given{background:rgba(61,232,160,.14);color:var(--green)}
-.nw .marstate.st-held{background:rgba(255,180,84,.16);color:var(--amber)}
-.nw .marstate.st-refused{background:rgba(255,93,108,.15);color:var(--red)}
+.nw .marstate.st-overdue{background:rgba(var(--red-rgb),.15);color:var(--red)}
+.nw .marstate.st-due{background:rgba(var(--amber-rgb),.16);color:var(--amber)}
+.nw .marstate.st-upcoming{background:rgba(var(--steel-rgb),.12);color:var(--dim)}
+.nw .marstate.st-prn{background:rgba(var(--violet-rgb),.16);color:var(--violet)}
+.nw .marstate.st-given{background:rgba(var(--green-rgb),.14);color:var(--green)}
+.nw .marstate.st-held{background:rgba(var(--amber-rgb),.16);color:var(--amber)}
+.nw .marstate.st-refused{background:rgba(var(--red-rgb),.15);color:var(--red)}
 .nw .maracts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .nw .mab{font-size:10.5px;font-weight:600;padding:7px 10px;border-radius:9px;border:1px solid var(--stroke);transition:.15s;min-height:36px}
-.nw .mab.given{color:var(--green);border-color:rgba(61,232,160,.4);background:rgba(61,232,160,.08)}
-.nw .mab.given:hover,.nw .mab.given:focus-visible{background:rgba(61,232,160,.18)}
-.nw .mab.held{color:var(--amber);border-color:rgba(255,180,84,.4);background:rgba(255,180,84,.08)}
-.nw .mab.held:hover,.nw .mab.held:focus-visible{background:rgba(255,180,84,.18)}
-.nw .mab.refused{color:var(--red);border-color:rgba(255,93,108,.4);background:rgba(255,93,108,.08)}
-.nw .mab.refused:hover,.nw .mab.refused:focus-visible{background:rgba(255,93,108,.18)}
+.nw .mab.given{color:var(--green);border-color:rgba(var(--green-rgb),.4);background:rgba(var(--green-rgb),.08)}
+.nw .mab.given:hover,.nw .mab.given:focus-visible{background:rgba(var(--green-rgb),.18)}
+.nw .mab.held{color:var(--amber);border-color:rgba(var(--amber-rgb),.4);background:rgba(var(--amber-rgb),.08)}
+.nw .mab.held:hover,.nw .mab.held:focus-visible{background:rgba(var(--amber-rgb),.18)}
+.nw .mab.refused{color:var(--red);border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.08)}
+.nw .mab.refused:hover,.nw .mab.refused:focus-visible{background:rgba(var(--red-rgb),.18)}
 .nw .mardoc{font-size:10px;color:var(--faint)}
 
 /* ===== orders to implement ===== */
 .nw .ordlist{display:flex;flex-direction:column;gap:8px}
 .nw .ordrow{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;
- background:rgba(255,255,255,.02);transition:.2s}
+ background:rgba(var(--lift-rgb),.02);transition:.2s}
 .nw .ordrow.done{opacity:.55}
 .nw .ordrow .badge{flex:none;margin-top:2px}
 .nw .ordtext{flex:1;font-size:12.5px;line-height:1.42}
 .nw .ordtext small{display:flex;align-items:center;gap:6px;color:var(--faint);font-size:10px;margin-top:4px}
 .nw .ordbed{font-size:9.5px;padding:2px 6px}
 .nw .ordbtn{font-size:11px;font-weight:600;padding:7px 13px;border-radius:9px;border:1px solid var(--stroke2);
- color:var(--green);background:rgba(61,232,160,.08);flex:none;transition:.15s;min-height:44px}
-.nw .ordbtn:hover,.nw .ordbtn:focus-visible{background:rgba(61,232,160,.18)}
+ color:var(--green);background:rgba(var(--green-rgb),.08);flex:none;transition:.15s;min-height:44px}
+.nw .ordbtn:hover,.nw .ordbtn:focus-visible{background:rgba(var(--green-rgb),.18)}
 .nw .orddone{font-size:11px;font-weight:700;color:var(--green);flex:none;padding:7px 4px}
 .nw .nwempty{text-align:center;color:var(--faint);font-size:12px;padding:24px 0}
 
 /* ===== nursing tasks ===== */
 .nw .tsklist{display:flex;flex-direction:column;gap:6px}
 .nw .tskrow{display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:10px;border:1px solid var(--stroke);
- background:rgba(255,255,255,.02);cursor:pointer;font-size:12px;transition:.15s;user-select:none;text-align:left;color:var(--text);min-height:44px;width:100%}
+ background:rgba(var(--lift-rgb),.02);cursor:pointer;font-size:12px;transition:.15s;user-select:none;text-align:left;color:var(--text);min-height:44px;width:100%}
 .nw .tskrow:hover,.nw .tskrow:focus-visible{border-color:var(--stroke2)}
 .nw .cb{width:17px;height:17px;border-radius:6px;border:1.5px solid var(--faint);display:grid;place-items:center;flex:none;transition:.18s}
 .nw .cb svg{opacity:0;transform:scale(.4);transition:.18s}
@@ -88,20 +88,20 @@
 .nw .td-overdue{color:var(--red)}
 .nw .td-due{color:var(--amber)}
 .nw .td-upcoming{color:var(--dim)}
-.nw .tskover{font-style:normal;font-size:8px;font-weight:700;letter-spacing:.6px;background:rgba(255,93,108,.15);color:var(--red);padding:2px 5px;border-radius:5px}
+.nw .tskover{font-style:normal;font-size:8px;font-weight:700;letter-spacing:.6px;background:rgba(var(--red-rgb),.15);color:var(--red);padding:2px 5px;border-radius:5px}
 .nw .tsklabel{flex:1;line-height:1.35}
 .nw .tskmeta{display:flex;align-items:center;gap:6px;flex:none}
 .nw .tskbed{font-size:9.5px;padding:2px 6px}
 .nw .tskrec{font-style:normal;font-size:9.5px;color:var(--faint);font-family:var(--mono)}
 
 /* ===== I&O ===== */
-.nw .iorow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(130,170,230,.09)}
+.nw .iorow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(var(--steel-rgb),.09)}
 .nw .ioname{font-size:12.5px;font-weight:600;flex:1;min-width:90px}
 .nw .iototals{display:grid;grid-template-columns:repeat(3,minmax(86px,1fr));gap:8px}
 .nw .ioform{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
 .nw .iokind{display:flex;gap:7px}
 .nw .iok{flex:1;padding:9px 13px;border-radius:10px;font-size:12px;border:1px solid var(--stroke);color:var(--dim);transition:.15s;min-height:44px}
-.nw .iok.on{background:rgba(53,224,208,.14);border-color:rgba(53,224,208,.5);color:var(--cyan);font-weight:600}
+.nw .iok.on{background:rgba(var(--cyan-rgb),.14);border-color:rgba(var(--cyan-rgb),.5);color:var(--cyan);font-weight:600}
 .nw .iovol{grid-column:span 2}
 .nw .iovolrow{display:flex;gap:10px}
 .nw .iovolrow input{flex:1;font-family:var(--mono)}
@@ -109,13 +109,13 @@
 
 /* ===== shared form styles (nurse screen) ===== */
 .nw .field label{display:block;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
-.nw .field select,.nw .field input,.nw .field textarea{width:100%;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);
+.nw .field select,.nw .field input,.nw .field textarea{width:100%;padding:10px 12px;border-radius:10px;background:rgba(var(--lift-rgb),.04);
  border:1px solid var(--stroke);outline:none;transition:.15s;min-height:44px}
 .nw .field select:focus,.nw .field input:focus,.nw .field textarea:focus{border-color:var(--blue)}
-.nw .field select option{background:#0d1524}
+.nw .field select option{background:var(--optbg)}
 .nw .field{margin-bottom:0}
 .nw .btn{padding:12px;border-radius:11px;font-size:13px;font-weight:600;transition:.18s;min-height:46px}
-.nw .btn.primary{background:linear-gradient(135deg,#1e5fb4,#35e0d0);color:#06121f}
+.nw .btn.primary{background:linear-gradient(135deg,var(--grad-a),var(--cyan));color:var(--ink)}
 .nw .btn.primary:hover,.nw .btn.primary:focus-visible{filter:brightness(1.08)}
 .nw .btn.primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
 
@@ -136,12 +136,12 @@
 
 /* MAR held/refused reason dialog (Stage 10 Phase 3) */
 .marscrim{position:fixed;inset:0;background:rgba(4,8,14,.66);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:50;padding:20px}
-.mardialog{width:min(460px,100%);background:var(--panel,#0c141f);border:1px solid var(--stroke2,rgba(130,170,230,.22));border-radius:16px;
+.mardialog{width:min(460px,100%);background:var(--panel,#0c141f);border:1px solid var(--stroke2,rgba(var(--steel-rgb),.22));border-radius:16px;
  padding:18px 20px;box-shadow:0 18px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:12px}
 .mardialog h2{font-size:14.5px;font-weight:700}
 .mardialog .field{display:flex;flex-direction:column;gap:6px}
 .mardialog label{font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--dim)}
-.mardialog textarea{min-height:76px;resize:vertical;border:1px solid var(--stroke2,rgba(130,170,230,.22));border-radius:11px;
- background:rgba(10,16,28,.9);color:var(--text);font-size:13px;padding:10px 12px;font-family:inherit}
+.mardialog textarea{min-height:76px;resize:vertical;border:1px solid var(--stroke2,rgba(var(--steel-rgb),.22));border-radius:11px;
+ background:rgba(var(--glass2-rgb),.9);color:var(--text);font-size:13px;padding:10px 12px;font-family:inherit}
 .mardialog textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 .mardfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}

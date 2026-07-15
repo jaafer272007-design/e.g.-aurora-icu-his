@@ -1,12 +1,12 @@
 .toast{position:fixed;bottom:24px;left:50%;transform:translate(-50%,80px);padding:11px 18px;border-radius:13px;
- background:rgba(13,21,36,.95);font-size:13px;box-shadow:0 14px 40px rgba(0,0,0,.5);
+ background:rgba(var(--glass6-rgb),.95);font-size:13px;box-shadow:0 14px 40px rgba(0,0,0,.5);
  transition:transform .3s cubic-bezier(.2,.7,.2,1);z-index:50;backdrop-filter:blur(10px)}
 .toast.show{transform:translate(-50%,0)}
-.toast-blue{border:1px solid rgba(77,163,255,.45)}
+.toast-blue{border:1px solid rgba(var(--blue-rgb),.45)}
 .toast-blue b{color:var(--blue)}
-.toast-green{border:1px solid rgba(61,232,160,.45)}
+.toast-green{border:1px solid rgba(var(--green-rgb),.45)}
 .toast-green b{color:var(--green)}
-.toast-amber{border:1px solid rgba(255,180,84,.45)}
+.toast-amber{border:1px solid rgba(var(--amber-rgb),.45)}
 .toast-amber b{color:var(--amber)}
-.toast-cyan{border:1px solid rgba(53,224,208,.45)}
+.toast-cyan{border:1px solid rgba(var(--cyan-rgb),.45)}
 .toast-cyan b{color:var(--cyan)}

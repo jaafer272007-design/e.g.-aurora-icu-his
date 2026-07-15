@@ -200,13 +200,13 @@ export function OrdersMedication() {
   const dcToday = orders?.filter(o => o.status === 'discontinued').length
 
   const kpis: KpiSpec[] = [
-    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: pendingAll.length, label: 'Pending · Unit' },
-    { icon: <IconPill size={14} stroke="var(--cyan)" />, iconBg: 'rgba(53,224,208,.13)', value: activeMeds ?? '—', label: 'Active Meds' },
+    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: pendingAll.length, label: 'Pending · Unit' },
+    { icon: <IconPill size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)', value: activeMeds ?? '—', label: 'Active Meds' },
     {
       icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2" strokeLinecap="round"><path d="M20 6L9 17l-5-5" /></svg>,
-      iconBg: 'rgba(77,163,255,.15)', value: toImplement ?? '—', label: 'To Implement',
+      iconBg: 'rgba(var(--blue-rgb),.15)', value: toImplement ?? '—', label: 'To Implement',
     },
-    { icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(255,93,108,.14)', value: dcToday ?? '—', label: 'Discontinued', valueStyle: { color: 'var(--red)' } },
+    { icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)', value: dcToday ?? '—', label: 'Discontinued', valueStyle: { color: 'var(--red)' } },
   ]
 
   const pendingCountFor = (pid: string) => pendingAll.filter(o => o.patientId === pid).length

@@ -76,19 +76,19 @@ export function AiAssistant() {
   /* unit-level KPIs shown on both views (ranking is the shared source) */
   const allRisks = ranking?.flatMap(r => [r.top, ...r.alsoElevated]) ?? []
   const kpis: KpiSpec[] = [
-    { icon: <IconBrain size={14} stroke="var(--violet)" />, iconBg: 'rgba(167,139,250,.15)', value: ranking ? ranking.length : '—', label: 'Patients Scored' },
+    { icon: <IconBrain size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.15)', value: ranking ? ranking.length : '—', label: 'Patients Scored' },
     {
-      icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(255,93,108,.14)',
+      icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)',
       value: ranking ? ranking.filter(r => r.top.probability >= 70).length : '—', label: 'High Risk ≥ 70%',
       valueStyle: ranking?.some(r => r.top.probability >= 70) ? { color: 'var(--red)' } : undefined,
     },
     {
       icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l6-6 4 4 8-8" /><path d="M14 7h7v7" /></svg>,
-      iconBg: 'rgba(255,180,84,.14)', value: ranking ? allRisks.filter(r => r.trend === 'rising').length : '—', label: 'Rising Risks',
+      iconBg: 'rgba(var(--amber-rgb),.14)', value: ranking ? allRisks.filter(r => r.trend === 'rising').length : '—', label: 'Rising Risks',
     },
     {
       icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>,
-      iconBg: 'rgba(53,224,208,.13)', value: ranking?.[0]?.updatedAt ?? '—', label: 'Model Tick (Sim.)',
+      iconBg: 'rgba(var(--cyan-rgb),.13)', value: ranking?.[0]?.updatedAt ?? '—', label: 'Model Tick (Sim.)',
     },
   ]
 

@@ -71,7 +71,7 @@ export function AppHeader({ subtitle, kpis, user }: AppHeaderProps) {
     <header className="app-header">
       <BackButton />
       <div className="brand">
-        <div className="logo"><IconPulse size={18} stroke="#06121f" strokeWidth={2.6} /></div>
+        <div className="logo"><IconPulse size={18} stroke="var(--ink)" strokeWidth={2.6} /></div>
         <div>AURORA ICU<small>{subtitle}</small></div>
       </div>
       <div className="datetime"><b>{time}</b><span>{date}</span></div>

@@ -104,10 +104,10 @@ export function UsersAdmin() {
   }, [users])
 
   const kpis: KpiSpec[] = [
-    { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: users ? stats.total : '—', label: 'Accounts' },
-    { icon: <IconCheck size={12} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: users ? stats.active : '—', label: 'Active' },
-    { icon: <IconClock size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: users ? stats.deactivated : '—', label: 'Deactivated' },
-    { icon: <IconAdmit size={14} stroke="var(--violet)" />, iconBg: 'rgba(167,139,250,.14)', value: users ? stats.admins : '—', label: 'Active Administrators' },
+    { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: users ? stats.total : '—', label: 'Accounts' },
+    { icon: <IconCheck size={12} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: users ? stats.active : '—', label: 'Active' },
+    { icon: <IconClock size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: users ? stats.deactivated : '—', label: 'Deactivated' },
+    { icon: <IconAdmit size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.14)', value: users ? stats.admins : '—', label: 'Active Administrators' },
   ]
 
   const offlineMsg = (what: string) => `User administration requires the live server — ${what} was NOT saved`

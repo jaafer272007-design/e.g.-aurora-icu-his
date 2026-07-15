@@ -48,10 +48,10 @@ export function AdminHome() {
   }, [beds])
 
   const kpis: KpiSpec[] = [
-    { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: stats ? `${stats.occupied} / ${stats.capacity}` : '—', label: 'Census' },
-    { icon: <IconUsers size={14} stroke="var(--green)" />, iconBg: 'rgba(61,232,160,.13)', value: stats?.available ?? '—', label: 'Beds Available' },
-    { icon: <IconAdmit size={14} stroke="var(--cyan)" />, iconBg: 'rgba(53,224,208,.13)', value: summary?.admissionsInProgress ?? '—', label: 'Admissions Today' },
-    { icon: <IconDischarge size={14} stroke="var(--amber)" />, iconBg: 'rgba(255,180,84,.14)', value: summary?.dischargesPlanned ?? '—', label: 'Discharges Planned' },
+    { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: stats ? `${stats.occupied} / ${stats.capacity}` : '—', label: 'Census' },
+    { icon: <IconUsers size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: stats?.available ?? '—', label: 'Beds Available' },
+    { icon: <IconAdmit size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)', value: summary?.admissionsInProgress ?? '—', label: 'Admissions Today' },
+    { icon: <IconDischarge size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: summary?.dischargesPlanned ?? '—', label: 'Discharges Planned' },
   ]
 
   return (
