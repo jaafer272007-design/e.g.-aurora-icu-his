@@ -104,8 +104,6 @@ export function DoctorWorkspace() {
       <AppHeader
         subtitle="Doctor Workspace"
         kpis={kpis}
-        bellCount={5}
-        onBellClick={() => showToast('Alerts', '5 active notifications across your panel')}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">

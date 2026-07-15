@@ -155,8 +155,6 @@ export function LabImaging() {
       <AppHeader
         subtitle="Laboratory & Imaging"
         kpis={kpis}
-        bellCount={inbox.length}
-        onBellClick={() => showToast('Results inbox', `${inbox.length} unacknowledged result(s) across the unit`)}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">

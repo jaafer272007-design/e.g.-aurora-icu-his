@@ -1,0 +1,139 @@
+/* Settings — three layers; the "not tracked yet" treatment matches
+   Statistics/Alerts (dashed amber naming the missing capability). */
+
+.se main.se-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 2px;
+}
+
+.se .se-note {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+.se .se-row {
+  display: flex;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--stroke);
+}
+.se .se-row:first-of-type { border-top: none; }
+.se .se-k {
+  flex: 0 0 150px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  padding-top: 6px;
+}
+.se .se-v { flex: 1 1 auto; min-width: 0; }
+
+.se .se-opts { display: flex; flex-wrap: wrap; gap: 8px; }
+.se .se-opt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--stroke);
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: .15s;
+}
+.se .se-opt.on { border-color: var(--blue); background: rgba(77, 163, 255, .08); }
+.se .se-opt.se-disabled { opacity: .5; cursor: not-allowed; border-style: dashed; }
+
+.se .se-sub { font-size: 11px; color: var(--faint); margin-top: 6px; line-height: 1.45; }
+
+/* flagged-decision callouts (light theme, score versioning) */
+.se .se-flag {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 180, 84, .35);
+  background: rgba(255, 180, 84, .06);
+  border-radius: 9px;
+  font-size: 11.5px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+.se .se-beds { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.se .se-bed {
+  border: 1px solid var(--stroke);
+  border-radius: 7px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.se .se-score { margin-bottom: 10px; font-size: 13px; }
+.se .se-score small { display: block; color: var(--faint); font-size: 11px; margin-top: 3px; line-height: 1.5; }
+
+/* not-tracked-yet rows — the Statistics/Alerts precedent */
+.se .se-ntlist { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.se .se-ntrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px dashed rgba(255, 180, 84, .45);
+  background: rgba(255, 180, 84, .04);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.se .se-ntinline { margin-top: 10px; }
+.se .se-ntrow small { display: block; color: var(--faint); font-size: 11px; margin-top: 2px; line-height: 1.45; }
+.se .se-ntbadge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .7px;
+  text-transform: uppercase;
+  color: var(--amber);
+  border: 1px dashed rgba(255, 180, 84, .5);
+  border-radius: 5px;
+  padding: 2px 7px;
+  flex: 0 0 auto;
+}
+
+/* system info */
+.se .se-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.se .se-info {
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.se .se-info span {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.se .se-info b { font-size: 14px; word-break: break-all; }
+.se .se-info small { font-size: 10.5px; color: var(--faint); line-height: 1.4; }
+
+.se .se-health {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  border: 1px solid var(--stroke);
+  color: var(--dim);
+  line-height: 1.5;
+}
+.se .se-health.ok { border-color: rgba(61, 232, 160, .4); background: rgba(61, 232, 160, .06); color: var(--green); }
+.se .se-health.down { border-color: rgba(255, 93, 108, .4); background: rgba(255, 93, 108, .06); color: var(--red); }

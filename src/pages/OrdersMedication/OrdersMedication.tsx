@@ -216,8 +216,6 @@ export function OrdersMedication() {
       <AppHeader
         subtitle="Orders & Medication"
         kpis={kpis}
-        bellCount={pendingAll.length}
-        onBellClick={() => showToast('Pending signatures', `${pendingAll.length} order(s) awaiting signature across the unit`)}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">

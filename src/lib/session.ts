@@ -1,4 +1,5 @@
 import { clearLastPatient } from './patientContext'
+import { clearPreferences } from './preferences'
 
 /* Session + three-layer, permission-based RBAC (Stage 9, auth in Stage 10.2).
    User → Role (JobTitle) → PermissionProfile → Permissions — roles are
@@ -215,6 +216,9 @@ export function signOut(): void {
   /* the cross-section patient context is USER context — a role switch in
      the same tab must never inherit the previous user's patient */
   clearLastPatient()
+  /* preferences follow the same discipline (Settings design §1.1A):
+     tab/session-scoped USER context, cleared with the session */
+  clearPreferences()
 }
 
 /** "Dr. Sara Rahman" → "sara.rahman" — deterministic demo username.

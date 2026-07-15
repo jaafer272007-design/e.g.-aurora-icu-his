@@ -40,7 +40,7 @@ export function BedOverview() {
   /* behind RequireSession(patients.view) */
   const session = getSession()!
   const navigate = useNavigate()
-  const { toast, showToast } = useToast()
+  const { toast } = useToast()
   const [data, setData] = useState<BedsResponse | null>(null)
   const [summary, setSummary] = useState<UnitSummaryResponse | null>(null)
   const [filters, setFilters] = useState<Filters>({ q: '', doc: '', area: '', vent: false, iso: false, crit: false })
@@ -85,7 +85,6 @@ export function BedOverview() {
 
   const visibleBeds = data ? data.beds.filter(b => visible(b, filters)) : []
   const critAlerts = summary ? summary.highPriorityAlerts.filter(a => a.severity === 'crit').length : 0
-  const bellCount = summary ? summary.highPriorityAlerts.length : 0
 
   const kpis: KpiSpec[] = [
     { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(77,163,255,.15)', value: stats ? `${stats.n} / ${data!.capacity}` : '—', label: 'Occupied' },
@@ -108,12 +107,10 @@ export function BedOverview() {
       <AppHeader
         subtitle="Mission Control · Bed Overview"
         kpis={kpis}
-        bellCount={bellCount}
-        onBellClick={() => showToast('Alerts', `${bellCount} active notifications`)}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
-        <NavSidebar active="beds" alertCount={bellCount || 5} footerLines={['Unit 4B · 16 beds', 'Sync: live']} />
+        <NavSidebar active="beds" footerLines={['Unit 4B · 16 beds', 'Sync: live']} />
 
         <main>
           <div className="fbar">

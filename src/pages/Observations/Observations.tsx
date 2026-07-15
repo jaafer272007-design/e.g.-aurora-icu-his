@@ -394,8 +394,6 @@ export function Observations() {
       <AppHeader
         subtitle="Bedside Observations"
         kpis={kpis}
-        bellCount={5}
-        onBellClick={() => showToast('Alerts', '5 active notifications across the unit')}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">

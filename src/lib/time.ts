@@ -36,14 +36,14 @@ export function agoLabel(t: string, now: Date): string {
     const ms = Date.parse(t.replace(' ', 'T') + ':00Z')
     if (Number.isNaN(ms)) return t
     const m = Math.floor((now.getTime() - ms) / 60000)
-    if (m < 0) return `at ${t.split(' ')[1]}`
+    if (m < 0) return `at ${formatHm(t.split(' ')[1])}`
     if (m < 1) return 'just now'
     if (m < 60) return `${m} min ago`
     if (m < 1440) return `${Math.floor(m / 60)} h ${m % 60} min ago`
     return displayStamp(t) // a day or more ago → the absolute short form
   }
   const m = minutesSince(t, now)
-  if (m < 0) return `at ${t}`
+  if (m < 0) return `at ${formatHm(t)}`
   if (m < 1) return 'just now'
   if (m < 60) return `${m} min ago`
   return `${Math.floor(m / 60)} h ${m % 60} min ago`
@@ -89,19 +89,45 @@ export const hmOf = (t: string): string => {
 export const timestampMinutes = (t: string): number =>
   dayOffsetOf(t) * 1440 + toMinutes(hmOf(t))
 
+/* ---------- 12h/24h time-format preference (Settings §1.1A) ----------
+   A DISPLAY preference over the render-time helpers only — stored stamps
+   and every parser stay 24h "HH:mm" (data is never rewritten). Applies to
+   displayStamp / agoLabel's absolute forms / nowHm; scheduled MAR times
+   and other raw data renders are untouched. Read lazily from the
+   preferences store so a change takes effect on the next render. */
+function prefers12h(): boolean {
+  try {
+    const raw = sessionStorage.getItem('aurora.prefs')
+    return raw !== null && (JSON.parse(raw) as { timeFormat?: string }).timeFormat === '12h'
+  } catch { return false }
+}
+
+/** "14:05" → "2:05 PM" when the 12h preference is set; else unchanged */
+export const formatHm = (hm: string): string => {
+  if (!prefers12h() || !/^\d{2}:\d{2}$/.test(hm)) return hm
+  const [h, m] = hm.split(':').map(Number)
+  const ampm = h < 12 ? 'AM' : 'PM'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
+}
+
 /** Render-time SHORT display for any stored stamp — the established
  *  bedside convention derived at render: dated stamps show "HH:mm" when
  *  today (UTC) and "D-n HH:mm" for prior days; the two legacy forms pass
- *  through unchanged. The STORED value keeps its full date (computable);
- *  only the display is shortened. */
+ *  through (formatted per the 12h/24h preference). The STORED value keeps
+ *  its full date (computable); only the display changes. */
 export const displayStamp = (t: string | null | undefined): string => {
-  if (!t || !DATED.test(t)) return t ?? ''
+  if (!t) return ''
+  if (!DATED.test(t)) {
+    const m = /^(D-\d+ )?(\d{2}:\d{2})$/.exec(t)
+    return m ? `${m[1] ?? ''}${formatHm(m[2])}` : t
+  }
   const off = dayOffsetOf(t)
-  return off === 0 ? hmOf(t) : `D-${-off} ${hmOf(t)}`
+  return off === 0 ? formatHm(hmOf(t)) : `D-${-off} ${formatHm(hmOf(t))}`
 }
 
 export const nowHm = () =>
-  new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  formatHm(new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))
 
 /** Re-render on an interval so clock-computed states stay current. */
 export function useNow(intervalMs = 30_000): Date {

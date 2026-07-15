@@ -25,7 +25,7 @@ import { RiskCard, trendLabel } from './RiskCard'
 export function AiAssistant() {
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
-  const { toast, showToast } = useToast()
+  const { toast } = useToast()
   /* Stage 9 session — the assistant is advisory-only for every profile */
   const session = getSession()!
   const sessionProfile = profileOf(session.jobTitle)
@@ -99,8 +99,6 @@ export function AiAssistant() {
       <AppHeader
         subtitle="AI Clinical Assistant"
         kpis={kpis}
-        bellCount={alertsRaised}
-        onBellClick={() => showToast('Alert center', `${alertsRaised} simulated AI risk(s) above the ${AI_ALERT_THRESHOLD}% alert threshold — see each patient's alert center`)}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${sessionProfile} profile` }}
       />
       <div className="shell">
