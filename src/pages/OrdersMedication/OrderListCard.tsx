@@ -21,15 +21,27 @@ const FILTERS: FilterKey[] = ['all', 'pending', 'active', 'completed', 'disconti
 interface OrderListCardProps {
   /** false = read-only list (no sign/modify/discontinue controls) */
   canManage: boolean
+  /** orders.implement — a NURSING permission (implementation completes a
+   *  task order; doctors correctly do not see this control) */
+  canImplement: boolean
   orders: Order[]
   onSign: (orderId: string) => void
   onModify: (orderId: string) => void
   onDiscontinue: (orderId: string) => void
+  onImplement: (orderId: string) => void
 }
 
+/** an order the implement action completes: an active TASK order flagged
+ *  requiresImplementation. Lab/Imaging orders are excluded — they complete
+ *  when a result is documented against them, never by a manual done. */
+const implementable = (o: Order) =>
+  o.status === 'active' && !!o.requiresImplementation
+  && o.category !== 'Lab' && o.category !== 'Imaging'
+
 /** Full per-patient order list with status filters, audit history, and
- *  doctor RBAC actions (sign / modify / discontinue). */
-export function OrderListCard({ orders, canManage, onSign, onModify, onDiscontinue }: OrderListCardProps) {
+ *  doctor RBAC actions (sign / modify / discontinue) plus the nursing
+ *  implement action on task orders. */
+export function OrderListCard({ orders, canManage, canImplement, onSign, onModify, onDiscontinue, onImplement }: OrderListCardProps) {
   const now = useNow()
   const [filter, setFilter] = useState<FilterKey>('all')
   const [openHistory, setOpenHistory] = useState<Set<string>>(new Set())
@@ -106,6 +118,9 @@ export function OrderListCard({ orders, canManage, onSign, onModify, onDiscontin
                 )}
                 {canManage && (o.status === 'pending' || o.status === 'active') && (
                   <button className="oab dc" onClick={() => onDiscontinue(o.orderId)} aria-label={`Discontinue order ${o.orderId}`}>⊘ Discontinue</button>
+                )}
+                {canImplement && implementable(o) && (
+                  <button className="oab impl" onClick={() => onImplement(o.orderId)} aria-label={`Implement order ${o.orderId}`}>✓ Implement</button>
                 )}
                 <button
                   className="oab hist" aria-expanded={historyOpen}

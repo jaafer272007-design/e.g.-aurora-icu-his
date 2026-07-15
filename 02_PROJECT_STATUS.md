@@ -4795,6 +4795,71 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### Derived order completion + rail bed-sort + implement UI (3 live findings)
+
+Hands-on workstation testing surfaced three defects, fixed together:
+
+**1. The shared patient rail now sorts by BED.** It rendered the roster
+read's order (patient-record sequence: seeded patients first, new
+admissions appended), so a patient admitted into a freed low bed landed
+at the BOTTOM — clinicians navigate by bed and could not find him. Fixed
+once in the shared `PatientRail` (#94), verified on every rail screen
+(Orders, Labs & Imaging, Lab Entry, Timeline, AI Assistant).
+
+**2. Completion is now DERIVED from the truth the system already holds.**
+The real model, verified: fulfilment (the result↔order linkage from the
+lab linkage and Imaging Result Entry builds) and Completed (a stored
+status set only by the nurse implement action) were two unrelated
+concepts that never talked — a performed-and-resulted order displayed
+Active forever, and clinicians discontinued it instead (a false clinical
+record: "cancelled: no need" on a performed, resulted, acknowledged
+test). Now, at read (open encounters):
+- **Lab/Imaging order → completed when a result/report is documented
+  against it.** Re-pointing a report off an order (linkage correction)
+  UN-completes it automatically — derived, nothing stored to revert
+  (asserted both directions). Fulfilment also wins over a legacy stored
+  "discontinued" — the pre-fix false records heal to the honest state,
+  the discontinue event still in the audit history.
+- **One-off medication (frequency `once`) → completed when its dose is
+  GIVEN on the MAR.** Ongoing frequencies (q6h/daily/continuous) STAY
+  active — an ongoing order produces doses until discontinued or the
+  encounter closes; it is never "done" (asserted: q8h given dose leaves
+  the order active).
+- **Nursing/task orders → the implement action** (nurse-only,
+  `orders.implement`), now exposed as a ✓ Implement control on the
+  Orders screen itself (it previously existed only on the Nurse
+  Workspace queue). Implement on a Lab/Imaging order is a 400 — no
+  manual done without the underlying fact, ever.
+- **Guards**: discontinuing a fulfilled order (or a given one-off) is a
+  409 — performed and cancelled are different facts (the exact live
+  failure: THYROID FUNCTION TEST resulted TSH 12 then discontinued "no
+  need"). Discharge CRYSTALLIZES the derived state — done orders are
+  stored completed at encounter close (audited "recorded at encounter
+  close"), everything else discontinues as before, so the invariant
+  "a closed encounter's orders are terminal" holds unchanged.
+- Orders with NO honest completion source (free-text lab orders without
+  a coded testId — the linkage is testId-based; PRN meds) remain active
+  until discontinued/discharge — recorded, not papered over with a
+  manual button.
+
+**3. "TO IMPLEMENT" answered**: it counts active orders flagged
+`requiresImplementation`; UI-placed lab/imaging orders fed it (the
+drawer set the flag) and the Nurse Workspace ✓ Done button was always
+wired to the implement endpoint — the control simply did not exist on
+/orders where the owner looked. Now: the counter and both queues count
+TASK orders only (Lab/Imaging excluded — they complete via results; the
+drawer no longer flags them), and /orders carries the control for
+nurses.
+
+**Verified**: 20/20 API matrix (fresh DB: lab + imaging completion via
+documentation; re-point un-completes; the discontinue guards; one-off vs
+ongoing MAR distinction; implement RBAC polarity + Lab 400; queue
+exclusions; discharge crystallization with audit; seeded statuses
+byte-identical) + 12/12 real-browser (rail bed-sorted on all five rail
+screens with the new B-03 patient in position; the fulfilled order
+rendering COMPLETED with no Discontinue control; the nurse implementing
+from /orders; the doctor seeing no implement control; zero page errors).
+
 ### Recently Discharged sorts by discharge recency (live-diagnosed fix)
 
 Live report: a just-discharged patient did not appear in the Recently

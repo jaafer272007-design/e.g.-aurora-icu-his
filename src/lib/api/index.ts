@@ -716,8 +716,12 @@ export async function getImplementationQueue(patientIds?: string[]): Promise<Ord
   const real = await apiGet<Order[]>('/api/icu/orders?implement=true', 'orders')
   if (real) return real.filter(o => !patientIds || patientIds.includes(o.patientId))
   if (import.meta.env.VITE_APP_ENV !== 'production') {
+    /* task orders only — Lab/Imaging orders complete via their documented
+       results, never a manual done (mirrors the server's implement filter) */
     const q = allOrders().filter(
-      o => o.status === 'active' && o.requiresImplementation && (!patientIds || patientIds.includes(o.patientId)),
+      o => o.status === 'active' && o.requiresImplementation
+        && o.category !== 'Lab' && o.category !== 'Imaging'
+        && (!patientIds || patientIds.includes(o.patientId)),
     )
     return respond(q, 120)
   }

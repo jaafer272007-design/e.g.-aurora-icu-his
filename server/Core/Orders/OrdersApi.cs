@@ -29,8 +29,6 @@ static class OrdersApi
             if (Identity.Rbac.Deny(user, "orders.view") is IResult denied) return denied;
             var q = db.Orders.AsNoTracking().AsQueryable();
             if (patientId is not null) q = q.Where(o => o.PatientId == patientId);
-            if (status is not null) q = q.Where(o => o.Status == status);
-            if (implement == true) q = q.Where(o => o.Status == "active" && o.RequiresImplementation == true);
             /* ENCOUNTER SCOPE, defense in depth: the WORKING QUEUES (the
                pending/active status views and the implementation queue)
                derive only from orders whose encounter is OPEN — discharge
@@ -45,7 +43,23 @@ static class OrdersApi
                 var open = db.Encounters.Where(e => e.Status == "open").Select(e => e.EncounterId);
                 q = q.Where(o => open.Contains(o.EncounterId));
             }
-            return Results.Json(q.OrderBy(o => o.Seq).AsEnumerable().Select(o => o.ToDto()), JsonOpts.Web);
+            /* DERIVED COMPLETION (see OrderLogic): the wire status is the
+               EFFECTIVE status — a fulfilled lab/imaging order and a given
+               one-off med read completed everywhere, and the status/
+               implement filters apply to the derived value so the Completed
+               view and the queues agree with what the rows say. The rows
+               are AsNoTracking — the in-memory status swap is never saved.
+               The implement queue is TASK orders only: a Lab/Imaging order
+               completes when its result is documented against it, never by
+               a manual done (no claim without the fact). */
+            var fulfilled = OrderLogic.FulfilledOrderIds(db);
+            var rows = q.OrderBy(o => o.Seq).AsEnumerable()
+                .Select(o => { o.Status = OrderLogic.DeriveStatus(o, fulfilled); return o; });
+            if (status is not null) rows = rows.Where(o => o.Status == status);
+            if (implement == true) rows = rows.Where(o =>
+                o.Status == "active" && o.RequiresImplementation == true
+                && o.Category != "Lab" && o.Category != "Imaging");
+            return Results.Json(rows.Select(o => o.ToDto()), JsonOpts.Web);
         }).RequireAuthorization();
 
         /* POST /api/icu/orders — create order(s); sign=true activates immediately.
@@ -300,6 +314,20 @@ static class OrdersApi
             if (row.Status == "completed")
                 return ApiError.StateConflict(
                     $"order '{orderId}' is completed — it has already reached a terminal state");
+            /* DERIVED COMPLETION GUARD — the false-record protection: a
+               performed order cannot be discontinued. "Cancelled" and
+               "done" are different facts; a result documented against the
+               order (or a given one-off dose) means the work happened, and
+               recording it as discontinued would say it didn't. If the
+               result was attached to the wrong order, correct the LINKAGE
+               (the report-correction path) — that un-completes the order
+               and this discontinue then succeeds. */
+            if (row.Status == "active" && OrderLogic.IsFulfilled(db, orderId))
+                return ApiError.StateConflict(
+                    $"order '{orderId}' is completed — a result is documented against it (performed and cancelled are different facts; if the result was linked in error, correct the linkage first)");
+            if (row.Status == "active" && OrderLogic.OneOffGiven(row))
+                return ApiError.StateConflict(
+                    $"order '{orderId}' is completed — its one-off dose was administered on the MAR");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             /* shared mechanics — same status/reason/cancelled-schedule/audit
                path as the discharge hook and the backfill */
@@ -327,6 +355,14 @@ static class OrdersApi
                 return ApiError.BadRequest(row.MedicationJson is not null
                     ? $"order '{orderId}' is a medication order — doses are administered via the MAR, not implemented"
                     : $"order '{orderId}' does not require implementation");
+            /* SHAPE, like the medication rejection above: a Lab/Imaging
+               order completes when its RESULT is documented against it
+               (the derived-completion model) — a manual done here would
+               let someone claim a lab is done with no result. 400 in any
+               state, never a 409. */
+            if (row.Category is "Lab" or "Imaging")
+                return ApiError.BadRequest(
+                    $"order '{orderId}' is a {row.Category} order — it completes when its result is documented against it, never by a manual done");
             if (EncounterGuard.RequireOpen(db, row.EncounterId, "implementing an order") is IResult conflict) return conflict;
             if (row.Status != "active")
                 return ApiError.StateConflict(row.Status == "pending"

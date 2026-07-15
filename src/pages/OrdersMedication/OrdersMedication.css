@@ -43,6 +43,8 @@
 .om .oab.modify{color:var(--blue);border-color:rgba(var(--blue-rgb),.4);background:rgba(var(--blue-rgb),.08)}
 .om .oab.modify:hover,.om .oab.modify:focus-visible{background:rgba(var(--blue-rgb),.18)}
 .om .oab.dc{color:var(--red);border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.08)}
+.om .oab.impl{color:var(--amber);border-color:rgba(var(--amber-rgb),.4);background:rgba(var(--amber-rgb),.08)}
+.om .oab.impl:hover,.om .oab.impl:focus-visible{background:rgba(var(--amber-rgb),.18)}
 .om .oab.dc:hover,.om .oab.dc:focus-visible{background:rgba(var(--red-rgb),.18)}
 .om .oab.hist:hover,.om .oab.hist:focus-visible{color:var(--text);border-color:var(--stroke2)}
 .om .oohist{margin-top:9px;border-top:1px dashed rgba(var(--steel-rgb),.12);padding-top:8px;display:flex;flex-direction:column;gap:5px}

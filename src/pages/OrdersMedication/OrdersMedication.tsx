@@ -9,9 +9,9 @@ import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconPencil, IconPill } from '../../components/icons'
 import {
-  createOrders, discontinueOrder, getEncounters, getFormulary, getInteractionRules, getLabCatalog,
-  getOrderSetDefs, getOrderSets, getPatientDetail, getPatientOrders, getPatients, getPendingOrders,
-  modifyOrder, signOrder,
+  completeImplementation, createOrders, discontinueOrder, getEncounters, getFormulary,
+  getInteractionRules, getLabCatalog, getOrderSetDefs, getOrderSets, getPatientDetail,
+  getPatientOrders, getPatients, getPendingOrders, modifyOrder, signOrder,
 } from '../../lib/api'
 import type {
   FormularyDrug, InteractionRule, LabTest, MedicationDetails, NewOrderDraft, Order, OrderPriority,
@@ -36,6 +36,10 @@ export function OrdersMedication() {
      service layer */
   const session = getSession()!
   const canPrescribe = hasPermission(session.jobTitle, 'orders.create')
+  /* implementation is a NURSING permission (locked RBAC) — the ✓ Implement
+     control renders for task orders here too, not only on the Nurse
+     Workspace queue */
+  const canImplement = hasPermission(session.jobTitle, 'orders.implement')
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
   const { toast, showToast } = useToast()
@@ -116,6 +120,14 @@ export function OrdersMedication() {
     })
   }
 
+  const handleImplement = (orderId: string) => {
+    completeImplementation(orderId, session.name, session.jobTitle).then(o => {
+      if (!o) { showToast('Not permitted', 'Implementation is a nursing action'); return }
+      refresh()
+      showToast('Order implemented', `${o.summary} · completed`)
+    })
+  }
+
   const handleModify = (changes: Partial<MedicationDetails>, reason: string) => {
     if (!modifyId) return
     modifyOrder(modifyId, changes, reason, session.name, session.jobTitle).then(o => {
@@ -144,10 +156,13 @@ export function OrdersMedication() {
     })
   }
 
+  /* Lab orders complete when a RESULT is documented against them (the
+     derived-completion model) — they no longer carry the implement flag;
+     the nurse to-implement queue is task orders only */
   const handleLabOrder = (test: LabTest, priority: OrderPriority, sign: boolean) => {
     const draft: NewOrderDraft = {
       patientId, category: 'Lab', summary: `${test.name} (${test.specimen})`,
-      testId: test.testId, priority, requiresImplementation: true,
+      testId: test.testId, priority,
     }
     createOrders([draft], session.name, sign, session.jobTitle).then(([o]) => {
       refresh()
@@ -157,17 +172,15 @@ export function OrdersMedication() {
 
   /* imaging goes through the SAME canonical create path as meds and labs
      (category 'Imaging' is first-class in the server's Order model —
-     full lifecycle + audit + encounter scoping). requiresImplementation
-     follows the Lab/Nursing convention: a bedside study needs nursing
-     coordination, so it lands on the nurse To-Implement queue. NOTE
-     (recorded in 02): imaging results carry NO order linkage today —
-     OrderId exists on lab results only — so unlike a lab order, an
-     imaging order is not auto-fulfilled by its study's result. */
+     full lifecycle + audit + encounter scoping). Since Imaging Result
+     Entry, an imaging order IS fulfilled by the report documented against
+     it (the picked-order linkage) — so like labs it completes via its
+     result and carries no implement flag. */
   const handleImagingOrder = (study: string, detail: string, priority: OrderPriority, sign: boolean) => {
     const draft: NewOrderDraft = {
       patientId, category: 'Imaging',
       summary: detail ? `${study} — ${detail}` : study,
-      priority, requiresImplementation: true,
+      priority,
     }
     createOrders([draft], session.name, sign, session.jobTitle).then(([o]) => {
       refresh()
@@ -196,7 +209,11 @@ export function OrdersMedication() {
   }
 
   const activeMeds = orders?.filter(o => o.status === 'active' && o.medication).length
-  const toImplement = orders?.filter(o => o.status === 'active' && o.requiresImplementation).length
+  /* the implement queue is TASK orders only — Lab/Imaging orders complete
+     via their documented results, never a manual done */
+  const implementable = (o: Order) =>
+    o.status === 'active' && !!o.requiresImplementation && o.category !== 'Lab' && o.category !== 'Imaging'
+  const toImplement = orders?.filter(implementable).length
   const dcToday = orders?.filter(o => o.status === 'discontinued').length
 
   const kpis: KpiSpec[] = [
@@ -245,9 +262,11 @@ export function OrdersMedication() {
                 <OrderListCard
                   orders={orders}
                   canManage={canPrescribe}
+                  canImplement={canImplement}
                   onSign={handleSign}
                   onModify={setModifyId}
                   onDiscontinue={setDiscontinueId}
+                  onImplement={handleImplement}
                 />
               </div>
               <div className="omcolR">
