@@ -131,3 +131,12 @@
  .li.app-frame{height:auto;overflow:visible}
  .li main{overflow:visible}
 }
+
+/* ---- Imaging Result Entry provenance ---- */
+.li .lisprov{font-size:11px;color:var(--dim);margin-top:2px}
+.li .lisprov b{color:var(--text);font-weight:600}
+.li .licritmark{font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--red);
+ border:1px dashed rgba(var(--red-rgb),.5);border-radius:5px;padding:1px 6px}
+.li .lersource{font-size:10.5px;color:var(--cyan);border:1px solid rgba(var(--cyan-rgb),.3);border-radius:5px;padding:1px 6px}
+.li .lerorder{font-size:10.5px;color:var(--blue);border:1px solid rgba(var(--blue-rgb),.3);border-radius:5px;padding:1px 6px}
+.li .lerstandalone{font-size:10.5px;color:var(--amber);border:1px dashed rgba(var(--amber-rgb),.4);border-radius:5px;padding:1px 6px}

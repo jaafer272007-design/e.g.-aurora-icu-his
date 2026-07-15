@@ -885,9 +885,28 @@ export interface DocumentCustomLabDraft {
 
 /* ---------- GET /api/icu/results/imaging?patientId ---------- */
 
-export type ImagingModality = 'CXR' | 'CT' | 'US' | 'Echo' | 'MRI'
+export type ImagingModality = 'CXR' | 'X-ray' | 'CT' | 'US' | 'Echo' | 'MRI' | 'Other'
 /** status progression: ordered → in-progress → preliminary → final */
 export type ImagingStatus = 'ordered' | 'in-progress' | 'preliminary' | 'final'
+
+/* Imaging Result Entry — mirrors DocumentImagingRequest on the server */
+export interface DocumentImagingDraft {
+  patientId: string
+  /** the pending imaging order being reported on (identity from the order) */
+  orderId?: string
+  modality: string
+  /** required (and allowed) ONLY when unlinked — the picked study type */
+  description?: string
+  /** 'yyyy-MM-dd HH:mm' UTC — when the study was performed */
+  performedAt: string
+  findings: string
+  impression: string
+  /** free text from the paper report */
+  reportingRadiologist: string
+  /** CLINICIAN-MARKED critical finding — never system-derived */
+  critical: boolean
+  note?: string
+}
 
 export interface ImagingStudy {
   studyId: string
@@ -905,11 +924,24 @@ export interface ImagingStudy {
   /** findings text — present from "preliminary" onward */
   report?: string
   impression?: string
-  flag: ResultFlag
+  /** '' on a documented report the clinician did NOT mark critical — the
+   *  system never fabricates a normal/abnormal judgment for narrative text
+   *  (Imaging Result Entry design §4) */
+  flag: ResultFlag | ''
   note?: string
   acknowledged: boolean
   acknowledgedBy?: string
   acknowledgedAt?: string
+  /* ---- Imaging Result Entry (absent on seeded rows) ---- */
+  /** the pending imaging order this report FULFILS — absent = an honest
+   *  UNLINKED report (outside film / pre-order study), never a fabricated
+   *  order */
+  orderId?: string
+  /** 'manual' on clinician-documented reports (results.document) */
+  source?: string
+  /** FREE TEXT from the paper report — the radiologist is not a system
+   *  user; distinct from the documenting clinician (locked provenance) */
+  reportingRadiologist?: string
   /** see LabDraw.history — same never-destroy audit record */
   history?: ResultEvent[]
 }

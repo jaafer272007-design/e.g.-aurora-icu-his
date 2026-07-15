@@ -12,6 +12,12 @@ namespace Aurora.Core.LabImaging;
    OrderLogic.InitializeCounters. */
 static class ResultsLogic
 {
+    /* Imaging Result Entry: the fixed study-type set for v1 — a coded,
+       managed Imaging Catalogue (mirroring the Lab Catalogue) is recorded
+       as future work for RIS/PACS auto-matching; the entry flow does not
+       need it. */
+    public static readonly string[] ImagingModalities = ["CXR", "X-ray", "CT", "MRI", "US", "Echo", "Other"];
+
     static int _labSeq = 9000;   // created labs: LAB-9001… (seeds are LAB-6001…6073)
     static int _studySeq = 9500; // created studies: IMG-9501… (seeds are IMG-7001…7004)
 

@@ -15,6 +15,11 @@ const FLAG_BADGE: Record<ResultFlag, { color: BadgeColor; label: string }> = {
   critical: { color: 'red', label: 'CRITICAL' },
 }
 
+/** the documenting clinician — the first "documented" audit event (manual
+ *  reports only; seeded studies carry no documentation provenance) */
+const documentedBy = (s: ImagingStudy): string | null =>
+  s.history?.find(e => e.action === 'documented')?.actor ?? null
+
 interface ImagingCardProps {
   studies: ImagingStudy[]
   /** derived from the session's permissions (results.acknowledge) */
@@ -98,7 +103,18 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, on
             <div className="lisr1">
               <span className="limod">{s.modality}</span>
               <b className="lidesc">{s.description}</b>
-              {reported && <Badge color={FLAG_BADGE[s.flag].color}>{FLAG_BADGE[s.flag].label}</Badge>}
+              {/* a documented report the clinician did NOT mark critical has
+                  NO flag — the system never fabricates a narrative judgment */}
+              {reported && s.flag !== '' && <Badge color={FLAG_BADGE[s.flag].color}>{FLAG_BADGE[s.flag].label}</Badge>}
+              {s.flag === 'critical' && s.source === 'manual' && (
+                <span className="licritmark" title="marked by the documenting clinician — imaging has no thresholds; never system-detected">
+                  clinician-marked
+                </span>
+              )}
+              {s.source === 'manual' && <span className="lersource" title="manually documented — the paper report transcribed">✎ manual</span>}
+              {s.source === 'manual' && (s.orderId
+                ? <span className="lerorder" title="fulfils this imaging order — the study identity came from it">↳ {s.orderId}</span>
+                : <span className="lerstandalone" title="documented without an order (outside film / pre-order study) — never a fabricated order">unlinked</span>)}
             </div>
             <div className="listeps" aria-label={`Status: ${STATUS_LABEL[s.status]}`}>
               {STATUS_STEPS.map((st, i) => (
@@ -108,10 +124,16 @@ export function ImagingCard({ studies, canAcknowledge: canAck, onAcknowledge, on
               ))}
             </div>
             <div className="lismeta num">
-              ordered {s.orderedAt}
-              {s.performedAt && <> · performed {s.performedAt}</>}
-              {s.reportedAt && <> · reported {s.reportedAt} ({agoLabel(s.reportedAt, now)})</>}
+              {s.orderedAt !== '' ? <>ordered {displayStamp(s.orderedAt)}</> : <>no order — unlinked report</>}
+              {s.performedAt && <> · performed {displayStamp(s.performedAt)}</>}
+              {s.reportedAt && <> · reported {displayStamp(s.reportedAt)} ({agoLabel(s.reportedAt, now)})</>}
             </div>
+            {s.source === 'manual' && (
+              <div className="lisprov">
+                documented by <b>{documentedBy(s) ?? '—'}</b> · reporting radiologist (paper report):{' '}
+                <b>{s.reportingRadiologist ?? '—'}</b>
+              </div>
+            )}
             {reported ? (
               <>
                 <button className="lisexp" aria-expanded={isOpen} onClick={() => toggle(s.studyId)}>

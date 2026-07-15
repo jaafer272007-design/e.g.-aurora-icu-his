@@ -8,9 +8,12 @@ import { PatientBar } from '../../components/PatientBar'
 import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconCheck, IconClock, IconFlask, IconPencil } from '../../components/icons'
-import { correctLabResult, documentCustomLabResult, documentLabResult, getLabCatalog, getLabDraws, getPatients, getRosterRecord } from '../../lib/api'
+import {
+  correctLabResult, documentCustomLabResult, documentImagingReport, documentLabResult,
+  getImagingStudies, getLabCatalog, getLabDraws, getPatientOrders, getPatients, getRosterRecord,
+} from '../../lib/api'
 import type {
-  DocumentLabItem, LabDraw, LabPanelKey, LabTest, PatientSummary, RosterRecordDto,
+  DocumentLabItem, ImagingStudy, LabDraw, LabPanelKey, LabTest, Order, PatientSummary, RosterRecordDto,
 } from '../../lib/api/types'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
@@ -96,6 +99,23 @@ export function LabEntry() {
   const [entryError, setEntryError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  /* ---- Imaging Result Entry (design: mirrors this screen's lab path) ----
+     pending imaging orders = the patient's ACTIVE Imaging orders with no
+     linked report (fulfilment is derived linkage — the lab rule) */
+  const [imgOrders, setImgOrders] = useState<Order[] | null>(null)
+  const [imgStudies, setImgStudies] = useState<ImagingStudy[] | null>(null)
+  const [imgOrderId, setImgOrderId] = useState('')       // '' = unlinked
+  const [imgModality, setImgModality] = useState('CXR')
+  const [imgDescription, setImgDescription] = useState('')
+  const [imgPerformedAt, setImgPerformedAt] = useState('')
+  const [imgFindings, setImgFindings] = useState('')
+  const [imgImpression, setImgImpression] = useState('')
+  const [imgRadiologist, setImgRadiologist] = useState('')
+  const [imgCritical, setImgCritical] = useState(false)
+  const [imgNote, setImgNote] = useState('')
+  const [imgError, setImgError] = useState<string | null>(null)
+  const [imgBusy, setImgBusy] = useState(false)
+
   const isCustom = panel === CUSTOM
   const customReady = cName.trim() !== '' && cValue.trim() !== ''
   const resetDrafts = () => { setDraft({}); setNote(''); setCName(''); setCValue(''); setCUnit(''); setCRange(''); setEntryError(null) }
@@ -175,6 +195,15 @@ export function LabEntry() {
     getLabDraws(patientId).then(list => { setDraws(list); setDrawsFailed(false) }).catch(() => setDrawsFailed(true))
   }, [patientId])
 
+  /* the imaging entry needs the patient's orders (to list PENDING imaging
+     orders) and existing studies (fulfilment = a report linked to the
+     order — derived, never a status flag) */
+  const loadImaging = useCallback(() => {
+    if (!patientId) return
+    getPatientOrders(patientId).then(setImgOrders).catch(() => setImgOrders(null))
+    getImagingStudies(patientId).then(setImgStudies).catch(() => setImgStudies(null))
+  }, [patientId])
+
   useEffect(() => {
     if (!patientId) return
     let stale = false
@@ -184,6 +213,10 @@ export function LabEntry() {
     setNote('')
     setCName(''); setCValue(''); setCUnit(''); setCRange('')
     setEntryError(null)
+    setImgOrders(null); setImgStudies(null); setImgOrderId(''); setImgDescription('')
+    setImgFindings(''); setImgImpression(''); setImgRadiologist(''); setImgCritical(false)
+    setImgNote(''); setImgError(null); setImgPerformedAt('')
+    loadImaging()
     getRosterRecord(patientId).then(rec => {
       if (stale) return
       /* locked decision: explicit not-found — never another patient's data.
@@ -294,6 +327,49 @@ export function LabEntry() {
       setEntryError(r.error)
     } else {
       setEntryError('The AURORA API is unreachable — a documented result is a clinical record and is never written to local mock state')
+    }
+  }
+
+  /* pending imaging orders: ACTIVE Imaging orders on this patient with no
+     linked report yet (fulfilment is derived linkage — the lab rule; no
+     explicit fulfilment status exists, flagged not invented) */
+  const pendingImagingOrders = useMemo(() => {
+    if (!imgOrders) return []
+    const fulfilled = new Set((imgStudies ?? []).map(st => st.orderId).filter(Boolean))
+    return imgOrders.filter(o => o.category === 'Imaging' && o.status === 'active' && !fulfilled.has(o.orderId))
+  }, [imgOrders, imgStudies])
+
+  const imgReady = imgFindings.trim() !== '' && imgImpression.trim() !== ''
+    && imgRadiologist.trim() !== '' && imgPerformedAt.trim() !== ''
+    && (imgOrderId !== '' || imgDescription.trim() !== '')
+
+  async function submitImaging() {
+    if (!patientId || imgBusy) return
+    setImgBusy(true)
+    setImgError(null)
+    const r = await documentImagingReport({
+      patientId,
+      ...(imgOrderId ? { orderId: imgOrderId } : { description: imgDescription.trim() }),
+      modality: imgModality,
+      performedAt: imgPerformedAt.trim(),
+      findings: imgFindings.trim(),
+      impression: imgImpression.trim(),
+      reportingRadiologist: imgRadiologist.trim(),
+      critical: imgCritical,
+      ...(imgNote.trim() ? { note: imgNote.trim() } : {}),
+    })
+    setImgBusy(false)
+    if (r.kind === 'ok') {
+      const linked = r.data.orderId ? `fulfils order ${r.data.orderId}` : 'unlinked (no order — labelled honestly)'
+      showToast('Imaging report documented',
+        `${r.data.modality} · ${linked}${r.data.flag === 'critical' ? ' · CRITICAL (clinician-marked)' : ''} · source manual`)
+      setImgOrderId(''); setImgDescription(''); setImgFindings(''); setImgImpression('')
+      setImgRadiologist(''); setImgCritical(false); setImgNote(''); setImgPerformedAt('')
+      loadImaging()
+    } else if (r.kind === 'rejected') {
+      setImgError(r.error)
+    } else {
+      setImgError('The AURORA API is unreachable — a documented report is a clinical record and is never written to local mock state')
     }
   }
 
@@ -489,6 +565,97 @@ export function LabEntry() {
                 )}
                 <button className="ledoc" onClick={submit} disabled={(isCustom ? !customReady : staged.length === 0) || busy}>
                   <IconCheck /> {isCustom ? 'Document custom test' : `Document ${activeTest.testId}${staged.length > 0 ? ` (${staged.length})` : ''}`}
+                </button>
+              </div>
+            </section>
+          )}
+
+          {/* ---- Imaging Result Entry (design: the paper radiology report,
+               documented against a pending imaging order — or honestly
+               unlinked). Same results.document authority as labs. ---- */}
+          {roster && canDocument && (
+            <section className="card leentry leimg">
+              <div className="lehead">
+                <h2><IconPencil size={15} stroke="var(--violet)" /> Document an Imaging Report</h2>
+                <span className="leaside">
+                  Transcribe the paper radiology report. Pick the pending imaging order you are
+                  reporting on — the study identity comes from the order and the report fulfils
+                  it — or document an <b>unlinked</b> report (outside film, pre-order study; never
+                  a fabricated order). Critical findings are <b>clinician-marked</b>: imaging has
+                  no thresholds, the system never derives them. The server stamps you and the
+                  time and marks the report <b>manual</b>; the reporting radiologist is recorded
+                  as free text from the paper report.
+                </span>
+              </div>
+
+              <div className="lefields leimgfields">
+                <div className="lefield leimgwide">
+                  <label htmlFor="lei-order">Reporting on (pending imaging order)</label>
+                  <select id="lei-order" value={imgOrderId}
+                    onChange={e => { setImgOrderId(e.target.value); setImgError(null) }} disabled={imgBusy}>
+                    <option value="">No order — unlinked report (labelled honestly)</option>
+                    {pendingImagingOrders.map(o => (
+                      <option key={o.orderId} value={o.orderId}>{o.orderId} · {o.summary}</option>
+                    ))}
+                  </select>
+                  {imgOrders !== null && pendingImagingOrders.length === 0 && (
+                    <small className="leimgnone">No pending imaging orders for this patient — an unlinked report is still allowed.</small>
+                  )}
+                </div>
+                <div className="lefield">
+                  <label htmlFor="lei-mod">Modality <i className="req">required</i></label>
+                  <select id="lei-mod" value={imgModality} onChange={e => setImgModality(e.target.value)} disabled={imgBusy}>
+                    {['CXR', 'X-ray', 'CT', 'MRI', 'US', 'Echo', 'Other'].map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                {imgOrderId === '' && (
+                  <div className="lefield">
+                    <label htmlFor="lei-desc">Study type <i className="req">required — unlinked</i></label>
+                    <input id="lei-desc" placeholder="e.g. Portable chest X-ray (outside film)" value={imgDescription}
+                      onChange={e => { setImgDescription(e.target.value); setImgError(null) }} disabled={imgBusy} />
+                  </div>
+                )}
+                <div className="lefield">
+                  <label htmlFor="lei-perf">Study performed at (UTC) <i className="req">required</i></label>
+                  <input id="lei-perf" className="num" placeholder="yyyy-MM-dd HH:mm" value={imgPerformedAt}
+                    onChange={e => { setImgPerformedAt(e.target.value); setImgError(null) }} disabled={imgBusy} />
+                </div>
+                <div className="lefield">
+                  <label htmlFor="lei-rad">Reporting radiologist <i className="req">required · free text from the paper report</i></label>
+                  <input id="lei-rad" placeholder="e.g. Dr. R. Osman (Radiology)" value={imgRadiologist}
+                    onChange={e => { setImgRadiologist(e.target.value); setImgError(null) }} disabled={imgBusy} />
+                </div>
+                <div className="lefield leimgwide">
+                  <label htmlFor="lei-find">Findings <i className="req">required</i></label>
+                  <textarea id="lei-find" rows={3} placeholder="The report's narrative findings…" value={imgFindings}
+                    onChange={e => { setImgFindings(e.target.value); setImgError(null) }} disabled={imgBusy} />
+                </div>
+                <div className="lefield leimgwide">
+                  <label htmlFor="lei-imp">Impression / conclusion <i className="req">required — the actionable part, kept separate</i></label>
+                  <textarea id="lei-imp" rows={2} placeholder="The report's impression…" value={imgImpression}
+                    onChange={e => { setImgImpression(e.target.value); setImgError(null) }} disabled={imgBusy} />
+                </div>
+                <div className="lefield leimgwide">
+                  <label htmlFor="lei-note">Note <i>optional</i></label>
+                  <input id="lei-note" value={imgNote} onChange={e => setImgNote(e.target.value)} disabled={imgBusy} />
+                </div>
+                <label className="leimgcrit">
+                  <input type="checkbox" checked={imgCritical} onChange={e => setImgCritical(e.target.checked)} disabled={imgBusy} />
+                  <span>
+                    <b>Mark as critical finding</b> — clinician-marked, never system-derived; the
+                    report is labelled as such and surfaces with the critical results
+                  </span>
+                </label>
+              </div>
+
+              {imgError && <div className="leerr" role="alert">{imgError}</div>}
+              <div className="lefoot">
+                <span className="lefootnote">
+                  Renders on Labs &amp; Imaging with full provenance and flows into the existing
+                  results acknowledgment — never a parallel state.
+                </span>
+                <button className="ledoc" onClick={submitImaging} disabled={!imgReady || imgBusy}>
+                  <IconCheck /> Document imaging report
                 </button>
               </div>
             </section>

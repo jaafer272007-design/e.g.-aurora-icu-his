@@ -458,6 +458,113 @@ static class ResultsApi
             return Results.Json(d.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* POST /api/icu/results/imaging/document — Imaging Result Entry: a
+           clinician DOCUMENTS the paper radiology report (the same
+           results.document authority as lab documentation — the split that
+           matters is document-vs-create, not lab-vs-imaging; the office
+           Administrator and System Administrator are excluded with every
+           other non-clinical profile).
+           - LINKED: OrderId picks one of the patient's pending imaging
+             orders → the study identity (Description) comes from the order
+             and the report FULFILS it. Fulfilment is DERIVED linkage — the
+             report row carries the OrderId — exactly the lab rule; neither
+             lab nor imaging orders have an explicit fulfilment status
+             (flagged, not invented).
+           - UNLINKED: no OrderId — the study type is picked directly and
+             the report renders honestly as unlinked (outside film,
+             pre-order emergency study). Never a fabricated order.
+           - Critical is CLINICIAN-MARKED (imaging has no thresholds;
+             nothing is ever system-derived) and audited as such.
+           - Provenance: documented-by = the token's clinician, dated
+             stamps, source=manual; ReportingRadiologist = free text from
+             the paper report (not a system user). */
+        app.MapPost("/api/icu/results/imaging/document", (DocumentImagingRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "results.document") is IResult denied) return denied;
+            if (string.IsNullOrWhiteSpace(req.PatientId)) return ApiError.BadRequest("patientId is required");
+            if (string.IsNullOrWhiteSpace(req.Findings)) return ApiError.BadRequest("findings is required — the report's narrative");
+            if (string.IsNullOrWhiteSpace(req.Impression)) return ApiError.BadRequest("impression is required — the actionable conclusion (kept separate from findings)");
+            if (string.IsNullOrWhiteSpace(req.ReportingRadiologist))
+                return ApiError.BadRequest("reportingRadiologist is required — the paper report names its author (recorded as free text; they are not a system user)");
+            foreach (var (v, name, max) in new[] { (req.Findings, "findings", 8000), (req.Impression, "impression", 4000),
+                (req.ReportingRadiologist, "reportingRadiologist", 200), (req.Note, "note", 2000) })
+                if (v is { } s && s.Length > max) return ApiError.BadRequest($"{name} exceeds {max} characters");
+            var modality = (req.Modality ?? "").Trim();
+            if (!ResultsLogic.ImagingModalities.Contains(modality))
+                return ApiError.BadRequest($"modality must be one of: {string.Join(", ", ResultsLogic.ImagingModalities)}");
+            var performedAt = (req.PerformedAt ?? "").Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(performedAt, @"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+                || !DateTime.TryParse(performedAt, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var performed))
+                return ApiError.BadRequest("performedAt must be a real 'yyyy-MM-dd HH:mm' timestamp (UTC) — when the study was performed");
+            var now = DateTime.UtcNow;
+            if (performed > now.AddMinutes(5))
+                return ApiError.BadRequest("performedAt is in the future — a study cannot be performed after it is documented");
+            if (EncounterGuard.RequireOpenForPatient(db, req.PatientId!, "documenting an imaging report", out var enc) is IResult conflict)
+                return conflict;
+
+            string description;
+            string orderedAt = "";
+            string? orderId = null;
+            if (!string.IsNullOrWhiteSpace(req.OrderId))
+            {
+                /* the LINKED form: the order supplies the study identity */
+                var order = db.Orders.AsNoTracking().FirstOrDefault(o => o.OrderId == req.OrderId!.Trim());
+                if (order is null) return ApiError.NotFound();
+                if (order.PatientId != req.PatientId || order.EncounterId != enc!.EncounterId)
+                    return ApiError.BadRequest($"order '{order.OrderId}' does not belong to this patient's open encounter");
+                if (order.Category != "Imaging")
+                    return ApiError.BadRequest($"order '{order.OrderId}' is a {order.Category} order — only an imaging order can be fulfilled by an imaging report");
+                if (!string.IsNullOrWhiteSpace(req.Description))
+                    return ApiError.BadRequest("description is derived from the linked order — omit it (or omit orderId for an unlinked report)");
+                if (order.Status != "active")
+                    return ApiError.StateConflict($"order '{order.OrderId}' is {order.Status} — only an active order awaits a report");
+                if (db.ImagingStudies.AsNoTracking().Any(x => x.OrderId == order.OrderId))
+                    return ApiError.StateConflict($"order '{order.OrderId}' already has a documented report — it is fulfilled");
+                description = order.Summary;
+                orderedAt = order.OrderedTime;
+                orderId = order.OrderId;
+            }
+            else
+            {
+                /* the UNLINKED form: the study type is picked directly */
+                description = (req.Description ?? "").Trim();
+                if (description.Length == 0)
+                    return ApiError.BadRequest("description is required for an unlinked report — pick the study type (no order is ever fabricated)");
+                if (description.Length > 200) return ApiError.BadRequest("description exceeds 200 characters");
+            }
+
+            var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var time = now.ToString("yyyy-MM-dd HH:mm");
+            var events = new List<ResultEventDto> { new(time, actor, "documented", null) };
+            if (req.Critical)
+                events.Add(new(time, actor, "marked critical finding",
+                    "clinician-marked — imaging has no thresholds; nothing is system-derived"));
+            var row = new ImagingStudyRow
+            {
+                StudyId = ResultsLogic.NextStudyId(), PatientId = req.PatientId!,
+                EncounterId = enc!.EncounterId, BedId = enc.BedId, PatientName = pt.Name,
+                Modality = modality, Description = description,
+                OrderedAt = orderedAt, OrderId = orderId,
+                PerformedAt = performedAt, ReportedAt = time,
+                Status = "final",
+                Report = req.Findings!.Trim(), Impression = req.Impression!.Trim(),
+                /* no flag unless the CLINICIAN marks it — the system never
+                   fabricates a normal/abnormal judgment for narrative text */
+                Flag = req.Critical ? "critical" : "",
+                Note = req.Note?.Trim(),
+                Source = "manual",
+                ReportingRadiologist = req.ReportingRadiologist!.Trim(),
+                DocumentedAt = now.ToString("yyyy-MM-dd HH:mm:ss"),
+                Acknowledged = false,
+                EventsJson = JsonSerializer.Serialize(events, JsonOpts.Web),
+            };
+            db.ImagingStudies.Add(row);
+            db.SaveChanges();
+            return Results.Json(row.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* POST /api/icu/results/imaging/{studyId}/acknowledge — doctor RBAC. */
         app.MapPost("/api/icu/results/imaging/{studyId}/acknowledge", (string studyId, ClaimsPrincipal user, AuroraDb db) =>
         {

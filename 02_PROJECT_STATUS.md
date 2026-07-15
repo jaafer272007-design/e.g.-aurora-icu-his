@@ -4617,6 +4617,82 @@ reload). Supersedes that deferred line.
   doctor get Access Restricted on /admin/users; zero page errors).
   tsc + vite + dotnet build clean.
 
+### Imaging Result Entry (built — IMAGING_RESULT_ENTRY_DESIGN.md)
+
+The corrected gap (supersedes the PR #86 framing "imaging order→result
+linkage doesn't exist"): there was NO way to enter an imaging result at
+all — the visible CXR/Echo/CT reports were seeded; imaging was exactly
+where labs stood before PR #76. This build is imaging's #76, and linkage
+falls out of the entry flow.
+
+**Verify-first findings (stated, per the design):**
+- The imaging store takes a documented report ADDITIVELY: ImagingStudyRow
+  already carried Report/Impression/PerformedAt/Status/Flag/Note and the
+  append-only EventsJson; the build adds OrderId, Source,
+  ReportingRadiologist and DocumentedAt (migration
+  AddImagingDocumentation; ""/null on every seeded row — seeds
+  unaffected, asserted).
+- **Shared results.document atom, NOT a new one** (open item 2): the
+  authority is manual transcription of a paper report — identical for a
+  central-lab slip and a radiology report. The locked split that matters
+  is document-vs-create (clinician vs producing service), not
+  lab-vs-imaging; a future Radiologist title / RIS-PACS rides
+  results.create untouched.
+- **Imaging orders have NO explicit fulfilment state — and neither do
+  lab orders** (open item 3, flagged not invented): fulfilment is DERIVED
+  linkage (a result row carrying the OrderId), the existing canonical
+  lab rule, now applied to imaging identically. A fulfilled order takes
+  no second report (409).
+- **The acknowledgment path already existed** (open item 4): the unit
+  inbox and imaging acknowledge/unacknowledge endpoints predate this
+  build — documented reports flow into them with zero new state, and
+  because Alerts reads that same inbox, a clinician-marked critical
+  report surfaces in the Attention Center's critical group
+  AUTOMATICALLY (open item 5 — confirmed, one truth, no Alerts change).
+
+**What was built:** POST /api/icu/results/imaging/document
+(results.document; open-encounter guard). LINKED form: the person PICKS
+the pending imaging order — the study identity (description) comes from
+the order, a supplied description is a 400, and the report fulfils it.
+UNLINKED form: no order — study type picked directly (modality set CXR/
+X-ray/CT/MRI/US/Echo/Other + free-text description), labelled honestly,
+never a fabricated order. Findings and Impression are SEPARATE required
+narratives (open item 1 — confirmed; the impression is the actionable
+part); study-performed-at is a required dated stamp (format-validated,
+never future); the reporting radiologist is REQUIRED FREE TEXT from the
+paper report, kept distinct from the token-derived documenting clinician
+(source=manual, documented event, DocumentedAt anchor). CRITICAL is
+CLINICIAN-MARKED only — imaging has no thresholds, so a documented
+report carries NO flag unless the clinician marks it (the system never
+fabricates a normal/abnormal judgment for narrative text), the marking
+is audited as clinician-marked, and the UI labels it "clinician-marked"
+(never system-detected). Entry UI on Lab Entry (order picker showing the
+patient's pending imaging orders, honest unlinked path); Labs & Imaging
+renders documented reports alongside seeded ones with the manual tag,
+the fulfilled-order / unlinked tag, and the documented-by + reporting-
+radiologist provenance line.
+
+**Verified**: 22/22 API matrix (fresh DB: doctor links + fulfils; 409 on
+a second report; nurse unlinked critical; inbox + existing
+acknowledgment; every validation incl. malformed-before-state ordering;
+403 for Pharmacist, office Administrator AND System Administrator;
+seeded rows untouched) + 14/14 real-browser (both roles document via the
+UI; linked mode hides the study-type field; toasts state fulfils/
+unlinked/clinician-marked; Labs & Imaging attribution complete; the
+critical surfaces in Alerts; zero page errors). tsc + vite + dotnet
+clean.
+
+**Recorded as next / future:**
+- **Imaging report correction/amendment is the NEXT step** — a
+  mis-transcribed imaging report is as dangerous as a mis-transcribed
+  lab; mirror the proven PR #80 lab model exactly (Tier-1 ≤5 min
+  self-correction; Tier-2 Consultant-tier with a reason, marked
+  "edited"; amend-not-erase). The DocumentedAt anchor is already stored.
+- A coded, managed **Imaging Catalogue** (mirroring the Lab Catalogue) —
+  only needed for RIS/PACS auto-matching.
+- A **Radiologist JobTitle / RIS-PACS integration** — the future
+  producing-service authority (results.create), a clean added source.
+
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
 on a FULLY-REAL data foundation beneath it — never mix a new write-feature
