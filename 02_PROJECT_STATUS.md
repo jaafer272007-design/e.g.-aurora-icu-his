@@ -1,6 +1,42 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-15 · current through the ALERTS PAGE (built — the
+**Last updated: 2026-07-15 · current through SETTINGS + THE IN-APP BACK
+BUTTON (built — the LAST dead nav item closed: ALL THREE ARE NOW REAL and
+the ICU module's navigation is COMPLETE, with no fabricated numbers left
+anywhere in the nav/header. Settings (`/settings`, session-gated with NO
+permission — all eight profiles incl. the office Administrator; nothing
+patient-identifiable renders) has the three layers: USER PREFERENCES via
+the small new tab-scoped store (`src/lib/preferences.ts` — theme + time
+format ONLY, cleared on sign-out like the patient context; per-user
+persistence recorded as future); theme defaults to FOLLOW SYSTEM with a
+Dark override — LIGHT IS FLAGGED NOT SHIPPED (open item 1: the app is
+dark-first across 18 screens with ~630 colour usages outside the token
+layer; a light palette without a dedicated styling pass would break
+contrast, so the option renders disabled naming exactly that; the
+resolution mechanism is real and light plugs in as a `[data-theme]` token
+set later); time format 12h/24h applies to the render-time display
+helpers only (stored records never rewritten; 24h output byte-identical
+to before). ICU PREFERENCES read-only by design: real bed registry
+display (ids/areas, never occupancy) with editing not-tracked-yet, and
+SOFA v1 + NEWS2 v1 shown READ-ONLY with the explicit statement that
+scores are VERSIONED, NOT CONFIGURABLE (a variant is a new definition,
+never a knob — the locked versioning discipline). SYSTEM INFORMATION
+real: app version (one shared constant), BOTH builds (frontend build.txt
+SHA — honestly absent on a local serve — and the server /healthz build;
+they deploy separately), environment, and an HONEST health panel that
+says "unreachable" when the API is down/asleep. Nine not-tracked-yet
+placeholders name their missing capabilities. THE IN-APP BACK BUTTON is
+app-wide header chrome (the validator's long-standing ask): react-router
+history-index based; hidden at the first screen (never a dead control),
+tab-scoped so it cannot escape into pre-app history, never "undoes" a
+sign-out (RequireSession re-checks on every render — verified), and
+never switches patients (it replays real navigation; the route stays the
+truth). THE BELL IS REMOVED — its hardcoded count + toast-only handlers
+on 10 screens were the last fabricated numbers in the header (a real
+count would need the Alerts derivation on every screen; the Alerts page
+shows the real counts). 18/18 headless + 34/34 browser checks incl. the
+small-viewport pass. Design recorded at
+docs/design/settings-back-button-design.md). Prior: the ALERTS PAGE (built — the
 Clinical Attention Center closes the SECOND dead nav item: `/alerts` is a
 DISPLAY-ONLY attention board (the validator's locked D6 — no
 notifications/pop-ups/paging/escalation; v2 after clinical experience,
@@ -4275,6 +4311,105 @@ notification APIs anywhere in the code or the browser run).
 - **Deferred / recorded as future (v2+)**: automated alerting
   (notifications/escalation/alert audit — D6); the five placeholder
   capabilities. Remaining dead nav item: Settings (the last page).
+  *[Settings is now BUILT — next section. NO dead nav items remain.]*
+
+### Settings + the in-app back button (built) — the module's nav is COMPLETE
+Built in full from docs/design/settings-back-button-design.md (recorded
+verbatim; clinical source: the validator). Two distinct pieces shipped
+together: `Settings` — the LAST dead nav item — and the app-wide in-app
+back control. With this, Statistics → Alerts → Settings are all real:
+**no dead nav items remain, and no fabricated numbers remain in the
+nav/header.**
+- **User Preferences (§1.1A) — the small new store**
+  (`src/lib/preferences.ts`): exactly TWO preferences — theme and time
+  format. SCOPE (open item 2, the stated choice): TAB/SESSION-scoped
+  sessionStorage, cleared on sign-out — the same discipline as the
+  session and the patient context; a per-user PERSISTED preference
+  belongs on the user record server-side and is recorded as future.
+  Language / notification prefs / default workspace / rounding template
+  are not-tracked-yet rows naming why (no i18n; no notifications — D6;
+  landing is RBAC-derived; no template concept).
+- **Theme — Follow system default, Dark override, LIGHT FLAGGED (open
+  item 1)**: the app is styled dark-first across 18 screens with ~630
+  colour usages hardcoded OUTSIDE the token layer (solid dark
+  backgrounds, white-alpha overlays) — flipping tokens alone would ship
+  broken contrast, so per the design's own fallback the Light option
+  renders DISABLED with that exact reason; the resolution mechanism is
+  fully real (data-theme stamped on the root, the device preference
+  followed live via matchMedia), so the future styling pass only adds
+  the `[data-theme="light"]` token set. When the device prefers light
+  the UI says so honestly instead of pretending to follow. Time-based
+  auto-switching deliberately not built (24/7 ICU). Headless-verified:
+  system/light/dark all resolve dark today; the flag constant gates it.
+- **Time format 12h/24h**: a display preference over the RENDER-TIME
+  helpers only (`formatHm` in time.ts, routed through displayStamp /
+  agoLabel / nowHm) — stored records and every parser stay 24h; with the
+  24h default the output is byte-identical to before (headless-proven).
+  12h verified end-to-end (14:05 → 2:05 PM; boundaries 00:05 → 12:05 AM,
+  12:30 → 12:30 PM; a real screen renders 12h after the switch).
+- **ICU Preferences — read-only by design**: the real bed registry
+  (ids + areas ONLY — never occupancy, so nothing clinical) with
+  bed-layout EDITING as not-tracked-yet; SOFA v1 + NEWS2 v1 displayed
+  READ-ONLY from the score definitions themselves with the explicit
+  statement: **scores are versioned, not configurable** — a variant is a
+  NEW definition/version, never a knob mutating a validated instrument
+  (the locked versioning discipline; deliberately OUT, not a gap). Units
+  SI/conventional = not-tracked-yet (no conversion layer).
+- **System Information — real or honestly absent**: app version (ONE
+  shared constant, `src/lib/version.ts` — the NavSidebar footer now uses
+  the same source); **both builds** — the frontend `build.txt` commit
+  SHA (written by the Pages deploy; honestly "no build stamp in this
+  serve" locally, and the SPA-fallback trap is guarded by a 40-hex
+  check) and the server `/healthz` build — because the two halves deploy
+  separately (locked rule); environment; and an HONEST health panel:
+  green "API reachable — service/phase/status/environment/build" from a
+  live /healthz, red "API unreachable right now — the server may be
+  asleep" when it isn't (never implying healthy). Database status /
+  connected services / license / backup status = not-tracked-yet.
+- **The in-app back button (Part 2, app-wide chrome)**: the header gains
+  a back control on every screen (the validator's long-standing ask —
+  kiosk/fullscreen workstations have no browser chrome). EDGES (open
+  item 3, the stated choices): react-router's history index
+  (`history.state.idx`) drives it — at idx 0 the control is HIDDEN
+  (first screen / after any full page load: never a dead button), and
+  because the index is tab-scoped, back can never escape into unrelated
+  pre-app history; sign-out is never "undone" (every route re-checks the
+  session via RequireSession on render — browser-back after sign-out
+  verifiably lands on /login); the patient in the route stays the truth
+  (back replays real navigation only — complements the persistent
+  patient context, never overrides it). Verified at 1024×640 (the
+  clipping bug's territory): header intact, control clickable, works.
+- **The bell is REMOVED (Part 3, the flagged honesty debt)**: the
+  AppHeader bell showed a hardcoded count with toast-only handlers on
+  TEN screens — the last fabricated numbers in the header. Removed
+  everywhere (a real count would need the Alerts multi-source derivation
+  on every screen load — disproportionate; the Alerts page shows the
+  real counts). Verified: no `.bell`, no badge digits anywhere in
+  nav/header.
+- **RBAC (open item 4, the flagged set)**: `/settings` carries a session
+  gate with NO permission — ALL EIGHT profiles reach it, including the
+  office Administrator, because nothing patient-identifiable renders
+  (browser-asserted on the admin view: no patient names/ids anywhere;
+  beds are places). Nothing clinical leaks.
+- **Verification**: 18/18 headless checks (preference roundtrip +
+  sign-out clearing; 12h boundary conversions; 24h byte-parity; theme
+  resolution incl. the flagged light gating) + 34/34 real-browser checks
+  (nav navigates — last dead nav closed; all three layers; TEN
+  not-tracked-yet rows naming capabilities; system info spot-checked
+  against a live /healthz read + the honest local-serve build absence;
+  read-only scores with the versioning statement; Follow-system default,
+  Light disabled with the flag, Dark persisting in the tab store; 12h
+  applying across screens; back-button presence/behaviour incl. the
+  hidden-at-first-screen rule, the sign-out edge and the small-viewport
+  pass; bell gone, zero badge digits; the Administrator reaching
+  Settings with nothing clinical; zero page errors). tsc + vite clean;
+  no server changes.
+- **Deferred / recorded as future**: the LIGHT-THEME STYLING PASS (the
+  headline flag); per-user persisted preferences; i18n; notification
+  prefs (D6 v2); default-workspace preference; rounding templates;
+  bed-layout editing; units conversion; deeper DB status; a service
+  registry; licence; in-app backup status. Score configurability —
+  deliberately NEVER.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit

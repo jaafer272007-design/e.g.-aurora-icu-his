@@ -125,6 +125,52 @@ export function apiHealthUrl(): string | null {
   return `${API_BASE}/healthz`
 }
 
+/* ---------- Settings §1.1C — System Information reads ---------- */
+
+/** the server's own /healthz self-report (unauthenticated by design) */
+export interface SystemHealth {
+  status: string
+  service: string
+  phase: string
+  build: string
+  environment: string
+}
+
+/** GET /healthz — HONEST health: null means the API is genuinely
+ *  unreachable right now (e.g. the free-tier server is asleep) and the
+ *  Settings panel says so — it never implies healthy. */
+export async function getSystemHealth(): Promise<SystemHealth | null> {
+  const url = apiHealthUrl()
+  if (!url) return null
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(url, { signal: ctrl.signal })
+    clearTimeout(timer)
+    if (!res.ok) return null
+    return (await res.json()) as SystemHealth
+  } catch {
+    return null
+  }
+}
+
+/** the FRONTEND deploy stamp — build.txt (the commit SHA the Pages deploy
+ *  writes next to the bundle). The two halves deploy separately (locked
+ *  rule), so Settings shows BOTH builds. null = no stamp in this serve
+ *  (a local/dev build — honest absence, never a fabricated SHA). */
+export async function getFrontendBuild(): Promise<string | null> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}build.txt`, { cache: 'no-store' })
+    if (!res.ok) return null
+    const text = (await res.text()).trim()
+    /* the SPA fallback serves index.html for unknown paths — only a real
+       40-hex commit SHA counts as a build stamp */
+    return /^[0-9a-f]{40}$/.test(text) ? text : null
+  } catch {
+    return null
+  }
+}
+
 export type LoginResult =
   | { ok: true; name: string; jobTitle: string; token: string }
   | { ok: false; reason: 'invalid' | 'unreachable' }

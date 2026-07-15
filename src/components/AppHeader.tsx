@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import './AppHeader.css'
-import { IconBell, IconPulse } from './icons'
+import { IconPulse } from './icons'
 import { useClock } from '../hooks/useClock'
 import { getSession, signOut } from '../lib/session'
 
@@ -28,19 +28,48 @@ export function KpiPill({ icon, iconBg, value, label, valueStyle }: KpiSpec) {
 interface AppHeaderProps {
   subtitle: string
   kpis: KpiSpec[]
-  /** omit on screens with no notification context — renders a 0 badge */
-  bellCount?: number
-  onBellClick?: () => void
   user: { initials: string; name: string; role: string }
 }
 
-/** Standard top bar: brand · clock · KPI pills · notifications · user ·
- *  sign-out (Stage 9 local session). */
-export function AppHeader({ subtitle, kpis, bellCount = 0, onBellClick, user }: AppHeaderProps) {
+/** The in-app BACK control (Settings + Back Button design §2) — the app
+ *  previously had no back navigation of its own (only the browser's),
+ *  a real gap on kiosk/fullscreen clinical workstations.
+ *  HONEST EDGES (the flagged choices, stated):
+ *  - FIRST SCREEN: react-router stamps its history index on
+ *    window.history.state.idx — at idx 0 this tab has no earlier in-app
+ *    entry, so the control is HIDDEN (never a dead button). Because the
+ *    index is TAB-scoped, back can also never escape into unrelated
+ *    pre-app history.
+ *  - SIGN-OUT: back never "undoes" a sign-out — every route re-checks the
+ *    session via RequireSession on render, so a back into an
+ *    authenticated view without a session lands on /login.
+ *  - PATIENT CONTEXT: back replays real navigation history only — the
+ *    route's patient stays the truth (it complements, never overrides,
+ *    the persistent patient context). */
+function BackButton() {
+  const navigate = useNavigate()
+  useLocation() // re-evaluate the history index on every navigation
+  const idx = (window.history.state as { idx?: number } | null)?.idx ?? 0
+  if (idx <= 0) return null
+  return (
+    <button className="hback" aria-label="Back to the previous screen" title="Back" onClick={() => navigate(-1)}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
+    </button>
+  )
+}
+
+/** Standard top bar: back · brand · clock · KPI pills · user · sign-out.
+ *  THE BELL IS GONE (design §3, the flagged honesty debt): it showed a
+ *  hardcoded count with a toast-only handler on several screens — a
+ *  fabricated number. A real count would need the Alerts multi-source
+ *  derivation on every screen load (disproportionate); the Alerts page
+ *  shows the real attention counts. Never a fabricated number. */
+export function AppHeader({ subtitle, kpis, user }: AppHeaderProps) {
   const { time, date } = useClock()
   const navigate = useNavigate()
   return (
     <header className="app-header">
+      <BackButton />
       <div className="brand">
         <div className="logo"><IconPulse size={18} stroke="#06121f" strokeWidth={2.6} /></div>
         <div>AURORA ICU<small>{subtitle}</small></div>
@@ -50,10 +79,6 @@ export function AppHeader({ subtitle, kpis, bellCount = 0, onBellClick, user }: 
         {kpis.map((k, i) => <KpiPill key={i} {...k} />)}
       </div>
       <div className="hspace" />
-      <button className="bell" aria-label={`Notifications, ${bellCount} unread`} onClick={onBellClick}>
-        <IconBell size={16} />
-        <span className="bdg">{bellCount}</span>
-      </button>
       <button className="user" title="Local session — not real authentication" aria-label={`${user.name}, account menu`}>
         <div className="uav">{user.initials}</div>
         <div><div className="un">{user.name}</div><div className="ur">{user.role}</div></div>

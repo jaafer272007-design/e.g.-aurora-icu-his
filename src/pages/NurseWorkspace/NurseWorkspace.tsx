@@ -117,8 +117,6 @@ export function NurseWorkspace() {
       <AppHeader
         subtitle="Nurse Workspace"
         kpis={kpis}
-        bellCount={3}
-        onBellClick={() => showToast('Alerts', '3 active notifications for your patients')}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile${assignment ? ` · ${assignment.nurse.shift}` : ''}` }}
       />
       <div className="shell">

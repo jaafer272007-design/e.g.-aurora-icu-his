@@ -10,6 +10,7 @@ import { Timeline } from './pages/Timeline/Timeline'
 import { Observations } from './pages/Observations/Observations'
 import { Statistics } from './pages/Statistics/Statistics'
 import { Alerts } from './pages/Alerts/Alerts'
+import { Settings } from './pages/Settings/Settings'
 import { AiAssistant } from './pages/AiAssistant/AiAssistant'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
@@ -97,6 +98,10 @@ export default function App() {
             clinical profile carries it; the office Administrator does NOT
             (the locked no-clinical-data rule keeps them out) */}
         <Route path="/alerts" element={<RequireSession permission="results.view"><Alerts /></RequireSession>} />
+        {/* Settings — NO clinical data (bed ids/areas only, score versions,
+            system info, preferences), so a session gate WITHOUT a
+            permission: all eight profiles incl. the office Administrator */}
+        <Route path="/settings" element={<RequireSession><Settings /></RequireSession>} />
         <Route path="/observations" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/observations/:patientId" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/ai" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />

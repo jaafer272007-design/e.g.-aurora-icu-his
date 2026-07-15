@@ -18,7 +18,7 @@ import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/sess
  *  clinical screens use. */
 export function AdminHome() {
   const navigate = useNavigate()
-  const { toast, showToast } = useToast()
+  const { toast } = useToast()
   const session = getSession()!
   const [beds, setBeds] = useState<BedsResponse | null>(null)
   const [summary, setSummary] = useState<UnitSummaryResponse | null>(null)
@@ -59,8 +59,6 @@ export function AdminHome() {
       <AppHeader
         subtitle="Unit Administration"
         kpis={kpis}
-        bellCount={summary?.highPriorityAlerts.length ?? 0}
-        onBellClick={() => showToast('Unit alerts', `${summary?.highPriorityAlerts.length ?? 0} high-priority alert(s) — clinical follow-up happens on the clinical screens`)}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">

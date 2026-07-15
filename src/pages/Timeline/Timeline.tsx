@@ -46,7 +46,7 @@ const linkLabel = (link: string) =>
 export function Timeline() {
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
-  const { toast, showToast } = useToast()
+  const { toast } = useToast()
   /* Stage 9 session — the timeline is read-only for every profile */
   const session = getSession()!
 
@@ -145,8 +145,6 @@ export function Timeline() {
       <AppHeader
         subtitle="Clinical Timeline"
         kpis={kpis}
-        bellCount={5}
-        onBellClick={() => showToast('Alerts', '5 active notifications across the unit')}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">

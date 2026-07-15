@@ -308,7 +308,6 @@ export function LabEntry() {
       <AppHeader
         subtitle="Lab Result Entry"
         kpis={kpis}
-        bellCount={0}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">

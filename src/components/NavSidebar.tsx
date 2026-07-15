@@ -5,6 +5,7 @@ import {
 } from './icons'
 import { lastPatientId } from '../lib/patientContext'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
+import { APP_VERSION } from '../lib/version'
 
 export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'formulary' | 'labcatalog' | 'ordersets' | 'alerts' | 'statistics' | 'settings'
 
@@ -74,7 +75,10 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
        on patients.view, which every profile carries — the office
        Administrator's core use is these unit-level aggregates. */
     { key: 'statistics', label: 'Statistics', icon: <IconStats />, to: '/statistics', perm: 'patients.view' },
-    { key: 'settings', label: 'Settings', icon: <IconSettings /> },
+    /* Settings — the LAST dead nav item, now a real screen. No clinical
+       data on the page, so no permission gate: every profile (incl. the
+       office Administrator) reaches it. */
+    { key: 'settings', label: 'Settings', icon: <IconSettings />, to: '/settings' },
   ]
   const items = all.filter(it => allowed(it.perm))
 
@@ -93,7 +97,7 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
         </button>
       ))}
       <div className="navfoot">
-        AURORA HIS v4.2
+        {APP_VERSION}
         {footerLines.map(l => <span key={l}><br />{l}</span>)}
       </div>
     </nav>
