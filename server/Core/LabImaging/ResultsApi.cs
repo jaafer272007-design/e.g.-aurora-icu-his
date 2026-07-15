@@ -584,11 +584,14 @@ static class ResultsApi
            and the report renders as "edited".
            Editable: the two separate narratives (Findings / Impression),
            the study-performed stamp, the reporting radiologist free text,
-           the note, and the CLINICIAN-MARKED critical flag — marked in
+           the note, the CLINICIAN-MARKED critical flag — marked in
            error or missed both fixable; the corrected state is still a
            clinician judgment, never system-derived, and the change moves
            the report into/out of the one-truth inbox (and therefore
-           Alerts) with no Alerts code at all.
+           Alerts) with no Alerts code at all — and the ORDER LINKAGE
+           (linkage-correction follow-up): re-point a report documented
+           against the wrong order, link an unlinked report after the
+           fact, or unlink one; the linkage block below carries the rules.
            Amend-not-erase: the row keeps CURRENT STATE while the amendment
            preserves previous→new with actor/ACTIVE ROLE (the #104 audit
            rule — the role comes from the session's jobTitle claim)/time/
@@ -626,14 +629,67 @@ static class ResultsApi
             if (req.Reason is not null && req.Reason.Length > OrderLogic.MaxTextLength)
                 return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
             if (req.Findings is null && req.Impression is null && req.PerformedAt is null
-                && req.ReportingRadiologist is null && req.Note is null && req.Critical is null)
-                return ApiError.BadRequest("nothing to correct — provide at least one corrected field (findings, impression, performedAt, reportingRadiologist, note, critical)");
+                && req.ReportingRadiologist is null && req.Note is null && req.Critical is null
+                && req.OrderId is null && req.Unlink is null)
+                return ApiError.BadRequest("nothing to correct — provide at least one corrected field (findings, impression, performedAt, reportingRadiologist, note, critical, orderId, unlink)");
 
             var role = Rbac.ProfileOf(user.FindFirst("jobTitle")?.Value ?? "") ?? "Unknown";
             var stamp = now.ToString("yyyy-MM-dd HH:mm");
             var reason = req.Reason?.Trim() ?? "";
             var amendments = JsonSerializer.Deserialize<List<LabAmendmentDto>>(s.AmendmentsJson, JsonOpts.Web)!;
             var applied = new List<string>();
+
+            /* ---- the corrected ORDER LINKAGE (linkage-correction follow-up).
+               Fulfilment is DERIVED linkage (#105): moving the OrderId off an
+               order returns it to pending with no state to reset, and the 409
+               second-report rule follows the row that carries the id. The
+               study identity is re-derived from the new order (the #105 rule)
+               and the previous description is preserved as its own amendment
+               — nothing user-authored is silently erased. */
+            if (req.OrderId is not null && req.Unlink == true)
+                return ApiError.BadRequest("orderId and unlink are mutually exclusive — re-point to an order OR unlink, not both");
+            if (req.Unlink is bool unlink)
+            {
+                if (!unlink)
+                    return ApiError.BadRequest("unlink must be true when provided — omit it to leave the linkage alone");
+                if (s.OrderId is null)
+                    return ApiError.StateConflict($"report '{studyId}' is already unlinked — there is nothing to correct");
+                amendments.Add(new("order", s.OrderId, "unlinked", actor, stamp, reason, role, s.Acknowledged));
+                applied.Add($"unlinked from {s.OrderId} ({s.OrderId} returns to pending — fulfilment is derived)");
+                s.OrderId = null;
+                s.OrderedAt = "";   /* renders honestly as "no order — unlinked report" */
+            }
+            else if (req.OrderId is not null)
+            {
+                var target = req.OrderId.Trim();
+                if (target.Length == 0)
+                    return ApiError.BadRequest("orderId must name a pending imaging order — use unlink:true to unlink");
+                if (target == s.OrderId)
+                    return ApiError.StateConflict($"report '{studyId}' is already linked to {target} — there is nothing to correct");
+                var order = db.Orders.AsNoTracking().FirstOrDefault(o => o.OrderId == target);
+                if (order is null) return ApiError.NotFound();
+                if (order.PatientId != s.PatientId || order.EncounterId != s.EncounterId)
+                    return ApiError.BadRequest($"order '{order.OrderId}' does not belong to this report's patient and encounter");
+                if (order.Category != "Imaging")
+                    return ApiError.BadRequest($"order '{order.OrderId}' is a {order.Category} order — only an imaging order can be fulfilled by an imaging report");
+                if (order.Status != "active")
+                    return ApiError.StateConflict($"order '{order.OrderId}' is {order.Status} — only an active order awaits a report");
+                if (db.ImagingStudies.AsNoTracking().Any(x => x.OrderId == order.OrderId && x.StudyId != s.StudyId))
+                    return ApiError.StateConflict($"order '{order.OrderId}' already has a documented report — it is fulfilled");
+                amendments.Add(new("order", s.OrderId ?? "unlinked", order.OrderId, actor, stamp, reason, role, s.Acknowledged));
+                applied.Add(s.OrderId is null
+                    ? $"linked to {order.OrderId} (fulfils it; identity from the order)"
+                    : $"re-pointed {s.OrderId} → {order.OrderId} ({s.OrderId} returns to pending — fulfilment is derived)");
+                /* identity from the order — the previous description is
+                   preserved as its own amendment when it changes */
+                if (order.Summary != s.Description)
+                {
+                    amendments.Add(new("description", s.Description, order.Summary, actor, stamp, reason, role, s.Acknowledged));
+                    s.Description = order.Summary;
+                }
+                s.OrderId = order.OrderId;
+                s.OrderedAt = order.OrderedTime;
+            }
 
             /* ---- the corrected TEXT fields (same limits as documentation;
                a no-op "correction" is a state conflict — nothing changed) ---- */

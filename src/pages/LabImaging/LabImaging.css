@@ -166,5 +166,6 @@
 .li .liseditcrit{display:flex;gap:8px;align-items:flex-start;flex:1 1 100%;font-size:11px;color:var(--dim);cursor:pointer}
 .li .liseditcrit b{color:var(--red)}
 .li .lisselfnote{flex:1 1 100%;font-size:10px;color:var(--green)}
+.li .lislinknote{flex:1 1 100%;font-size:10px;color:var(--dim)}
 .li .liserr{flex:1 1 100%;font-size:11px;color:var(--red)}
 .li .liseditbtns{margin-left:auto;display:flex;gap:6px}

@@ -4751,6 +4751,50 @@ consultant critical fix with reason enforcement; the corrected critical
 SURFACING on Alerts; the §2b line rendering; seeded studies carrying no
 affordance; zero page errors). tsc + vite + dotnet clean.
 
+### Imaging linkage correction (follow-up to Imaging Report Correction)
+
+The two linkage questions asked as a follow-up to the correction build,
+answered on the existing model rather than a new one — the correction
+endpoint gains an order-linkage target:
+
+- **Re-pointing** (`orderId` in the correct request): a report documented
+  against the WRONG pending order is re-pointed to the correct one. The
+  study identity (description) is re-derived from the new order (the
+  entry rule) and the previous description is preserved as its OWN
+  amendment — nothing user-authored is silently erased. Because
+  **fulfilment is derived linkage** (no fulfilment state exists), the
+  wrongly-fulfilled order **returns to pending automatically** — there is
+  no state to reset, the linkage IS the fact — and the 409 second-report
+  rule follows the row: documenting against the freed order succeeds,
+  documenting against the newly-targeted one 409s (both asserted).
+- **Linking after the fact**: an unlinked report (the emergency film shot
+  before ordering) links to a pending order and renders linked — same
+  validation as documentation (order exists 404 / patient+encounter
+  scope 400 / Imaging category 400 / active 409 / not already fulfilled
+  409). **Unlinking** (`unlink: true` — an explicit boolean, never an
+  empty-string sentinel an accidental blank could trigger) removes the
+  linkage, the order returns to pending, and the report renders honestly
+  as "no order — unlinked report" again. Mutually exclusive with
+  `orderId` (400).
+- Same tiers (Tier-1 documenter-in-window, Tier-2 `results.correct` +
+  reason), same amend-not-erase record (target "order",
+  previous→new with actor + active role + time + reason +
+  afterAcknowledgment), same audit event; seeded rows still 409 (no
+  linkage is ever fabricated). UI: an "Order linkage" target in the
+  correction editor with the pending-order picker + unlink option,
+  starting UNPICKED (prefilling the current order would stage a no-op).
+
+**Verified**: 28/28 API matrix (fresh DB: the wrong-order scenario
+end-to-end incl. both 409 directions after re-pointing; link-after-the-
+fact; unlink + the order returning to pending; mutual exclusion, no-ops,
+404/400/409 target validation incl. non-imaging category, other-patient
+scope and discontinued orders; Tier-2 required outside the window;
+Pharmacist 403; §2b afterAcknowledgment on a linkage change; seeded
+byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
+re-derived identity and both amendments render; the freed order
+reappears in Lab Entry's pending picker; consultant unlinks with a
+reason and the honest unlinked rendering returns; zero page errors).
+
 ### Auth-suite seeded-census assertion fixed (deployed-auth-e2e)
 
 Found during the PR #104/#105 post-merge sweep (2026-07-15): the auth

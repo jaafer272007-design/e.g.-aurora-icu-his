@@ -248,14 +248,26 @@ record DocumentImagingRequest(
    wasn't, are both fixable — the marking stays a clinician judgment either
    way). At least one field must be provided. Reason is REQUIRED on Tier-2
    (Consultant-tier — outside the 5-minute window or on another clinician's
-   entry), optional on Tier-1; the SERVER decides the tier. Everything else
-   about the report is immutable here — the order linkage and the study
-   identity it derived are facts of what was documented against, and a
-   payload with any other field fails binding. */
+   entry), optional on Tier-1; the SERVER decides the tier.
+   LINKAGE CORRECTION (follow-up to the correction PR): a report documented
+   against the WRONG pending order leaves the wrong order fulfilled and the
+   right one pending forever — so the linkage is correctable like any other
+   field. OrderId RE-POINTS (or links an unlinked report) to a pending
+   imaging order — the study identity (description) is re-derived from the
+   new order, both changes preserved as amendments; Unlink=true removes the
+   linkage (an explicit boolean, never an empty-string sentinel — an
+   accidental blank must not silently unlink a report). Mutually exclusive.
+   Because fulfilment is DERIVED linkage (#105 — the report row carries the
+   OrderId; no fulfilment state exists), re-pointing automatically returns
+   the previously-linked order to pending and fulfils the new target; the
+   409 second-report rule follows the linkage. The description itself stays
+   immutable as a DIRECT target (identity comes from the order or from
+   documentation); a payload with any other field fails binding. */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CorrectImagingRequest(
     string? Findings, string? Impression, string? PerformedAt,
-    string? ReportingRadiologist, string? Note, bool? Critical, string? Reason);
+    string? ReportingRadiologist, string? Note, bool? Critical, string? Reason,
+    string? OrderId = null, bool? Unlink = null);
 
 /* append-only result audit event — mirrors OrderEventDto's shape */
 record ResultEventDto(string Time, string Actor, string Action, string? Detail);
