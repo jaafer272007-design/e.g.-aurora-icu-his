@@ -10,12 +10,12 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconFlask } from '../../components/icons'
 import {
   acknowledgeImaging, acknowledgeLab, correctImagingReport, getImagingStudies, getLabDraws,
-  getPatientDetail, getPatients, getResultInbox, unacknowledgeImaging, unacknowledgeLab,
+  getPatientDetail, getPatientOrders, getPatients, getResultInbox, unacknowledgeImaging, unacknowledgeLab,
 } from '../../lib/api'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import type {
-  CorrectImagingDraft, ImagingStudy, LabDraw, Patient, PatientSummary, ResultInboxItem,
+  CorrectImagingDraft, ImagingStudy, LabDraw, Order, Patient, PatientSummary, ResultInboxItem,
 } from '../../lib/api/types'
 import { LabTrendsCard } from './LabTrendsCard'
 import { CustomResultsCard } from './CustomResultsCard'
@@ -45,6 +45,8 @@ export function LabImaging() {
   const [draws, setDraws] = useState<LabDraw[] | null>(null)
   const [studies, setStudies] = useState<ImagingStudy[] | null>(null)
   const [inbox, setInbox] = useState<ResultInboxItem[]>([])
+  /* LINKAGE CORRECTION: the patient's orders feed the re-point/link picker */
+  const [orders, setOrders] = useState<Order[] | null>(null)
 
   useEffect(() => { getPatients().then(setPatients) }, [])
 
@@ -59,9 +61,17 @@ export function LabImaging() {
     if (patientId) {
       getLabDraws(patientId).then(setDraws)
       getImagingStudies(patientId).then(setStudies)
+      getPatientOrders(patientId).then(setOrders).catch(() => setOrders(null))
     }
     getResultInbox().then(setInbox)
   }, [patientId])
+
+  /* pending imaging orders = ACTIVE Imaging orders with no linked report —
+     the SAME derived-fulfilment rule as the entry screen (no fulfilment
+     state exists; the linkage IS the fact) */
+  const pendingImagingOrders = (orders ?? []).filter(o =>
+    o.category === 'Imaging' && o.status === 'active'
+    && !(studies ?? []).some(st => st.orderId === o.orderId))
 
   useEffect(() => {
     if (!patientId) return
@@ -217,6 +227,7 @@ export function LabImaging() {
                 <ResultInboxCard items={patientInbox} canAcknowledge={canAck} onAcknowledge={ackInboxItem} />
                 <ImagingCard
                   studies={studies}
+                  pendingOrders={pendingImagingOrders}
                   canAcknowledge={canAck}
                   canDocument={canDocument}
                   canCorrect={canCorrect}

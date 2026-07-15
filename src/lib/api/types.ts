@@ -971,6 +971,14 @@ export interface CorrectImagingDraft {
   /** the corrected CLINICIAN-MARKED critical state — marked in error or
    *  missed, both fixable; still a clinician judgment, never system-derived */
   critical?: boolean
+  /** LINKAGE CORRECTION: re-point (or link an unlinked report) to this
+   *  pending imaging order — identity is re-derived from it; the previous
+   *  description is preserved as its own amendment. Fulfilment is derived,
+   *  so the previously-linked order returns to pending automatically. */
+  orderId?: string
+  /** LINKAGE CORRECTION: remove the linkage (explicit boolean — never an
+   *  empty-string sentinel). Mutually exclusive with orderId. */
+  unlink?: boolean
   /** required on Tier-2 — the server decides the tier */
   reason?: string
 }

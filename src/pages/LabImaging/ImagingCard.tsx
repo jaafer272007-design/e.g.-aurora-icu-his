@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
 import { displayStamp, agoLabel, useNow } from '../../lib/time'
-import type { CorrectImagingDraft, ImagingStatus, ImagingStudy, ResultFlag } from '../../lib/api/types'
+import type { CorrectImagingDraft, ImagingStatus, ImagingStudy, Order, ResultFlag } from '../../lib/api/types'
 
 const STATUS_STEPS: ImagingStatus[] = ['ordered', 'in-progress', 'preliminary', 'final']
 const STATUS_LABEL: Record<ImagingStatus, string> = {
@@ -43,8 +43,13 @@ const TARGETS = [
   ['reportingRadiologist', 'Reporting radiologist'],
   ['note', 'Note'],
   ['critical', 'Critical flag (clinician-marked)'],
+  ['order', 'Order linkage'],
 ] as const
 type Target = (typeof TARGETS)[number][0]
+
+/** the linkage editor's unlink sentinel — UI-only; the wire uses the
+ *  explicit `unlink: true` boolean, never a magic string */
+const UNLINK = '__unlink__'
 
 const currentValueOf = (s: ImagingStudy, target: Target): string => {
   switch (target) {
@@ -54,6 +59,7 @@ const currentValueOf = (s: ImagingStudy, target: Target): string => {
     case 'reportingRadiologist': return s.reportingRadiologist ?? ''
     case 'note': return s.note ?? ''
     case 'critical': return s.flag === 'critical' ? 'critical' : ''
+    case 'order': return s.orderId ?? ''
   }
 }
 
@@ -63,6 +69,10 @@ const clip = (v: string) => (v.length > 90 ? `${v.slice(0, 90)}…` : v)
 
 interface ImagingCardProps {
   studies: ImagingStudy[]
+  /** LINKAGE CORRECTION: the patient's PENDING imaging orders (active,
+   *  unfulfilled — the same derived rule as the entry screen), offered as
+   *  re-point/link targets in the correction editor */
+  pendingOrders: Order[]
   /** derived from the session's permissions (results.acknowledge) */
   canAcknowledge: boolean
   /** Imaging Report Correction: results.document (Tier-1 self) /
@@ -126,7 +136,7 @@ function UnackReasonDialog(
  *  the PR #80 correction model: Tier-1 self within 5 minutes, Tier-2
  *  Consultant-tier with a reason; amend-not-erase history renders below. */
 export function ImagingCard({
-  studies, canAcknowledge: canAck, canDocument, canCorrect, sessionName,
+  studies, pendingOrders, canAcknowledge: canAck, canDocument, canCorrect, sessionName,
   onAcknowledge, onUnacknowledge, onCorrect,
 }: ImagingCardProps) {
   const now = useNow(10_000)
@@ -163,6 +173,9 @@ export function ImagingCard({
     setEditTarget(target)
     setEditError(null)
     if (target === 'critical') setEditCritical(s.flag === 'critical')
+    /* the linkage target starts UNPICKED — prefilling the current order
+       would stage a no-op; the corrector must choose deliberately */
+    else if (target === 'order') setEditValue('')
     else setEditValue(currentValueOf(s, target))
   }
 
@@ -172,6 +185,10 @@ export function ImagingCard({
     const draft: CorrectImagingDraft = {}
     if (editTarget === 'critical') {
       draft.critical = editCritical
+    } else if (editTarget === 'order') {
+      if (editValue === '') { setEditError('pick the correct pending order, or unlink'); return }
+      if (editValue === UNLINK) draft.unlink = true
+      else draft.orderId = editValue
     } else {
       const raw = editValue.trim()
       if (raw === '') { setEditError(`enter the corrected ${editTarget}`); return }
@@ -275,7 +292,26 @@ export function ImagingCard({
                 >
                   {TARGETS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
                 </select>
-                {editTarget === 'critical' ? (
+                {editTarget === 'order' ? (
+                  <>
+                    <select
+                      aria-label="Corrected order linkage"
+                      value={editValue}
+                      onChange={e => { setEditValue(e.target.value); setEditError(null) }}
+                    >
+                      <option value="">— currently {s.orderId ? `linked to ${s.orderId}` : 'unlinked'}; pick the correction —</option>
+                      {pendingOrders.map(o => (
+                        <option key={o.orderId} value={o.orderId}>{o.orderId} · {o.summary}</option>
+                      ))}
+                      {s.orderId && <option value={UNLINK}>Unlink — no order ({s.orderId} returns to pending)</option>}
+                    </select>
+                    <span className="lislinknote">
+                      Fulfilment is derived from the linkage: re-pointing returns the wrong order to
+                      pending and fulfils the picked one; the study identity is re-derived from it.
+                      The previous linkage and description are preserved as amendments.
+                    </span>
+                  </>
+                ) : editTarget === 'critical' ? (
                   <label className="liseditcrit">
                     <input type="checkbox" checked={editCritical} onChange={e => { setEditCritical(e.target.checked); setEditError(null) }} />
                     <span>marked as a critical finding — <b>clinician-marked</b>, never system-derived; moving this moves the report into/out of the critical results</span>
