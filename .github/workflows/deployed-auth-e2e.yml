@@ -5,7 +5,13 @@
 # Dispatch manually after a merge deploys /server changes to Render.
 # IDEMPOTENT UNDER ADT (Layer 2): the census legitimately changes as
 # encounters open/close, so the seeded 14 patients are asserted as a
-# SUBSET — never an exact count.
+# SUBSET — never an exact count. A seeded patient absent from the
+# roster is exempt ONLY when the ADT encounter history PROVES a
+# discharge (the exemption the assertion always named but never
+# checked — it first fired live on 2026-07-15 when three seeded
+# patients had been discharged during staging use). No encounter
+# record at all, or an open encounter while absent from the roster,
+# stays a loud failure.
 name: Deployed API E2E
 on: workflow_dispatch
 
@@ -176,13 +182,28 @@ jobs:
 
       - name: Roster serves the seeded records with a valid token (+ CORS header)
         run: |
+          # The roster is the OPEN-ENCOUNTER census, so a seeded patient may
+          # legitimately be absent — but only by discharge. Each absentee is
+          # verified against the ADT encounter history: at least one
+          # encounter must exist and every one must be discharged. Anything
+          # else (no record; an open encounter yet off the roster) is a real
+          # defect and fails loudly.
           curl -sf -D /tmp/headers -H "Authorization: Bearer $TOKEN" -H "Origin: $PAGES_ORIGIN" \
             "$API/api/icu/patients" -o /tmp/body.json
           grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/headers
           python3 -c '
-          import json; d=json.load(open("/tmp/body.json"))
+          import json, os, urllib.request
+          d=json.load(open("/tmp/body.json"))
           ids={r["patientId"] for r in d}
           seeded={f"P-10{n:02d}" for n in range(1,15)}
-          missing=seeded-ids
-          assert not missing, f"seeded patients missing (unless discharged by ADT): {missing}"
-          print(f"records: {len(d)} (seeded 14 present; ADT-admitted extras expected)")'
+          missing=sorted(seeded-ids)
+          api=os.environ["API"]; tok=os.environ["TOKEN"]
+          for pid in missing:
+              req=urllib.request.Request(f"{api}/api/icu/adt/encounters?patientId={pid}",
+                                         headers={"Authorization": f"Bearer {tok}"})
+              encs=json.load(urllib.request.urlopen(req, timeout=30))
+              assert encs, f"{pid} is off the roster with NO encounter record at all — not an ADT discharge"
+              open_=[e for e in encs if e["status"]=="open"]
+              assert not open_, f"{pid} has an OPEN encounter yet is missing from the roster — roster defect"
+              print(f"{pid}: off the census legitimately — {len(encs)} encounter(s), all discharged")
+          print(f"records: {len(d)} · seeded on the roster: {14-len(missing)}/14 · proven discharged: {len(missing)}")'
