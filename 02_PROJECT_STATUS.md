@@ -1,6 +1,26 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-14 · current through the DISCHARGE DISPOSITION
+**Last updated: 2026-07-15 · current through the STATISTICS PAGE (built —
+the ICU Analytics Dashboard closes the FIRST of the three dead nav items:
+`/statistics` is a real screen with five sections — Current Unit Status,
+Admissions, Outcomes, Clinical Quality, Trends — EVERY metric computed at
+render from the canonical reads (beds/encounters/observations/orders/labs/
+formulary + the scoring engine; `src/lib/statistics.ts`, no stored stats,
+no forks) or shown as an explicit "not tracked yet" placeholder (isolation,
+medication errors, documentation completeness — dashed/amber, unmistakably
+not a number). Honesty rules built in: INCOMPLETE-aware denominator-
+labelled SOFA/NEWS2 averages ("over N of M with complete data" — never
+averaging INCOMPLETE as zero), mortality = died ÷ discharges WITH a
+recorded disposition with the pre-capture exclusion STATED, LOS/periods/
+time-to-antibiotic over dated records only with going-forward sparseness
+stated on the page, real 0 distinct from "insufficient data" distinct from
+"not tracked yet". UNIT-LEVEL AGGREGATES ONLY — no patient identifier on
+the page, so the office Administrator (whose core use this is) reaches it
+via patients.view like every profile; trend granularity: daily × 14 days,
+scores at their native 24 h windows. 24/24 headless computation checks +
+34/34 real-browser checks incl. source spot-checks and the admin view.
+Design recorded verbatim at docs/design/statistics-dashboard-design.md).
+Prior: the DISCHARGE DISPOSITION
 (built — Statistics prerequisite 2: the OUTCOME of the ICU stay is now
 captured at discharge. The discharge flow requires the discharging
 clinician to select one of home / ward / transfer_out / higher_care /
@@ -4067,7 +4087,85 @@ clinician as part of the discharge flow, part of the discharge record.
   errors). tsc + vite + dotnet clean.
 - **Recorded follow-up (not built here)**: a deployed-adt-e2e leg
   asserting disposition round-trip on staging; the Statistics page
-  itself (prerequisite now met).
+  itself (prerequisite now met). *[The Statistics page is now BUILT —
+  see the next section.]*
+
+### Statistics page (built) — the ICU Analytics Dashboard, first dead nav item closed
+Built in full from docs/design/statistics-dashboard-design.md (recorded
+verbatim; clinical source: the validator). `Statistics` was one of three
+nav items that existed but did nothing — it is now a real screen at
+`/statistics`, and the nav item navigates. Both prerequisites are in:
+dated timestamps (#95) unlock LOS / period counts / time-to-antibiotic /
+readmission windows / trends; the discharge disposition (#96) unlocks
+deaths / ICU mortality / the outcome breakdown.
+- **Computed at render, no stored statistics**: `src/lib/statistics.ts`
+  (pure, headless-tested) aggregates the canonical reads — beds,
+  encounters (all), formulary, and per-current-patient labs/observations/
+  orders — plus the Clinical Scoring Engine for unit SOFA/NEWS2. No
+  forks, no mocks, no duplicated numbers.
+- **The five sections** (design §1): Current Unit Status (occupancy,
+  available beds, ventilated — from the charted respiratory-support
+  observations via the NEWS2 context, ONE definition; vasopressor — active
+  Vasopressor-class medication orders per the FORMULARY, deliberately
+  INCLUDING vasopressin/phenylephrine which SOFA excludes from scoring;
+  average SOFA/NEWS2; average LOS), Admissions (today / UTC calendar
+  week / UTC calendar month — dated records only, undated seeds counted
+  nowhere and said so), Outcomes (period discharges, deaths, ICU
+  mortality, the six-code outcome breakdown + an honest "not recorded
+  (pre-capture)" chip, readmitted patients, <48 h readmissions over dated
+  pairs only), Clinical Quality (critical-labs-acknowledged rate,
+  average time-to-antibiotic over dated admissions with an
+  Antibiotic-class order), Trends.
+- **The three "not tracked yet" placeholders** (§2): Isolation patients,
+  Medication errors, Documentation completeness — dashed amber tiles
+  reading "NOT TRACKED YET" with the missing capability named; visually
+  unmistakable from a real 0 (plain number) and from "insufficient data"
+  (dimmed dash + reason). FLAGGED for the validator (open item 3):
+  safety-override counts ARE real and audited and could stand in for the
+  medication-errors placeholder — noted on the tile, not decided.
+- **Honest display rules (§0/§4), all rendered**: INCOMPLETE-aware
+  averages with denominators ("Average SOFA — over N of M current
+  patients with complete data"; INCOMPLETE never averaged as zero);
+  mortality = died ÷ discharges WITH a disposition and the page STATES
+  the pre-capture exclusion count; a page-level going-forward banner
+  (dated/disposition data is new-records-only — accurate but sparse until
+  it accumulates); every time-based metric labels its dated denominator.
+- **Trend granularity (open item 4, the stated choice)**: occupancy and
+  admissions DAILY over the last 14 days (dated encounters only, the
+  count shown); unit SOFA/NEWS2 at the scores' NATIVE 24 h windows (now /
+  24 h ago / 48 h ago), each point averaging only the patients whose
+  window is computable, denominator in the tooltip. Sensible for
+  going-forward data that is initially thin; widen when data accumulates.
+- **RBAC (open item 2, the flagged set)**: gated on `patients.view` —
+  ALL EIGHT profiles reach Statistics, including the office Administrator
+  (their core use, the validator's requirement). Appropriate because the
+  page is UNIT-LEVEL AGGREGATES ONLY: counts/rates/averages/trends, no
+  patient name or id anywhere (browser-asserted for both the doctor and
+  the admin view). Drilling into a patient stays gated exactly as today.
+- **Performance (open item 1, verified)**: unit SOFA/NEWS2 means N
+  patients × 3 parallel reads (labs/observations/orders) + 3 unit reads —
+  ~50 requests at the current 16-bed scale, fetched in parallel once per
+  page load with trivial engine math; renders promptly in the browser
+  run. ACCEPTABLE at this scale; a server-side aggregate endpoint is the
+  recorded approach if the unit count grows.
+- **Verification**: 24/24 headless computation checks (synthetic-input
+  proofs: INCOMPLETE never averaged as zero with a null-not-zero average;
+  mortality denominator excludes disposition-less discharges; census
+  vasopressin counts while SOFA excludes it; dated-only LOS/periods/
+  readmission-windows/trends; time-to-antibiotic math; period helpers)
+  + 34/34 real-browser checks (nav item navigates — dead nav closed; all
+  five sections; exactly 3 "not tracked yet" tiles; denominators and
+  exclusions rendered; occupancy/mortality/deaths/admissions-today
+  spot-checked against fresh reads of the canonical sources; NEWS2
+  average computable over a fully-charted seeded patient — a REAL 0
+  rendered as 0, not a dash; no patient identifier on the page; the
+  Administrator reaches the page and sees aggregates only; zero page
+  errors). tsc + vite + dotnet clean.
+- **Deferred / recorded as future (§5)**: isolation capture; a
+  medication-error reporting entity (or the flagged safety-override
+  metric); a note store + a documentation-completeness definition;
+  retroactive dating/disposition — NEVER. Remaining dead nav items:
+  Alerts, then Settings.
 
 ## Post-Phase-3 Roadmap — four-layer data architecture (LOCKED build order)
 The remaining build is organized as four data layers. Each layer must sit
