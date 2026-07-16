@@ -106,10 +106,24 @@ static class AdtApi
            patient's DOB is a guess and MUST be correctable once known, or
            a wrong age propagates into every score and dose (attributed
            supersede note in 02).
+           THE MRN CORRECTS HERE TOO (the #116 flag resolved by the
+           owner) — safe only NOW because #116 retired the MRN as the
+           re-admission linking key (re-admission keys on patientId), so
+           the MRN is purely a display identifier and correcting one no
+           longer changes who a future re-admission attaches to. A typed
+           `mrn` must be canonical MRN-###### (flagged decision: free-form
+           entry is the exact hole #116 closed, and every legitimate MRN
+           is already canonical — the only non-canonical one in existence
+           is the wrong value this path exists to fix); `regenerateMrn`
+           has Aurora assign a fresh unique number via AdtLogic.NextMrn
+           (the #116 generator — no fork). NEVER silent: previous→new in
+           the audited history like every other identity field.
            FOUR-CODE: absent patient → 404; missing reason / partial name
-           set / malformed DOB → 400; a nationalId already recorded for
-           ANOTHER patient → 409 naming the conflict; a correction that
-           changes nothing → 400 (the no-field-change precedent). */
+           set / malformed DOB / non-canonical or blank mrn / mrn AND
+           regenerateMrn together → 400; a nationalId OR an MRN already
+           recorded for ANOTHER patient → 409 naming the conflict; a
+           correction that changes nothing → 400 (the no-field-change
+           precedent). */
         app.MapPut("/api/icu/adt/patients/{patientId}/identity",
             (string patientId, CorrectIdentityRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
@@ -119,7 +133,7 @@ static class AdtApi
             foreach (var (field, value) in new[] {
                 ("reason", req.Reason), ("nameFirst", req.NameFirst), ("nameSecond", req.NameSecond),
                 ("nameThird", req.NameThird), ("nameFourth", req.NameFourth),
-                ("nameFamily", req.NameFamily), ("nationalId", req.NationalId) })
+                ("nameFamily", req.NameFamily), ("nationalId", req.NationalId), ("mrn", req.Mrn) })
                 if (value is not null && value.Length > AdtLogic.MaxTextLength)
                     return ApiError.BadRequest($"{field} exceeds {AdtLogic.MaxTextLength} characters");
 
@@ -146,8 +160,24 @@ static class AdtApi
                     : req.NationalId.Trim();
             if (nationalId == "")
                 return ApiError.BadRequest("nationalId must be the number as it appears on the identity card — clearing a recorded national ID is not an identity correction");
-            if (!anyName && nationalId is null && dob is null)
-                return ApiError.BadRequest("nothing to correct — provide the structured name, nationalId, and/or dateOfBirth");
+
+            /* MRN correction (the #116 flag resolved): typed value XOR
+               regenerate; a typed value must be canonical MRN-###### —
+               free-form entry is the exact hole #116 closed */
+            var regenerateMrn = req.RegenerateMrn == true;
+            string? mrn = null;
+            if (req.Mrn is not null)
+            {
+                if (regenerateMrn)
+                    return ApiError.BadRequest("provide either mrn or regenerateMrn, not both — a correction states the number, regeneration asks Aurora to assign one");
+                mrn = req.Mrn.Trim();
+                if (mrn == "")
+                    return ApiError.BadRequest("clearing an MRN is not an identity correction — provide the corrected number, or regenerateMrn to have Aurora assign one");
+                if (!System.Text.RegularExpressions.Regex.IsMatch(mrn, @"^MRN-\d{6}$"))
+                    return ApiError.BadRequest("a corrected MRN must use the canonical MRN-###### format — free-form record numbers are the class of error this path removes; use regenerateMrn to have Aurora assign one");
+            }
+            if (!anyName && nationalId is null && dob is null && mrn is null && !regenerateMrn)
+                return ApiError.BadRequest("nothing to correct — provide the structured name, nationalId, dateOfBirth, mrn, and/or regenerateMrn");
 
             var row = db.AdtPatients.FirstOrDefault(p => p.PatientId == patientId);
             if (row is null) return ApiError.NotFound();
@@ -159,6 +189,15 @@ static class AdtApi
                     return ApiError.StateConflict(
                         $"national identity number '{nationalId}' is already recorded for patient "
                         + $"'{holder.PatientId}' ({holder.DisplayName}, {holder.Mrn}) — national identity numbers are unique");
+            }
+            if (mrn is not null)
+            {
+                var mrnHolder = db.AdtPatients.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(p => p.Mrn == mrn && p.PatientId != patientId);
+                if (mrnHolder is not null)
+                    return ApiError.StateConflict(
+                        $"MRN '{mrn}' is already assigned to patient '{mrnHolder.PatientId}' "
+                        + $"({mrnHolder.DisplayName}) — MRNs are unique");
             }
 
             /* build the previous→new diff — the previous identity is the
@@ -188,6 +227,15 @@ static class AdtApi
                 parts.Add($"dateOfBirth: {row.DateOfBirth ?? (row.Age is int a ? $"— (estimated age {a})" : "—")} → {dob}");
                 row.DateOfBirth = dob;
                 row.Age = null;   /* age derives from DOB from now on */
+            }
+            /* NextMrn checks EVERY existing MRN including this row's, so a
+               regenerated value can never equal the current one — the
+               diff below always records regeneration */
+            if (regenerateMrn) mrn = AdtLogic.NextMrn(db);
+            if (mrn is not null && mrn != row.Mrn)
+            {
+                parts.Add($"mrn: {row.Mrn} → {mrn}");
+                row.Mrn = mrn;
             }
             if (parts.Count == 0)
                 return ApiError.BadRequest("no change — the provided identity matches the record");

@@ -217,7 +217,7 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$PID?verbose=1")
           echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
 
-      - name: STRUCTURED IDENTITY — retired name field 400; unknown patients admit (no ID, names not unique); duplicate national ID 409; AUDITED identity correction (office Administrator)
+      - name: STRUCTURED IDENTITY — retired name field 400; unknown patients admit (no ID, names not unique); duplicate national ID 409; AUDITED identity correction (office Administrator) incl. the MRN (typed canonical / regenerate — the #116 flag resolved)
         run: |
           # office Administrator token (huda.nasser, Receptionist) — the
           # flagged identity-correction authority: registration work,
@@ -293,6 +293,52 @@ jobs:
           # the uncorrected Unknown stays honestly unknown (never fabricated)
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$UP2" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["name"]=="Unknown Unknown Unknown" and d.get("nationalId") is None and not d.get("identity"), d; print("second Unknown untouched — no fabricated identity")'
+          # ---- MRN CORRECTION on the same audited path (the #116 flag
+          # resolved) — safe now that re-admission keys on patientId ----
+          # the DOCTOR may not touch the MRN either (same 403 gate, no control)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"regenerateMrn":true,"reason":"x"}' "$API/api/icu/adt/patients/$UP2/identity")
+          echo "doctor MRN correction -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          # a NON-CANONICAL typed MRN is refused — free-form entry is the
+          # class of error this path removes (probed with the exact
+          # P-1191 value: a national ID in the MRN slot)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"mrn":"214313412","reason":"r"}' "$API/api/icu/adt/patients/$UP2/identity")
+          echo "non-canonical typed MRN -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # a typed value AND regenerate together -> 400 (exactly one)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"mrn":"MRN-123456","regenerateMrn":true,"reason":"r"}' "$API/api/icu/adt/patients/$UP2/identity")
+          echo "mrn + regenerateMrn together -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # a DUPLICATE MRN is refused — 409 naming the holder (probed with
+          # UP1's real generated MRN: deterministic against the durable DB)
+          M1=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$UP1" | python3 -c 'import json,sys; print(json.load(sys.stdin)["mrn"])')
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$M1'","reason":"dup probe"}' "$API/api/icu/adt/patients/$UP2/identity")
+          rc=$(echo "$out" | tail -1); echo "duplicate MRN -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | UP1="$UP1" python3 -c 'import json,sys,os; e=json.load(sys.stdin)["error"]; assert os.environ["UP1"] in e and "unique" in e, e; print("precise 409:", e)'
+          # REGENERATE — Aurora assigns a fresh canonical number; audited
+          # with the PREVIOUS value preserved in the previous→new diff
+          M2OLD=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$UP2" | python3 -c 'import json,sys; print(json.load(sys.stdin)["mrn"])')
+          curl -sf -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"regenerateMrn":true,"reason":"the recorded value was never an MRN — regenerated into the canonical format"}' \
+            "$API/api/icu/adt/patients/$UP2/identity" -o /tmp/mrncorr.json
+          M2OLD="$M2OLD" python3 -c '
+          import json,os,re; d=json.load(open("/tmp/mrncorr.json")); old=os.environ["M2OLD"]
+          assert re.fullmatch(r"MRN-\d{6}", d["mrn"]) and d["mrn"] != old, d["mrn"]
+          ev=d["identity"]; assert len(ev)==1, ev
+          assert ev[0]["role"]=="Receptionist" and f"mrn: {old} " in ev[0]["detail"] and d["mrn"] in ev[0]["detail"], ev
+          print("MRN regenerated + audited:", ev[0]["detail"])'
+          # TYPED canonical correction — back to the just-freed old value
+          # (deterministic: it was UP2's own MRN a moment ago, nobody
+          # else can hold it); history stays APPEND-ONLY
+          curl -sf -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$M2OLD'","reason":"typed canonical correction probe"}' \
+            "$API/api/icu/adt/patients/$UP2/identity" -o /tmp/mrncorr2.json
+          M2OLD="$M2OLD" python3 -c '
+          import json,os; d=json.load(open("/tmp/mrncorr2.json"))
+          assert d["mrn"]==os.environ["M2OLD"], d["mrn"]
+          assert len(d["identity"])==2, d["identity"]
+          print("typed MRN correction recorded; history append-only:", len(d["identity"]), "events")'
 
       - name: State conflicts — occupied bed / duplicate open encounter → 409 naming the conflict (four-code rule)
         run: |

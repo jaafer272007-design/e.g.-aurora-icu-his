@@ -1274,7 +1274,11 @@ export interface IdentityEvent {
 /** the audited identity correction (office Administrator authority —
  *  identity.correct): correcting the name requires the complete
  *  structured set; nationalId / dateOfBirth correct independently;
- *  reason always required */
+ *  reason always required. The MRN corrects here too (the #116 flag
+ *  resolved — safe now that re-admission keys on patientId, not the
+ *  MRN): a typed `mrn` must be canonical MRN-###### and unique;
+ *  `regenerateMrn` has Aurora assign a fresh unique number instead —
+ *  exactly one of the two; the previous value stays in the history */
 export interface CorrectIdentityDraft {
   nameFirst?: string
   nameSecond?: string
@@ -1283,6 +1287,8 @@ export interface CorrectIdentityDraft {
   nameFamily?: string
   nationalId?: string
   dateOfBirth?: string
+  mrn?: string
+  regenerateMrn?: boolean
   reason: string
 }
 
