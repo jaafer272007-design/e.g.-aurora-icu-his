@@ -1086,12 +1086,13 @@ export interface ResultInboxItem {
    on the user's own token. */
 
 export interface AiQueryResponse {
-  /** the selected tool name (null when unanswerable / refused) */
-  tool: string | null
+  /** the selected tool name — ABSENT/null when unanswerable/refused (the
+   *  server's JSON convention drops null fields on the wire) */
+  tool?: string | null
   /** the tool's arguments as parsed JSON (shape owned by the tool registry) */
-  args: Record<string, unknown> | null
+  args?: Record<string, unknown> | null
   /** the model's honest refusal reason (mutually exclusive with tool) */
-  unanswerable: string | null
+  unanswerable?: string | null
 }
 
 /* ================= Layer 2 — ADT (Aurora Core) =================

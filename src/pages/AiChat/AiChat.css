@@ -63,6 +63,9 @@
 .ac .acseries .pt.inc{color:var(--faint);border-style:dashed}
 
 .ac .accomposer{display:flex;gap:9px}
+/* the dev/staging environment banner is a FIXED bottom overlay — keep the
+   composer clear of it (production renders no banner, no offset) */
+body:has(.envbanner) .ac .accomposer{margin-bottom:26px}
 .ac .accomposer input{flex:1;min-width:0;border:1px solid var(--stroke);border-radius:12px;background:var(--panel);color:var(--text);padding:11px 14px;font-size:13px;font-family:var(--sans)}
 .ac .accomposer input:focus{outline:none;box-shadow:var(--focus)}
 .ac .accomposer button{border:1px solid rgba(var(--violet-rgb),.5);border-radius:12px;background:rgba(var(--violet-rgb),.16);color:var(--violet);font-weight:700;font-size:13px;padding:0 22px;cursor:pointer}

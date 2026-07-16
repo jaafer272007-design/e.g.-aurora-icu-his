@@ -97,14 +97,18 @@ export function AiChat() {
       setEntries(prev => prev.map(e => (e.id === id ? { ...e, ...p } : e)))
     try {
       const t = await aiTranslateQuery(question, contextPatient?.patientId ?? null, chatHistory())
-      pushChatTurn({ question, tool: t.tool })
-      if (t.unanswerable !== null || t.tool === null) {
-        patch({ state: 'done', unanswerable: t.unanswerable ?? 'the model did not select a tool' })
+      /* the wire convention drops null fields — normalize before branching */
+      const tool = t.tool ?? null
+      const args = t.args ?? null
+      const unanswerable = t.unanswerable ?? null
+      pushChatTurn({ question, tool })
+      if (unanswerable !== null || tool === null) {
+        patch({ state: 'done', unanswerable: unanswerable ?? 'the model did not select a tool' })
         return
       }
-      patch({ tool: t.tool, args: t.args })
+      patch({ tool, args })
       try {
-        const result = await executeAiTool(t.tool, t.args)
+        const result = await executeAiTool(tool, args)
         patch({ state: 'done', result })
       } catch (e) {
         patch({ state: 'done', error: e instanceof Error ? e.message : 'the query could not be executed' })
@@ -515,8 +519,8 @@ function ResultBlock({ r }: { r: AiToolResult }) {
         <div className="accard">
           <h3>Unit ranking by {name} — computed by Aurora</h3>
           <p>
-            Of <b className="num">{r.total}</b> patients, <b className="num">{r.ranked.length}</b> have
-            a computable {name}{r.incomplete.length > 0 && <>
+            Of <b className="num">{r.total}</b> patients, <b className="num">{r.ranked.length}</b>{' '}
+            {r.ranked.length === 1 ? 'has' : 'have'} a computable {name}{r.incomplete.length > 0 && <>
               ; <b className="num">{r.incomplete.length}</b> are INCOMPLETE and cannot be ranked —
               a missing score is never ranked as low</>}.
           </p>

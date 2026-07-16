@@ -1,6 +1,11 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-16 · current through PATIENT IDENTITY MATCH +
+**Last updated: 2026-07-16 · current through the AI ASSISTANT GROUNDED
+QUERY CHAT (the validator's design — the entirely simulated risk
+assistant is DELETED and replaced by a grounded query chat whose one rule
+is that the LLM emits a QUERY, never a VALUE; production is recorded in
+01 as ON-PREMISES PER HOSPITAL with Render staging-only — see its record
+below); prior marker retained: current through PATIENT IDENTITY MATCH +
 HISTORY OVERVIEW (the validator's design — supersedes #116's
 discharged-patient picker; see its record below); prior marker retained:
 current through MRN CORRECTION ON THE
@@ -4830,6 +4835,121 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### AI Assistant — grounded query chat (built — the validator's design; the simulation is DELETED)
+
+Built in full from the validator's AI Assistant design — **the
+highest-stakes feature in the project**. The entire simulated assistant
+is **deleted, not labelled**: the fabricated risk percentages that RANKED
+the patient rail a doctor scans to decide who is sickest (a random number
+was triaging patients), the sparklines, "contributing factors",
+"suggested actions", the MODEL TICK, the seeded `AiRisks` table +
+`ai-seed.json`, the `/api/icu/ai/ranking` + `/api/icu/ai/risks` endpoints
+(now 404), the Mission Control AI panel, `src/lib/api/data/ai.ts`,
+`src/lib/risk.ts`, and the fabricated AI term in every patient's derived
+`alertCount` — all grep-asserted gone.
+
+**Verified against the real code first (the reported answers):** the
+fabricated-risk blast radius was one canonical store with exactly three
+client consumers plus the real server endpoints, so deleting the store
+deletes the domain; the **historical score series for "worst period" IS
+honestly computable** — the scoring engine's context builders already
+take `asOfMinutesAgo`, so a series is the canonical computation repeated
+at earlier window ends (a thin new builder, `src/lib/scoring/series.ts` —
+never an approximation); audit had the PatientAssignment
+row-is-the-record precedent; provider config had the AppEnv precedent.
+
+What replaced it (architecture recorded in 01 — "AI Assistant — grounded
+query architecture"):
+- **Server** (`server/Core/Ai/AiApi.cs`): `POST /api/icu/ai/query` (RBAC
+  `ai.view` — same four clinical profiles as before; office roles 403)
+  translates the question into ONE tool call from a fixed catalog of 13
+  READ tools + `unanswerable` via an OpenAI-compatible adapter
+  (`AI_PROVIDER`/`AI_ENDPOINT`/`AI_MODEL`/`AI_API_KEY`,
+  `tool_choice=required`, temperature 0, ~50 output tokens).
+  `AI_PROVIDER=none` (the default, and staging's current state) is an
+  honest 503 naming the fact. The response contract has NO field that
+  could carry a clinical value. EVERY accepted question writes an
+  `AiQueries` audit row (append-only): actor, ACTIVE role, question,
+  context patient, translated tool+args, outcome — including
+  `unanswerable`, `unknown-tool`, `no-provider` and `provider-error`
+  attempts. Migration `AddAiQueries` creates it and DROPS `AiRisks`.
+- **Client** (`/ai`, `src/pages/AiChat` + `src/lib/ai/tools.ts`): a
+  UNIT-scoped chat (the fake-risk rail is gone; the remembered patient —
+  or `/ai/:patientId` — rides as a droppable context chip, never a forced
+  patient). The mirror tool registry refuses any name not on it and
+  executes through the SAME canonical reads every screen uses, on the
+  user's own token; results render with Aurora's own components and the
+  QUERY is shown with every answer. Patient references resolve against
+  the real census (exact on P-id/bed/MRN/national-ID, substring on
+  name/fullName incl. Arabic; ambiguity surfaces candidates for the human
+  to pick — never auto-picked; no fuzzy matching). "Worst" per the
+  design's §7: `score_ranking`/`worst_period` name their instrument,
+  Aurora computes (SOFA worst-in-24h / NEWS2 latest, the cards' own
+  modes), only COMPLETE scores rank, and the INCOMPLETE denominator is
+  stated ("Of 15 patients, 1 has a computable NEWS2; 14 are INCOMPLETE
+  and cannot be ranked — a missing score is never ranked as low"), with
+  the decision-support/requires-clinical-validation footer on every
+  scored answer. `worst_period` recomputes the score at 6-hourly window
+  ends across the charted record (14-day cap, stated) and reports the
+  peak among COMPLETE points only — with an honest "cannot be identified,
+  nothing is approximated in its place" when no complete point exists.
+  Conversation memory = (question, tool) pairs only, last 6 on the wire,
+  cleared on sign-out (`clearChatMemory` in `signOut`).
+- **deployed-ai-e2e.yml rewritten** for the new contract: simulation
+  stays 404, clerk 403, validation 400s, and the query response is either
+  the honest 503 (no staging model) or a 200 whose keys are a subset of
+  tool/args/unanswerable.
+
+**Verified** (fresh DB; the model role played by a deterministic
+OpenAI-compatible stand-in on localhost so the full plumbing —
+adapter → contract → registry → render — runs; see the flags): **17/17
+API matrix** (translation to `orders`/`score_ranking`/`worst_period`;
+honest `unanswerable` for an advice question; a deliberately-returned
+NON-CATALOG tool (`place_order`) refused visibly by name with nothing
+executed; clerk 403 / nurse 200 / unauthenticated 401; old endpoints 404;
+empty/oversized/unknown-field 400s; the audit log carrying every outcome
+with actor + active role + the Arabic question + context patient; Orders/
+Observations row counts unchanged by queries — no write path) + **20/20
+real-browser** (رضا admitted with the structured Arabic name + 3 real
+orders + a NEWS2-complete observation round: "give me all the orders for
+رضا" renders Aurora's own order list **value-for-value** — all order ids,
+every summary string verbatim, count exactly the Orders screen's; the
+ranked question names NEWS2, states the INCOMPLETE denominator, ranks
+only رضا and the chat's NEWS2 total **equals the Mission Control NEWS2
+card's** (8/20) for the same patient; "worst period" with no complete
+SOFA in the record answers honestly that it cannot be identified;
+advice → refusal with no tool executed; census matches; the context chip;
+nurse answers from her own token; clerk gets Access Restricted with no AI
+nav item; zero page errors). One rendered-UI defect found and fixed
+during verification: the fixed dev/staging environment banner overlapped
+the chat composer (`body:has(.envbanner)` offset; production renders no
+banner).
+
+**Flags (stated, not silently decided):**
+1. **GPU vs CPU-only on hospital servers — UNKNOWN.** Assumed
+   CPU-tolerable per the design (the task is one tiny structured tool
+   call): a 7–14B instruct model with strong tool calling (Qwen 2.5
+   class; Llama 3.1 8B viable). The real hardware decides model size and
+   latency — report needed from the deployment side.
+2. **Staging model ≠ production model — a real gap.** Local verification
+   used a deterministic stand-in provider (never committed to app code);
+   staging currently has NO provider (honest 503). A prompt tuned on one
+   model behaves differently on another — the production (local) model
+   must be exercised before real use. The adapter is the mitigation, not
+   the proof.
+3. **Prose budget — resolved to ZERO.** The server contract has no prose
+   field at all; every word on screen is Aurora template text. Stricter
+   than the design's "short framing line" allowance; trivially relaxable
+   later if the validator wants framing prose (it would reopen the
+   fabrication surface the design warns about).
+4. **Worst-period series** — buildable honestly and BUILT (see above);
+   the engine's own primitives, no approximation.
+5. **Screen scope** — unit-scoped chat with the remembered patient as
+   droppable context (the design's recommendation, implemented).
+6. **Conversation memory** — (question, tool) pairs only, last 6,
+   cleared on sign-out AND hard refresh; never persisted, tool RESULTS
+   never ride back through the endpoint.
 
 ### Patient Identity Match + History Overview (built — the validator's design; supersedes #116's picker)
 
