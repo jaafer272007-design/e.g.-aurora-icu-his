@@ -169,7 +169,7 @@ jobs:
           # `read VAR <<<"$(…)"` swallowed it (2026-07-10 audit finding).
           # THE RETIREMENT IS VISIBLE ON THE WIRE: a signed order stores no
           # dose slots — administrations must be absent/empty at create.
-          OID=$(python3 -c 'import json; d=json.load(open("/tmp/o.json"))[0]; assert not d.get("administrations"), f"stored schedule leaked: {d[\"administrations\"]}"; print(d["orderId"])')
+          OID=$(python3 -c 'import json; d=json.load(open("/tmp/o.json"))[0]; assert not d.get("administrations"), "stored schedule leaked: %s" % d.get("administrations"); print(d["orderId"])')
           echo "created $OID (no stored schedule — correct)"
           # the derived schedule serves exactly ONE upcoming dated instance
           curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" -o /tmp/mar1.json
