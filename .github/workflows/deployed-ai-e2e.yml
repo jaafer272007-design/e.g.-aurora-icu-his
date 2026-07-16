@@ -1,21 +1,28 @@
-# Deployed AI E2E — verifies the LIVE Render service (Stage 10 Phase 3, the
-# FINAL domain: AI Clinical Assistant). Authenticated reads return the real
-# ranking + per-patient risk profiles, unauthenticated is 401, the domain is
-# read-only for EVERY role (both doctor and nurse read 200 — no mutations, no
-# RBAC surface), malformed/unknown query params are 400 (never a silent 200,
-# never a 500), and risk trend/delta are COMPUTED at read (present on the wire,
-# absent from what is stored). Dispatch manually after merging /server to main.
+# Deployed AI E2E — verifies the LIVE Render service's AI GROUNDED QUERY
+# contract (the grounded-query-chat rework: the fabricated risk domain is
+# DELETED — this suite proves it stays deleted). The one endpoint is
+# POST /api/icu/ai/query: it translates a natural-language question into a
+# structured tool call (the LLM emits a QUERY, never a VALUE) and audits
+# the question; it NEVER executes reads and its response carries no
+# patient data. Asserted here:
+#   - the retired simulation endpoints (/ai/ranking, /ai/risks) are 404
+#   - unauthenticated query is 401; a clerk profile (no ai.view) is 403
+#   - validation is loud: empty/oversized question and unknown fields 400
+#   - the response is EITHER an honest 503 "no model configured" (staging
+#     has no AI_PROVIDER by default) OR, when a provider is configured, a
+#     200 whose body contains ONLY tool/args/unanswerable — never any
+#     field that could carry a clinical value
+# Dispatch manually after merging /server to main.
 #
-# IDEMPOTENT BY DESIGN: the AI domain is entirely read-only — there are no
-# mutations, so every assertion is a stable read against the seeded data and
-# the workflow can be re-dispatched any number of times against the ephemeral
-# DB with identical results.
+# IDEMPOTENT BY DESIGN: the suite only writes AiQueries audit rows (an
+# append-only access log — every accepted question is MEANT to leave a
+# row), so it can be re-dispatched any number of times.
 name: Deployed AI E2E
 on: workflow_dispatch
 
 # STRUCTURAL serialization of the deployed suites (the recorded
 # never-dispatch-concurrently lesson, previously enforced only by memory):
-# one shared group across all eight suites means two can never RUN at
+# one shared group across all suites means two can never RUN at
 # once. GitHub keeps at most one PENDING run per group, so still dispatch
 # one at a time — a second queued dispatch may supersede a waiting one.
 concurrency:
@@ -106,73 +113,80 @@ jobs:
           fi
           echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
 
-      - name: Login as doctor and nurse
+      - name: Login as doctor, nurse and clerk
         run: |
-          for u in sara.rahman maya.chen; do
+          for u in sara.rahman maya.chen huda.nasser; do
             t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
               -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
             case $u in
               sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
               maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+              huda.nasser) echo "CLK=$t" >> "$GITHUB_ENV";;
             esac
             echo "$u: token issued"
           done
 
-      - name: Unauthenticated AI reads → 401
+      - name: THE SIMULATION STAYS DELETED — retired risk endpoints are 404
         run: |
-          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/ai/ranking")
-          echo "GET /ai/ranking (no token) -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/ai/risks?patientId=P-1001")
-          echo "GET /ai/risks (no token) -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
-
-      - name: Both roles READ the unit ranking; seeded patients present + trend computed (+ CORS)
-        run: |
-          curl -sf -D /tmp/h -H "Authorization: Bearer $NUR" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/ai/ranking" -o /tmp/rank.json
-          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
-          python3 -c '
-          import json; d=json.load(open("/tmp/rank.json"))
-          ids={r["patientId"] for r in d}
-          seeded={"P-1001","P-1004","P-1007","P-1012"}
-          assert seeded<=ids, f"seeded scored patients missing: {seeded-ids}"
-          # ranking is sorted by highest current risk, descending
-          pcts=[r["top"]["probability"] for r in d]
-          assert pcts==sorted(pcts, reverse=True), f"ranking not sorted desc: {pcts}"
-          # trend + delta are DERIVED at read — present on every ranked risk
-          for r in d:
-            assert r["top"]["trend"] in ("rising","falling","stable"), r
-            assert isinstance(r["top"]["delta"], int), r
-          print(f"ranking rows: {len(d)} (seeded present, sorted desc, trend/delta computed)")'
+          # the fabricated ranking + per-patient risk profiles were removed
+          # (not disabled, not labelled) — an authenticated doctor gets 404
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/ranking")
-          echo "doctor ranking read -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          echo "GET /ai/ranking (doctor) -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-1001")
+          echo "GET /ai/risks (doctor) -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
 
-      - name: Both roles READ a per-patient profile (trend history + factors)
+      - name: Unauthenticated query → 401; clerk (no ai.view) → 403
         run: |
-          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-1001" -o /tmp/prof.json
-          python3 -c '
-          import json; d=json.load(open("/tmp/prof.json"))
-          assert d["patientId"]=="P-1001", d
-          assert len(d["risks"])>=1, d
-          r=d["risks"][0]
-          assert len(r["history"])>=2 and r["factors"], r
-          # the store keeps only history + probability — never a trend/delta field
-          assert "trend" not in r and "delta" not in r, "trend/delta must NOT be stored on a risk"
-          nr=len(d["risks"]); nh=len(r["history"]); nf=len(r["factors"])
-          print(f"P-1001 profile: {nr} risks, history len {nh}, {nf} factors")'
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR" "$API/api/icu/ai/risks?patientId=P-1001")
-          echo "nurse profile read (read-only for all roles) -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/query" \
+            -H "Content-Type: application/json" -d '{"question":"who is in the unit"}')
+          echo "POST /ai/query (no token) -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          body=$(curl -s -X POST "$API/api/icu/ai/query" -H "Authorization: Bearer $CLK" \
+            -H "Content-Type: application/json" -d '{"question":"who is in the unit"}')
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/query" -H "Authorization: Bearer $CLK" \
+            -H "Content-Type: application/json" -d '{"question":"who is in the unit"}')
+          echo "POST /ai/query (clerk) -> HTTP $rc body=$body"; [ "$rc" = "403" ] || exit 1
 
-      - name: Malformed / unknown query params → 400 (never a silent 200, never a 500)
+      - name: Validation is loud — empty question, oversized question, unknown field → 400
         run: |
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/ranking?foo=1")
-          echo "ranking unknown param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-1001&foo=1")
-          echo "risks unknown param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks")
-          echo "risks missing patientId -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
-          # unknown patientId → 400 naming the field (never a silent 200)
-          body=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-9999")
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/ai/risks?patientId=P-9999")
-          echo "risks bad patientId -> HTTP $rc body=$body"
-          [ "$rc" = "400" ] || exit 1
-          echo "$body" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "patientId" in d["error"], d; print("400 names the field:", d["error"])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/query" -H "Authorization: Bearer $DOC" \
+            -H "Content-Type: application/json" -d '{"question":""}')
+          echo "empty question -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          long=$(python3 -c 'print("x"*2001)')
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/query" -H "Authorization: Bearer $DOC" \
+            -H "Content-Type: application/json" -d "{\"question\":\"$long\"}")
+          echo "oversized question -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/query" -H "Authorization: Bearer $DOC" \
+            -H "Content-Type: application/json" -d '{"question":"x","bogus":1}')
+          echo "unknown field -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
+      - name: Query contract — a QUERY or an honest refusal, NEVER a value (+ CORS)
+        run: |
+          # staging has no AI_PROVIDER by default → the honest 503 "no
+          # model configured". If staging ever configures one, the same
+          # leg asserts the 200 body carries ONLY tool/args/unanswerable —
+          # the response contract has no field that could hold a clinical
+          # value, so the model structurally cannot leak one through it.
+          for who in DOC NUR; do
+            tok=$(eval echo "\$$who")
+            rc=$(curl -s -o /tmp/q.json -w '%{http_code}' -D /tmp/h -X POST "$API/api/icu/ai/query" \
+              -H "Authorization: Bearer $tok" -H "Origin: $PAGES_ORIGIN" \
+              -H "Content-Type: application/json" \
+              -d '{"question":"give me all the orders for P-1001"}')
+            grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+            echo "$who query -> HTTP $rc: $(cat /tmp/q.json)"
+            if [ "$rc" = "503" ]; then
+              python3 -c '
+          import json; d=json.load(open("/tmp/q.json"))
+          assert "no AI model is configured" in d["error"], d
+          print("honest no-provider refusal (staging has no model) — nothing translated, nothing accessed")'
+            elif [ "$rc" = "200" ]; then
+              python3 -c '
+          import json; d=json.load(open("/tmp/q.json"))
+          assert set(d.keys()) <= {"tool","args","unanswerable"}, f"response contract violated: {sorted(d.keys())}"
+          assert d.get("tool") or d.get("unanswerable"), d
+          print(f"translated: tool={d.get(\"tool\")} args={d.get(\"args\")} — a QUERY, never a value")'
+            else
+              echo "unexpected status $rc" && exit 1
+            fi
+          done

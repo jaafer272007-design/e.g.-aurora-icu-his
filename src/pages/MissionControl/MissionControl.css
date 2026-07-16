@@ -102,16 +102,6 @@
 .mc .o-watch{fill:rgba(var(--amber-rgb),.85);filter:drop-shadow(0 0 6px rgba(var(--amber-rgb),.9))}
 .mc .o-crit{fill:rgba(var(--red-rgb),.9);filter:drop-shadow(0 0 8px rgba(var(--red-rgb),1));animation:blink 1.2s infinite}
 
-/* AI panel */
-.mc .ai .airow{padding:9px 0;border-bottom:1px dashed rgba(var(--steel-rgb),.09)}
-.mc .ai .airow:last-child{border-bottom:none;padding-bottom:0}
-.mc .aihead{display:flex;align-items:center;gap:8px}
-.mc .aihead .an{font-size:12.5px;font-weight:600;flex:1}
-.mc .aihead .ap{font-family:var(--mono);font-size:15px;font-weight:700}
-.mc .aibar{height:5px;border-radius:4px;background:rgba(var(--steel-rgb),.12);margin:6px 0 5px;overflow:hidden}
-.mc .aibar i{display:block;height:100%;border-radius:4px;transition:width .8s cubic-bezier(.2,.7,.2,1)}
-.mc .aiex{font-size:11px;color:var(--dim);line-height:1.45}
-
 /* generic tile grids */
 .mc #vent,.mc #hemo,.mc #meds{grid-column:span 4}
 .mc .tgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}

@@ -11,7 +11,7 @@ import { Observations } from './pages/Observations/Observations'
 import { Statistics } from './pages/Statistics/Statistics'
 import { Alerts } from './pages/Alerts/Alerts'
 import { Settings } from './pages/Settings/Settings'
-import { AiAssistant } from './pages/AiAssistant/AiAssistant'
+import { AiChat } from './pages/AiChat/AiChat'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
 import { Formulary } from './pages/Formulary/Formulary'
@@ -46,7 +46,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /lab-entry(/:patientId) Lab Result Entry (manual)  results.document (ICU bedside team documents/transcribes)
    /timeline(/:patientId)  Clinical Timeline          patients.view
    /observations(/:patientId)  Bedside Observations   patients.view (charting needs observations.record; corrections observations.record/correct — Stage 11 §4)
-   /ai(/:patientId)        AI Clinical Assistant      ai.view
+   /ai(/:patientId)        AI Assistant — grounded query chat   ai.view (route patient = chat context only)
    /admissions             ADT — admit                patients.view (admit button needs adt.admit)
    /discharges             ADT — discharge/transfer   patients.view (actions need adt.discharge / adt.transfer)
    /print                  Print Center hub           patients.view (read-only document rendering)
@@ -107,8 +107,8 @@ export default function App() {
         <Route path="/settings" element={<RequireSession><Settings /></RequireSession>} />
         <Route path="/observations" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/observations/:patientId" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
-        <Route path="/ai" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />
-        <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><AiAssistant /></RequireSession>} />
+        <Route path="/ai" element={<RequireSession permission="ai.view"><AiChat /></RequireSession>} />
+        <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><AiChat /></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </BrowserRouter>

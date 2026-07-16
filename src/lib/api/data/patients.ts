@@ -1,6 +1,5 @@
 import type { Patient } from '../types'
 import { ROSTER, type UnitPatientRecord } from './roster'
-import { deriveRiskAlerts } from './ai'
 import { unackedResultCountFor } from './results'
 
 /* Mission Control patient view — DERIVED from the canonical roster
@@ -8,12 +7,12 @@ import { unackedResultCountFor } from './results'
    `vitals` here is the live-monitor feed (monitorVitals). */
 
 /* alertCount is DERIVED from the same sources that produce actual alert
-   lists — AI threshold alerts, unacknowledged results, and an active
-   crit/high bed alert — never stored as its own number. (The static
-   PATIENT_ALERTS list in panels.ts is deliberately excluded: it is known
-   deferred debt attached identically to every patient.) */
+   lists — unacknowledged results and an active crit/high bed alert —
+   never stored as its own number. (The fabricated AI-threshold term died
+   with the simulated risk domain; the static PATIENT_ALERTS list in
+   panels.ts is deliberately excluded: it is known deferred debt attached
+   identically to every patient.) */
 export const derivedAlertCount = (patientId: string, bedAlertSeverity: string): number =>
-  deriveRiskAlerts(patientId).length +
   unackedResultCountFor(patientId) +
   (bedAlertSeverity === 'crit' || bedAlertSeverity === 'high' ? 1 : 0)
 
