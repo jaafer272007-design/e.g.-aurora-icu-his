@@ -179,17 +179,16 @@ static class OrdersApi
                    from the structured entry (validation already rejected a
                    mismatching client dose) — single source, no desync */
                 var medication = draft.Medication is null ? null : OrderLogic.NormaliseMedication(draft.Medication);
-                List<AdminDto>? administrations = null;
-                if (req.Sign)
-                {
-                    history.Add(new(time, actor, "signed", null));
-                    if (medication is not null) administrations = OrderLogic.GenerateAdministrations(medication);
-                }
+                if (req.Sign) history.Add(new(time, actor, "signed", null));
+                /* DERIVED SCHEDULE (MAR safety fix): no dose schedule is
+                   stored — administrations begin EMPTY and accumulate only
+                   documented FACTS. Expected instances derive at MAR read
+                   from frequency + the signed time (therapy start). */
                 var dto = new OrderDto(
                     OrderLogic.NextOrderId(), draft.PatientId!, enc.EncounterId, enc.BedId, pt.Name,
                     draft.Category!, draft.Summary ?? OrderLogic.MedSummary(medication!),
                     medication, draft.Priority!, req.Sign ? "active" : "pending",
-                    actor, time, draft.RequiresImplementation, administrations, history, null,
+                    actor, time, draft.RequiresImplementation, null, history, null,
                     draft.TestId);
                 db.Orders.Add(OrderRow.FromDto(dto, OrderLogic.NextSeq()));
                 created.Add(dto);
@@ -219,12 +218,12 @@ static class OrdersApi
                 return ApiError.StateConflict(
                     $"order '{orderId}' is {(row.Status == "active" ? "already active" : row.Status)} — it is not awaiting signature");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var o = row.ToDto();
             row.Status = "active";
+            /* DERIVED SCHEDULE (MAR safety fix): signing stores no dose
+               slots — this signed event's dated stamp IS the therapy start
+               the MAR derives the expected instances from. */
             row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
                 new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "signed", null));
-            if (o.Medication is not null && o.Administrations is null)
-                row.AdministrationsJson = JsonSerializer.Serialize(OrderLogic.GenerateAdministrations(o.Medication), JsonOpts.Web);
             db.SaveChanges();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();

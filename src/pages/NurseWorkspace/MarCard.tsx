@@ -15,7 +15,15 @@ const PENDING_META = {
   due: { label: 'DUE', cls: 'st-due' },
   upcoming: { label: 'LATER', cls: 'st-upcoming' },
   prn: { label: 'PRN', cls: 'st-prn' },
+  /* an order whose frequency has no derivable dose grid (continuous,
+     sliding scale, per protocol…) — the honest-source rule: the row says
+     so instead of inventing a schedule; doses are documented on demand */
+  ondemand: { label: 'ON DEMAND', cls: 'st-prn' },
 }
+
+/* the render-horizon summary: undocumented instances older than the
+   window, counted out loud — never silently truncated */
+const MISSED_META = { label: 'MISSED', cls: 'st-overdue' }
 
 interface MarCardProps {
   rows: MarRow[]
@@ -68,9 +76,13 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
   const now = useNow()
   const [pending, setPending] = useState<{ row: MarRow; action: 'held' | 'refused' } | null>(null)
   const stateOf = (r: MarRow) =>
-    r.status !== 'scheduled'
-      ? DOCUMENTED_META[r.status]
-      : r.prn ? PENDING_META.prn : PENDING_META[dueStateFor(r.scheduledTime, now)]
+    r.status === 'missed-earlier'
+      ? MISSED_META
+      : r.status !== 'scheduled'
+        ? DOCUMENTED_META[r.status]
+        : r.prn ? PENDING_META.prn
+          : r.scheduleNote ? PENDING_META.ondemand
+            : PENDING_META[dueStateFor(r.scheduledTime, now)]
   const dueCount = rows.filter(
     r => r.status === 'scheduled' && !r.prn && dueStateFor(r.scheduledTime, now) !== 'upcoming',
   ).length
@@ -88,12 +100,26 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
             <div className="marpt"><BedChip bedId={p.bedId} /><b>{p.name}</b><span className="marallergy">⚠ {p.allergies}</span></div>
             {mine.map(r => {
               const meta = stateOf(r)
+              if (r.status === 'missed-earlier')
+                /* the horizon's explicit remainder — one non-actionable
+                   line per order for the missed doses older than the
+                   rendered window (they stay visible, aggregated) */
+                return (
+                  <div className={`marrow ${meta.cls}`} key={`${r.orderId}-${r.adminId}`}>
+                    <span className="martime num">{displayStamp(r.scheduledTime)}</span>
+                    <div className="marmed">
+                      <div className="mn">{r.medication} <span className="mdose num">{r.dose}</span></div>
+                      <div className="mroute">⚠ {r.missedEarlier} earlier expected dose{(r.missedEarlier ?? 0) > 1 ? 's' : ''} never documented (oldest shown) — not displayed individually</div>
+                    </div>
+                    <span className={`marstate ${meta.cls}`}>{meta.label}</span>
+                  </div>
+                )
               return (
-                <div className={`marrow ${meta.cls}`} key={r.adminId}>
-                  <span className="martime num">{r.scheduledTime || '—'}</span>
+                <div className={`marrow ${meta.cls}`} key={`${r.orderId}-${r.adminId}`}>
+                  <span className="martime num">{displayStamp(r.scheduledTime) || '—'}</span>
                   <div className="marmed">
                     <div className="mn">{r.medication} <span className="mdose num">{r.dose}</span></div>
-                    <div className="mroute">{r.route}</div>
+                    <div className="mroute">{r.scheduleNote ?? r.route}</div>
                   </div>
                   <span className={`marstate ${meta.cls}`}>{meta.label}</span>
                   {r.status === 'scheduled' ? (

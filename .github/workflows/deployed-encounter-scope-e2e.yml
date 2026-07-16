@@ -202,15 +202,21 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":true}' \
             "$API/api/icu/orders" -o /tmp/med.json
-          vals=$(EID="$EID" python3 -c '
+          MED=$(EID="$EID" python3 -c '
           import json, os
           d = json.load(open("/tmp/med.json"))[0]
           assert d["encounterId"] == os.environ["EID"], d.get("encounterId")
           assert d["status"] == "active"
-          sched = [a["adminId"] for a in d["administrations"] if a["status"] == "scheduled"]
-          assert sched, d["administrations"]
-          print(d["orderId"], sched[0])')
-          read MED ADMID <<<"$vals"
+          # DERIVED SCHEDULE (MAR safety fix): no dose slots are stored —
+          # the dated instance identity comes from the MAR derivation below
+          assert not d.get("administrations"), d["administrations"]
+          print(d["orderId"])')
+          ADMID=$(curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" \
+            | MED="$MED" python3 -c '
+          import json, sys, os, re
+          sched = [r for r in json.load(sys.stdin) if r["orderId"] == os.environ["MED"] and r["status"] == "scheduled"]
+          assert sched and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", sched[0]["adminId"]), sched
+          print(sched[0]["adminId"])')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"encounter-scope pending order","priority":"Routine"}],"sign":false}' \
             "$API/api/icu/orders" -o /tmp/pend.json
@@ -247,9 +253,9 @@ jobs:
               last = o["history"][-1]
               assert last["actor"] == "Dr. Sara Rahman", last   # the DISCHARGING clinician, from the token
               assert last["action"] == "discontinued" and REASON in (last.get("detail") or ""), last
-          admins = d[os.environ["MED"]]["administrations"]
+          admins = d[os.environ["MED"]].get("administrations") or []
           assert all(a["status"] != "scheduled" for a in admins), admins
-          print("cascade: active + pending both discontinued, actor = discharging clinician, exact reason, scheduled doses cancelled")
+          print("cascade: active + pending both discontinued, actor = discharging clinician, exact reason, no scheduled doses (derived schedule ends with the order)")
           PY
 
       - name: sign/modify/implement on the CLOSED encounter → 409 at the guard (live since the four-code fix)

@@ -1,7 +1,11 @@
 import type {
-  AdministrationAction, MarRow, MedAdministration, MedicationDetails, NewOrderDraft, Order,
+  AdministrationAction, MarRow, MedicationDetails, NewOrderDraft, Order,
 } from '../types'
 import { nowHm } from '../../time'
+import {
+  firstDoseEpoch, instanceIdentity, instanceStamp, intervalInstances, isFact,
+  parseFrequency, therapyStartEpoch,
+} from '../../marSchedule'
 
 /* Canonical orders store — THE single source of truth for orders and
    medications. Doctor Workspace's "Orders to Sign", Nurse Workspace's MAR
@@ -24,24 +28,12 @@ let adminSeq = 500
 const nextAdminId = () => `ADM-${++adminSeq}`
 
 
-/* Mock schedule generation for newly signed medication orders. The real API
-   computes proper schedules server-side; here we produce the next dose(s)
-   rounded to the coming hour so clock-computed due states have data. */
-function generateAdministrations(m: MedicationDetails): MedAdministration[] {
-  if (m.prn) return [{ adminId: nextAdminId(), scheduledTime: '', status: 'scheduled' }]
-  const now = new Date()
-  const first = new Date(now)
-  first.setMinutes(0, 0, 0)
-  first.setHours(first.getHours() + 1)
-  const intervalH = /q(\d+)h/.exec(m.frequency)?.[1]
-  const times: Date[] = [first]
-  if (intervalH) times.push(new Date(first.getTime() + Number(intervalH) * 3_600_000))
-  return times.map(t => ({
-    adminId: nextAdminId(),
-    scheduledTime: t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-    status: 'scheduled' as const,
-  }))
-}
+/* RETIRED (MAR derived-schedule safety fix): mock schedule generation is
+   GONE, mirroring the server. Orders store no dose slots — administrations
+   hold only documented FACTS, and expected instances derive at MAR read
+   (deriveMarRows below, via lib/marSchedule.ts). Seed rows still carrying
+   'scheduled' stubs are artefacts of the removed plan: ignored by the
+   derivation, never facts. */
 
 /* ---------------- seed data ----------------
    Content mirrors the previously separate Doctor Workspace / Nurse Workspace
@@ -287,10 +279,9 @@ export function insertOrder(
     requiresImplementation: draft.requiresImplementation,
     history: [{ time, actor, action: 'created', detail: note }],
   }
-  if (sign) {
-    order.history.push({ time, actor, action: 'signed' })
-    if (order.medication) order.administrations = generateAdministrations(order.medication)
-  }
+  /* DERIVED SCHEDULE: signing stores no dose slots — the signed event is
+     the therapy start the MAR derives expected instances from */
+  if (sign) order.history.push({ time, actor, action: 'signed' })
   ORDERS.push(order)
   return order
 }
@@ -300,7 +291,6 @@ export function applySign(orderId: string, actor: string): Order | null {
   if (!o) return null
   o.status = 'active'
   o.history.push({ time: nowHm(), actor, action: 'signed' })
-  if (o.medication && !o.administrations) o.administrations = generateAdministrations(o.medication)
   return o
 }
 
@@ -339,48 +329,80 @@ export function applyImplementation(orderId: string, actor: string): Order | nul
   return o
 }
 
+/** Document a dose — APPENDS an administration FACT (nothing stored is
+    consumed; mirrors the real endpoint). adminId is the derived instance
+    identity ("yyyy-MM-ddTHH:mm"), "prn", or "ondemand". */
 export function applyAdministration(
   orderId: string, adminId: string, action: AdministrationAction, actor: string, reason?: string,
 ): Order | null {
   const o = ORDERS.find(x => x.orderId === orderId)
-  const a = o?.administrations?.find(x => x.adminId === adminId && x.status === 'scheduled')
-  if (!o || !a) return null
-  const time = nowHm()
-  a.status = action
-  a.documentedTime = time
-  a.documentedBy = actor
-  const trimmed = reason?.trim()
-  if (trimmed) a.reason = trimmed
+  if (!o || !o.medication || o.status !== 'active') return null
+  const scheduledStamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(adminId) ? adminId.replace('T', ' ') : ''
+  const already = (o.administrations ?? []).some(a => isFact(a) && scheduledStamp !== '' && a.scheduledTime === scheduledStamp)
+  if (already) return null
+  const now = new Date()
+  const time = `${now.toISOString().slice(0, 10)} ${nowHm()}`
+  const fact = {
+    adminId: nextAdminId(), scheduledTime: scheduledStamp, status: action,
+    documentedTime: time, documentedBy: actor,
+    ...(reason?.trim() ? { reason: reason.trim() } : {}),
+  }
+  o.administrations = [...(o.administrations ?? []), fact]
   const verb = action === 'given' ? 'administered' : action
   o.history.push({
     time, actor, action: verb,
-    detail: `${a.scheduledTime || 'PRN'} dose ${action} at ${time}${trimmed ? ` — ${trimmed}` : ''}`,
+    detail: `${scheduledStamp || (o.medication.prn ? 'PRN' : `unscheduled (${o.medication.frequency})`)} dose ${action} at ${time}${reason?.trim() ? ` — ${reason.trim()}` : ''}`,
   })
   return o
 }
 
-/** Derived MAR view: administrations of active med orders for the given
-    patients, plus already-documented rows kept for the shift record. */
+/** Derived MAR view (mirrors the server's MarLogic.MarRowsFor): every
+    documented FACT (any order status — the record), plus, for ACTIVE
+    orders, the expected instances the schedule derives that no fact
+    covers. Stored 'scheduled' stubs are ignored — not facts. */
 export function deriveMarRows(patientIds: string[]): MarRow[] {
-  const rows: MarRow[] = []
+  const nowMs = Date.now()
+  const rows: { sort: number; row: MarRow }[] = []
   for (const o of ORDERS) {
-    if (!o.medication || !o.administrations || !patientIds.includes(o.patientId)) continue
-    for (const a of o.administrations) {
-      if (o.status !== 'active' && a.status === 'scheduled') continue
+    if (!o.medication || !patientIds.includes(o.patientId)) continue
+    const m = o.medication
+    const route = `${m.route} · ${m.prn ? `PRN — ${m.prnIndication ?? 'as required'}` : m.frequency}`
+    const row = (adminId: string, scheduledTime: string, status: MarRow['status'],
+      extra: Partial<MarRow> = {}): MarRow => ({
+      orderId: o.orderId, adminId, patientId: o.patientId, bedId: o.bedId,
+      medication: m.drug, dose: m.dose, route, scheduledTime, prn: m.prn, status, ...extra,
+    })
+    const facts = (o.administrations ?? []).filter(isFact)
+    for (const a of facts)
       rows.push({
-        orderId: o.orderId,
-        adminId: a.adminId,
-        patientId: o.patientId,
-        bedId: o.bedId,
-        medication: o.medication.drug,
-        dose: o.medication.dose,
-        route: `${o.medication.route} · ${o.medication.prn ? `PRN — ${o.medication.prnIndication ?? 'as required'}` : o.medication.frequency}`,
-        scheduledTime: a.scheduledTime,
-        prn: o.medication.prn,
-        status: a.status,
-        documentedTime: a.documentedTime,
+        sort: Date.parse((a.scheduledTime.includes('-') ? a.scheduledTime : a.documentedTime ?? '').replace(' ', 'T') + ':00Z') || nowMs,
+        row: row(a.adminId, a.scheduledTime, a.status, { documentedTime: a.documentedTime }),
       })
+    if (o.status !== 'active') continue
+    const kind = parseFrequency(m)
+    if (kind.kind === 'prn') { rows.push({ sort: nowMs, row: row('prn', '', 'scheduled') }); continue }
+    if (kind.kind === 'underivable') {
+      rows.push({ sort: nowMs, row: row('ondemand', '', 'scheduled', { scheduleNote: `no derivable dose schedule — '${m.frequency}'; document on demand` }) })
+      continue
     }
+    const anchor = therapyStartEpoch(o, nowMs)
+    if (anchor === null) {
+      rows.push({ sort: nowMs, row: row('ondemand', '', 'scheduled', { scheduleNote: 'no derivable dose schedule — therapy start is not parseable; document on demand' }) })
+      continue
+    }
+    const first = firstDoseEpoch(anchor)
+    const documented = new Set(facts.map(a => a.scheduledTime))
+    if (kind.kind === 'once') {
+      if (!documented.has(instanceStamp(first)))
+        rows.push({ sort: first, row: row(instanceIdentity(first), instanceStamp(first), 'scheduled') })
+      continue
+    }
+    const { aggregatedMissed, oldestAggregatedMs, renderableMs } =
+      intervalInstances(first, kind.hours, documented, nowMs)
+    if (aggregatedMissed > 0 && oldestAggregatedMs !== null)
+      rows.push({ sort: oldestAggregatedMs, row: row('missed-earlier', instanceStamp(oldestAggregatedMs), 'missed-earlier', { missedEarlier: aggregatedMissed }) })
+    for (const t of renderableMs)
+      rows.push({ sort: t, row: row(instanceIdentity(t), instanceStamp(t), 'scheduled') })
   }
-  return rows
+  return rows.sort((a, b) => a.sort - b.sort).map(r => r.row)
 }

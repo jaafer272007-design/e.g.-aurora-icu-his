@@ -697,17 +697,29 @@ export interface OrderSetDef {
 
 export interface MarRow {
   orderId: string
+  /** derived instances carry the DATED identity "yyyy-MM-ddTHH:mm" (the
+   *  MAR safety fix — a missed dose can never be relabelled as another
+   *  day's dose); "prn"/"ondemand" for availability rows;
+   *  "missed-earlier" on the horizon summary row; documented facts keep
+   *  their stored ADM-n ids */
   adminId: string
   patientId: string
   bedId: string
   medication: string
   dose: string
   route: string
-  /** HH:MM · empty for PRN */
+  /** DATED "yyyy-MM-dd HH:mm" on derived instances · empty for
+   *  PRN/on-demand · legacy facts keep whatever they recorded */
   scheduledTime: string
   prn: boolean
-  status: 'scheduled' | AdministrationAction
+  status: 'scheduled' | 'missed-earlier' | AdministrationAction
   documentedTime?: string
+  /** only on the per-order horizon summary row: undocumented instances
+   *  older than the render window, counted out loud — never silently
+   *  truncated */
+  missedEarlier?: number
+  /** only on the honest underivable row: why no schedule is derived */
+  scheduleNote?: string
 }
 
 /* ==================== Laboratory & Imaging domain (Screen 6) ====================
