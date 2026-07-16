@@ -229,15 +229,18 @@ static class AssignmentLogic
     };
 
     /** every kind an ACCOUNT may be assigned as — the union over its
-        roles (#104 multi-role: a dual-role person is assignable as both). */
-    public static string[] KindsOf(UserRow account)
-    {
-        var titles = System.Text.Json.JsonSerializer
-            .Deserialize<List<string>>(account.RolesJson, JsonOpts.Web) ?? [];
-        if (titles.Count == 0) titles = [account.JobTitle];
-        return titles.Select(t => KindOfProfile(Rbac.ProfileOf(t)))
+        roles (#104 multi-role: a dual-role person is assignable as both).
+        Roles resolve through UserLogic.RolesOf, THE canonical resolver
+        (the no-fork rule) — found live on the first staging run: the
+        multi-role migration backfilled pre-existing user rows with
+        RolesJson "" (empty string, not "[]"), which RolesOf handles and
+        a raw deserialize here did not (500 on /assignments/staff against
+        the durable staging database; a fresh local DB never has such
+        rows, which is why local verification could not catch it). */
+    public static string[] KindsOf(UserRow account) =>
+        UserLogic.RolesOf(account)
+            .Select(t => KindOfProfile(Rbac.ProfileOf(t)))
             .Where(k => k is not null).Select(k => k!).Distinct().OrderBy(k => k).ToArray();
-    }
 
     /** the read-side projection: patient/bed derived from the ENCOUNTER at
         read (patient-based responsibility — a transfer shows the new bed
