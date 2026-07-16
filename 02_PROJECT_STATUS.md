@@ -4828,6 +4828,20 @@ reason and the honest unlinked rendering returns; zero page errors).
 
 ### Auto-generated MRN (built — the #113 flag resolved by the owner)
 
+*[Attributed addition 2026-07-16, post-merge: the #116 post-merge run of
+deployed-adt-e2e failed (run 29515247188) — the adt suite's payload
+conversion had been applied in two passes and the second never landed,
+leaving eight payloads carrying the retired `mrn` field. Against the
+deployed server that is a binding 400: the STRUCTURED IDENTITY step's
+first admission aborted, and the two probes before it had been passing
+VACUOUSLY (400 for the wrong reason — the CI-evidence rule's exact
+trap). Fixed forward in PR #117 (workflow-only: the residual payloads
+de-mrn'd; the duplicate-open-encounter leg probes via patientId),
+proven live-green BEFORE merge via branch dispatch (run 29515624297,
+all 19 steps — the #112 pattern: the branch's server tree equals
+deployed), then green on main d06a6bc (run 29518916453, all 19 steps).
+Every other suite passed on 92159eb unchanged.]*
+
 **Origin (verified against the real code first):** the admission form
 still carried a free-text, REQUIRED "MRN" input (placeholder
 MRN-123456); the server required it, trimmed it, and used it as the
