@@ -11,11 +11,12 @@ import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
-import { getObservations, getPatientDetail, getPatients } from '../../lib/api'
+import { getObservations, getPatientDetail, getPatientIdentity, getPatients } from '../../lib/api'
 import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
 import { useRememberPatient } from '../../lib/patientContext'
-import { signOut } from '../../lib/session'
-import type { PatientAlert, PatientDetailResponse, PatientSummary } from '../../lib/api/types'
+import { getSession, hasPermission, signOut } from '../../lib/session'
+import type { PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
+import { IdentityDialog } from './IdentityDialog'
 import { LatestObservationsCard } from './LatestObservationsCard'
 import { DigitalTwin } from './DigitalTwin'
 import { AiPanel } from './AiPanel'
@@ -32,8 +33,20 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'alerts', label: 'Alerts' },
 ]
 
+/* ONE SEARCH BOX (locked decision 5) — type a name or a number. Stated
+   semantics (the flagged choice): SUBSTRING across the name fields — the
+   display name AND the full legal name, so a grandfather's name finds the
+   patient — plus the bed; PREFIX/EXACT on the numbers (MRN, national ID).
+   NO fuzzy/phonetic matching: a near-miss on patient identity is a safety
+   risk, not a convenience. */
 function matches(p: PatientSummary, filter: Filter, query: string): boolean {
-  if (query && !(p.name + p.bedId + p.mrn).toLowerCase().includes(query)) return false
+  if (query) {
+    const names = `${p.name} ${p.fullName ?? ''} ${p.bedId}`.toLowerCase()
+    const hit = names.includes(query)
+      || p.mrn.toLowerCase().startsWith(query)
+      || (p.nationalId ?? '').startsWith(query)
+    if (!hit) return false
+  }
   if (filter === 'all') return true
   if (filter === 'iso') return p.isolation
   if (filter === 'alerts') return p.alertCount > 0
@@ -64,6 +77,21 @@ export function MissionControl() {
   const [latestObs, setLatestObs] = useState<Map<string, LatestObservation>>(new Map())
 
   useEffect(() => { getPatients().then(setPatients) }, [])
+
+  /* PERSON-LEVEL IDENTITY for the patient header — the full legal name +
+     national identity number belong here and on official documents (the
+     compact display name serves everywhere else). Real-only read; null
+     renders nothing extra (honest absence). */
+  const [pid, setPid] = useState<PatientIdentity | null>(null)
+  const [correcting, setCorrecting] = useState(false)
+  const session = getSession()
+  const canCorrectIdentity = session ? hasPermission(session.jobTitle, 'identity.correct') : false
+  useEffect(() => {
+    let stale = false
+    setPid(null)
+    if (patientId) getPatientIdentity(patientId).then(r => { if (!stale) setPid(r) })
+    return () => { stale = true }
+  }, [patientId])
 
   /* opening a chart records the cross-section patient context (only once
      the roster confirms the id resolves) */
@@ -150,8 +178,23 @@ export function MissionControl() {
           <div className="pt-id">
             <div className="avatar">{p ? initials(p.name) : '—'}</div>
             <div>
-              <h1>{p?.name ?? '—'}</h1>
-              <div className="sub"><span>{p?.mrn ?? 'MRN —'}</span> · <span>Bed {p?.bedId ?? '—'}</span></div>
+              {/* the PATIENT HEADER carries the FULL LEGAL NAME (all
+                  present parts) + national ID — the compact display name
+                  serves everywhere else; legacy single names render as-is */}
+              <h1>{pid?.fullName ?? p?.name ?? '—'}</h1>
+              <div className="sub">
+                <span>{p?.mrn ?? 'MRN —'}</span> · <span>Bed {p?.bedId ?? '—'}</span>
+                {pid?.nationalId && <> · <span className="num" title="National identity number — as on the identity card">ID {pid.nationalId}</span></>}
+                {(pid?.identity?.length ?? 0) > 0 && (
+                  <> · <span
+                    className="idmark"
+                    title={pid!.identity!.map(e => `${e.time} · ${e.actor} (${e.role}): ${e.detail} — ${e.reason}`).join('\n')}
+                  >identity corrected ×{pid!.identity!.length}</span></>
+                )}
+                {canCorrectIdentity && pid && (
+                  <> · <button className="idbtn" onClick={() => setCorrecting(true)} aria-label={`Correct identity of ${pid.fullName ?? pid.name}`}>✎ Correct identity</button></>
+                )}
+              </div>
             </div>
           </div>
           <div className="chips">
@@ -166,6 +209,20 @@ export function MissionControl() {
         </div>
       </header>
 
+      {correcting && pid && (
+        <IdentityDialog
+          patient={pid}
+          onCancel={() => setCorrecting(false)}
+          onCorrected={updated => {
+            setCorrecting(false)
+            setPid(updated)
+            /* the corrected display name flows through every derived
+               surface — re-read the roster and this chart */
+            getPatients().then(setPatients)
+            getPatientDetail(patientId).then(res => { if (res) setDetail(res) })
+          }}
+        />
+      )}
       <div className="shell">
         <aside>
           <div className="side-head">

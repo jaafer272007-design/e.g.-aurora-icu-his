@@ -1,8 +1,8 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-16 · current through THE MAR DERIVED-AT-READ
-SCHEDULE (clinical safety fix — see its record below) and the records
-after this marker paragraph; the paragraph itself is the Settings-era
+**Last updated: 2026-07-16 · current through STRUCTURED PATIENT NAMES +
+THE NATIONAL IDENTITY NUMBER (the validator's design — see its record
+below) and the records after this marker paragraph; the paragraph itself is the Settings-era
 text, retained: current through SETTINGS + THE IN-APP BACK
 BUTTON (built — the LAST dead nav item closed: ALL THREE ARE NOW REAL and
 the ICU module's navigation is COMPLETE, with no fabricated numbers left
@@ -1857,6 +1857,17 @@ to be printed after discharge — no longer renders "Patient Not Found" or
   correction path is recorded future scope); a submitted AGE estimate
   never downgrades recorded identity — the stored identity stands and
   the response returns it.
+  *[SUPERSEDED IN PART 2026-07-16 by the Structured Patient Name +
+  National Identity Number build (the validator's design §3 — see its
+  record): the "audited correction path is recorded future scope" clause
+  is now BUILT — PUT /adt/patients/{id}/identity corrects name /
+  national ID / DATE OF BIRTH as a serious audited identity event
+  (actor + active role + reason, append-only, amend-never-erase). The
+  DOB-protection rule is deliberately relaxed ONLY through that path: an
+  unknown patient's DOB is a guess and must be correctable once known,
+  or a wrong age propagates into every score and dose. The admission-
+  time 409 above STANDS — identity corrections are still never an
+  admission side effect.]*
 - **NEW recorded limitation — DOB is a civil date, the server has only
   UTC**: east of UTC, between local and UTC midnight, a same-day birth
   is rejected as "in the future" and a computed age reads one year low
@@ -4810,6 +4821,114 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Structured patient names + national identity number (built — the validator's design)
+
+Built in full from `docs/design/patient-name-national-id.md` (committed
+verbatim). **Origin (verified against the real code first):** the
+admission form captured ONE free-text "Full name" field and a USER-TYPED
+MRN input — and it was already causing harm: رضا (P-1191) renders
+`214313412` where the MRN belongs (his national identity number, typed
+into the only numeric field the form had), while seeded patients render
+`MRN-402913`. Identity data was landing in the wrong field.
+
+**The model (locked decisions 1–5):**
+- **Five stored name parts on the PATIENT record** (identity is
+  patient-level, unlike encounter-scoped weight/height): First, Second
+  (father), Family REQUIRED; Third (grandfather), Fourth optional —
+  blank is honest. Names are NOT unique. **Unidentified patients use the
+  same fields**, named "unknown" by the admitting user — no special mode.
+- **Derived renderings — a concatenated name is never stored**: the
+  DISPLAY name (First + Second + Family) is derived at read and serves
+  every compact surface; because every surface already renders the
+  single wire `name` field (roster join, encounter/bed/order/result
+  PatientName snapshots — all now serve `Patient.DisplayName`), the rail,
+  bed board, orders, MAR, results, timeline, worklists and statistics
+  picked it up with ZERO per-surface edits. The FULL LEGAL name (all
+  present parts) + national ID render on the patient header (Mission
+  Control) and on every print document's identity band.
+- **National identity number**: stored EXACTLY as on the card (no format
+  invention or normalisation), UNIQUE WHEN PRESENT (a duplicate at
+  admission or correction is a 409 NAMING the conflicting patient),
+  OPTIONAL (two ID-less patients both admit), searchable, distinct from
+  the MRN.
+- **Identity correction (§3 — REQUIRED by the unknown-patient
+  decision)**: PUT /adt/patients/{id}/identity — a serious, audited
+  identity event: actor + ACTIVE role (#104) + dated time + required
+  reason + the previous→new diff, appended to the patient's append-only
+  identity history (amend never erase — the #80/#107 discipline; a
+  record that read "Unknown" for six hours is a fact orders were
+  documented against). Correcting the name requires the complete
+  structured set (a LEGACY single-name patient is corrected INTO
+  structured parts here — the stored name is preserved on the row and in
+  the diff). Works on discharged patients (identity is not
+  encounter-gated). Rendered: header "identity corrected ×N" marker with
+  the history, and the full history inside the correction dialog.
+- **The one search box** (Mission Control + Print Center): SUBSTRING
+  across the names (display AND full legal — a grandfather's name finds
+  the patient) + bed; PREFIX on the numbers (MRN, national ID); NO
+  fuzzy/phonetic matching — a near-miss on patient identity is a safety
+  risk, not a convenience.
+- **Existing patients — never decomposed, never fabricated**: legacy
+  rows keep their stored single name BYTE-FOR-BYTE in the retained
+  `Name` column and render it honestly as their display name (it simply
+  IS their name — no deficiency marker, no invented ID, no guessed
+  decomposition). Additive migration only
+  (`AddPatientStructuredIdentity`: five nullable part columns +
+  nullable NationalId + IdentityJson defaulted to `[]`). The wire tail
+  is additive/nullable (WhenWritingNull — legacy rows keep pre-feature
+  bytes).
+
+**Flagged decisions (the design's §11), stated:**
+1. **Script**: ONE set of free-text fields, any script (the default —
+   رضا stays Arabic, seeded patients stay English). The dual-script
+   (Arabic + transliteration, ten-field) model is NOT built — needs an
+   explicit decision.
+2. **MRN**: verified TYPED BY THE USER on the admission form (free-text
+   input) — exactly how the رضا mis-filing happened.
+   **Recommendation: auto-generate the MRN** (the hospital assigns its
+   own record number; the patient brings the national ID) — NOT built in
+   this PR (existing MRNs untouched; the field still accepts typed
+   values); decide and it becomes a small follow-up.
+3. **Identity-correction authority**: the office ADMINISTRATOR profile
+   (`identity.correct` — Receptionist/Billing/Records/Hospital
+   Administrator titles): registration is theirs and identity is NOT
+   clinical data, so the locked clinical exclusion is untouched.
+   Clinical profiles are 403.
+4. **DOB correctability**: YES through the audited path (see the
+   attributed supersede note on the re-admission identity rules above);
+   the admission-time 409 stands.
+5. **PII profile set for the national ID**: v1 serves it wherever
+   patient identity already flows (patients.view holders see the chart;
+   the ID is on the wristband/paperwork in practice) — the header, the
+   identity read, print, and the roster search fields. FLAGGED: if the
+   owner wants a stricter set (e.g. Administrator-only display), that is
+   a policy decision on top of this model, not a remodel.
+6. **Search semantics**: substring names / prefix numbers, no fuzzy —
+   stated above.
+7. **Re-admission linking on a national-ID match**: NOT built
+   (deliberately) — the duplicate-ID 409 already tells the admitting
+   clinician "this person exists — admit them under their existing MRN",
+   which is recognition without silent record-merging. Auto-linking
+   prior encounters stays a flagged follow-up (real value, real
+   identity-decision risk; Statistics' readmission metric still infers
+   from >1 encounter).
+
+**Suites**: every deployed suite that admits a patient now sends the
+structured fields (three-word test names decompose losslessly, so
+display-name assertions survive verbatim); deployed-adt-e2e gains the
+structured-identity legs — retired `name` field → 400, missing part →
+400, two ID-less "Unknown Unknown Unknown" patients both admit,
+doctor 403 / missing reason 400 on correction, the office Administrator
+(huda.nasser, Receptionist) corrects name+ID+DOB with the audit asserted
+(role, reason, previous identity incl. the estimated-age note in the
+diff), duplicate national ID at admission → 409 naming the corrected
+patient, and the second Unknown asserted untouched.
+
+**Verification**: see the PR record — fresh-DB API matrix + real-browser
+rendered verification (admission form, unknown patient, correction
+dialog as the Receptionist, header full name + ID, search by grandfather
+name / national ID / MRN, legacy patients byte-identical).
 
 ### MAR derived-at-read schedule (built — CLINICAL SAFETY FIX, the validator's design)
 

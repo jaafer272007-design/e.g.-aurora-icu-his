@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -328,6 +328,8 @@ const toSummary = (r: RosterRecordDto): PatientSummary => ({
   diagnosis: r.diagnosis,
   flags: r.flags,
   isolation: r.isolation,
+  fullName: r.fullName,
+  nationalId: r.nationalId,
   /* alertCount stays client-derived — see the wire-contract note in
      types.ts. Dev/staging enrich it from the MOCK ai/results stores
      (documented drift); production carries no mock stores, so it derives
@@ -1176,6 +1178,17 @@ export function updateEncounterMeasurements(encounterId: string, draft: MeasureD
 /** POST /api/icu/adt/admissions — doctor RBAC (adt.admit). REAL-ONLY write. */
 export function admitPatient(draft: AdmitDraft): Promise<AdtWriteResult<AdmitResponse>> {
   return adtPost<AdmitResponse>('/api/icu/adt/admissions', 'ADT admission', draft)
+}
+
+/** PUT /api/icu/adt/patients/:patientId/identity — the AUDITED identity
+ *  correction (office Administrator RBAC, identity.correct): name /
+ *  national ID / DOB with a required reason; amend-never-erase — the
+ *  previous identity is preserved in the patient's identity history.
+ *  REAL-ONLY write; returns the updated PatientIdentity. */
+export function correctPatientIdentity(patientId: string, draft: CorrectIdentityDraft): Promise<AdtWriteResult<PatientIdentity>> {
+  return adtPost<PatientIdentity>(
+    `/api/icu/adt/patients/${encodeURIComponent(patientId)}/identity`,
+    'identity correction', draft, 'PUT')
 }
 
 /** Discharge-disposition vocabulary (matches the server's AdtLogic.Dispositions)

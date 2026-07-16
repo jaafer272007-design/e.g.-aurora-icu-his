@@ -190,7 +190,7 @@ jobs:
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds.json
           B1=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert free, "no free beds — discharge stale encounters"; print(free[0])')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","name":"E2E Encounter-Scope Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"encounter-scope E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"Encounter-Scope","nameFamily":"Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"encounter-scope E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
           vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
           read PID EID <<<"$vals"
@@ -300,7 +300,7 @@ jobs:
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds2.json
           B2=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds2.json")) if not b.get("patientId")]; assert free, "no free beds"; print(free[0])')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","name":"E2E Encounter-Scope Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"readmission","attending":"Dr. E2E","bedId":"'$B2'"}' \
+            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"Encounter-Scope","nameFamily":"Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"readmission","attending":"Dr. E2E","bedId":"'$B2'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/readm.json
           vals=$(PID="$PID" EID="$EID" python3 -c '
           import json, os

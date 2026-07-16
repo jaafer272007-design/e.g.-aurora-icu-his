@@ -29,6 +29,13 @@ export interface PrintPatientIdentity {
   codeStatus: string | null
   bedId: string
   diagnosis: string
+  /** STRUCTURED IDENTITY (name + national ID design): the FULL LEGAL
+   *  name (all present parts) and the national identity number render on
+   *  official documents when recorded — null on legacy single-name rows
+   *  and on the encounter snapshot (never fabricated). `name` above is
+   *  the derived display name / legacy stored name. */
+  fullName: string | null
+  nationalId: string | null
   /** where the identity fields came from — surfaced on the document when
    *  it is the narrower encounter snapshot. 'patient-record' is the Core
    *  patient-identity read (the middle rung): full person-level identity

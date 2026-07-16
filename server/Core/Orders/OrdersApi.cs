@@ -185,7 +185,7 @@ static class OrdersApi
                    documented FACTS. Expected instances derive at MAR read
                    from frequency + the signed time (therapy start). */
                 var dto = new OrderDto(
-                    OrderLogic.NextOrderId(), draft.PatientId!, enc.EncounterId, enc.BedId, pt.Name,
+                    OrderLogic.NextOrderId(), draft.PatientId!, enc.EncounterId, enc.BedId, pt.DisplayName,
                     draft.Category!, draft.Summary ?? OrderLogic.MedSummary(medication!),
                     medication, draft.Priority!, req.Sign ? "active" : "pending",
                     actor, time, draft.RequiresImplementation, null, history, null,

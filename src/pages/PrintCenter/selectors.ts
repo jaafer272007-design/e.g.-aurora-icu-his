@@ -42,7 +42,8 @@ function toIdentity(r: RosterRecordDto): PrintPatientIdentity {
   return {
     patientId: r.patientId, name: r.name, mrn: r.mrn, age: r.age, sex: r.sex,
     allergies: r.allergies, attending: r.attending, codeStatus: r.codeStatus,
-    bedId: r.bedId, diagnosis: r.diagnosis, source: 'roster',
+    bedId: r.bedId, diagnosis: r.diagnosis,
+    fullName: r.fullName ?? null, nationalId: r.nationalId ?? null, source: 'roster',
   }
 }
 
@@ -55,7 +56,8 @@ function recordIdentity(p: PatientIdentity, e: Encounter): PrintPatientIdentity 
   return {
     patientId: p.patientId, name: p.name, mrn: p.mrn, age: p.age, sex: p.sex,
     allergies: p.allergies, attending: e.attending, codeStatus: null,
-    bedId: e.bedId, diagnosis: e.diagnosis, source: 'patient-record',
+    bedId: e.bedId, diagnosis: e.diagnosis,
+    fullName: p.fullName ?? null, nationalId: p.nationalId ?? null, source: 'patient-record',
   }
 }
 
@@ -66,7 +68,8 @@ function snapshotIdentity(e: Encounter): PrintPatientIdentity {
   return {
     patientId: e.patientId, name: e.patientName, mrn: null, age: null, sex: null,
     allergies: null, attending: e.attending, codeStatus: null,
-    bedId: e.bedId, diagnosis: e.diagnosis, source: 'encounter-snapshot',
+    bedId: e.bedId, diagnosis: e.diagnosis,
+    fullName: null, nationalId: null, source: 'encounter-snapshot',
   }
 }
 

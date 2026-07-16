@@ -92,8 +92,16 @@ static class Rbac
            administrative landing + the operational patient list but no
            longer manages accounts. A FLAGGED authority change, stated in
            the PR — the office profile held users.manage since Layer 3
-           only because no IT/system role existed yet. */
-        ["Administrator"] = ["admin.view", "patients.view"],
+           only because no IT/system role existed yet.
+           identity.correct (Structured Patient Name + National ID design
+           §3 — the FLAGGED authority, stated): correcting a patient's
+           legal name / national identity number / DOB is REGISTRATION
+           work, and identity is NOT clinical data — it fits the office
+           profile's locked scope exactly (the clinical exclusion is
+           untouched: no clinical atom is granted). Clinical profiles do
+           not hold it — a serious audited identity event belongs to the
+           role whose job is the registry. */
+        ["Administrator"] = ["admin.view", "patients.view", "identity.correct"],
         /* the highest-privilege authority in the system: whoever holds it
            controls who can reach patient data — while never reaching it
            themselves (NO clinical atoms, not even patients.view; the

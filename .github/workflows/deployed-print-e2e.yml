@@ -142,7 +142,7 @@ jobs:
           except ValueError: base = t.replace(year=t.year-41, day=28)
           print((base + datetime.timedelta(days=40)).isoformat())')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","name":"Print E2E Patient","dateOfBirth":"'$DOBSTR'","sex":"F","allergies":"Sulfa — rash (print e2e)","diagnosis":"print render E2E","attending":"Dr. E2E","bedId":"'$FREE'"}' \
+            -d '{"mrn":"'$MRN'","nameFirst":"Print","nameSecond":"E2E","nameFamily":"Patient","dateOfBirth":"'$DOBSTR'","sex":"F","allergies":"Sulfa — rash (print e2e)","diagnosis":"print render E2E","attending":"Dr. E2E","bedId":"'$FREE'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
           # EXPORT BEFORE ASSERTING (leak prevention — the recorded lesson)
           vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')

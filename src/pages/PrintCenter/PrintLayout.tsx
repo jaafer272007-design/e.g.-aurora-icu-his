@@ -42,7 +42,12 @@ export function PrintLayout({ title, context, printedBy, printedAt, children }: 
       <h1 className="pd-title">{title}</h1>
 
       <section className="pd-band" aria-label="Patient identity">
-        <div><span className="pd-k">Patient</span><span className="pd-v">{patient.name}</span></div>
+        {/* official documents carry the FULL LEGAL NAME (all present
+            parts) + the national identity number when recorded; a legacy
+            single-name patient prints their stored name honestly, and an
+            absent national ID prints a dash — never fabricated */}
+        <div><span className="pd-k">Patient</span><span className="pd-v">{patient.fullName ?? patient.name}</span></div>
+        <div><span className="pd-k">National ID</span><span className="pd-v">{patient.nationalId ?? dash}</span></div>
         <div><span className="pd-k">Patient ID</span><span className="pd-v">{patient.patientId}</span></div>
         <div><span className="pd-k">MRN</span><span className="pd-v">{patient.mrn ?? dash}</span></div>
         <div><span className="pd-k">Age / Sex</span><span className="pd-v">{patient.age ?? dash} / {patient.sex ?? dash}</span></div>
