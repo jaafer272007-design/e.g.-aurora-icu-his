@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
@@ -1334,6 +1334,17 @@ export function updateEncounterMeasurements(encounterId: string, draft: MeasureD
 /** POST /api/icu/adt/admissions — doctor RBAC (adt.admit). REAL-ONLY write. */
 export function admitPatient(draft: AdmitDraft): Promise<AdtWriteResult<AdmitResponse>> {
   return adtPost<AdmitResponse>('/api/icu/adt/admissions', 'ADT admission', draft)
+}
+
+/** POST /api/icu/adt/patients/match — the ON-SUBMIT identity match
+ *  (match+overview design): checks for an existing patient BEFORE
+ *  anything is created. READ-ONLY despite the verb (the national ID must
+ *  never ride a URL). RBAC patients.view — the identity-only card is
+ *  census-class data, so the registering clerk can run the check.
+ *  REAL-ONLY like every ADT interaction: offline means the admission
+ *  itself could not proceed either, so nothing is created. */
+export function matchPatient(draft: MatchPatientDraft): Promise<AdtWriteResult<MatchPatientResponse>> {
+  return adtPost<MatchPatientResponse>('/api/icu/adt/patients/match', 'patient match', draft)
 }
 
 /** PUT /api/icu/adt/patients/:patientId/identity — the AUDITED identity

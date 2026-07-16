@@ -84,6 +84,78 @@ static class AdtApi
             return patient is null ? ApiError.NotFound() : Results.Json(patient.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* POST /api/icu/adt/patients/match — the on-submit identity match
+           (match+overview design §1-2; see MatchPatientRequest for the
+           three-tier rules). READ-ONLY despite the verb — POST carries
+           the national ID in the body, never a URL. Gated on
+           patients.view: the card is identity-only (the same class of
+           data as the census), so the office Administrator — who
+           registers patients — can run the check; clinical data never
+           appears in this response. NEVER AUTO-MERGES, NEVER CREATES:
+           the caller decides, a human confirms a Tier B suggestion.
+           FOUR-CODE: nothing matchable / malformed dateOfBirth /
+           unknown field → 400; there is no 404 (an empty match is a
+           RESULT, not an error) and no 409 (nothing mutates). */
+        app.MapPost("/api/icu/adt/patients/match",
+            (MatchPatientRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "patients.view") is IResult denied) return denied;
+            foreach (var (field, value) in new[] {
+                ("mrn", req.Mrn), ("nationalId", req.NationalId), ("nameFirst", req.NameFirst),
+                ("nameSecond", req.NameSecond), ("nameFamily", req.NameFamily) })
+                if (value is not null && value.Length > AdtLogic.MaxTextLength)
+                    return ApiError.BadRequest($"{field} exceeds {AdtLogic.MaxTextLength} characters");
+            string? Clean(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+            var (mrn, nid, nf, ns, nl) =
+                (Clean(req.Mrn), Clean(req.NationalId), Clean(req.NameFirst), Clean(req.NameSecond), Clean(req.NameFamily));
+            string? dob = null;
+            if (Clean(req.DateOfBirth) is string rawDob)
+            {
+                if (!DateTime.TryParseExact(rawDob, "yyyy-MM-dd",
+                        null, System.Globalization.DateTimeStyles.None, out _))
+                    return ApiError.BadRequest("dateOfBirth must be a valid date formatted yyyy-MM-dd");
+                dob = rawDob;
+            }
+            var nameDobComplete = nf is not null && ns is not null && nl is not null && dob is not null;
+            if (mrn is null && nid is null && !nameDobComplete)
+                return ApiError.BadRequest(
+                    "nothing to match on — provide mrn, nationalId, or the complete required name (nameFirst, nameSecond, nameFamily) with dateOfBirth");
+
+            /* Tier A — unique identifiers, checked in the order the
+               registration form supplies them (nationalId first) */
+            var rows = db.AdtPatients.AsNoTracking().AsEnumerable().ToList();
+            Patient? confirmed = null;
+            if (nid is not null) confirmed = rows.FirstOrDefault(p => p.NationalId == nid);
+            if (confirmed is null && mrn is not null) confirmed = rows.FirstOrDefault(p => p.Mrn == mrn);
+
+            List<Patient> matches;
+            string? tier;
+            if (confirmed is not null) { matches = new() { confirmed }; tier = "confirmed"; }
+            else if (nameDobComplete)
+            {
+                /* Tier B — exact three-part name (case-insensitive) +
+                   exact STORED DateOfBirth. Rows without a real DOB
+                   (estimated-age unknowns) and legacy single-name rows
+                   never enter. ALL hits return — two identical name+DOB
+                   patients are the design's own motivating case, and the
+                   human sees both. */
+                matches = rows.Where(p =>
+                    p.DateOfBirth is not null && p.DateOfBirth == dob
+                    && p.HasStructuredName
+                    && string.Equals(p.NameFirst, nf, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(p.NameSecond, ns, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(p.NameFamily, nl, StringComparison.OrdinalIgnoreCase)).ToList();
+                tier = matches.Count > 0 ? "probable" : null;
+            }
+            else { matches = new(); tier = null; }
+
+            return Results.Json(new
+            {
+                tier,
+                matches = matches.Select(p => AdtLogic.ToMatchCard(p, db)).ToList(),
+            }, JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* PUT /api/icu/adt/patients/{patientId}/identity — IDENTITY
            CORRECTION (the validator's design §3 — REQUIRED by the
            unknown-patient decision: the family arrives and the patient
@@ -425,6 +497,20 @@ static class AdtApi
                 if (openEnc is not null)
                     return ApiError.StateConflict(
                         $"patient '{patient.PatientId}' ({patient.Mrn}) already has an open encounter '{openEnc.EncounterId}'");
+                /* DECEASED GUARD (match+overview design §3.4 — the
+                   SERVER half; the dialog hides its Readmit button, but
+                   a UI-only guard is not a guard): a patient whose
+                   latest encounter closed with disposition 'died' is
+                   never re-admitted. A wrong death record is corrected
+                   through the audited record, not through admission. */
+                var latestEnc = db.Encounters.AsNoTracking()
+                    .Where(e => e.PatientId == patient.PatientId).AsEnumerable()
+                    .OrderByDescending(e => AdtLogic.EncounterSeq(e.EncounterId)).FirstOrDefault();
+                if (latestEnc?.Disposition == "died")
+                    return ApiError.StateConflict(
+                        $"patient '{patient.PatientId}' ({patient.Mrn}) is recorded as deceased "
+                        + $"(disposition 'died' on encounter '{latestEnc.EncounterId}') — a deceased patient cannot be re-admitted; "
+                        + "a wrong death record is corrected through the audited record, never through admission");
                 /* RE-ADMISSION IDENTITY RULES (adversarial-review finding
                    — never a silent no-op):
                    - a submitted dateOfBirth COMPLETES a legacy row that
@@ -634,6 +720,40 @@ static class AdtLogic
         rewritten. The 900k space against tens of patients makes retries
         vanishingly rare; the loop bound turns a pathological collision
         streak into a loud 500 rather than an infinite loop. */
+    /* numeric sequence of an "ENC-{n}" id — ordinal string ordering
+       would misplace ids across digit-count boundaries */
+    public static long EncounterSeq(string encounterId) =>
+        encounterId.StartsWith("ENC-") && long.TryParse(encounterId[4..], out var n) ? n : 0;
+
+    /* the match dialog's identity summary card, derived at read: status
+       and location come from the ENCOUNTERS (open → admitted + bed;
+       else latest disposition 'died' → deceased; else discharged), age
+       through the canonical Patient.ToDto resolver (no fork), and the
+       national ID leaves here MASKED TO ITS LAST 4 — the full number
+       is never in this DTO at all. */
+    public static MatchCardDto ToMatchCard(Patient p, AuroraDb db)
+    {
+        var encs = db.Encounters.AsNoTracking()
+            .Where(e => e.PatientId == p.PatientId).AsEnumerable().ToList();
+        var open = encs.FirstOrDefault(e => e.Status == "open");
+        var latest = encs.OrderByDescending(e => EncounterSeq(e.EncounterId)).FirstOrDefault();
+        var status = open is not null ? "admitted"
+            : latest?.Disposition == "died" ? "deceased" : "discharged";
+        var dto = p.ToDto();
+        /* masking must SURVIVE short values (adversarial-review finding):
+           for a stored ID of 4 characters or fewer, "the last 4" IS the
+           whole number — emit "" (recorded but unmaskable; the dialog
+           says so) rather than ever letting the full value ride. Only a
+           null (nothing recorded) stays null. */
+        var last4 = p.NationalId is null ? null
+            : p.NationalId is { Length: > 4 } full ? full[^4..] : "";
+        return new MatchCardDto(
+            p.PatientId, dto.FullName ?? dto.Name, p.Mrn, last4,
+            dto.Age, dto.AgeSource, p.Sex,
+            latest?.AdmittedAt ?? "", encs.Count, status,
+            open?.BedId, open?.EncounterId);
+    }
+
     public static string NextMrn(AuroraDb db)
     {
         for (var i = 0; i < 1000; i++)

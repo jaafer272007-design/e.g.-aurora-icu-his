@@ -1355,6 +1355,50 @@ export interface AdmitResponse {
   encounter: Encounter
 }
 
+/* ---------- POST /api/icu/adt/patients/match ---------- */
+
+/** the on-submit identity match (match+overview design): runs BEFORE
+ *  anything is created. Tier A = mrn/nationalId (unique → confirmed);
+ *  Tier B = the three required name parts + dateOfBirth (probabilistic —
+ *  a human verifies; exact parts case-insensitive, exact DOB, no fuzzy);
+ *  unknown patients (no stored real DOB) never enter Tier B. */
+export interface MatchPatientDraft {
+  mrn?: string
+  nationalId?: string
+  nameFirst?: string
+  nameSecond?: string
+  nameFamily?: string
+  dateOfBirth?: string
+}
+
+/** the match dialog's identity summary card — IDENTITY ONLY (this is
+ *  everything the office Administrator sees; there are no clinical
+ *  fields to leak). nationalIdLast4 is masked SERVER-SIDE — the full
+ *  number never reaches this dialog. */
+export interface MatchCard {
+  patientId: string
+  fullName: string
+  mrn: string
+  nationalIdLast4?: string | null
+  age: number
+  ageSource: 'dateOfBirth' | 'recordedAtAdmission'
+  sex: Sex
+  /** latest encounter's admission stamp — '' on dateless seeds */
+  lastAdmission: string
+  admissionCount: number
+  status: 'admitted' | 'discharged' | 'deceased'
+  currentBedId?: string | null
+  currentEncounterId?: string | null
+}
+
+export interface MatchPatientResponse {
+  /** 'confirmed' (Tier A) | 'probable' (Tier B); ABSENT when there is no
+   *  match (the wire omits null fields) — the dialog only ever opens on
+   *  a non-empty matches array, where the tier is always present */
+  tier?: 'confirmed' | 'probable' | null
+  matches: MatchCard[]
+}
+
 /* ---------- PUT /api/icu/adt/encounters/:encounterId/measurements ---------- */
 
 /** add-if-omitted / correct-with-history WITHIN the encounter — at least
