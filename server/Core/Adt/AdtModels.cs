@@ -55,8 +55,8 @@ class Patient
        MRN (the hospital's own record number). */
     public string? NationalId { get; set; }
     /* IDENTITY CORRECTION history (§3 — append-only, amend never erase):
-       every name/national-ID/DOB correction records actor + ACTIVE role
-       (#104) + dated time + reason + the previous→new diff. A record
+       every name/national-ID/DOB/MRN correction records actor + ACTIVE
+       role (#104) + dated time + reason + the previous→new diff. A record
        that read "Unknown" for six hours and now reads a real name is a
        fact — orders and doses were documented against that identity. */
     public string IdentityJson { get; set; } = "[]";
@@ -292,11 +292,25 @@ record AdmitRequest(
    requires the COMPLETE structured set (first/second/family — the form
    pre-fills current values); nationalId and dateOfBirth correct
    independently; reason is always required. Amend never erase — every
-   correction appends to the patient's identity history. */
+   correction appends to the patient's identity history.
+   THE MRN IS CORRECTABLE HERE TOO (the #116 flag resolved by the owner):
+   #116 retired the MRN as the re-admission linking key (re-admission
+   keys on an explicit patientId), so the MRN is purely a display
+   identifier — correcting one no longer changes who a future
+   re-admission attaches to, which is what made this safe to build.
+   A typed `mrn` must use the canonical MRN-###### format (free-form
+   record numbers are exactly the class of error this path exists to
+   remove — P-1191's national ID in the MRN slot); `regenerateMrn`
+   instead has Aurora assign a fresh unique canonical number
+   (AdtLogic.NextMrn — the #116 generator, no fork). Exactly one of the
+   two; a corrected MRN must be unique against every existing MRN; the
+   previous value is preserved in the history diff. NEVER silent — every
+   MRN change is deliberate, reasoned and audited. */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CorrectIdentityRequest(
     string? NameFirst, string? NameSecond, string? NameThird, string? NameFourth,
-    string? NameFamily, string? NationalId, string? DateOfBirth, string? Reason);
+    string? NameFamily, string? NationalId, string? DateOfBirth, string? Reason,
+    string? Mrn = null, bool? RegenerateMrn = null);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record TransferRequest(string? BedId);

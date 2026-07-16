@@ -23,6 +23,11 @@ export function IdentityDialog(
   const [family, setFamily] = useState(patient.nameFamily ?? '')
   const [nationalId, setNationalId] = useState(patient.nationalId ?? '')
   const [dob, setDob] = useState(patient.dateOfBirth ?? '')
+  /* MRN correction (the #116 flag resolved): typed canonical value XOR
+     "regenerate" (Aurora assigns a fresh unique MRN-######) — the fix a
+     record carrying a non-MRN value in the MRN slot needs */
+  const [mrn, setMrn] = useState(patient.mrn)
+  const [regenMrn, setRegenMrn] = useState(false)
   const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -37,12 +42,17 @@ export function IdentityDialog(
 
   const nameTouched = !!(first.trim() || second.trim() || third.trim() || fourth.trim() || family.trim())
   const nameComplete = !!(first.trim() && second.trim() && family.trim())
+  const mrnTouched = regenMrn || (mrn.trim() !== '' && mrn.trim() !== patient.mrn)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     if (nameTouched && !nameComplete) {
       setError('Correcting the name requires First, Second and Family (Third/Fourth optional)')
+      return
+    }
+    if (mrnTouched && !regenMrn && !/^MRN-\d{6}$/.test(mrn.trim())) {
+      setError('A corrected MRN must use the canonical MRN-###### format — or choose Regenerate and Aurora assigns one')
       return
     }
     setBusy(true)
@@ -55,6 +65,8 @@ export function IdentityDialog(
       } : {}),
       ...(nationalId.trim() && nationalId.trim() !== patient.nationalId ? { nationalId: nationalId.trim() } : {}),
       ...(dob && dob !== patient.dateOfBirth ? { dateOfBirth: dob } : {}),
+      ...(regenMrn ? { regenerateMrn: true }
+        : mrnTouched ? { mrn: mrn.trim() } : {}),
       reason: reason.trim(),
     })
     setBusy(false)
@@ -71,6 +83,7 @@ export function IdentityDialog(
           A serious, audited identity event — the previous identity is preserved and stays visible
           in the history below (amend, never erase). Current record: <b>{patient.fullName ?? patient.name}</b>
           {patient.nationalId ? <> · ID <span className="num">{patient.nationalId}</span></> : ' · no national ID recorded'}
+          {' '}· MRN <span className="num">{patient.mrn}</span>
         </p>
         <form onSubmit={submit}>
           <div className="idgrid">
@@ -94,6 +107,18 @@ export function IdentityDialog(
             </label>
             <label>Date of birth <i>correctable once known — audited</i>
               <input type="date" value={dob} onChange={e => setDob(e.target.value)} />
+            </label>
+            <label>MRN <i>the hospital's record number — audited</i>
+              <input
+                value={regenMrn ? 'Aurora will assign a fresh MRN-######' : mrn}
+                onChange={e => setMrn(e.target.value)}
+                disabled={regenMrn}
+                placeholder="MRN-000000"
+              />
+            </label>
+            <label className="idregen">
+              <input type="checkbox" checked={regenMrn} onChange={e => setRegenMrn(e.target.checked)} />
+              <span>Regenerate the MRN — Aurora assigns a fresh unique <span className="num">MRN-######</span> (use this when the slot holds a value that was never an MRN)</span>
             </label>
             <label className="idwide">Reason (required)
               <textarea value={reason} onChange={e => setReason(e.target.value)}

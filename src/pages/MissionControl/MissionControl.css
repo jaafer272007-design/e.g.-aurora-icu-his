@@ -351,6 +351,11 @@
 .idgrid input,.idgrid textarea{background:rgba(9,16,28,.7);border:1px solid rgba(130,170,230,.18);border-radius:10px;color:inherit;padding:8px 10px;font-size:13px;min-height:38px}
 .idgrid textarea{min-height:56px;resize:vertical}
 .idgrid .idwide{grid-column:1 / -1}
+/* the MRN-regenerate affordance (the #116 flag resolved): a checkbox row,
+   not a text field — Aurora assigns the number */
+.idgrid .idregen{flex-direction:row;align-items:flex-start;gap:8px;grid-column:1 / -1;color:var(--muted,#8fa3c0)}
+.idgrid .idregen input[type=checkbox]{min-height:0;width:14px;height:14px;margin-top:2px;accent-color:var(--blue)}
+.idgrid input:disabled{opacity:.55;font-style:italic}
 .iderr{color:var(--red);font-size:12px;margin-top:10px}
 .idfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 .idfoot .btn{border-radius:10px;padding:8px 14px;font-size:13px;cursor:pointer;min-height:38px;border:1px solid rgba(130,170,230,.22);background:none;color:inherit}

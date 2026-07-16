@@ -1,6 +1,8 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-16 · current through the AUTO-GENERATED MRN
+**Last updated: 2026-07-16 · current through MRN CORRECTION ON THE
+AUDITED IDENTITY PATH (the #116 flag resolved by the owner — see its
+record below); prior marker retained: current through the AUTO-GENERATED MRN
 (the #113 flag resolved by the owner — see its record below); prior
 marker retained: current through PATIENT ASSIGNMENT &
 RESPONSIBILITY (the validator's design, care-pathway #1 — see its record
@@ -4826,6 +4828,66 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### MRN correction on the audited identity path (built — the #116 flag resolved by the owner)
+
+**Origin (verified against the real code first):** the #113 identity
+correction (`PUT /adt/patients/{id}/identity`) covered names, national
+ID and DOB only — `CorrectIdentityRequest` had no `mrn` field, so a
+wrong MRN had NO fix path: P-1191 (رضا) still carried `214313412` (his
+national identity number, typed before the ID had its own field) in the
+MRN slot with no way to repair it. **Why this is safe now and wasn't
+before (the owner's stated rationale):** #116 retired the MRN as the
+re-admission linking key — re-admission keys on an explicit patientId —
+so the MRN is purely a display identifier; correcting one no longer
+changes who a future re-admission attaches to.
+
+- **The same audited path, one more field:** `CorrectIdentityRequest`
+  gains `mrn` and `regenerateMrn` (exactly one — both → 400). Office
+  Administrator (`identity.correct` — no new atom, no new profile),
+  required reason, actor + ACTIVE role (#104), append-only history with
+  the `mrn: previous → new` diff (amend never erase). NEVER silent —
+  every MRN change is a deliberate, reasoned, audited event with the
+  previous value preserved and visible.
+- **A typed correction must be canonical `MRN-######`** (flagged
+  decision, stated in the PR): free-form MRN entry is the exact hole
+  #116 closed, and every legitimate MRN is already canonical — the only
+  non-canonical value in existence is the wrong one this path exists to
+  fix. The non-canonical probe uses the P-1191 value itself.
+- **`regenerateMrn` — the رضا fix:** Aurora assigns a fresh unique
+  number via `AdtLogic.NextMrn` (the #116 generator — no fork; it
+  checks every existing MRN including the row's own, so a regenerated
+  value can never equal the current one). A typed or regenerated MRN
+  is unique against every existing MRN; a duplicate → 409 naming the
+  holder (the national-ID precedent).
+- **UI:** the identity dialog gains an MRN field (pre-filled with the
+  record value) + the "Regenerate" affordance (checkbox disables the
+  typed field — Aurora assigns the number); client-side canonical-format
+  guard mirrors the server. Doctors have no control at all (the whole
+  ✎ Correct identity button stays `identity.correct`-gated).
+- **Deployed-adt suite extended** (same STRUCTURED IDENTITY step):
+  doctor 403 on MRN correction; non-canonical typed value 400 (probed
+  with `214313412`); mrn+regenerateMrn 400; duplicate 409 naming the
+  holder (probed with the other run patient's real generated MRN —
+  deterministic against the durable DB); regenerate 200 with format +
+  previous-value diff asserted; typed canonical correction back to the
+  just-freed old value (collision-proof by construction); history
+  append-only across both events.
+- **Verification:** 19/19 API checks on a fresh local DB (the P-1191
+  state PLANTED via direct DB write — unreachable through the API since
+  #116, which is the point — then fixed end-to-end: regenerate →
+  canonical unique, audited diff `mrn: 214313412 → MRN-######`; RBAC
+  both directions; all validation legs; duplicate 409; roster serves
+  the corrected MRN through the same resolver; #116 generation AND
+  re-admission-by-patientId intact — re-admission attaches to the same
+  patient carrying the CORRECTED MRN; every other MRN byte-for-byte
+  untouched) + 10/10 real-browser checks (screenshots to the owner:
+  dialog with the wrong MRN, regenerate flow, history showing the
+  previous value, doctor sees no control, the Discharge Summary prints
+  the corrected MRN with the wrong value gone).
+- **رضا's LIVE record is NOT touched by this PR** — the capability
+  ships; the actual staging correction of P-1191 is the owner's click
+  (or say the word and I'll run it against staging post-merge).
+
 ### Auto-generated MRN (built — the #113 flag resolved by the owner)
 
 *[Attributed addition 2026-07-16, post-merge: the #116 post-merge run of
@@ -4887,7 +4949,9 @@ DOB, reason only) — see the flag below.
   audited identity-correction path (office Administrator, reason
   required, amend-never-erase — the same event history), optionally
   with a "regenerate" affordance; deciding it makes it a small
-  follow-up, not built here.
+  follow-up, not built here. *[Superseded 2026-07-16: the owner decided
+  it — built exactly as recommended. See "### MRN correction on the
+  audited identity path (built)" above.]*
 - **All ten admitting suites converted** (mrn removed from every admit
   payload): the adt suite additionally asserts the retired-field 400,
   the generated `MRN-\d{6}` format on the response, and its
