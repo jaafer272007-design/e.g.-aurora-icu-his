@@ -43,3 +43,35 @@
 /* re-admission note (auto-generated MRN) */
 .admreadmit{border:1px dashed rgba(var(--cyan-rgb),.4);background:rgba(var(--cyan-rgb),.07);
  color:var(--dim);border-radius:11px;padding:10px 12px;font-size:12px;line-height:1.5}
+
+/* the ?readmit= banner's cancel action */
+.admcancelre{background:none;border:none;color:var(--cyan);cursor:pointer;font-size:11.5px;padding:0;text-decoration:underline}
+
+/* ===== THE MATCH DIALOG (match+overview design §3) — identity summary
+   card + role-split actions; opened ON SUBMIT when an existing patient
+   matches; nothing is created while it is open ===== */
+.mtscrim{position:fixed;inset:0;background:rgba(3,7,14,.62);backdrop-filter:blur(3px);
+ display:flex;align-items:center;justify-content:center;z-index:60}
+.mtdialog{width:min(640px,94vw);max-height:88vh;overflow:auto;background:var(--card-bg,#0b1422);
+ border:1px solid rgba(130,170,230,.2);border-radius:18px;padding:20px 22px;box-shadow:0 12px 34px rgba(0,0,0,.38)}
+.mtdialog h2{font-size:16px;margin:0 0 6px}
+.mtnote{font-size:12px;color:var(--dim);margin:0 0 12px;line-height:1.5}
+.mtcard{border:1px solid rgba(130,170,230,.18);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+.mtname{font-size:14.5px;font-weight:700;margin-bottom:6px}
+.mtpid{font-weight:400;color:var(--dim);font-size:12px}
+.mtrows{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px}
+.mtrows i{color:var(--dim);font-style:italic}
+.mtstatus{border:1px solid rgba(130,170,230,.3);border-radius:8px;padding:1px 8px;font-size:11.5px}
+.mtstatus.admitted{color:var(--amber);border-color:rgba(var(--amber-rgb),.5)}
+.mtstatus.deceased{color:var(--red);border-color:rgba(var(--red-rgb),.5);font-weight:700}
+.mtstatus.discharged{color:var(--dim)}
+.mtguard{margin-top:9px;border:1px dashed rgba(var(--amber-rgb),.5);background:rgba(var(--amber-rgb),.08);
+ border-radius:10px;padding:8px 10px;font-size:12px;line-height:1.45}
+.mtguard.mtdead{border-color:rgba(var(--red-rgb),.5);background:rgba(var(--red-rgb),.07)}
+.mtcardfoot{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.mterr{color:var(--red);font-size:12px;margin:8px 0}
+.mtfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;flex-wrap:wrap}
+.mtdialog .btn{border-radius:10px;padding:8px 14px;font-size:12.5px;cursor:pointer;min-height:36px;
+ border:1px solid rgba(130,170,230,.22);background:none;color:inherit}
+.mtdialog .btn.primary{background:rgba(var(--blue-rgb),.18);border-color:var(--blue);color:var(--blue)}
+.mtdialog .btn:disabled{opacity:.5;cursor:not-allowed}

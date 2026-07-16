@@ -1,6 +1,9 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-16 · current through MRN CORRECTION ON THE
+**Last updated: 2026-07-16 · current through PATIENT IDENTITY MATCH +
+HISTORY OVERVIEW (the validator's design — supersedes #116's
+discharged-patient picker; see its record below); prior marker retained:
+current through MRN CORRECTION ON THE
 AUDITED IDENTITY PATH (the #116 flag resolved by the owner — see its
 record below); prior marker retained: current through the AUTO-GENERATED MRN
 (the #113 flag resolved by the owner — see its record below); prior
@@ -4828,6 +4831,134 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### Patient Identity Match + History Overview (built — the validator's design; supersedes #116's picker)
+
+Built in full from the validator's match+overview design. **Patient = one
+person, Encounter = each admission** — a returning patient gets a new
+Encounter on the same Patient, never a duplicate record. **Verified
+against the real code first (the reported answers):** there was NO
+search/match endpoint of any kind (the nearest thing was the duplicate
+409s that name their holder); #116's discharged-patient picker was a
+client-only bridge over the patientId re-admission path (reused here,
+picker retired); and the Tier C question resolved to **mechanism (c)**:
+the estimated-age marker genuinely exists — `DateOfBirth null` +
+`ageSource "recordedAtAdmission"` IS the structural signature of an
+unidentified patient, so Tier B (which requires an exact stored DOB)
+excludes them by construction. No `isUnidentified` flag, no name-text
+matching, "no special mode" preserved; they re-enter matching once
+identity correction records a real DOB or national ID.
+
+- **On-submit matching (flagged choice, stated: on submit, never per
+  keystroke):** `POST /adt/patients/match` — POST deliberately (the
+  national ID must never ride a URL into request logs), gated on
+  `patients.view` (the card is identity-only, census-class data — the
+  registering clerk can run the check), READ-ONLY: creates nothing,
+  merges nothing, ever. Three tiers: **A** mrn/nationalId → CONFIRMED
+  ("Patient already exists."); **B** exact First+Second+Family + exact
+  DOB → PROBABLE ("Possible existing patient. Please verify identity
+  before creating a new record.") — never auto-selected, nothing created
+  until a human decides; case-insensitive part comparison (a case
+  difference is data-entry noise, not a different person) but NO
+  fuzzy/phonetic matching (#113's reasoning — a near-miss on identity is
+  a safety risk); Third/Fourth deliberately not compared (optional
+  fields cannot be required). ALL Tier B hits return — two patients with
+  identical name+DOB (the design's own أحمد محمد علي case) BOTH surface.
+- **The card is masked server-side:** `MatchCardDto` carries
+  `nationalIdLast4` and no full-ID field at all — deliberately stricter
+  than #113's PII default; a "same person?" check needs no more.
+  Status derives at read: open encounter → admitted (+ current bed);
+  else latest disposition `died` → deceased; else discharged.
+- **The dialog (same window, content by role):** identity summary card;
+  History Overview button for `results.view` holders only; Start New
+  Encounter/Readmit only on a discharged match; **currently admitted →
+  NO Readmit** — the bed named + Open Current Admission (the
+  duplicate-encounter guard); **deceased → NO Readmit, stated plainly**
+  (decided per the flag): a wrong death record is an audited record
+  correction, never a readmit — and the SERVER enforces the same rule
+  (re-admitting a patient whose latest encounter closed `died` → 409;
+  a UI-only guard is not a guard). Tier B additionally offers "verified
+  different person — create new patient": the design's
+  verify-before-creating implies creating stays possible, or a genuinely
+  new patient with a colliding name+DOB could never be registered
+  (stated as a necessary completion of the design).
+- **The History Overview is a PAGE (locked decision 5), reachable from
+  BOTH the dialog and the chart** (flagged choice: both) at
+  `/patients/:id/history`, gated `results.view` — held by every clinical
+  profile and by NEITHER administrator. Real data only: identity (full
+  national ID here — the last-4 rule is the lookup dialog's), previous
+  encounters (date · diagnosis · outcome from #96's disposition;
+  pre-#96 encounters honestly read "outcome not recorded"), allergies,
+  previous medications (`orders.view` holders), previous labs, previous
+  imaging. **"Last important results" resolved as DERIVED, never
+  curated** (flagged choice): most recent result per analyte / most
+  recent study per modality, most recent first, capped — a baked-in
+  clinical list would rot and embed clinical judgment in code.
+  READ-ONLY: closed encounters stay terminal; the only action is
+  ➜ Admit as New Encounter (hidden for the admitted and the deceased).
+- **The omission rule (§5.2 — the reasoning recorded here as required):**
+  Department, Chronic problems and Surgical history are OMITTED
+  ENTIRELY, not rendered as "not tracked yet". On Statistics a
+  "not tracked yet" tile is safe — nobody misreads a dashboard. In a
+  CLINICAL HISTORY, a section reading "Chronic Problems — not tracked"
+  is scanned in three seconds as "no chronic problems" — **an empty
+  clinical section reads as clinical absence.** The same honesty rule
+  produces a different answer in a different context; this paragraph
+  exists so it is never "fixed" into inconsistency. Domains Aurora DOES
+  track render honest zero states instead. The REQUIRED scope statement
+  banners the page: Aurora ICU records only, not the patient's complete
+  medical history.
+- **FLAG (the design assumed otherwise, the locked matrix says no):**
+  the office Administrator holds `patients.view` + `identity.correct`
+  but NOT `adt.admit` — admission is doctor authority, so the clerk can
+  run the match and open the current admission but cannot Start a New
+  Encounter, and never reaches the dialog through the (doctor-gated)
+  admission form today. Granting the clerk `adt.admit` is a locked-
+  matrix change that belongs to the owner — one line on both sides if
+  decided; nothing here forecloses it (the dialog's actions are already
+  capability-gated).
+- **Supersession:** #116's discharged-patient re-admission picker is
+  REMOVED (it listed discharged patients only and matched nothing);
+  matching covers ALL patients, admitted included. Re-admission mode is
+  now entered only through the dialog's Readmit or the Overview's
+  ➜ Admit as New Encounter (`/admissions?readmit=P-xxxx` — the banner
+  names the stored identity). The patientId wire path is unchanged.
+- **Deployed-adt suite extended** — a PATIENT MATCH step: unauth 401;
+  nothing-to-match 400; Tier A by nationalId as the office
+  Administrator (masked last-4 asserted + the full ID grep-asserted
+  ABSENT from the response); Tier A by MRN on the admitted run patient
+  (status admitted + current bed); Tier B probable on the corrected
+  identity; Tier C zero matches for Unknowns; a deceased run patient
+  (disposition died) derived on the card AND the readmit 409; the
+  no-side-effects invariant (encounter count unchanged across probes).
+- **Adversarial review pass (pre-push, three lenses + refute-verify;
+  five confirmed findings, all fixed in the same change):** episode-field
+  validation moved BEFORE the dialog can open and the dialog's offline
+  message routed into the dialog (an error behind the scrim is no
+  error); the Overview's action button, status badges and every clinical
+  zero state gated on the fetch actually landing — loading must never
+  read as clinical absence (the page's own §5.2 rule applied to itself);
+  the last-4 masking made to survive ≤4-character stored IDs (the
+  fallback had returned the WHOLE value — now "" plus honest dialog copy,
+  the full number never rides); the suite's deceased probe given the
+  export-before-asserting cleanup discipline (EID3, and EID4 capturing
+  the created encounter if the deceased guard ever regresses to 200 —
+  no bed leaks on the durable DB, least of all when a guard breaks).
+- **Verification:** 24/24 API checks on a fresh local DB (RBAC three
+  ways incl. the office Administrator's 200; all validation legs;
+  confirmed by nationalId AND mrn incl. a legacy single-name seeded row;
+  probable with case-insensitivity and exact-DOB/no-fuzzy refusals;
+  two Unknowns never matching; the identical-name+DOB pair BOTH
+  surfacing; discharged/deceased status derivation; the deceased
+  readmit 409; readmit = same patient + same MRN + new encounter; match
+  probes creating nothing) + 22/22 real-browser checks (screenshots to
+  the owner: the confirmed card with ···· last-4 and the admitted
+  guard; the probable verify wording; the Overview with scope statement,
+  "outcome not recorded" and no chronic/surgical/department; the
+  re-admission banner and Re-admitted toast; the dialog's own Readmit;
+  the clerk with no History button and the explicit Access Restricted
+  on the route; a nurse seeing the entry point; the deceased dialog;
+  an unknown patient admitting with zero match friction).
+
 ### MRN correction on the audited identity path (built — the #116 flag resolved by the owner)
 
 **Origin (verified against the real code first):** the #113 identity
@@ -4940,6 +5071,11 @@ DOB, reason only) — see the flag below.
   (patients with a closed encounter and no open one); selecting one
   hides the identity fields and shows a note pointing identity fixes at
   the audited correction path. `AdmitDraft` mirrors the wire change.
+  *[Superseded 2026-07-16: the picker was a deliberate bridge and is now
+  RETIRED — replaced by on-submit identity matching covering ALL
+  patients (admitted included). See "### Patient Identity Match +
+  History Overview (built)" above. The patientId wire path it fed is
+  unchanged.]*
 - **EXISTING MRNs are UNTOUCHED — including رضا's wrong one**: they are
   record identifiers referenced by orders/results/prints; the matrix
   asserts every pre-existing patient's MRN byte-for-byte. **FLAG,

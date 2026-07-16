@@ -87,6 +87,11 @@ export function MissionControl() {
   const [correcting, setCorrecting] = useState(false)
   const session = getSession()
   const canCorrectIdentity = session ? hasPermission(session.jobTitle, 'identity.correct') : false
+  /* the Patient History Overview (match+overview design §5.4 — reachable
+     from the chart too): clinical history, so results.view — held by
+     every clinical profile and by NEITHER administrator (the locked
+     rule: the office Administrator never sees clinical data) */
+  const canHistory = session ? hasPermission(session.jobTitle, 'results.view') : false
 
   /* CARE TEAM (Patient Assignment & Responsibility): everyone with
      patients.view SEES who is responsible; managing is gated on
@@ -209,6 +214,9 @@ export function MissionControl() {
                 )}
                 {canCorrectIdentity && pid && (
                   <> · <button className="idbtn" onClick={() => setCorrecting(true)} aria-label={`Correct identity of ${pid.fullName ?? pid.name}`}>✎ Correct identity</button></>
+                )}
+                {canHistory && (
+                  <> · <button className="idbtn" onClick={() => navigate(`/patients/${patientId}/history`)} aria-label="Open the patient history overview">🕘 History</button></>
                 )}
               </div>
             </div>

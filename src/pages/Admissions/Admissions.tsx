@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import './Admissions.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
@@ -7,34 +7,47 @@ import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAdmit, IconBed, IconUsers } from '../../components/icons'
-import { admitPatient, getAdtBeds, getEncounters } from '../../lib/api'
-import type { AdtBed, Encounter, Sex } from '../../lib/api/types'
+import { admitPatient, getAdtBeds, getEncounters, getPatientIdentity, matchPatient } from '../../lib/api'
+import type { AdmitDraft, AdtBed, Encounter, MatchPatientResponse, Sex } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
+import { MatchDialog } from './MatchDialog'
 
 /** Layer 2 — ADT Admissions (/admissions). The first Aurora Core write
- *  screen: admit a patient (create the Patient if the MRN is new, open an
+ *  screen: admit a patient (create the Patient if genuinely new, open an
  *  Encounter, assign a FREE bed). Admission is doctor-level authority
  *  (adt.admit) — other profiles see the census view-only, with no action
  *  they cannot use. Writes are REAL-ONLY: ADT is the durable system of
- *  record, never applied to local mock state. */
+ *  record, never applied to local mock state.
+ *  PATIENT IDENTITY MATCH (the match+overview design, superseding #116's
+ *  discharged-patient picker): ON SUBMIT — never per keystroke — the
+ *  form checks for an existing patient BEFORE creating anything. A match
+ *  opens the dialog; nothing is created until a human decides. RE-ADMISSION
+ *  keeps #116's patientId path, reached through the dialog's Readmit or
+ *  the History Overview's "Admit as New Encounter" (?readmit=P-xxxx). */
 export function Admissions() {
   const navigate = useNavigate()
+  const [params] = useSearchParams()
   const { toast, showToast } = useToast()
   const session = getSession()!
   const canAdmit = hasPermission(session.jobTitle, 'adt.admit')
+  const canOverview = hasPermission(session.jobTitle, 'results.view')
 
   const [beds, setBeds] = useState<AdtBed[] | null>(null)
   const [openEncounters, setOpenEncounters] = useState<Encounter[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  /* the typed MRN input is RETIRED (auto-generated MRN — the #113 flag
-     resolved): the MRN is the hospital's own record number, assigned by
-     Aurora at admission — a typed field is exactly how P-1191's national
-     identity number landed in his MRN slot. RE-ADMISSION, which the
-     typed MRN used to key, is the discharged-patient picker below:
-     re-admitting keeps the stored identity AND the stored MRN. */
-  const [readmitId, setReadmitId] = useState('')
+  /* RE-ADMISSION mode — entered ONLY through the match dialog's Readmit
+     or the History Overview's "Admit as New Encounter" (?readmit=P-xxxx).
+     The #116 picker this replaces listed discharged patients blindly;
+     matching now covers ALL patients, admitted included. */
+  const readmitId = params.get('readmit') ?? ''
+  const [readmitName, setReadmitName] = useState('')
+  /* the on-submit match result — while this dialog is open, NOTHING has
+     been created */
+  const [match, setMatch] = useState<MatchPatientResponse | null>(null)
+  const [matchError, setMatchError] = useState<string | null>(null)
+
   /* STRUCTURED LEGAL NAME (the validator's design): first · second
      (father) · third (grandfather) · fourth (great-grandfather) · family.
      First/Second/Family required; Third/Fourth optional — blank is
@@ -69,32 +82,28 @@ export function Admissions() {
   const [weight, setWeight] = useState('')
   const [height, setHeight] = useState('')
 
-  const [dischargedEncounters, setDischargedEncounters] = useState<Encounter[] | null>(null)
-
   const reload = useCallback(() => {
     getAdtBeds().then(setBeds)
     getEncounters({ status: 'open' }).then(setOpenEncounters)
-    getEncounters({ status: 'discharged' }).then(setDischargedEncounters)
   }, [])
   useEffect(() => { reload() }, [reload])
 
+  /* resolve WHO is being re-admitted — the banner names the stored
+     identity (REAL-ONLY read; an unresolvable id still posts by id and
+     the server answers) */
+  useEffect(() => {
+    let stale = false
+    setReadmitName('')
+    if (readmitId) getPatientIdentity(readmitId).then(r => {
+      if (!stale && r) setReadmitName(`${r.fullName ?? r.name} · ${r.mrn}`)
+    })
+    return () => { stale = true }
+  }, [readmitId])
+
   const freeBeds = useMemo(() => (beds ?? []).filter(b => !b.patientId), [beds])
   const occupied = useMemo(() => (beds ?? []).filter(b => b.patientId), [beds])
-
-  /* RE-ADMITTABLE patients: everyone with a closed encounter and NO open
-     one — one row per patient (latest name snapshot), so a returning
-     patient is re-admitted as WHO THEY ARE instead of via a typed MRN */
-  const readmittable = useMemo(() => {
-    if (!dischargedEncounters) return []
-    const open = new Set((openEncounters ?? []).map(e => e.patientId))
-    const byPatient = new Map<string, string>()
-    for (const e of dischargedEncounters)
-      if (!open.has(e.patientId)) byPatient.set(e.patientId, e.patientName)
-    return [...byPatient.entries()]
-      .map(([patientId, name]) => ({ patientId, name }))
-      .sort((a, b) => a.patientId.localeCompare(b.patientId))
-  }, [dischargedEncounters, openEncounters])
   const readmitting = readmitId !== ''
+  const clearReadmit = () => navigate('/admissions', { replace: true })
 
   const kpis: KpiSpec[] = [
     { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: beds ? `${occupied.length} / ${beds.length}` : '—', label: 'Census' },
@@ -103,33 +112,14 @@ export function Admissions() {
     { icon: <IconUsers size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.15)', value: openEncounters?.length ?? '—', label: 'Open Encounters' },
   ]
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
-    setFormError(null)
-    let identity: { age: number } | { dateOfBirth: string } | Record<string, never> = {}
-    if (readmitting) {
-      /* the stored identity (and MRN) stands — nothing identity-shaped
-         is sent on a re-admission */
-    } else if (dobUnknown) {
-      const ageNum = Number(age)
-      if (!Number.isInteger(ageNum) || ageNum < 0 || ageNum > 130) {
-        setFormError('Estimated age must be a whole number between 0 and 130')
-        return
-      }
-      identity = { age: ageNum }
-    } else {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob > new Date().toISOString().slice(0, 10)) {
-        setFormError('Date of birth must be a valid past date')
-        return
-      }
-      identity = { dateOfBirth: dob }
-    }
+  /** episode fields shared by every admission shape (validated by submit) */
+  function episodeFields(): Pick<AdmitDraft, 'diagnosis' | 'attending' | 'bedId' | 'weightKg' | 'heightCm'> | null {
     const measurements: { weightKg?: number; heightCm?: number } = {}
     if (weight.trim()) {
       const w = Number(weight)
       if (!Number.isFinite(w) || w < 0.5 || w > 500) {
         setFormError('Weight must be a number between 0.5 and 500 kg (or leave it blank to add later)')
-        return
+        return null
       }
       measurements.weightKg = w
     }
@@ -137,40 +127,122 @@ export function Admissions() {
       const h = Number(height)
       if (!Number.isFinite(h) || h < 30 || h > 260) {
         setFormError('Height must be a number between 30 and 260 cm (or leave it blank to add later)')
-        return
+        return null
       }
       measurements.heightCm = h
     }
+    return { diagnosis: diagnosis.trim(), attending: attending.trim(), bedId, ...measurements }
+  }
+
+  function afterAdmit(kind: 'Admitted' | 'Re-admitted', data: { patient: { name: string; patientId: string; mrn: string }; encounter: { bedId: string; encounterId: string } }) {
+    /* the toast carries the AURORA-ASSIGNED MRN — the user never typed
+       one, so this is where they learn the record number */
+    showToast(kind,
+      `${data.patient.name} (${data.patient.patientId} · ${data.patient.mrn}) admitted to ${data.encounter.bedId} — encounter ${data.encounter.encounterId}`)
+    setNameFirst(''); setNameSecond(''); setNameThird(''); setNameFourth(''); setNameFamily(''); setNationalId('')
+    setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
+    setWeight(''); setHeight('')
+    setAllergies('None documented')
+    setMatch(null); setMatchError(null)
+    if (readmitting) clearReadmit()
+    reload()
+  }
+
+  /** the CREATE post — runs only when no match stands in the way (or a
+   *  human verified a Tier B suggestion is a different person) */
+  async function createNewPatient() {
+    const episode = episodeFields()
+    if (!episode) return
+    let identity: { age: number } | { dateOfBirth: string }
+    if (dobUnknown) identity = { age: Number(age) }
+    else identity = { dateOfBirth: dob }
     setBusy(true)
     const res = await admitPatient({
-      ...(readmitting ? { patientId: readmitId } : {
-        nameFirst: nameFirst.trim(), nameSecond: nameSecond.trim(),
-        ...(nameThird.trim() ? { nameThird: nameThird.trim() } : {}),
-        ...(nameFourth.trim() ? { nameFourth: nameFourth.trim() } : {}),
-        nameFamily: nameFamily.trim(),
-        ...(nationalId.trim() ? { nationalId: nationalId.trim() } : {}),
-        sex, allergies: allergies.trim(),
-      }),
-      ...identity,
-      diagnosis: diagnosis.trim(),
-      attending: attending.trim(), bedId, ...measurements,
+      nameFirst: nameFirst.trim(), nameSecond: nameSecond.trim(),
+      ...(nameThird.trim() ? { nameThird: nameThird.trim() } : {}),
+      ...(nameFourth.trim() ? { nameFourth: nameFourth.trim() } : {}),
+      nameFamily: nameFamily.trim(),
+      ...(nationalId.trim() ? { nationalId: nationalId.trim() } : {}),
+      sex, allergies: allergies.trim(),
+      ...identity, ...episode,
     })
     setBusy(false)
-    if (res.kind === 'ok') {
-      /* the toast carries the AURORA-ASSIGNED MRN — the user never typed
-         one, so this is where they learn the record number */
-      showToast(readmitting ? 'Re-admitted' : 'Admitted',
-        `${res.data.patient.name} (${res.data.patient.patientId} · ${res.data.patient.mrn}) admitted to ${res.data.encounter.bedId} — encounter ${res.data.encounter.encounterId}`)
-      setReadmitId(''); setNameFirst(''); setNameSecond(''); setNameThird(''); setNameFourth(''); setNameFamily(''); setNationalId('')
-      setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
-      setWeight(''); setHeight('')
-      setAllergies('None documented')
-      reload()
-    } else if (res.kind === 'rejected') {
-      setFormError(res.error)
-    } else {
-      setFormError('ADT requires the live server — the admission was NOT recorded (offline/local session)')
+    if (res.kind === 'ok') afterAdmit('Admitted', res.data)
+    else if (res.kind === 'rejected') { setMatch(null); setFormError(res.error) }
+    else { setMatch(null); setFormError('ADT requires the live server — the admission was NOT recorded (offline/local session)') }
+  }
+
+  /** RE-ADMISSION by patientId (#116's path) — from the dialog's Readmit
+   *  or the ?readmit= banner submit. The stored identity (and MRN)
+   *  stands; only this episode's fields are sent. */
+  async function readmitExisting(patientId: string) {
+    const episode = episodeFields()
+    if (!episode) return
+    setBusy(true)
+    const res = await admitPatient({ patientId, ...episode })
+    setBusy(false)
+    if (res.kind === 'ok') afterAdmit('Re-admitted', res.data)
+    else if (res.kind === 'rejected') {
+      /* surface the server's precise refusal WHERE the user acted —
+         inside the dialog when it is open (deceased 409, occupied bed,
+         open encounter), on the form otherwise */
+      if (match) setMatchError(res.error)
+      else setFormError(res.error)
     }
+    else {
+      /* offline surfaces in the dialog too when it is open — a message
+         behind the scrim is no message */
+      if (match) setMatchError('ADT requires the live server — the admission was NOT recorded (offline/local session)')
+      else setFormError('ADT requires the live server — the admission was NOT recorded (offline/local session)')
+    }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setFormError(null)
+    /* weight/height validate BEFORE any dialog can open — a form error
+       must never end up hidden behind the match dialog's scrim (the
+       scrim blocks edits, so values validated here cannot go stale) */
+    if (!episodeFields()) return
+    if (readmitting) { await readmitExisting(readmitId); return }
+    /* new-patient validation before anything leaves the browser */
+    if (dobUnknown) {
+      const ageNum = Number(age)
+      if (!Number.isInteger(ageNum) || ageNum < 0 || ageNum > 130) {
+        setFormError('Estimated age must be a whole number between 0 and 130')
+        return
+      }
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dob > new Date().toISOString().slice(0, 10)) {
+      setFormError('Date of birth must be a valid past date')
+      return
+    }
+    /* THE ON-SUBMIT MATCH CHECK (flagged choice, stated: on submit, never
+       per keystroke — a national ID typed digit-by-digit must not fire
+       lookups). Skipped only when nothing is matchable: an unidentified
+       patient (no ID, estimated age) has no unique identifier and no
+       real DOB — Tier C excludes them by construction. */
+    const matchable = nationalId.trim() !== '' || !dobUnknown
+    if (matchable) {
+      setBusy(true)
+      const check = await matchPatient({
+        ...(nationalId.trim() ? { nationalId: nationalId.trim() } : {}),
+        nameFirst: nameFirst.trim(), nameSecond: nameSecond.trim(), nameFamily: nameFamily.trim(),
+        ...(!dobUnknown && dob ? { dateOfBirth: dob } : {}),
+      })
+      setBusy(false)
+      if (check.kind === 'rejected') { setFormError(check.error); return }
+      if (check.kind === 'offline') {
+        setFormError('ADT requires the live server — nothing was checked and nothing was recorded (offline/local session)')
+        return
+      }
+      if (check.data.matches.length > 0) {
+        /* MATCH → create NOTHING; the dialog decides */
+        setMatchError(null)
+        setMatch(check.data)
+        return
+      }
+    }
+    await createNewPatient()
   }
 
   const formOk = (readmitting
@@ -196,25 +268,19 @@ export function Admissions() {
           )}
 
           <div className="admcols">
-            <Card icon={<IconAdmit size={15} stroke="var(--cyan)" />} title="New Admission" aside="the MRN is assigned by Aurora">
+            <Card icon={<IconAdmit size={15} stroke="var(--cyan)" />} title={readmitting ? 'Re-admission' : 'New Admission'} aside="the MRN is assigned by Aurora">
               <form className="admform" onSubmit={submit}>
                 <div className="admgrid">
-                  {/* the typed MRN input is RETIRED: the MRN is the
-                      hospital's own record number — Aurora generates it
-                      at admission (a typed field is how P-1191's national
-                      ID ended up in his MRN slot). Re-admission — which
-                      the typed MRN used to key — is this picker. */}
-                  <label className="admwide">Re-admission <i className="admopt">optional — a returning patient keeps their stored identity and MRN</i>
-                    <select value={readmitId} onChange={e => setReadmitId(e.target.value)} disabled={!canAdmit} aria-label="Re-admission of an existing patient, optional">
-                      <option value="">New patient — Aurora assigns the MRN at admission</option>
-                      {readmittable.map(p => <option key={p.patientId} value={p.patientId}>{p.name} · {p.patientId}</option>)}
-                    </select>
-                  </label>
+                  {/* RE-ADMISSION banner — entered via the match dialog or
+                      the History Overview, never via a blind picker (the
+                      #116 picker is SUPERSEDED by on-submit matching) */}
                   {readmitting && (
                     <div className="admwide admreadmit" role="note">
-                      Re-admitting an existing patient: identity is the stored record (name, MRN,
-                      national ID, date of birth) — corrections go through the audited identity path,
-                      never through admission. Only this episode's fields are captured below.
+                      Re-admitting <b>{readmitName || readmitId}</b> ({readmitId}): identity is the
+                      stored record (name, MRN, national ID, date of birth) — corrections go through
+                      the audited identity path, never through admission. Only this episode&apos;s
+                      fields are captured below.{' '}
+                      <button type="button" className="admcancelre" onClick={clearReadmit}>✕ cancel — admit a new patient instead</button>
                     </div>
                   )}
                   {!readmitting && <>
@@ -286,7 +352,7 @@ export function Admissions() {
                 {formError && <div className="admerr" role="alert">{formError}</div>}
                 {canAdmit && (
                   <button className="admsubmit" type="submit" disabled={!formOk || busy}>
-                    {busy ? 'Admitting…' : 'Admit patient'}
+                    {busy ? 'Working…' : readmitting ? 'Re-admit patient' : 'Admit patient'}
                   </button>
                 )}
               </form>
@@ -312,6 +378,18 @@ export function Admissions() {
           </div>
         </main>
       </div>
+      {match && (
+        <MatchDialog
+          result={match}
+          canAdmit={canAdmit}
+          canOverview={canOverview}
+          busy={busy}
+          error={matchError}
+          onReadmit={readmitExisting}
+          onCreateAnyway={createNewPatient}
+          onClose={() => { setMatch(null); setMatchError(null) }}
+        />
+      )}
       <Toast state={toast} accent="cyan" />
     </div>
   )

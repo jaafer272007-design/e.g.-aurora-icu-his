@@ -339,6 +339,8 @@ jobs:
           assert d["mrn"]==os.environ["M2OLD"], d["mrn"]
           assert len(d["identity"])==2, d["identity"]
           print("typed MRN correction recorded; history append-only:", len(d["identity"]), "events")'
+          # hand the corrected patient + the admin token to the MATCH step
+          { echo "UP1=$UP1"; echo "ADM=$ADM"; } >> "$GITHUB_ENV"
 
       - name: State conflicts — occupied bed / duplicate open encounter → 409 naming the conflict (four-code rule)
         run: |
@@ -350,6 +352,93 @@ jobs:
             -d '{"patientId":"'$PID'","diagnosis":"x","attending":"a","bedId":"'$B2'"}' "$API/api/icu/adt/admissions")
           rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "duplicate admission must be 409, got $rc"; exit 1; }
           echo "$out" | head -1 | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already has an open encounter' in e, e; print('duplicate admission 409:', e)"
+
+      - name: PATIENT MATCH — three tiers honestly graded (A confirmed / B verify / C unknowns excluded); ID masked to last 4; DECEASED derived + readmit 409 (match+overview design)
+        run: |
+          M="$API/api/icu/adt/patients/match"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"mrn":"MRN-000000"}' "$M")
+          echo "unauthenticated match -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{}' "$M")
+          echo "nothing to match on -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # Tier A by NATIONAL ID (the office Administrator can run the
+          # check — the card is identity-only, census-class data);
+          # the FULL ID never rides the response — LAST 4 ONLY
+          curl -sf -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"nationalId":"NID-'$GITHUB_RUN_ID'"}' "$M" -o /tmp/match1.json
+          UP1="$UP1" NID="NID-$GITHUB_RUN_ID" python3 -c '
+          import json,os; d=json.load(open("/tmp/match1.json")); nid=os.environ["NID"]
+          assert d["tier"]=="confirmed" and len(d["matches"])==1, d
+          m=d["matches"][0]
+          assert m["patientId"]==os.environ["UP1"], m
+          assert m["nationalIdLast4"]==nid[-4:], m
+          assert m["status"]=="discharged" and m.get("currentBedId") is None, m
+          assert nid not in open("/tmp/match1.json").read(), "FULL ID LEAKED"
+          print("Tier A (nationalId) CONFIRMED, masked to", m["nationalIdLast4"])'
+          # Tier A by MRN on the ADMITTED run patient — the admitted
+          # guard fields (status + current bed) the dialog renders
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"mrn":"'$GENMRN'"}' "$M" -o /tmp/match2.json
+          PID="$PID" B1="$B1" python3 -c '
+          import json,os; d=json.load(open("/tmp/match2.json")); m=d["matches"][0]
+          assert d["tier"]=="confirmed" and m["patientId"]==os.environ["PID"], d
+          assert m["status"]=="admitted" and m["currentBedId"]==os.environ["B1"], m
+          print("Tier A (mrn) CONFIRMED — status admitted, bed", m["currentBedId"])'
+          # Tier B: exact three required parts + exact DOB -> PROBABLE
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"nameFirst":"Karim","nameSecond":"Adnan","nameFamily":"Al-Tamimi","dateOfBirth":"1979-05-14"}' "$M" -o /tmp/match3.json
+          UP1="$UP1" python3 -c '
+          import json,os; d=json.load(open("/tmp/match3.json"))
+          assert d["tier"]=="probable" and any(m["patientId"]==os.environ["UP1"] for m in d["matches"]), d
+          print("Tier B name+DOB -> PROBABLE (a human verifies; never auto)")'
+          # Tier C: unknown patients NEVER match — UP2 (Unknown, age-only,
+          # no stored DOB) is invisible to Tier B by construction
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"nameFirst":"Unknown","nameSecond":"Unknown","nameFamily":"Unknown","dateOfBirth":"1980-01-01"}' "$M" -o /tmp/match4.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/match4.json"))
+          assert d["matches"]==[], d
+          print("Tier C: unknown patients excluded — no name-text matching, no flag, no special mode")'
+          # DECEASED (#96 disposition died): the card derives it, and the
+          # SERVER refuses the readmit — a UI guard is not the only guard
+          UB=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
+            | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
+          resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"nameFirst":"Match","nameSecond":"Deceased","nameFamily":"Probe","nationalId":"DNID-'$GITHUB_RUN_ID'","dateOfBirth":"1949-01-01","sex":"M","allergies":"None documented","diagnosis":"match e2e deceased probe","attending":"Dr. E2E","bedId":"'$UB'"}' \
+            "$API/api/icu/adt/admissions")
+          DP=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
+          DE=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+          # EXPORT BEFORE ASSERTING (leak prevention — the 2026-07-10
+          # audit's rule): any failure between here and the discharge
+          # must still hand DE to the always() cleanup
+          echo "EID3=$DE" >> "$GITHUB_ENV"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"disposition":"died"}' "$API/api/icu/adt/encounters/$DE/discharge" > /dev/null
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"nationalId":"DNID-'$GITHUB_RUN_ID'"}' "$M" -o /tmp/match5.json
+          python3 -c '
+          import json; m=json.load(open("/tmp/match5.json"))["matches"][0]
+          assert m["status"]=="deceased", m
+          print("deceased derived from disposition died:", m["patientId"])'
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$DP'","diagnosis":"x","attending":"a","bedId":"'$UB'"}' "$API/api/icu/adt/admissions")
+          rc=$(echo "$out" | tail -1); echo "readmit a deceased patient -> HTTP $rc"
+          if [ "$rc" = "200" ]; then
+            # the exact regression this probes: the guard let a deceased
+            # patient re-admit — CAPTURE the leaked encounter for the
+            # always() cleanup BEFORE failing (no bed may leak on the
+            # durable DB, least of all when the guard breaks)
+            LEAK=$(echo "$out" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+            echo "EID4=$LEAK" >> "$GITHUB_ENV"
+            echo "DECEASED GUARD REGRESSED — created $LEAK (handed to cleanup)"; exit 1
+          fi
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "deceased" in e and "audited record" in e, e; print("precise 409:", e)'
+          # the match NEVER creates — encounter count unchanged across all probes
+          N1=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          curl -s -o /dev/null -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"'$GENMRN'"}' "$M"
+          N2=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          [ "$N1" = "$N2" ] || { echo "MATCH MUTATED STATE: $N1 -> $N2"; exit 1; }
+          echo "match creates nothing — no auto-merge, no side effects"
 
       - name: Transfer — DOCTOR → 403; NURSE → 200 (bed moves on Bed Overview); bad targets → 400
         run: |
@@ -475,7 +564,7 @@ jobs:
           if [ -z "${DOC:-}" ]; then
             echo "no token — nothing was created by this run"; exit 0
           fi
-          for enc in "${EID:-}" "${EID2:-}"; do
+          for enc in "${EID:-}" "${EID2:-}" "${EID3:-}" "${EID4:-}"; do
             [ -n "$enc" ] || continue
             out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$enc/discharge")
             rc=$(echo "$out" | tail -1)
@@ -486,4 +575,4 @@ jobs:
               *)   echo "CLEANUP FAILED: could not release $enc (HTTP $rc) — a bed is leaked, manual action required"; exit 1;;
             esac
           done
-          [ -n "${EID:-}${EID2:-}" ] || echo "no encounter was created by this run — nothing to release"
+          [ -n "${EID:-}${EID2:-}${EID3:-}${EID4:-}" ] || echo "no encounter was created by this run — nothing to release"

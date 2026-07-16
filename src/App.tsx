@@ -18,6 +18,7 @@ import { Formulary } from './pages/Formulary/Formulary'
 import { LabCatalog } from './pages/LabCatalog/LabCatalog'
 import { OrderSetsAdmin } from './pages/OrderSetsAdmin/OrderSetsAdmin'
 import { Admissions } from './pages/Admissions/Admissions'
+import { PatientHistory } from './pages/PatientHistory/PatientHistory'
 import { Discharges } from './pages/Discharges/Discharges'
 import { PrintCenter } from './pages/PrintCenter/PrintCenter'
 import { PrintDocument } from './pages/PrintCenter/PrintDocument'
@@ -39,6 +40,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /order-sets             Order-set management       ordersets.manage (Layer 4 — Pharmacy)
    /beds                   ICU Bed Overview           patients.view
    /patients/:patientId    Patient Mission Control    patients.view
+   /patients/:patientId/history  Patient History Overview  results.view (clinical history — the office Administrator is locked out by design)
    /orders(/:patientId)    Orders & Medication        orders.view (mutations need more)
    /labs(/:patientId)      Laboratory & Imaging       results.view
    /lab-entry(/:patientId) Lab Result Entry (manual)  results.document (ICU bedside team documents/transcribes)
@@ -82,6 +84,7 @@ export default function App() {
         <Route path="/print" element={<RequireSession permission="patients.view"><PrintCenter /></RequireSession>} />
         <Route path="/print/:templateId/:patientId" element={<RequireSession permission="patients.view"><PrintDocument /></RequireSession>} />
         <Route path="/patients/:patientId" element={<RequireSession permission="patients.view"><MissionControl /></RequireSession>} />
+        <Route path="/patients/:patientId/history" element={<RequireSession permission="results.view"><PatientHistory /></RequireSession>} />
         <Route path="/orders" element={<RequireSession permission="orders.view"><OrdersMedication /></RequireSession>} />
         <Route path="/orders/:patientId" element={<RequireSession permission="orders.view"><OrdersMedication /></RequireSession>} />
         <Route path="/labs" element={<RequireSession permission="results.view"><LabImaging /></RequireSession>} />

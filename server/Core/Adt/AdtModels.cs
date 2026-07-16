@@ -312,6 +312,40 @@ record CorrectIdentityRequest(
     string? NameFamily, string? NationalId, string? DateOfBirth, string? Reason,
     string? Mrn = null, bool? RegenerateMrn = null);
 
+/* POST /adt/patients/match — PATIENT IDENTITY MATCH (the match+overview
+   design §1-2): the on-submit duplicate check that runs BEFORE anything
+   is created. POST (not GET), deliberately: the payload carries a
+   national identity number, which must never ride a URL into request
+   logs. THREE TIERS, honestly graded:
+   - Tier A (mrn / nationalId): both unique → an exact hit is CONFIRMED.
+   - Tier B (the three REQUIRED name parts + dateOfBirth): PROBABILISTIC
+     — exact parts (case-insensitive: a case difference is data-entry
+     noise, not a different person; fuzzy/phonetic stays out per #113),
+     exact DOB. Third/Fourth names are deliberately NOT matched — they
+     are optional fields and optional fields cannot be required.
+   - Tier C (unknown patients) EXCLUDED by construction: Tier B compares
+     the STORED DateOfBirth, and an unidentified patient has none (the
+     estimated-age row — DateOfBirth null, ageSource
+     recordedAtAdmission). No flag, no name-text matching, no special
+     mode: they re-enter matching once identity correction records a
+     real DOB or a national ID. Legacy single-name rows likewise match
+     on mrn/nationalId only (no structured parts to compare). */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record MatchPatientRequest(
+    string? Mrn, string? NationalId,
+    string? NameFirst, string? NameSecond, string? NameFamily, string? DateOfBirth);
+
+/* the match dialog's identity summary card — IDENTITY ONLY (the office
+   Administrator sees exactly this; no clinical fields exist here to
+   leak). The national ID is masked to its LAST 4 DIGITS SERVER-SIDE —
+   the full number never rides to a lookup dialog (deliberately stricter
+   than #113's PII default; a "same person?" check needs no more). */
+record MatchCardDto(
+    string PatientId, string FullName, string Mrn, string? NationalIdLast4,
+    int Age, string AgeSource, string Sex,
+    string LastAdmission, int AdmissionCount, string Status,
+    string? CurrentBedId = null, string? CurrentEncounterId = null);
+
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record TransferRequest(string? BedId);
 
