@@ -11,12 +11,13 @@ import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
-import { getObservations, getPatientDetail, getPatientIdentity, getPatients } from '../../lib/api'
+import { getAssignments, getObservations, getPatientDetail, getPatientIdentity, getPatients } from '../../lib/api'
 import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
 import { useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, signOut } from '../../lib/session'
-import type { PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
+import type { Assignment, PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
 import { IdentityDialog } from './IdentityDialog'
+import { AssignmentDialog } from './AssignmentDialog'
 import { LatestObservationsCard } from './LatestObservationsCard'
 import { DigitalTwin } from './DigitalTwin'
 import { AiPanel } from './AiPanel'
@@ -86,6 +87,21 @@ export function MissionControl() {
   const [correcting, setCorrecting] = useState(false)
   const session = getSession()
   const canCorrectIdentity = session ? hasPermission(session.jobTitle, 'identity.correct') : false
+
+  /* CARE TEAM (Patient Assignment & Responsibility): everyone with
+     patients.view SEES who is responsible; managing is gated on
+     assignments.manage (SeniorDoctor — the recorded interim). */
+  const [careTeam, setCareTeam] = useState<Assignment[] | null>(null)
+  const [teamOpen, setTeamOpen] = useState(false)
+  const canManageAssignments = session ? hasPermission(session.jobTitle, 'assignments.manage') : false
+  const loadCareTeam = (id: string) => getAssignments(id).then(setCareTeam).catch(() => setCareTeam([]))
+  useEffect(() => {
+    let stale = false
+    setCareTeam(null)
+    setTeamOpen(false)
+    if (patientId) getAssignments(patientId).then(r => { if (!stale) setCareTeam(r) }).catch(() => { if (!stale) setCareTeam([]) })
+    return () => { stale = true }
+  }, [patientId])
   useEffect(() => {
     let stale = false
     setPid(null)
@@ -203,12 +219,43 @@ export function MissionControl() {
             <div className="chip"><span className="k">ICU Day</span><span className="v num">{p ? `Day ${p.los}` : '—'}</span></div>
             <div className="chip alert"><span className="k">Allergies</span><span className="v">{p?.allergies ?? '—'}</span></div>
             <div className="chip"><span className="k">Attending</span><span className="v">{p?.attending ?? '—'}</span></div>
+            {/* CARE TEAM — real assignments (never the free-text Attending,
+                which is a legacy display string deliberately left alone).
+                Click to view (everyone) or manage (Senior Doctor). */}
+            <button
+              className={`chip ctchip${careTeam && careTeam.filter(a => !a.endedAt).length === 0 ? ' unassigned' : ''}`}
+              onClick={() => careTeam && setTeamOpen(true)}
+              aria-label="Care team — view assignments"
+            >
+              <span className="k">Care Team</span>
+              <span className="v">{(() => {
+                if (!careTeam) return '—'
+                const active = careTeam.filter(a => !a.endedAt)
+                if (active.length === 0) return '⚠ Unassigned'
+                const primaries = active.filter(a => a.role === 'primary').map(a => a.userName)
+                const shown = primaries.length > 0 ? primaries : active.map(a => a.userName)
+                const rest = active.length - shown.slice(0, 2).length
+                return shown.slice(0, 2).join(' · ') + (rest > 0 ? ` +${rest}` : '')
+              })()}</span>
+            </button>
             <div className="chip code"><span className="k">Code Status</span><span className="v">{p?.codeStatus ?? '—'}</span></div>
             <div className="chip upd"><span className="k">Last Updated</span><span className="v">{shortTime} · auto</span></div>
           </div>
         </div>
       </header>
 
+      {teamOpen && careTeam && session && (
+        <AssignmentDialog
+          patientId={patientId}
+          patientName={pid?.fullName ?? p?.name ?? patientId}
+          assignments={careTeam}
+          canManage={canManageAssignments}
+          actor={session.name}
+          jobTitle={session.jobTitle}
+          onClose={() => setTeamOpen(false)}
+          onChanged={() => loadCareTeam(patientId)}
+        />
+      )}
       {correcting && pid && (
         <IdentityDialog
           patient={pid}

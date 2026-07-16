@@ -1,25 +1,11 @@
-import type { ActionQueuesResponse, OrderSetsResponse, RoundingListResponse, RoundingPatient } from '../types'
-import { ROSTER } from './roster'
+import type { ActionQueuesResponse, OrderSetsResponse } from '../types'
 
-/* Sample data from reference/icu-doctor-workspace.html — Dr. Rahman's panel.
-   The panel is an explicit ASSIGNMENT (a list of patient ids — it is not
-   attending-derived: it includes cross-cover patients); every display field
-   comes from the canonical roster. */
-
-const PANEL_PATIENT_IDS = ['P-1001', 'P-1004', 'P-1007', 'P-1008', 'P-1012', 'P-1013']
-
-const toRoundingPatient = (patientId: string): RoundingPatient => {
-  const r = ROSTER.find(x => x.patientId === patientId)!
-  return {
-    patientId: r.patientId, bedId: r.bedId, name: r.name, diagnosis: r.diagnosis,
-    flags: r.flags, severity: r.severity,
-  }
-}
-
-export const ROUNDING_LIST: RoundingListResponse = {
-  physician: { name: 'Dr. Sara Rahman', initials: 'SR', role: 'Intensivist · Panel: Pod A/B' },
-  patients: /* @__PURE__ */ PANEL_PATIENT_IDS.map(toRoundingPatient),
-}
+/* Sample data from reference/icu-doctor-workspace.html. ROUNDING_LIST is
+   RETIRED (Patient Assignment & Responsibility): its own comment said the
+   panel is "an explicit ASSIGNMENT … not attending-derived: it includes
+   cross-cover patients" — a design intent that finally has a mechanism.
+   The rounding list now derives from the signed-in doctor's REAL
+   assignments (data/assignments.ts offline; /api/icu/assignments live). */
 
 export const ACTION_QUEUES: ActionQueuesResponse = {
   notes: [

@@ -361,3 +361,43 @@
 .idhrow{display:flex;gap:10px;font-size:12px;padding:4px 0;flex-wrap:wrap}
 .idhrow .idha{color:var(--cyan)}
 .idhrow .idhd{color:var(--muted,#8fa3c0);flex:1 1 100%}
+
+/* ---- Care Team (Patient Assignment & Responsibility) ---- */
+.ctchip{cursor:pointer;font:inherit;text-align:left;color:inherit}
+.ctchip:hover{border-color:rgba(var(--blue-rgb),.5)}
+.ctchip:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.ctchip.unassigned{border-color:rgba(var(--amber-rgb),.55);background:rgba(var(--amber-rgb),.08)}
+.ctchip.unassigned .v{color:var(--amber)}
+.ctdialog{max-width:720px}
+.cthead{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin:14px 0 8px}
+.ctempty{border:1px dashed rgba(var(--amber-rgb),.5);background:rgba(var(--amber-rgb),.07);color:var(--amber);
+ border-radius:11px;padding:10px 12px;font-size:12.5px}
+.ctlist{display:flex;flex-direction:column;gap:6px}
+.ctrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;border-radius:11px;
+ border:1px solid var(--stroke2,rgba(var(--steel-rgb),.18));background:rgba(var(--glass2-rgb),.55)}
+.ctkind{font-size:10.5px;font-weight:800;letter-spacing:.4px;padding:3px 7px;border-radius:7px}
+.ctkind.nurse{background:rgba(var(--cyan-rgb),.14);color:var(--cyan)}
+.ctkind.doctor{background:rgba(var(--blue-rgb),.15);color:var(--blue)}
+.ctwho{font-weight:700;font-size:13px;display:flex;flex-direction:column}
+.ctwho small{font-weight:500;color:var(--dim);font-size:10.5px}
+.ctrole{font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;padding:3px 7px;border-radius:7px;
+ background:rgba(var(--steel-rgb),.14);color:var(--dim)}
+.ctrole.primary{background:rgba(var(--green-rgb),.13);color:var(--green)}
+.ctshift{font-size:11px;color:var(--dim)}
+.ctsince{font-size:10.5px;color:var(--faint);flex:1;min-width:120px}
+.ctend{padding:4px 12px;min-height:32px}
+.ctendrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ctendrow input{border:1px solid var(--stroke2,rgba(var(--steel-rgb),.22));border-radius:9px;
+ background:rgba(var(--glass2-rgb),.9);color:var(--text);font-size:12px;padding:7px 10px;min-width:220px}
+.ctendrow input:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.ctdouble{margin-top:8px;font-size:11.5px;color:var(--amber);display:flex;flex-direction:column;gap:3px}
+.ctform{margin-top:4px}
+.ctgrid{display:grid;grid-template-columns:1fr 2fr 1fr 1fr;gap:10px}
+.ctgrid label{display:flex;flex-direction:column;gap:5px;font-size:11px;letter-spacing:.4px;
+ text-transform:uppercase;color:var(--dim)}
+.ctgrid label i{font-style:normal;text-transform:none;color:var(--faint)}
+.ctgrid select{border:1px solid var(--stroke2,rgba(var(--steel-rgb),.22));border-radius:10px;
+ background:rgba(var(--glass2-rgb),.9);color:var(--text);font-size:13px;padding:9px 10px;min-height:40px}
+.ctgrid select:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.ctro{color:var(--dim);font-size:12px;flex:1}
+@media (max-width:840px){.ctgrid{grid-template-columns:1fr 1fr}}

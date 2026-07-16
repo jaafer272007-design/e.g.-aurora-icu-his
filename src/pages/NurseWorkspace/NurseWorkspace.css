@@ -145,3 +145,6 @@
  background:rgba(var(--glass2-rgb),.9);color:var(--text);font-size:13px;padding:10px 12px;font-family:inherit}
 .mardialog textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 .mardfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}
+
+/* honest zero-assignment state (Patient Assignment & Responsibility) */
+.apempty{color:var(--dim);font-size:12.5px;line-height:1.5;padding:8px 2px}
