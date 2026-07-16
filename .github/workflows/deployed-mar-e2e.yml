@@ -1,14 +1,16 @@
-# Deployed MAR E2E — verifies the LIVE Render service (Stage 10 Phase 3,
-# MAR): authenticated reads return the seeded doses, unauthenticated is
-# 401, RBAC polarity holds (doctor 403 on administer, nurse 200), malformed
-# payloads are 400 (never a silent no-op), and held/refused require a
-# reason. Dispatch manually after merging /server changes to main.
+# Deployed MAR E2E — verifies the LIVE Render service (Stage 10 Phase 3
+# MAR + the derived-at-read schedule safety fix): unauthenticated is 401,
+# the MAR derives DATED dose instances (no stored schedule — a signed
+# order's create response carries NO administrations), documenting appends
+# a fact and the NEXT instance appears (doses never run out), RBAC
+# polarity holds (doctor 403 on administer, nurse 200), replays are 409,
+# malformed payloads are 400 (never a silent no-op), and held/refused
+# require a reason. Dispatch manually after merging /server changes.
 #
-# IDEMPOTENT BY DESIGN: read assertions check seeded doses as a SUBSET
-# (never exact counts), and every administration action targets a
-# scheduled dose on an order THIS RUN creates+signs — so the workflow can
-# be re-dispatched any number of times against the durable DB, even
-# after other clients have documented the seeded doses.
+# IDEMPOTENT BY DESIGN: read assertions never depend on exact counts, and
+# every administration action targets a DERIVED dose instance of an order
+# THIS RUN creates+signs — so the workflow can be re-dispatched any number
+# of times against the durable DB.
 name: Deployed MAR E2E
 on: workflow_dispatch
 
@@ -135,51 +137,90 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/mar")
           echo "GET /mar (no token) -> HTTP $code"; [ "$code" = "401" ] || exit 1
 
-      - name: Both roles can READ the MAR; seeded doses present (+ CORS)
+      - name: Both roles can READ the MAR; rows are facts + DATED derived instances (+ CORS)
         run: |
           curl -sf -D /tmp/h -H "Authorization: Bearer $NUR" -H "Origin: $PAGES_ORIGIN" "$API/api/icu/mar" -o /tmp/mar.json
           grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          # DERIVED SCHEDULE: the retired stub's stored 'scheduled' rows are
+          # artefacts, ignored by the derivation — the old seeded stub ids
+          # (ADM-401/402/404/405…) must NEVER surface as rows again. Every
+          # scheduled row is a DERIVED instance: dated identity/stamp, or a
+          # prn/ondemand availability. Documented facts keep ADM-n ids.
           python3 -c '
-          import json; d=json.load(open("/tmp/mar.json"))
-          ids={r["adminId"] for r in d}
-          seeded={"ADM-401","ADM-402","ADM-403","ADM-404","ADM-405"}
-          missing=seeded-ids
-          assert not missing, f"seeded MAR doses missing: {missing}"
-          print(f"MAR rows: {len(d)} (seeded doses present; extras from prior writes expected)")'
+          import json,re; d=json.load(open("/tmp/mar.json"))
+          assert isinstance(d,list) and d, "MAR read returned no rows"
+          sched=[r for r in d if r["status"]=="scheduled"]
+          for r in sched:
+              ok=re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",r["adminId"]) or r["adminId"] in ("prn","ondemand")
+              assert ok, f"scheduled row with a non-derived identity (a stored stub leaked): {r}"
+              if r["adminId"] not in ("prn","ondemand"):
+                  assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",r["scheduledTime"]), f"undated derived instance: {r}"
+          facts=[r for r in d if r["status"] in ("given","held","refused")]
+          print(f"MAR rows: {len(d)} · derived scheduled: {len(sched)} · documented facts: {len(facts)}")'
           code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/mar")
           echo "doctor MAR read -> HTTP $code"; [ "$code" = "200" ] || exit 1
 
-      - name: Seed a signed med order for THIS RUN (own scheduled doses)
+      - name: Seed a signed med order for THIS RUN — NO stored schedule; the MAR derives its dated instance
         run: |
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"vancomycin","drug":"Vancomycin","dose":"1 g","route":"IV over 60 min","frequency":"q12h","duration":"5 days","prn":false}}],"sign":true}' \
             "$API/api/icu/orders" > /tmp/o.json
           # standalone assignment so a failing assert FAILS THIS STEP —
-          # `read VAR <<<"$(…)"` swallowed it (2026-07-10 audit finding)
-          vals=$(python3 -c 'import json; d=json.load(open("/tmp/o.json"))[0]; a=[x["adminId"] for x in d["administrations"]]; assert len(a)>=2, d; print(d["orderId"], a[0], a[1])')
-          read OID A1 A2 <<<"$vals"
-          echo "created $OID scheduled doses $A1 $A2"
-          { echo "OID=$OID"; echo "A1=$A1"; echo "A2=$A2"; } >> "$GITHUB_ENV"
+          # `read VAR <<<"$(…)"` swallowed it (2026-07-10 audit finding).
+          # THE RETIREMENT IS VISIBLE ON THE WIRE: a signed order stores no
+          # dose slots — administrations must be absent/empty at create.
+          OID=$(python3 -c 'import json; d=json.load(open("/tmp/o.json"))[0]; assert not d.get("administrations"), f"stored schedule leaked: {d[\"administrations\"]}"; print(d["orderId"])')
+          echo "created $OID (no stored schedule — correct)"
+          # the derived schedule serves exactly ONE upcoming dated instance
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" -o /tmp/mar1.json
+          A1=$(python3 -c '
+          import json,re; d=json.load(open("/tmp/mar1.json"))
+          mine=[r for r in d if r["orderId"]=="'$OID'"]
+          sched=[r for r in mine if r["status"]=="scheduled"]
+          assert len(sched)==1, f"expected exactly the next derived instance, got {mine}"
+          assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",sched[0]["adminId"]), sched[0]
+          print(sched[0]["adminId"])')
+          echo "derived next instance: $A1"
+          { echo "OID=$OID"; echo "A1=$A1"; } >> "$GITHUB_ENV"
 
-      - name: RBAC polarity — doctor 403 on administer, nurse 200 (actor from token)
+      - name: RBAC polarity — doctor 403 on administer, nurse 200; the NEXT instance appears (doses never run out)
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1")
           echo "doctor administer -> HTTP $code"; [ "$code" = "403" ] || exit 1
+          # nurse documents the derived instance → a FACT is appended
+          # carrying the instance's DATED identity as its scheduledTime
           curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); a=[x for x in d["administrations"] if x["status"]=="given" and x["documentedBy"]][0]; assert a["documentedBy"]=="RN Maya Chen", a; print("nurse given by:", a["documentedBy"])'
-          # re-document the same dose → 409 STATE CONFLICT (four-code rule —
-          # supersedes the original 404: the dose EXISTS, already documented;
-          # a racing second nurse must see "already given by X", not "not found")
+            | python3 -c '
+          import json,sys; d=json.load(sys.stdin)
+          a=[x for x in d["administrations"] if x["status"]=="given"][0]
+          assert a["documentedBy"]=="RN Maya Chen", a
+          assert a["scheduledTime"]=="'$A1'".replace("T"," "), a
+          print("nurse given by:", a["documentedBy"], "for instance", a["scheduledTime"])'
+          # DOSES NEVER RUN OUT: with the instance documented, the MAR now
+          # derives the NEXT one (+12h) — under the retired stub this order
+          # would eventually show an active med with nothing ever due
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" -o /tmp/mar2.json
+          A2=$(python3 -c '
+          import json; d=json.load(open("/tmp/mar2.json"))
+          sched=[r for r in d if r["orderId"]=="'$OID'" and r["status"]=="scheduled"]
+          assert len(sched)==1 and sched[0]["adminId"]!="'$A1'", f"next instance missing after documentation: {sched}"
+          print(sched[0]["adminId"])')
+          echo "NEXT derived instance after documenting: $A2"
+          echo "A2=$A2" >> "$GITHUB_ENV"
+          # re-document the same instance → 409 STATE CONFLICT (four-code
+          # rule): a racing second nurse must see "already given by X",
+          # never "not found"
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1")
           code=$(echo "$out" | tail -1); echo "re-document -> HTTP $code"; [ "$code" = "409" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already documented as given" in e and "RN Maya Chen" in e, e; print("precise 409:", e)'
-          # absent ids stay 404 — the other branch of the same rule
-          for path in "$API/api/icu/mar/ORD-0000/administrations/$A1" "$API/api/icu/mar/$OID/administrations/ADM-0000"; do
+          # absent ids stay 404 — an unknown order, a never-issued fact id,
+          # and an OFF-GRID dated identity (not an expected instance)
+          for path in "$API/api/icu/mar/ORD-0000/administrations/$A1" "$API/api/icu/mar/$OID/administrations/ADM-0000" "$API/api/icu/mar/$OID/administrations/2020-01-01T00:07"; do
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d '{"action":"given"}' "$path")
-            echo "absent id -> HTTP $code"; [ "$code" = "404" ] || exit 1
+            echo "absent id ($path) -> HTTP $code"; [ "$code" = "404" ] || exit 1
           done
 
       - name: Held requires a reason (validation live); with reason → 200 + persisted

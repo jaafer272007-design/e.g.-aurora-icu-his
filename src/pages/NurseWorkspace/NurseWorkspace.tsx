@@ -51,15 +51,17 @@ export function NurseWorkspace() {
   const patients = assignment?.patients ?? []
   const patientName = (patientId: string) => patients.find(p => p.patientId === patientId)?.name ?? patientId
 
-  /* MAR: documentation event on the canonical order (audit history) */
+  /* MAR: documentation APPENDS an administration fact on the canonical
+     order (derived schedule — nothing stored is consumed), so the honest
+     next state is a fresh derivation: re-fetch rather than patch rows */
   const documentMar = (orderId: string, adminId: string, action: AdministrationAction, reason?: string) => {
-    const row = mar?.find(r => r.adminId === adminId)
+    const row = mar?.find(r => r.orderId === orderId && r.adminId === adminId)
     documentAdministration(orderId, adminId, action, session.name, session.jobTitle, reason).then(updated => {
       if (!updated) return
-      const admin = updated.administrations?.find(a => a.adminId === adminId)
-      setMar(prev => prev && prev.map(r =>
-        r.adminId === adminId ? { ...r, status: action, documentedTime: admin?.documentedTime } : r))
-      if (row) showToast('Documented', `${row.medication} — ${action} ${displayStamp(admin?.documentedTime) || nowHm()} · ${patientName(row.patientId)}`)
+      const facts = updated.administrations?.filter(a => a.status === action) ?? []
+      const fact = facts[facts.length - 1]
+      getMarRows(patients.map(p => p.patientId)).then(setMar)
+      if (row) showToast('Documented', `${row.medication} — ${action} ${displayStamp(fact?.documentedTime) || nowHm()} · ${patientName(row.patientId)}`)
     })
   }
 

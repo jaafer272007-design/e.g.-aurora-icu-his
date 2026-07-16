@@ -3,6 +3,7 @@ import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
 import { displayStamp, dueStateFor, useNow } from '../../lib/time'
 import { formatInfusionDose, formatNormalised } from '../../lib/infusion'
+import { nextExpectedDose } from '../../lib/marSchedule'
 import type { Order, OrderPriority, OrderStatus } from '../../lib/api/types'
 
 const PRIORITY_COLOR: Record<OrderPriority, BadgeColor> = { STAT: 'red', Urgent: 'amber', Routine: 'blue' }
@@ -59,8 +60,12 @@ export function OrderListCard({ orders, canManage, canImplement, onSign, onModif
   const rank: Record<OrderStatus, number> = { pending: 0, active: 1, completed: 2, discontinued: 3 }
   const sorted = [...shown].sort((a, b) => rank[a.status] - rank[b.status])
 
-  const nextAdmin = (o: Order) =>
-    o.status === 'active' ? o.administrations?.find(a => a.status === 'scheduled' && a.scheduledTime) : undefined
+  /* next expected dose — DERIVED from frequency + therapy start (the MAR
+     safety fix: no schedule is stored; the dated stamp cannot roll over) */
+  const nextAdmin = (o: Order) => {
+    const t = nextExpectedDose(o, now.getTime())
+    return t ? { scheduledTime: t } : undefined
+  }
 
   return (
     <Card
@@ -96,7 +101,7 @@ export function OrderListCard({ orders, canManage, canImplement, onSign, onModif
                 {o.medication && <> · {o.medication.duration}{o.medication.prn && ' · PRN'}</>}
                 {adm && admState && (
                   <span className={`oonext oo-${admState}`}>
-                    next dose {adm.scheduledTime}{admState === 'overdue' ? ' · OVERDUE' : admState === 'due' ? ' · DUE' : ''}
+                    next dose {displayStamp(adm.scheduledTime)}{admState === 'overdue' ? ' · OVERDUE' : admState === 'due' ? ' · DUE' : ''}
                   </span>
                 )}
               </div>

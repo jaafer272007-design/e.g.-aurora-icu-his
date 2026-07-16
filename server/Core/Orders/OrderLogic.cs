@@ -220,22 +220,12 @@ static class OrderLogic
     public static MedicationDto NormaliseMedication(MedicationDto m) =>
         m.Infusion is null ? m : m with { Dose = ComposeInfusionDose(m.Infusion) };
 
-    /* mock schedule generation for newly signed med orders: next full hour,
-       plus one interval for q\dh frequencies; PRN gets one availability row.
-       Frequency is free text (mock parity) — the interval is bounds-checked
-       with TryParse so no payload can crash schedule generation (a q0h /
-       q99999999h string simply yields a single first dose). */
-    public static List<AdminDto> GenerateAdministrations(MedicationDto m)
-    {
-        if (m.Prn) return [new AdminDto(NextAdminId(), "", "scheduled", null, null)];
-        var now = DateTime.UtcNow;
-        var first = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
-        var times = new List<DateTime> { first };
-        var interval = System.Text.RegularExpressions.Regex.Match(m.Frequency, @"q(\d+)h");
-        if (interval.Success && int.TryParse(interval.Groups[1].Value, out var hours) && hours is >= 1 and <= 168)
-            times.Add(first.AddHours(hours));
-        return times.Select(t => new AdminDto(NextAdminId(), t.ToString("HH:mm"), "scheduled", null, null)).ToList();
-    }
+    /* RETIRED (MAR derived-schedule safety fix): GenerateAdministrations —
+       the self-described "mock schedule generation" one-shot stub that
+       wrote two dateless slots at sign time and never regenerated — is
+       GONE. Orders store no dose schedule; expected instances are derived
+       at MAR read (Core/Mar/MarSchedule.cs) and administrations hold only
+       documented FACTS, appended by the administer endpoint. */
 
     public static string AppendHistory(string historyJson, OrderEventDto evt)
     {

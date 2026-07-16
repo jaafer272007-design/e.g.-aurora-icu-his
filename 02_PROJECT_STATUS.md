@@ -1,6 +1,9 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-15 · current through SETTINGS + THE IN-APP BACK
+**Last updated: 2026-07-16 · current through THE MAR DERIVED-AT-READ
+SCHEDULE (clinical safety fix — see its record below) and the records
+after this marker paragraph; the paragraph itself is the Settings-era
+text, retained: current through SETTINGS + THE IN-APP BACK
 BUTTON (built — the LAST dead nav item closed: ALL THREE ARE NOW REAL and
 the ICU module's navigation is COMPLETE, with no fabricated numbers left
 anywhere in the nav/header. Settings (`/settings`, session-gated with NO
@@ -4064,6 +4067,19 @@ convention for every new event in the system.
   within the MAR's operating day, not a recorded event; the due-state
   clock logic (`dueStateFor`) consumes it as today's wall-clock time.
   Converting it is future work if multi-day schedules arrive.
+  *[SUPERSEDED 2026-07-16 by the MAR derived-at-read schedule (clinical
+  safety fix — see its record) per the clinical validator's design
+  (`docs/design/mar-derived-schedule.md`, committed verbatim): the "operating day" premise was
+  FALSE — no operating-day mechanism ever existed. The stub generated two
+  dateless slots once at sign time and never regenerated, so an active
+  q8h medication ran out of doses after two documentations, and a
+  never-documented 23:00 slot rendered OVERDUE at 23:45 and LATER at
+  00:15 — a missed dose relabelled as tonight's upcoming dose (both
+  proven live at a faked day boundary). Superseded by REMOVING stored
+  schedule rows altogether rather than dating them: expected dose
+  instances are now DERIVED at read with dated identities. This record's
+  treatment of DOCUMENTED times (dated) stands and is correct — only the
+  scheduled half is superseded.]*
 - **Existing data untouched (honest-data rule)**: seeded display strings
   (`"D-3 21:10"`, `"07:05"`, seeded encounters' `""`) stay byte-for-byte
   — a date that was never recorded is NOT fabricated. Verified live:
@@ -4794,6 +4810,122 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### MAR derived-at-read schedule (built — CLINICAL SAFETY FIX, the validator's design)
+
+Built in full from `docs/design/mar-derived-schedule.md` (the clinical
+validator's specification; recorded as the project's highest-priority
+item — a record that lies is worse than a record that can't be reached).
+**The finding it kills, proven live at a faked 23:45→00:15 boundary
+before the build:** `OrderLogic.GenerateAdministrations` was a one-shot
+stub — self-described "mock schedule generation" — that ran once at sign
+time, produced two dateless slots, and never regenerated. (1) An active
+q8h order with both slots documented stayed ACTIVE with zero due rows —
+an active antibiotic with nothing ever due, therapy silently stopping;
+(2) a never-documented 23:00 dose rendered OVERDUE at 23:45 and LATER at
+00:15 — the system erased the evidence of a missed dose, and the
+Meds-Due KPI inherited the flip.
+
+**The model (store facts, derive the plan):** orders store NO dose
+schedule — the stub generator is DELETED; create/sign write no
+administration rows. `AdministrationsJson` holds only documented FACTS
+(appended by the administer endpoint, never consumed). At MAR read,
+`Core/Mar/MarSchedule.cs` derives expected dose instances from frequency
++ THERAPY START (the signed event's dated stamp, fallback orderedTime;
+first dose = next full hour, the stub's preserved semantics) + the
+current clock, and the facts overlay them. `src/lib/marSchedule.ts` is
+the client mirror (mock adapter + the Orders screen's next-dose chip,
+which now derives instead of reading stored slots).
+- **Dated instance identity — the rollover bug dies by construction**:
+  every instance's documentable adminId is `yyyy-MM-ddTHH:mm` and its
+  scheduledTime `yyyy-MM-dd HH:mm`; "the 23:00 dose on the 15th" can
+  never become "the 23:00 dose on the 16th". A passed instance with no
+  fact is missed and STAYS missed — `dueStateFor` is dated-aware (real
+  epoch math; legacy bare-HH:mm callers unchanged).
+- **Doses never run out**: the derivation always emits the next
+  undocumented instance; documenting one surfaces the next.
+- **A late dose never shifts the schedule**: the grid derives from
+  therapy start, never from the last documented dose (asserted: after a
+  late give, remaining instances stay anchor+k·interval).
+- **PRN derives from the last administration only**: a standing
+  availability row (`prn`), facts appended on demand — it never runs out
+  either (the old model consumed the single PRN row).
+- **Honest-source rule (the #110 free-text-lab discipline)**: a
+  frequency with no derivable dose grid gets NO invented schedule — the
+  row says so (`scheduleNote`) and doses are documented on demand
+  (`ondemand`). **Frequency inventory (the formulary vocabulary is the
+  authority; create/modify validate against it): derivable — `q<1-168>h`
+  (interval), `daily`/`bid`/`tid`/`qid` (mapped to 24/12/8/6-hour
+  intervals FROM THERAPY START — stated approximation: no set clock
+  times exist on the order), `once` (single instance), PRN (flag).
+  UNDERIVABLE — `continuous` (no discrete doses by nature), `sliding
+  scale`, `per level`, `per CRRT protocol` (condition-driven): honest
+  on-demand rows.** The seeded continuous Noradrenaline now renders "no
+  derivable dose schedule — 'continuous'" instead of a fabricated hourly
+  dose. *(Flagged, not decided: whether continuous infusions should
+  instead render a non-actionable row — an actionable document-on-demand
+  control mirrors what the stub allowed, so nothing regressed.)*
+- **Render horizon (stated choice)**: future = exactly the next
+  undocumented instance (the bedside question is "what is due next");
+  past = every undocumented instance of the last 24 h individually (a
+  missed dose ages in place), older missed instances collapse into ONE
+  explicit `missed-earlier` summary row per order carrying the count and
+  the oldest stamp — VISIBLE, never silently truncated. `once` instances
+  always render individually. Documented facts always render (the
+  record), exactly as before.
+- **Four-code rule on the new identities**: re-document of a documented
+  instance → 409 naming the documenting nurse (the two-nurse race
+  message preserved); off-grid dated identity / unknown ids → 404;
+  `prn` on a scheduled order, dated identity on PRN/underivable, action
+  and reason validation → 400; documenting on a pending/discontinued
+  order → 409 naming the state (the derived schedule only exists while
+  the order is in force; the encounter chokepoint is unchanged and still
+  answers first). Legacy stored-stub adminIds → 400 naming the
+  retirement.
+- **Existing data (facts preserved, the broken plan ignored)**:
+  documented administrations are byte-for-byte untouched (sqlite blob
+  snapshot asserted identical across the whole verification run); legacy
+  facts with bare-HH:mm scheduledTime render exactly as before as
+  standalone record rows. **Stub-row choice (flagged in the design,
+  decided as the non-destructive option): stored `scheduled` rows are
+  IGNORED at read (they stop existing as far as the MAR is concerned),
+  not migrated away — no destructive rewrite of clinical-record storage;
+  they remain inert JSON entries.** Discontinue still strips them in
+  passing (pre-existing behavior, facts never touched). The seed files
+  are untouched (generated artifacts; their stubs are now inert).
+- **#110 interactions verified**: one-off `once` given → order derives
+  COMPLETED; ongoing frequencies with doses given stay ACTIVE; completed
+  orders derive no further instances while their facts render; the
+  implement queue and RBAC (`meds.administer`) untouched.
+- **Performance (flagged in the design, measured)**: the unit-wide GET
+  /api/icu/mar derives in ~4 ms median locally with extra interval
+  orders loaded — pure grid arithmetic per order (pre-window instances
+  are counted arithmetically, never looped over the order's age); no
+  different approach needed at this scale.
+- **Suites updated in the same PR**: deployed-mar-e2e reworked for the
+  derived model (create response carries NO administrations; the dated
+  instance identity is taken from GET /mar; documenting surfaces the
+  NEXT instance — asserted; off-grid dated identity → 404 added);
+  deployed-orders-e2e sign leg now asserts NO stored schedule;
+  deployed-encounter-scope-e2e takes its dose identity from the MAR
+  derivation (its administer-after-discharge 409 leg unchanged — the
+  guard still answers before identity resolution). The MAR print sheet
+  (Contract #11) prints persisted administrations and therefore now
+  prints FACTS only — correct for a legal record; noted, not changed.
+- **Verification**: 31/31 fresh-DB API matrix (no stored schedule;
+  dated identity + stamp; fact append; never-runs-out; grid-unshifted
+  late dose incl. a 3-day backdated anchor with window + aggregate;
+  PRN/on-demand; four-code; #110; seeded stubs ignored + facts
+  byte-identical; 4 ms perf) + 13/13 real-browser incl. THE EXACT
+  BOUNDARY REPRODUCTION with a faked page clock: the 23:00 dose OVERDUE
+  at 23:45 is STILL the previous day's missed 23:00 dose at 00:15
+  (rendered `D-1 23:00 · OVERDUE`, never LATER), with the Meds-Due KPI
+  honest on both sides of midnight; missed-earlier aggregation, the
+  on-demand continuous row, the documented-fact flow, and the derived
+  Orders-screen next-dose chip all rendered and screenshotted.
+- **Deferred per the design (§7, recorded not built)**: missed/late/
+  early labels, dose windows (±30/±60), escalation (D6 — no
+  notifications until v2), a Shift entity.
 
 ### Derived order completion + rail bed-sort + implement UI (3 live findings)
 

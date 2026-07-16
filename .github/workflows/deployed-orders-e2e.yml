@@ -228,14 +228,16 @@ jobs:
           echo "OID=$OID" >> "$GITHUB_ENV"   # the four-code step below runs in its OWN shell
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?status=pending" \
             | python3 -c "import json,sys; ids=[o['orderId'] for o in json.load(sys.stdin)]; assert '$OID' in ids, ids; print('pending queue contains $OID')"
+          # DERIVED SCHEDULE (MAR safety fix): signing stores NO dose slots —
+          # administrations stay absent; the MAR derives instances at read
           curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/orders/$OID/sign" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); h=d["history"][-1]; assert d["status"]=="active" and h["actor"]=="Dr. Sara Rahman" and h["action"]=="signed" and len(d["administrations"])==2, d; print("signed:", d["status"], "| admins:", len(d["administrations"]))'
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); h=d["history"][-1]; assert d["status"]=="active" and h["actor"]=="Dr. Sara Rahman" and h["action"]=="signed" and not d.get("administrations"), d; print("signed:", d["status"], "| no stored schedule (derived at MAR read)")'
           curl -sf -X PUT -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"changes":{"dose":"500 mg"},"reason":"deployed E2E"}' "$API/api/icu/orders/$OID" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); h=d["history"][-1]; assert h["actor"]=="Dr. Sara Rahman" and "dose: 1 g → 500 mg" in h["detail"], h; print("modified:", h["detail"])'
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"reason":"deployed E2E"}' "$API/api/icu/orders/$OID/discontinue" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="discontinued" and d["history"][-1]["actor"]=="Dr. Sara Rahman" and not [a for a in (d.get("administrations") or []) if a["status"]=="scheduled"], d; print("discontinued | scheduled admins cancelled")'
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="discontinued" and d["history"][-1]["actor"]=="Dr. Sara Rahman" and not [a for a in (d.get("administrations") or []) if a["status"]=="scheduled"], d; print("discontinued | no scheduled admins (derived schedule ends with the order)")'
 
       - name: FOUR-CODE RULE on the same order — replays → 409 naming the state; absent ids → 404; shape → 400
         run: |

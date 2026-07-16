@@ -15,6 +15,18 @@ export const toMinutes = (hm: string): number => {
 }
 
 export function dueStateFor(scheduledTime: string, now: Date): DueState {
+  /* DATED stamps (the MAR derived-schedule fix: every expected dose
+     instance carries a real date) use real epoch math — an instance that
+     passed STAYS overdue across midnight, it never flips back to
+     upcoming. Legacy bare HH:mm (nursing-task fixtures, pre-fix data)
+     keeps the same-day wall-clock comparison it always had. */
+  const ms = datedEpoch(scheduledTime)
+  if (ms !== null) {
+    const diffMin = (ms - now.getTime()) / 60_000
+    if (diffMin < 0) return 'overdue'
+    if (diffMin <= DUE_SOON_MINUTES) return 'due'
+    return 'upcoming'
+  }
   const nowMin = now.getHours() * 60 + now.getMinutes()
   const dueMin = toMinutes(scheduledTime)
   if (dueMin < nowMin) return 'overdue'
