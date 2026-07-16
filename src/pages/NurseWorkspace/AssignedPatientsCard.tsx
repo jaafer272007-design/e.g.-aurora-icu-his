@@ -17,7 +17,10 @@ const uoClass = (v: number | null) => (v === null ? '' : v < 30 ? 'bad' : v < 50
 
 const shown = (v: number | null) => (v === null ? '—' : v)
 
-/** My Assigned Patients — 1–2 patients (real ICU nurse:patient ratio).
+/** My Assigned Patients — the signed-in nurse's REAL worklist (Patient
+ *  Assignment & Responsibility): derived from active assignments, never a
+ *  fixture — the fabricated "2 of 2 · this shift" claim is gone. Zero is
+ *  an honest state (nothing assigned yet — see the Unassigned panel).
  *  Cards open Patient Mission Control by stable PatientID. */
 export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[] }) {
   const navigate = useNavigate()
@@ -25,9 +28,16 @@ export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[]
     <Card
       icon={<IconUsers size={15} stroke="var(--blue)" />}
       title="My Assigned Patients"
-      aside={`${patients.length} of 2 · this shift`}
+      aside={`${patients.length} assigned`}
     >
       <div className="aplist">
+        {patients.length === 0 && (
+          <div className="apempty">
+            No patients are assigned to you right now. Assignment is managed from the
+            patient chart (Senior Doctor); unassigned patients are listed in the
+            Unassigned panel so nobody falls through.
+          </div>
+        )}
         {patients.map(p => (
           <button
             key={p.patientId}

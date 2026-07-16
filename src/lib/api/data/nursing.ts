@@ -1,28 +1,14 @@
-import type { AssignedPatient, IoEntry, NewIoEntry, NurseAssignmentResponse, NursingTask } from '../types'
-import { ROSTER } from './roster'
+import type { IoEntry, NewIoEntry, NursingTask } from '../types'
 
-/* Nurse Workspace sample data — RN Maya Chen, day shift, assigned two
-   patients (real ICU nurse:patient ratio). The assignment is a list of
-   patient ids; every patient field derives from the canonical roster
-   (roster.ts). Nursing records below are their own domain models keyed
-   by patientId. */
-
-const ASSIGNED_PATIENT_IDS = ['P-1001', 'P-1004']
-
-const toAssignedPatient = (patientId: string): AssignedPatient => {
-  const r = ROSTER.find(x => x.patientId === patientId)!
-  return {
-    patientId: r.patientId, bedId: r.bedId, name: r.name, age: r.age, sex: r.sex,
-    diagnosis: r.diagnosis, allergies: r.allergies, codeStatus: r.codeStatus,
-    flags: r.flags, isolation: r.isolation, severity: r.severity,
-    vitals: r.bedsideVitals,
-  }
-}
-
-export const NURSE_ASSIGNMENT: NurseAssignmentResponse = {
-  nurse: { name: 'RN Maya Chen', initials: 'MC', role: 'ICU Nurse · Beds B-01 / B-04', shift: '07:00–19:00' },
-  patients: /* @__PURE__ */ ASSIGNED_PATIENT_IDS.map(toAssignedPatient),
-}
+/* Nurse Workspace sample data. NURSE_ASSIGNMENT is RETIRED (Patient
+   Assignment & Responsibility): it hardcoded 'RN Maya Chen', two patient
+   ids and the display literal '07:00–19:00' — ignoring who was signed
+   in, so ANY nurse saw Maya's patients and "MY ASSIGNED PATIENTS · 2 of
+   2 · this shift" was a fabricated claim. The workspace now derives from
+   the signed-in user's REAL assignments (data/assignments.ts offline;
+   /api/icu/assignments live). Nursing tasks + I&O below REMAIN FIXTURES
+   (recorded in 02) — this build made the assignment/MAR/implement halves
+   honest and deliberately did not touch them. */
 
 export const NURSING_TASKS: NursingTask[] = [
   { taskId: 'TSK-4001', patientId: 'P-1001', bedId: 'B-01', label: 'Hourly urine output', dueTime: '11:00', recurrence: 'q1h', done: false },

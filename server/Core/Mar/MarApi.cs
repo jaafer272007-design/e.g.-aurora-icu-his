@@ -31,7 +31,11 @@ static class MarApi
            (expected instances from the order's frequency + therapy start,
            overlaid with the stored administration facts — derived state is
            never stored). The nurse-assignment narrowing stays a client-side
-           derivation, same as the orders implement queue. */
+           derivation, same as the orders implement queue — WORKFLOW, not
+           authority; since Patient Assignment & Responsibility its source
+           is the REAL assignments read instead of a fixture, and it must
+           never become a server-side gate here: a nurse responding to an
+           emergency documents any patient's dose (locked decision 6). */
         app.MapGet("/api/icu/mar", (System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Identity.Rbac.Deny(user, "orders.view") is IResult denied) return denied;

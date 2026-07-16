@@ -78,11 +78,21 @@ static class Rbac
            Administrator remain 403 (the F2/F3 hard constraint). Flipping to
            Consultant-ONLY would be removing the atom from Ancillary below —
            a conscious governance reversal, not made silently here. */
+        /* assignments.manage (Patient Assignment & Responsibility, locked
+           decision 4): assigning/ending BOTH nurse and doctor assignments.
+           Deciding who nurses a patient is a CLINICAL care decision, so it
+           can never sit on the office or System Administrator profiles.
+           The validator's interim: SeniorDoctor holds it ("Senior Doctor
+           have all authorities"; "don't create anything new") — in a real
+           ICU the CHARGE NURSE allocates nursing, and the recorded
+           follow-up is a SeniorNurse profile row holding this SAME atom
+           (the atom is the model — no schema change when that lands). */
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
             "results.document", "results.correct", "labcatalog.manage", "notes.document",
             "ai.view", "adt.admit", "adt.discharge", "observations.record",
-            "observations.correct", "observations.configure", "patients.measure"],
+            "observations.correct", "observations.configure", "patients.measure",
+            "assignments.manage"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record", "patients.measure"],

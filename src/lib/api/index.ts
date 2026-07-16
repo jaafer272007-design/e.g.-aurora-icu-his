@@ -5,20 +5,21 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
-  NewIoEntry, NewObservationEntry, NewOrderDraft, NurseAssignmentResponse, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
+  NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
-  RiskRankingRow, RosterRecordDto, RoundingListResponse, TimelineEvent, UnitSummaryResponse, UserAccount,
+  RiskRankingRow, RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
 } from './types'
 import { composeBedsResponse } from './bedboard'
 import { BEDS_RESPONSE, UNIT_SUMMARY, mockAdtBeds } from './data/beds'
 import { allPatients, derivedAlertCount } from './data/patients'
-import { rosterFor } from './data/roster'
+import { ROSTER, rosterFor } from './data/roster'
 import { GOALS, INFUSIONS, PATIENT_ALERTS } from './data/panels'
 import { latestObservations, projectHemodynamics, projectVentilator } from './bedside'
-import { ACTION_QUEUES, ORDER_SETS, ROUNDING_LIST } from './data/workspace'
-import { IO_ENTRIES, NURSE_ASSIGNMENT, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
+import { ACTION_QUEUES, ORDER_SETS } from './data/workspace'
+import { IO_ENTRIES, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
+import { ASSIGNMENTS, applyAssignmentEnd, insertAssignment } from './data/assignments'
 import { allConsults } from './data/consults'
 import { allRiskProfiles, deriveMissionControlRisks, deriveRiskAlerts, deriveRiskRanking, riskProfileFor } from './data/ai'
 import { notesFor } from './data/notes'
@@ -34,7 +35,7 @@ import {
   deriveMissionControlLabs, deriveResultInbox,
   imagingFor, labDrawsFor,
 } from './data/results'
-import { SAMPLE_STAFF, getToken, hasPermission, usernameOf, type JobTitle } from '../session'
+import { SAMPLE_STAFF, getToken, hasPermission, profileOf, usernameOf, type JobTitle } from '../session'
 import { dayOffsetOf, nowHm, timestampMinutes } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
@@ -463,10 +464,168 @@ async function getPatientDetailMock(patientId: string): Promise<PatientDetailRes
   )
 }
 
-/** GET /api/icu/worklist/rounding — the signed-in physician's panel. */
-export function getRoundingList(): Promise<RoundingListResponse> {
-  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(ROUNDING_LIST, 120)
-  return Promise.reject(apiUnavailable('rounding list (Stage 11 scope)'))
+/* ---------------- Patient Assignment & Responsibility (Aurora Core) ----------------
+   REAL endpoints (/api/icu/assignments…) with the usual offline mock
+   fallback. Assignment is a WORKLIST, never an authority: nothing here
+   gates administration — an unassigned nurse responding to an emergency
+   documents exactly as before. The retired NURSE_ASSIGNMENT /
+   ROUNDING_LIST fixtures are superseded by these reads. */
+
+const toAssignedPatient = (r: RosterRecordDto): AssignedPatient => ({
+  patientId: r.patientId, bedId: r.bedId, name: r.name, age: r.age, sex: r.sex,
+  diagnosis: r.diagnosis, allergies: r.allergies, codeStatus: r.codeStatus,
+  flags: r.flags, isolation: r.isolation, severity: r.severity,
+  vitals: r.bedsideVitals,
+})
+
+const toRoundingPatient = (r: RosterRecordDto): RoundingPatient => ({
+  patientId: r.patientId, bedId: r.bedId, name: r.name, diagnosis: r.diagnosis,
+  flags: r.flags, severity: r.severity,
+})
+
+/** the roster records for the join (real read; mock fallback offline) */
+async function assignmentRoster(): Promise<RosterRecordDto[]> {
+  const real = await fetchRosterRecords()
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return clone(ROSTER) as RosterRecordDto[]
+  throw apiUnavailable('roster')
+}
+
+/** GET /api/icu/assignments — the unit-wide read (everyone with
+ *  patients.view: who is responsible is basic clinical safety). */
+export async function getAssignments(patientId?: string): Promise<Assignment[]> {
+  const q = patientId ? `?patientId=${encodeURIComponent(patientId)}` : ''
+  const real = await apiGet<Assignment[]>(`/api/icu/assignments${q}`, 'assignments')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production')
+    return respond(patientId ? ASSIGNMENTS.filter(a => a.patientId === patientId) : ASSIGNMENTS, 120)
+  throw apiUnavailable('assignments')
+}
+
+/** GET /api/icu/assignments/mine — the signed-in clinician's ACTIVE
+ *  worklist. Server-derived from the TOKEN (#104): the user binding and
+ *  the ACTIVE role's kind (Nurse → nurse, Doctor/SeniorDoctor → doctor).
+ *  The mock fallback mirrors the same rule from the local session. */
+export async function getMyAssignments(name: string, jobTitle: JobTitle): Promise<Assignment[]> {
+  const real = await apiGet<Assignment[]>('/api/icu/assignments/mine', 'my assignments')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const profile = profileOf(jobTitle)
+    const kind = profile === 'Nurse' ? 'nurse'
+      : profile === 'Doctor' || profile === 'SeniorDoctor' ? 'doctor' : null
+    if (!kind) return respond([], 120)
+    const userId = usernameOf(name)
+    return respond(ASSIGNMENTS.filter(a => a.userId === userId && a.kind === kind && !a.endedAt), 120)
+  }
+  throw apiUnavailable('my assignments')
+}
+
+/** GET /api/icu/assignments/staff — the assign picker (assignments.manage). */
+export async function getAssignableStaff(): Promise<AssignableStaff[]> {
+  const real = await apiGet<AssignableStaff[]>('/api/icu/assignments/staff', 'assignable staff')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    return respond(SAMPLE_STAFF.flatMap(s => {
+      const profile = profileOf(s.jobTitle)
+      const kinds: AssignmentKind[] = profile === 'Nurse' ? ['nurse']
+        : profile === 'Doctor' || profile === 'SeniorDoctor' ? ['doctor'] : []
+      return kinds.length === 0 ? [] : [{
+        userId: usernameOf(s.name), name: s.name, jobTitle: s.jobTitle, kinds,
+      }]
+    }), 120)
+  }
+  throw apiUnavailable('assignable staff')
+}
+
+export type AssignmentWriteResult = { kind: 'ok'; assignment: Assignment } | { kind: 'rejected'; error: string }
+
+/** POST /api/icu/assignments — assign responsibility (assignments.manage;
+ *  the SeniorDoctor interim — see the 02 record). */
+export async function createAssignment(
+  draft: CreateAssignmentDraft, actor: string, jobTitle: JobTitle,
+): Promise<AssignmentWriteResult> {
+  if (!hasPermission(jobTitle, 'assignments.manage'))
+    return { kind: 'rejected', error: 'Insufficient permissions' }
+  const res = await adtPost<Assignment>('/api/icu/assignments', 'assignment create', draft)
+  if (res.kind === 'ok') return { kind: 'ok', assignment: res.data }
+  if (res.kind === 'rejected') return { kind: 'rejected', error: res.error }
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const staff = SAMPLE_STAFF.find(s => usernameOf(s.name) === draft.userId)
+    if (!staff) return { kind: 'rejected', error: `userId '${draft.userId}' does not match any user account — assignments reference real accounts, never free text` }
+    const row = insertAssignment(draft, staff.name, staff.jobTitle, actor, jobTitle, nowHm())
+    return 'error' in row ? { kind: 'rejected', error: row.error } : { kind: 'ok', assignment: clone(row) }
+  }
+  throw apiUnavailable('assignment create')
+}
+
+/** POST /api/icu/assignments/{id}/end — handover / correction; the
+ *  discharge cascade ends assignments server-side on its own. */
+export async function endAssignment(
+  assignmentId: string, reason: string | undefined, actor: string, jobTitle: JobTitle,
+): Promise<AssignmentWriteResult> {
+  if (!hasPermission(jobTitle, 'assignments.manage'))
+    return { kind: 'rejected', error: 'Insufficient permissions' }
+  const res = await adtPost<Assignment>(
+    `/api/icu/assignments/${encodeURIComponent(assignmentId)}/end`, 'assignment end',
+    reason ? { reason } : {})
+  if (res.kind === 'ok') return { kind: 'ok', assignment: res.data }
+  if (res.kind === 'rejected') return { kind: 'rejected', error: res.error }
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const row = applyAssignmentEnd(assignmentId, actor, jobTitle, reason, nowHm())
+    return 'error' in row ? { kind: 'rejected', error: row.error } : { kind: 'ok', assignment: clone(row) }
+  }
+  throw apiUnavailable('assignment end')
+}
+
+/** the nurse workspace worklist: my active nurse assignments joined with
+ *  the roster for the bedside display fields. Zero assignments is a
+ *  VALID state (honest empty worklist + the Unassigned panel). */
+export async function getNurseWorklist(
+  name: string, jobTitle: JobTitle,
+): Promise<{ assignments: Assignment[]; patients: AssignedPatient[] }> {
+  const [assignments, roster] = await Promise.all([
+    getMyAssignments(name, jobTitle), assignmentRoster(),
+  ])
+  const byId = new Map(roster.map(r => [r.patientId, r]))
+  const patients = assignments
+    .map(a => byId.get(a.patientId)).filter((r): r is RosterRecordDto => !!r)
+    .map(toAssignedPatient)
+  return { assignments, patients }
+}
+
+/** the doctor workspace rounding list — same derivation, doctor kind
+ *  (cross-cover is real: the list is the ASSIGNMENT, never
+ *  attending-derived). */
+export async function getRoundingWorklist(
+  name: string, jobTitle: JobTitle,
+): Promise<{ assignments: Assignment[]; patients: RoundingPatient[] }> {
+  const [assignments, roster] = await Promise.all([
+    getMyAssignments(name, jobTitle), assignmentRoster(),
+  ])
+  const byId = new Map(roster.map(r => [r.patientId, r]))
+  const patients = assignments
+    .map(a => byId.get(a.patientId)).filter((r): r is RosterRecordDto => !!r)
+    .map(toRoundingPatient)
+  return { assignments, patients }
+}
+
+/** the UNASSIGNED panel (the P-1191 failure made structural): every open
+ *  encounter with no active nurse / no active doctor. Zero assignments is
+ *  allowed — but must be VISIBLE, so no patient silently falls through. */
+export async function getUnassignedPatients(): Promise<{ nurse: UnassignedPatient[]; doctor: UnassignedPatient[] }> {
+  const [assignments, roster] = await Promise.all([getAssignments(), assignmentRoster()])
+  const covered = (kind: AssignmentKind) => new Set(
+    assignments.filter(a => a.kind === kind && !a.endedAt).map(a => a.patientId))
+  const row = (r: RosterRecordDto): UnassignedPatient => ({
+    patientId: r.patientId, name: r.name, bedId: r.bedId,
+    diagnosis: r.diagnosis, severity: r.severity,
+  })
+  const nurse = covered('nurse')
+  const doctor = covered('doctor')
+  return {
+    nurse: roster.filter(r => !nurse.has(r.patientId)).map(row),
+    doctor: roster.filter(r => !doctor.has(r.patientId)).map(row),
+  }
 }
 
 /** GET /api/icu/worklist/queues — notes due (orders/results queues are derived views). */
@@ -502,11 +661,8 @@ export function getOrderSets(): Promise<OrderSetsResponse> {
    directly (service-layer rule); becomes master data at Layer 4 */
 export { IO_CATEGORIES } from './logic'
 
-/** GET /api/icu/nursing/assignment — the signed-in nurse and assigned patients. */
-export function getNurseAssignment(): Promise<NurseAssignmentResponse> {
-  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(NURSE_ASSIGNMENT, 120)
-  return Promise.reject(apiUnavailable('nurse assignment (Stage 11 scope)'))
-}
+/* getNurseAssignment is RETIRED (Patient Assignment & Responsibility) —
+   the nurse worklist derives from REAL assignments: getNurseWorklist(). */
 
 /** GET /api/icu/nursing/tasks — time-driven nursing task checklist. */
 export function getNursingTasks(): Promise<NursingTask[]> {

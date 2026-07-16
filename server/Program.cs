@@ -194,6 +194,7 @@ AuthApi.Map(app, jwtKey, decoyHash);
 UsersApi.Map(app);
 RosterApi.Map(app);
 AdtApi.Map(app);
+Aurora.Core.Assignments.AssignmentsApi.Map(app);
 OrdersApi.Map(app);
 MarApi.Map(app);
 TimelineApi.Map(app);

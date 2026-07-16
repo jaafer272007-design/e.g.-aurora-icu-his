@@ -1,6 +1,8 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-16 · current through STRUCTURED PATIENT NAMES +
+**Last updated: 2026-07-16 · current through PATIENT ASSIGNMENT &
+RESPONSIBILITY (the validator's design, care-pathway #1 — see its record
+below); prior marker retained: current through STRUCTURED PATIENT NAMES +
 THE NATIONAL IDENTITY NUMBER (the validator's design — see its record
 below) and the records after this marker paragraph; the paragraph itself is the Settings-era
 text, retained: current through SETTINGS + THE IN-APP BACK
@@ -4821,6 +4823,139 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Patient Assignment & Responsibility (built — the validator's design, care-pathway #1)
+
+Built in full from `docs/design/patient-assignment.md` (committed
+verbatim). **Origin (verified against the real code first, matching the
+design's §0 exactly):** there was NO assignment concept anywhere — nurse
+assignment was the compiled-in client fixture `NURSE_ASSIGNMENT`
+(`nursing.ts`: hardcoded 'RN Maya Chen', `['P-1001','P-1004']`, the
+display literal '07:00–19:00', ignoring who was signed in — "MY ASSIGNED
+PATIENTS · 2 of 2 · this shift" was a fabricated claim), the doctor
+rounding list was the same pattern (`ROUNDING_LIST`), the server had no
+table/endpoint/migration, and the only stored clinician↔patient link was
+`Encounter.Attending` — free text, joined to nothing, read by nothing.
+Live consequence: P-1191 (رضا) had an OVERDUE Paracetamol no nurse could
+see on any worklist, because he was assigned to nobody and assignment
+could not be created.
+
+- **The model (locked decisions baked in):** `PatientAssignment` in
+  Aurora Core (`server/Core/Assignments/`, table `PatientAssignments`,
+  migration `AddPatientAssignments`): `{ assignmentId, encounterId,
+  userId, kind: nurse|doctor, role: primary|secondary, shift: day|night,
+  assignedAt/By/ByRole, endedAt?/By?/ByRole?, endReason? }`.
+  ENCOUNTER-SCOPED and therefore patient-based, never bed-based — a bed
+  transfer touches nothing (asserted explicitly; the validator's stated
+  clinical reason). `userId` references a REAL Users row, never free
+  text; user display and patient/bed resolve AT READ (a transfer shows
+  the new bed without the assignment changing). MANY-TO-MANY: a second
+  nurse is NEVER a 409 (ECMO, CRRT, massive transfusion, handover —
+  ICU routine); only re-assigning the SAME user+kind while active is a
+  409. Shift is a LABEL chosen by the assigner (flag resolved as the
+  design recommended: derivation breaks at boundaries — the 06:45
+  handover arrival is day shift), matching the timeline's existing
+  Day 07–19 / Night 19–07 vocabulary; no Shift entity exists. Two
+  active primaries are PERMITTED and rendered plainly (flag resolved:
+  never block — normal for ten minutes at handover, a data-quality
+  signal at six hours). Ended, never deleted; every create/end carries
+  actor + ACTIVE role (#104) + dated time — the row is the audit record.
+- **Endpoints:** `GET /api/icu/assignments?patientId&encounterId&status`
+  (patients.view — EVERYONE with it sees who is responsible: basic
+  clinical safety); `GET /assignments/mine` (the token-derived worklist:
+  userId from `sub`, kind from the ACTIVE role's profile — Nurse→nurse,
+  Doctor/SeniorDoctor→doctor, other profiles get an honest empty list);
+  `GET /assignments/staff` (the assign picker: active accounts with a
+  worklist-capable role; assignments.manage); `POST /assignments`
+  (create — the encounter is server-resolved via the SAME EncounterGuard
+  chokepoint orders use: assigning on a closed episode is 409);
+  `POST /assignments/{id}/end` (handover/correction; reason optional).
+  Four-code throughout: vocab/unknown-reference/wrong-kind (a pharmacist
+  can never be a nurse assignment) → 400; deactivated account / no open
+  encounter / same-user replay / re-end → 409; absent id → 404.
+- **Authority:** new atom `assignments.manage` on SeniorDoctor ONLY
+  (both `Rbac.cs` and `session.ts`) — deciding who nurses a patient is a
+  CLINICAL care decision, so it can never sit on the office or System
+  Administrator profiles. **The honest interim, recorded per §5.1:** in
+  a real ICU the CHARGE NURSE allocates nursing; SeniorDoctor holding it
+  is the validator's deliberate interim ("Senior Doctor have all
+  authorities"; "don't create anything new"), and the follow-up is
+  simply a SeniorNurse profile row holding the SAME atom — the atom is
+  the model, so that lands with no schema change and no migration of
+  assignments.
+- **WORKLIST, NEVER AUTHORITY (locked decision 6):** `meds.administer`
+  stays global; no clinical endpoint consults the assignments table; the
+  MAR/implement narrowing stays a client-side WORKFLOW derivation
+  (MarApi's recorded rule — comment updated in place) whose source is
+  now the real assignments read. THE EMERGENCY CASE IS ASSERTED
+  EXPLICITLY: an unassigned nurse documents a dose 200, locally and in
+  the deployed suite.
+- **Lifecycle:** discharge auto-ends every active assignment in the SAME
+  transaction (`AssignmentLogic.DischargeCascade`, mirroring the order
+  cascade) — audited with the discharging clinician + active role,
+  endReason "ended at encounter close"; handover = end one, start
+  another (overlap permitted and visible); bed transfer touches nothing.
+- **The Unassigned panel (the P-1191 failure made structural):** zero
+  assignments is allowed but VISIBLE — no auto-assignment at admission
+  (there is no reliable user reference: `Encounter.Attending` is free
+  text and registration may be clerical), so a new admission appears in
+  the panel until someone assigns them. Placement (flag resolved as the
+  design recommended — a unit-level safety view): the bed board's right
+  panel shows BOTH kinds separately; the nurse workspace shows
+  nurse-unassigned; the doctor workspace shows doctor-unassigned.
+- **Fixtures retired; the workspaces derive from truth:**
+  `NURSE_ASSIGNMENT` and `ROUNDING_LIST` are gone (with them the
+  fabricated "2 of 2 · this shift"); the nurse workspace derives from
+  `/assignments/mine` joined with the roster (real count, real shift
+  label, honest zero-state), the doctor rounding list likewise
+  (cross-cover real — the list is the assignment, not
+  attending-derived). Mission Control gains the CARE TEAM chip
+  (⚠ Unassigned when nobody is responsible) + dialog: everyone with
+  patients.view views active + ended assignments; SeniorDoctor
+  assigns/ends inline. Mock store `data/assignments.ts` mirrors the
+  server for the offline demo. **Still fixtures, deliberately untouched
+  (recorded per §9):** the nurse workspace's nursing tasks, I&O, and the
+  SBAR handoff note — this build made the assignment/MAR/implement
+  halves honest and did not touch those.
+- **`Encounter.Attending` — flagged, resolved as LEFT ALONE (the
+  design's recommendation):** it remains the legacy free-text display
+  string on the encounter/admission form, joined to nothing; the real
+  doctor assignment supersedes it in MEANING. It is never parsed into a
+  user reference (that would be the guess this project refuses
+  everywhere), never rewritten, and its existing render sites are
+  untouched. Retiring or relabeling it is the owner's future call.
+- **#104 interaction (asserted BOTH directions):** assignments bind to
+  the USER; `/mine` serves the kind matching the ACTIVE role's profile —
+  a dual-role person (Staff Nurse + Consultant) assigned as BOTH kinds
+  sees ONLY the nurse assignment acting as nurse and ONLY the doctor
+  assignment acting as Consultant, while `GET /assignments` shows both
+  rows active throughout: assignments don't change when the active role
+  switches; visibility does.
+- **Seed (§10):** staging/dev seeds the 8 demo assignments the fixtures
+  claimed (Maya → P-1001/P-1004 nurse primary day; Rahman → her six-
+  patient panel as doctor), guarded to OPEN encounters only and with
+  empty audit stamps (historical seed rows — facts are never invented);
+  production seeds none; existing open encounters start honestly
+  unassigned and appear in the panel.
+- **Verification:** 53/53 API checks on a fresh local DB (RBAC matrix
+  incl. office-admin 403 and SystemAdministrator 403 on /mine; 8
+  malformed-create 400s never persisted; deactivated-account 409;
+  emergency documentation by an unassigned nurse; audited create;
+  second-nurse no-409 + second-primary allowed + same-user replay 409;
+  the full dual-role both-directions matrix; transfer invariance with
+  6 active assignments; audited handover end/re-end/absent; discharge
+  cascade ending all 5 remaining, audited; closed-episode 409; seeded
+  assignments untouched) + 19/19 real-browser checks (screenshots to the
+  owner: the P-1191 scenario end-to-end — unassigned patient invisible
+  on Maya's MAR and listed in every Unassigned panel, assigned through
+  the Care Team dialog, his Paracetamol reaches her MAR and is
+  documented; a SECOND nurse account sees zero patients, not Maya's two
+  — the fabricated-claim fix; the Specialist sees the care team with no
+  controls; the doctor rounding list real at 7). New deployed suite
+  `deployed-assignments-e2e.yml` (self-sufficient, shared concurrency
+  group, failure-path cleanup) covers the same spine live incl. the
+  emergency case, transfer invariance, and the audited discharge
+  cascade.
 
 ### Structured patient names + national identity number (built — the validator's design)
 

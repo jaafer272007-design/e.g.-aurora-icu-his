@@ -316,9 +316,73 @@ export interface RoundingPatient {
   severity: Severity
 }
 
-export interface RoundingListResponse {
-  physician: { name: string; initials: string; role: string }
-  patients: RoundingPatient[]
+/* RoundingListResponse is RETIRED (Patient Assignment & Responsibility):
+   the rounding list derives from REAL doctor assignments — the fixture's
+   hardcoded physician + six patient ids are gone. */
+
+/* ---------- Patient Assignment & Responsibility (Aurora Core) ----------
+   Who is responsible for a patient right now — a WORKLIST, never an
+   authority (meds.administer stays global). Encounter-scoped and
+   therefore patient-based (a bed transfer never touches an assignment);
+   many-to-many (a second nurse is never a conflict); ended-never-deleted;
+   audited with actor + ACTIVE role (#104). */
+
+export type AssignmentKind = 'nurse' | 'doctor'
+export type AssignmentRole = 'primary' | 'secondary'
+/** a LABEL chosen by the assigner (no Shift entity exists) — matches the
+ *  timeline's Day 07–19 / Night 19–07 vocabulary */
+export type AssignmentShift = 'day' | 'night'
+
+export interface Assignment {
+  assignmentId: string
+  encounterId: string
+  /** derived from the encounter at read — patient-based responsibility;
+   *  bedId shows the CURRENT bed without the assignment changing */
+  patientId: string
+  patientName: string
+  bedId: string
+  /** Users.Username — a real account reference, never free text */
+  userId: string
+  userName: string
+  userTitle: string
+  kind: AssignmentKind
+  role: AssignmentRole
+  shift: AssignmentShift
+  /** "" on historical seed rows (facts are never invented) */
+  assignedAt: string
+  assignedBy: string
+  assignedByRole: string
+  endedAt?: string | null
+  endedBy?: string | null
+  endedByRole?: string | null
+  endReason?: string | null
+}
+
+/** assign-picker row: an ACTIVE account and the kinds it may be assigned
+ *  as (multi-role accounts may carry both) */
+export interface AssignableStaff {
+  userId: string
+  name: string
+  jobTitle: string
+  kinds: AssignmentKind[]
+}
+
+export interface CreateAssignmentDraft {
+  patientId: string
+  userId: string
+  kind: AssignmentKind
+  role: AssignmentRole
+  shift: AssignmentShift
+}
+
+/** one open encounter with no active nurse (or doctor) — the Unassigned
+ *  panel's row: zero assignments is allowed but must be VISIBLE */
+export interface UnassignedPatient {
+  patientId: string
+  name: string
+  bedId: string
+  diagnosis: string
+  severity: Severity
 }
 
 export interface ActionQueueItem {
@@ -377,10 +441,11 @@ export interface AssignedPatient {
   vitals: BedCardVitals
 }
 
-export interface NurseAssignmentResponse {
-  nurse: { name: string; initials: string; role: string; shift: string }
-  patients: AssignedPatient[]
-}
+/* NurseAssignmentResponse is RETIRED (Patient Assignment &
+   Responsibility): the workspace derives from the signed-in nurse's REAL
+   assignments — the fixture's hardcoded nurse identity, two patient ids
+   and '07:00–19:00' display literal (which ignored who was signed in)
+   are gone. */
 
 export type OrderPriority = 'Routine' | 'Urgent' | 'STAT'
 

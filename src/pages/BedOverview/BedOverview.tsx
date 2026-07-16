@@ -8,8 +8,8 @@ import { AlertRow } from '../../components/AlertRow'
 import { VitalTile } from '../../components/VitalTile'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconBed, IconSearch, IconVent } from '../../components/icons'
-import { getBeds, getUnitSummary } from '../../lib/api'
-import type { Bed, BedsResponse, UnitSummaryResponse } from '../../lib/api/types'
+import { getBeds, getUnassignedPatients, getUnitSummary } from '../../lib/api'
+import type { Bed, BedsResponse, UnassignedPatient, UnitSummaryResponse } from '../../lib/api/types'
 import { BedCard } from './BedCard'
 
 interface Filters {
@@ -46,9 +46,15 @@ export function BedOverview() {
   const [filters, setFilters] = useState<Filters>({ q: '', doc: '', area: '', vent: false, iso: false, crit: false })
   const [ringOffset, setRingOffset] = useState(RING_CIRC)
 
+  /* the UNASSIGNED panel (Patient Assignment & Responsibility §7): a
+     unit-level safety view — every open encounter with no active nurse /
+     doctor, so no patient silently falls through */
+  const [unassigned, setUnassigned] = useState<{ nurse: UnassignedPatient[]; doctor: UnassignedPatient[] } | null>(null)
+
   useEffect(() => {
     getBeds().then(setData)
     getUnitSummary().then(setSummary)
+    getUnassignedPatients().then(setUnassigned).catch(() => setUnassigned({ nurse: [], doctor: [] }))
   }, [])
 
   /* §12 step 4: the live-jitter simulation is GONE — bed-card vitals are
@@ -206,6 +212,35 @@ export function BedOverview() {
               <AlertRow key={a.message} variant="compact" severity={a.severity} text={a.message} time={a.time} />
             ))}
           </div>
+          {/* Unassigned patients — zero assignments is allowed but must be
+              VISIBLE (the P-1191 failure made structural). Both kinds shown
+              separately; rows open the chart, where assignment is managed. */}
+          <h3 className="rphead">Unassigned Patients</h3>
+          {!unassigned ? (
+            <div className="uab-empty">—</div>
+          ) : (
+            <div className="uab">
+              {(['nurse', 'doctor'] as const).map(kind => (
+                <div key={kind}>
+                  <div className={`uab-k${unassigned[kind].length ? ' warn' : ''}`}>
+                    No {kind} · {unassigned[kind].length}
+                  </div>
+                  {unassigned[kind].length === 0 ? (
+                    <div className="uab-empty">every open encounter has an active {kind}</div>
+                  ) : unassigned[kind].map(u => (
+                    <button
+                      key={u.patientId} className="uab-row"
+                      aria-label={`Open chart ${u.name}, bed ${u.bedId} — no ${kind} assigned`}
+                      onClick={() => navigate(`/patients/${u.patientId}`)}
+                    >
+                      <span className="uab-bed">{u.bedId}</span>
+                      <span className="uab-name">{u.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </aside>
       </div>
       <Toast state={toast} accent="blue" />

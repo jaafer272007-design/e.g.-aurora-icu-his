@@ -93,3 +93,17 @@
 @media(max-width:1500px){.bo .shell{grid-template-columns:64px 1fr 260px}}
 @media(max-width:1180px){.bo .shell{grid-template-columns:64px 1fr}.bo .rp{display:none}.bo .bottom{grid-template-columns:repeat(3,1fr)}
  .bo.app-frame{height:auto;overflow:visible}.bo main{overflow:visible}.bo .gridwrap{overflow:visible}}
+
+/* ---- Unassigned patients (Patient Assignment & Responsibility) ---- */
+.uab{display:flex;flex-direction:column;gap:10px}
+.uab-k{font-size:10.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+.uab-k.warn{color:var(--amber)}
+.uab-empty{color:var(--faint);font-size:11px}
+.uab-row{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;margin-bottom:4px;
+ background:rgba(var(--amber-rgb),.06);border:1px solid rgba(var(--amber-rgb),.22);border-radius:9px;
+ cursor:pointer;color:var(--text);font:inherit;text-align:left;min-height:34px}
+.uab-row:hover{background:rgba(var(--amber-rgb),.11)}
+.uab-row:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.uab-bed{font-family:"SF Mono","Cascadia Mono","JetBrains Mono",ui-monospace,monospace;
+ font-size:10.5px;color:var(--amber);font-weight:700}
+.uab-name{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
