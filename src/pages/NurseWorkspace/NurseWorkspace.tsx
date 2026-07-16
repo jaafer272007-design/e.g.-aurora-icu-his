@@ -58,7 +58,8 @@ export function NurseWorkspace() {
     const row = mar?.find(r => r.orderId === orderId && r.adminId === adminId)
     documentAdministration(orderId, adminId, action, session.name, session.jobTitle, reason).then(updated => {
       if (!updated) return
-      const fact = updated.administrations?.filter(a => a.status === action).at(-1)
+      const facts = updated.administrations?.filter(a => a.status === action) ?? []
+      const fact = facts[facts.length - 1]
       getMarRows(patients.map(p => p.patientId)).then(setMar)
       if (row) showToast('Documented', `${row.medication} — ${action} ${displayStamp(fact?.documentedTime) || nowHm()} · ${patientName(row.patientId)}`)
     })
