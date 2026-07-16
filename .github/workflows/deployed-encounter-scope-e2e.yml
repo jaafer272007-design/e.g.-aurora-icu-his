@@ -133,7 +133,6 @@ jobs:
             esac
             echo "$u: token issued"
           done
-          echo "MRN=MRN-ESCOPE-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
 
       - name: ORD-113 was neutralized by the audited backfill (read-only; re-asserting every run IS the idempotence evidence)
         run: |
@@ -190,7 +189,7 @@ jobs:
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds.json
           B1=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert free, "no free beds — discharge stale encounters"; print(free[0])')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"Encounter-Scope","nameFamily":"Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"encounter-scope E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            -d '{"nameFirst":"E2E","nameSecond":"Encounter-Scope","nameFamily":"Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"encounter-scope E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
           vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
           read PID EID <<<"$vals"
@@ -295,17 +294,17 @@ jobs:
           [ "$rc" = "409" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is not open" in e and "documenting a dose" in e, e; print("precise 409:", e)'
 
-      - name: Readmit the same MRN → same patient, NEW encounter, NO stale actives, new order scoped to the new encounter
+      - name: Readmit by patientId (the typed MRN is RETIRED) → same patient, same MRN, NEW encounter, NO stale actives, new order scoped to the new encounter
         run: |
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds2.json
           B2=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds2.json")) if not b.get("patientId")]; assert free, "no free beds"; print(free[0])')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"Encounter-Scope","nameFamily":"Patient","age":52,"sex":"M","allergies":"None documented","diagnosis":"readmission","attending":"Dr. E2E","bedId":"'$B2'"}' \
+            -d '{"patientId":"'$PID'","diagnosis":"readmission","attending":"Dr. E2E","bedId":"'$B2'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/readm.json
           vals=$(PID="$PID" EID="$EID" python3 -c '
           import json, os
           d = json.load(open("/tmp/readm.json"))
-          assert d["patient"]["patientId"] == os.environ["PID"], d["patient"]   # same person, matched by MRN
+          assert d["patient"]["patientId"] == os.environ["PID"], d["patient"]   # same person, re-admitted by patientId (identity fields optional — the stored identity and MRN stand)
           assert d["encounter"]["encounterId"] != os.environ["EID"]             # a NEW episode
           print(d["encounter"]["encounterId"])')
           EID2=$vals

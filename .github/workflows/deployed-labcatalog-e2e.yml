@@ -116,7 +116,7 @@ jobs:
           done
           { echo "TID=e2e-test-${GITHUB_RUN_ID}"; echo "SID=e2e-set-${GITHUB_RUN_ID}";
             echo "DTID=e2e-doctest-${GITHUB_RUN_ID}";
-            echo "DID=e2e-setdrug-${GITHUB_RUN_ID}"; echo "MRN=MRN-L4P2E2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+            echo "DID=e2e-setdrug-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
 
       - name: Reads — 401 unauth; every profile 200 (+ CORS); seeded SUBSET by id
         run: |
@@ -214,7 +214,7 @@ jobs:
           FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
             | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
           resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d "{\"mrn\":\"$MRN\",\"nameFirst\":\"L4P2\",\"nameSecond\":\"Catalogue\",\"nameFamily\":\"E2E\",\"age\":36,\"sex\":\"M\",\"allergies\":\"None known\",\"bedId\":\"$FREE\",\"diagnosis\":\"Catalogue E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            -d "{\"nameFirst\":\"L4P2\",\"nameSecond\":\"Catalogue\",\"nameFamily\":\"E2E\",\"age\":36,\"sex\":\"M\",\"allergies\":\"None known\",\"bedId\":\"$FREE\",\"diagnosis\":\"Catalogue E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
             "$API/api/icu/adt/admissions")
           pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
           eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')

@@ -128,7 +128,7 @@ jobs:
           t=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
             -d '{"username":"sara.rahman","password":"Aurora2026!"}' \
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
-          { echo "DOC=$t"; echo "MRN=MRN-PRINTE2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+          echo "DOC=$t" >> "$GITHUB_ENV"
           echo "doctor token issued"
 
       - name: Admit THIS RUN's patient (DOB capture), then DISCHARGE — the case under test
@@ -142,12 +142,15 @@ jobs:
           except ValueError: base = t.replace(year=t.year-41, day=28)
           print((base + datetime.timedelta(days=40)).isoformat())')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"Print","nameSecond":"E2E","nameFamily":"Patient","dateOfBirth":"'$DOBSTR'","sex":"F","allergies":"Sulfa — rash (print e2e)","diagnosis":"print render E2E","attending":"Dr. E2E","bedId":"'$FREE'"}' \
+            -d '{"nameFirst":"Print","nameSecond":"E2E","nameFamily":"Patient","dateOfBirth":"'$DOBSTR'","sex":"F","allergies":"Sulfa — rash (print e2e)","diagnosis":"print render E2E","attending":"Dr. E2E","bedId":"'$FREE'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
           # EXPORT BEFORE ASSERTING (leak prevention — the recorded lesson)
-          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
-          read PID EID <<<"$vals"
-          { echo "PID=$PID"; echo "EID=$EID"; echo "DOBSTR=$DOBSTR"; } >> "$GITHUB_ENV"
+          # the MRN is AURORA-GENERATED now — capture it from the response
+          # (the render proof asserts the GENERATED number prints) and
+          # require the seeded MRN-###### format
+          vals=$(python3 -c 'import json,re; d=json.load(open("/tmp/adm.json")); m=d["patient"]["mrn"]; assert re.fullmatch(r"MRN-\d{6}", m), m; print(d["patient"]["patientId"], d["encounter"]["encounterId"], m)')
+          read PID EID MRN <<<"$vals"
+          { echo "PID=$PID"; echo "EID=$EID"; echo "DOBSTR=$DOBSTR"; echo "MRN=$MRN"; } >> "$GITHUB_ENV"
           curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null
           echo "admitted $PID ($EID) with dateOfBirth $DOBSTR and DISCHARGED — the roster no longer covers them"
 

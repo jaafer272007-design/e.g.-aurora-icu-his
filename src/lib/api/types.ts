@@ -1303,29 +1303,38 @@ export interface MeasurementEvent {
 /* ---------- POST /api/icu/adt/admissions ---------- */
 
 export interface AdmitDraft {
-  mrn: string
+  /* mrn is RETIRED (auto-generated MRN — the #113 flag resolved): the
+     MRN is the hospital's own record number, ASSIGNED BY AURORA at
+     patient creation in the seeded MRN-###### format. The patient brings
+     a national identity number, which has its own field below. A typed
+     MRN is exactly how P-1191's national ID landed in his MRN slot. */
+  /** RE-ADMISSION of an existing patient — their stored identity (and
+   *  MRN) stands; identity fields are optional on this path. Omit to
+   *  admit a NEW patient (identity fields then required). */
+  patientId?: string
   /** STRUCTURED LEGAL NAME (the validator's design): five parts — first,
-   *  second (father), family REQUIRED; third (grandfather), fourth
-   *  (great-grandfather) optional, blank is honest. Unidentified
-   *  patients use the same fields, named "unknown" by the admitting
-   *  user — no special mode. Names are NOT unique. */
-  nameFirst: string
-  nameSecond: string
+   *  second (father), family REQUIRED on a new patient; third
+   *  (grandfather), fourth (great-grandfather) optional, blank is
+   *  honest. Unidentified patients use the same fields, named "unknown"
+   *  by the admitting user — no special mode. Names are NOT unique. */
+  nameFirst?: string
+  nameSecond?: string
   nameThird?: string
   nameFourth?: string
-  nameFamily: string
+  nameFamily?: string
   /** national identity number — EXACTLY as on the identity card (no
    *  format invention), unique when present, OPTIONAL (the unidentified
    *  have none). Distinct from the MRN. */
   nationalId?: string
-  /** EXACTLY ONE of dateOfBirth / age. dateOfBirth ("yyyy-MM-dd") is the
-   *  correct capture — age then computes at read; age remains for
-   *  estimated-age admissions (DOB genuinely unknown at the bedside).
-   *  Both → 400, neither → 400 (server-validated). */
+  /** EXACTLY ONE of dateOfBirth / age on a new patient. dateOfBirth
+   *  ("yyyy-MM-dd") is the correct capture — age then computes at read;
+   *  age remains for estimated-age admissions (DOB genuinely unknown at
+   *  the bedside). Both → 400; neither → 400 on a new patient
+   *  (server-validated). */
   age?: number
   dateOfBirth?: string
-  sex: Sex
-  allergies: string
+  sex?: Sex
+  allergies?: string
   diagnosis: string
   attending: string
   bedId: string

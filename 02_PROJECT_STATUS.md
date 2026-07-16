@@ -1,6 +1,8 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-16 · current through PATIENT ASSIGNMENT &
+**Last updated: 2026-07-16 · current through the AUTO-GENERATED MRN
+(the #113 flag resolved by the owner — see its record below); prior
+marker retained: current through PATIENT ASSIGNMENT &
 RESPONSIBILITY (the validator's design, care-pathway #1 — see its record
 below); prior marker retained: current through STRUCTURED PATIENT NAMES +
 THE NATIONAL IDENTITY NUMBER (the validator's design — see its record
@@ -4824,7 +4826,87 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### Auto-generated MRN (built — the #113 flag resolved by the owner)
+
+**Origin (verified against the real code first):** the admission form
+still carried a free-text, REQUIRED "MRN" input (placeholder
+MRN-123456); the server required it, trimmed it, and used it as the
+RE-ADMISSION LINKING KEY (lookup by MRN → same patient, new encounter)
+with NO format enforcement and NO generation — which is exactly how
+P-1191 (رضا) got `214313412` (his national identity number) stored as
+his MRN before #113 gave the ID its own field. The seeded format is
+`MRN-######` (six digits). **#113's audited identity-correction path
+does NOT reach the MRN** (`CorrectIdentityRequest`: names, national ID,
+DOB, reason only) — see the flag below.
+
+- **The MRN is the hospital's own record number — Aurora assigns it.**
+  `mrn` is RETIRED from `AdmitRequest` (Disallow → a payload carrying
+  one fails binding, automatic 400 — the `name`-field precedent); at
+  patient creation the server generates `AdtLogic.NextMrn`: "MRN-" + six
+  random digits (the seeded format; random, not sequential — a counter
+  would leak admission order through a number that prints on
+  documents), UNIQUENESS-CHECKED against every existing MRN including
+  legacy typed ones of any shape, bounded retry (a pathological
+  collision streak fails loudly, never loops).
+- **Re-admission keys on the OPTIONAL `patientId`** (the typed MRN was
+  the old key): the stored identity AND the stored MRN stand; identity
+  fields become optional on that path (provided names are
+  accepted-and-ignored per the recorded #113 rule; a provided
+  dateOfBirth/nationalId still completes-or-409s — identity corrections
+  are never an admission side effect). An unknown patientId is a payload
+  reference → 400, answered BEFORE the occupied-bed 409 (validation
+  before resource state — the matrix's first run proved the ordering
+  mattered). The duplicate-national-ID 409 now points at patientId
+  re-admission instead of "admit them under their existing MRN".
+- **UI:** the MRN input is gone (card aside: "the MRN is assigned by
+  Aurora"; the admit toast announces the generated number — that is
+  where the user learns it). In its place: the RE-ADMISSION picker
+  (patients with a closed encounter and no open one); selecting one
+  hides the identity fields and shows a note pointing identity fixes at
+  the audited correction path. `AdmitDraft` mirrors the wire change.
+- **EXISTING MRNs are UNTOUCHED — including رضا's wrong one**: they are
+  record identifiers referenced by orders/results/prints; the matrix
+  asserts every pre-existing patient's MRN byte-for-byte. **FLAG,
+  recommendation stated:** a wrong MRN (رضا carries a national ID in
+  the MRN slot) currently has NO fix path — the #113 identity
+  correction does not reach it. RECOMMENDED follow-up: add `mrn` to the
+  audited identity-correction path (office Administrator, reason
+  required, amend-never-erase — the same event history), optionally
+  with a "regenerate" affordance; deciding it makes it a small
+  follow-up, not built here.
+- **All ten admitting suites converted** (mrn removed from every admit
+  payload): the adt suite additionally asserts the retired-field 400,
+  the generated `MRN-\d{6}` format on the response, and its
+  duplicate-open-encounter 409 now probes via patientId; the
+  encounter-scope readmit leg re-admits by patientId (same patient,
+  same MRN, new encounter — identity fields omitted, proving the
+  optionality live); the observations step-4 readmission likewise; the
+  print suite captures the GENERATED MRN from the admission response,
+  asserts its format, and the render proof now proves the generated
+  number prints on the Discharge Summary.
+- **Verification:** 19/19 API checks on a fresh local DB (retired field
+  400; legacy `name` still 400; generated format + non-collision +
+  distinctness; five new-patient validation regressions; re-admission
+  by patientId incl. open-encounter 409 naming the stored MRN, unknown
+  patientId 400 against an occupied bed, DOB completion/contradiction,
+  names never overwriting; duplicate-national-ID 409 wording;
+  every pre-existing MRN byte-identical) + 8/8 real-browser checks
+  (screenshots to the owner: no MRN input, generated MRN in the toast,
+  the re-admission flow keeping the same MRN).
+
 ### Patient Assignment & Responsibility (built — the validator's design, care-pathway #1)
+
+*[Attributed addition 2026-07-16, post-merge: the suite's FIRST staging
+run found a live defect the fresh-DB local matrix could not — the
+multi-role migration backfilled pre-existing user rows with
+`RolesJson ""` (empty string, not `"[]"`), and `AssignmentLogic.KindsOf`
+deserialized it raw, 500ing `GET /assignments/staff` against the durable
+staging database. Fixed forward in PR #115 by resolving roles through
+`UserLogic.RolesOf`, THE canonical resolver (the raw deserialize was the
+fork, and the fork was the bug — the no-fork rule); proven locally by
+planting a `RolesJson=''` row, then live: deployed-assignments-e2e green
+on a1982ea, all 19 steps incl. the staff picker against the real legacy
+rows.]*
 
 Built in full from `docs/design/patient-assignment.md` (committed
 verbatim). **Origin (verified against the real code first, matching the
@@ -5025,6 +5107,9 @@ into the only numeric field the form had), while seeded patients render
    own record number; the patient brings the national ID) — NOT built in
    this PR (existing MRNs untouched; the field still accepts typed
    values); decide and it becomes a small follow-up.
+   *[Superseded 2026-07-16 — the owner resolved this flag as
+   RECOMMENDED: the MRN is AUTO-GENERATED and the typed field is
+   RETIRED. See "### Auto-generated MRN (built)" above.]*
 3. **Identity-correction authority**: the office ADMINISTRATOR profile
    (`identity.correct` — Receptionist/Billing/Records/Hospital
    Administrator titles): registration is theirs and identity is NOT

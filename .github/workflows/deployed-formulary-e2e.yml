@@ -118,7 +118,7 @@ jobs:
             echo "$u: token issued"
           done
           { echo "DRUG=e2e-drug-${GITHUB_RUN_ID}"; echo "DRUG2=e2e-drug2-${GITHUB_RUN_ID}";
-            echo "MRN=MRN-L4E2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+            } >> "$GITHUB_ENV"
 
       - name: Reads — 401 unauth; every profile 200 (+ CORS); seeded SUBSET; vocabulary exact
         run: |
@@ -217,7 +217,7 @@ jobs:
             | python3 -c 'import json,sys; d=json.load(sys.stdin); free=[b["bedId"] for b in d if not b.get("patientId")]; assert free, "no free beds"; print(free[0])')
           echo "BED=$vals" >> "$GITHUB_ENV"
           resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d "{\"mrn\":\"$MRN\",\"nameFirst\":\"L4\",\"nameSecond\":\"Formulary\",\"nameFamily\":\"E2E\",\"age\":41,\"sex\":\"F\",\"allergies\":\"None known\",\"bedId\":\"$vals\",\"diagnosis\":\"Formulary E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            -d "{\"nameFirst\":\"L4\",\"nameSecond\":\"Formulary\",\"nameFamily\":\"E2E\",\"age\":41,\"sex\":\"F\",\"allergies\":\"None known\",\"bedId\":\"$vals\",\"diagnosis\":\"Formulary E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
             "$API/api/icu/adt/admissions")
           pid=$(echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["patient"]["patientId"])')
           eid=$(echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["encounter"]["encounterId"])')

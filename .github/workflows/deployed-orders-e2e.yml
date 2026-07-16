@@ -125,7 +125,7 @@ jobs:
             esac
             echo "$u: token issued"
           done
-          { echo "ODRUG=e2e-odrug-${GITHUB_RUN_ID}"; echo "MRN=MRN-ORDE2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+          { echo "ODRUG=e2e-odrug-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
 
       - name: Create the run drug + admit the run patient (self-sufficiency)
         run: |
@@ -138,7 +138,7 @@ jobs:
           # allergies "Penicillin" — deliberate: the SAFETY step exercises
           # the allergy block/warn model against this documented allergy
           resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d "{\"mrn\":\"$MRN\",\"nameFirst\":\"Orders\",\"nameSecond\":\"E2E\",\"nameFamily\":\"Patient\",\"age\":47,\"sex\":\"M\",\"allergies\":\"Penicillin\",\"bedId\":\"$FREE\",\"diagnosis\":\"orders E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            -d "{\"nameFirst\":\"Orders\",\"nameSecond\":\"E2E\",\"nameFamily\":\"Patient\",\"age\":47,\"sex\":\"M\",\"allergies\":\"Penicillin\",\"bedId\":\"$FREE\",\"diagnosis\":\"orders E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
             "$API/api/icu/adt/admissions")
           pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
           eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
