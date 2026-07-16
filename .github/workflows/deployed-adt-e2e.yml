@@ -231,16 +231,16 @@ jobs:
             | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
           # the legacy single "name" field is RETIRED (Disallow) → 400
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'-LG","name":"Legacy Shape","age":40,"sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$UB1'"}' "$API/api/icu/adt/admissions")
+            -d '{"name":"Legacy Shape","age":40,"sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$UB1'"}' "$API/api/icu/adt/admissions")
           echo "retired single-name field -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
           # First/Second/Family are REQUIRED; Third/Fourth optional
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'-LG","nameFirst":"Ali","nameFamily":"AlTest","age":40,"sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$UB1'"}' "$API/api/icu/adt/admissions")
+            -d '{"nameFirst":"Ali","nameFamily":"AlTest","age":40,"sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$UB1'"}' "$API/api/icu/adt/admissions")
           echo "missing nameSecond -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
           # UNKNOWN PATIENT #1 — the same five fields, named "unknown" by
           # the admitting user (no special mode), NO national ID
           resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'-U1","nameFirst":"Unknown","nameSecond":"Unknown","nameFamily":"Unknown","age":45,"sex":"M","allergies":"None documented","diagnosis":"unidentified trauma","attending":"Dr. E2E","bedId":"'$UB1'"}' \
+            -d '{"nameFirst":"Unknown","nameSecond":"Unknown","nameFamily":"Unknown","age":45,"sex":"M","allergies":"None documented","diagnosis":"unidentified trauma","attending":"Dr. E2E","bedId":"'$UB1'"}' \
             "$API/api/icu/adt/admissions")
           UP1=$(echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["patient"]["name"]=="Unknown Unknown Unknown", d["patient"]; print(d["patient"]["patientId"])')
           UE1=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
@@ -250,7 +250,7 @@ jobs:
           # unique and absent IDs never collide (unique-when-present);
           # the PATIENT rows coexist — only the bed was cycled
           resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'-U2","nameFirst":"Unknown","nameSecond":"Unknown","nameFamily":"Unknown","age":50,"sex":"F","allergies":"None documented","diagnosis":"unidentified","attending":"Dr. E2E","bedId":"'$UB1'"}' \
+            -d '{"nameFirst":"Unknown","nameSecond":"Unknown","nameFamily":"Unknown","age":50,"sex":"F","allergies":"None documented","diagnosis":"unidentified","attending":"Dr. E2E","bedId":"'$UB1'"}' \
             "$API/api/icu/adt/admissions")
           UP2=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
           UE2=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
@@ -286,7 +286,7 @@ jobs:
           print("identity corrected + audited:", ev[0]["detail"])'
           # DUPLICATE NATIONAL ID at admission → 409 NAMING the conflict
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'-U3","nameFirst":"Test","nameSecond":"Dup","nameFamily":"Id","nationalId":"NID-'$GITHUB_RUN_ID'","age":33,"sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$UB1'"}' \
+            -d '{"nameFirst":"Test","nameSecond":"Dup","nameFamily":"Id","nationalId":"NID-'$GITHUB_RUN_ID'","age":33,"sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$UB1'"}' \
             "$API/api/icu/adt/admissions")
           rc=$(echo "$out" | tail -1); echo "duplicate national ID -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | UP1="$UP1" python3 -c 'import json,sys,os; e=json.load(sys.stdin)["error"]; assert os.environ["UP1"] in e and "Karim Adnan Al-Tamimi" in e, e; print("precise 409:", e)'
@@ -297,11 +297,11 @@ jobs:
       - name: State conflicts — occupied bed / duplicate open encounter → 409 naming the conflict (four-code rule)
         run: |
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'-B","nameFirst":"Second","nameSecond":"Second","nameFamily":"Second","age":30,"sex":"M","allergies":"None","diagnosis":"x","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+            -d '{"nameFirst":"Second","nameSecond":"Second","nameFamily":"Second","age":30,"sex":"M","allergies":"None","diagnosis":"x","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
           rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "occupied bed must be 409, got $rc"; exit 1; }
           echo "$out" | head -1 | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already occupied by $PID' in e, e; print('occupied bed 409:', e)"
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"ADT","nameFamily":"Patient","age":49,"sex":"F","allergies":"None","diagnosis":"x","attending":"a","bedId":"'$B2'"}' "$API/api/icu/adt/admissions")
+            -d '{"patientId":"'$PID'","diagnosis":"x","attending":"a","bedId":"'$B2'"}' "$API/api/icu/adt/admissions")
           rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "duplicate admission must be 409, got $rc"; exit 1; }
           echo "$out" | head -1 | python3 -c "import json,sys; e=json.load(sys.stdin)['error']; assert 'already has an open encounter' in e, e; print('duplicate admission 409:', e)"
 
@@ -372,7 +372,7 @@ jobs:
           print((base + datetime.timedelta(days=40)).isoformat())')
           read DOBSTR <<<"$vals"
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'-DOB","nameFirst":"E2E","nameSecond":"DOB","nameFamily":"Patient","dateOfBirth":"'$DOBSTR'","sex":"M","allergies":"None documented","diagnosis":"identity-read E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            -d '{"nameFirst":"E2E","nameSecond":"DOB","nameFamily":"Patient","dateOfBirth":"'$DOBSTR'","sex":"M","allergies":"None documented","diagnosis":"identity-read E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/admdob.json
           # EXPORT BEFORE ASSERTING (leak prevention — see the first
           # admission step): the encounter exists the moment the curl
