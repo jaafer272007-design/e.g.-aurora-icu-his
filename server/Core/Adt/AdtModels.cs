@@ -262,10 +262,24 @@ record BedSeedDto(string BedId, string Area);
    number (as on the card). The legacy single `name` field is RETIRED
    from this request (Disallow → automatic 400): a new admission always
    states the structured legal name; unidentified patients use the same
-   fields, named "unknown" by the admitting user (no special mode). */
+   fields, named "unknown" by the admitting user (no special mode).
+   THE MRN IS RETIRED FROM THIS REQUEST TOO (auto-generated MRN — the
+   #113 flag resolved by the owner): the MRN is the HOSPITAL'S OWN
+   record number — the hospital assigns it, the patient doesn't bring
+   one (the patient brings a national identity number, which has its
+   own field). A typed MRN is exactly how P-1191 ended up with his
+   national ID in the MRN slot. Aurora now GENERATES the MRN at patient
+   creation (AdtLogic.NextMrn — the seeded MRN-###### format, unique);
+   a payload carrying `mrn` fails binding → automatic 400.
+   RE-ADMISSION, which the typed MRN used to key, is now the OPTIONAL
+   patientId: the existing patient re-admitted under a NEW encounter —
+   their stored identity (and their MRN) stands; identity fields are
+   optional on that path (provided names never overwrite — the recorded
+   #113 rule; a provided dateOfBirth/nationalId still completes-or-409s
+   exactly as before). */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record AdmitRequest(
-    string? Mrn, string? NameFirst, string? NameSecond, string? NameThird, string? NameFourth,
+    string? PatientId, string? NameFirst, string? NameSecond, string? NameThird, string? NameFourth,
     string? NameFamily, string? NationalId,
     int? Age, string? DateOfBirth, string? Sex, string? Allergies,
     string? Diagnosis, string? Attending, string? BedId,

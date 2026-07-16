@@ -39,3 +39,7 @@
 
 /* weight/height capture — the "optional" marker inside a field label */
 .adm .admopt { color: var(--faint); text-transform: none; font-style: italic; letter-spacing: 0; font-weight: 400; }
+
+/* re-admission note (auto-generated MRN) */
+.admreadmit{border:1px dashed rgba(var(--cyan-rgb),.4);background:rgba(var(--cyan-rgb),.07);
+ color:var(--dim);border-radius:11px;padding:10px 12px;font-size:12px;line-height:1.5}

@@ -134,7 +134,6 @@ jobs:
             esac
             echo "$u: token issued"
           done
-          echo "MRN=MRN-E2E-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
 
       - name: Pick two FREE beds for THIS RUN (+ CORS)
         run: |
@@ -149,36 +148,44 @@ jobs:
 
       - name: RBAC — NURSE admit → 403; unauth → 401; unknown field → 400
         run: |
-          body='{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"ADT","nameFamily":"Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}'
+          body='{"nameFirst":"E2E","nameSecond":"ADT","nameFamily":"Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}'
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/adt/admissions" -H 'Content-Type: application/json' -d "$body")
           echo "unauth admit -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/adt/admissions")
           echo "nurse admit -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"x","bogus":1}' "$API/api/icu/adt/admissions")
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"bogus":1}' "$API/api/icu/adt/admissions")
           echo "unknown field -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # THE TYPED MRN IS RETIRED (auto-generated MRN): a payload that
+          # still carries one fails binding — the exact field that put
+          # P-1191's national ID in his MRN slot no longer exists
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"MRN-999999","nameFirst":"E2E","nameSecond":"ADT","nameFamily":"Patient","age":49,"sex":"F","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+          echo "typed mrn (retired field) -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
           # IDENTITY REDESIGN validation: exactly ONE of age / dateOfBirth
           # (all three probes fail validation BEFORE any insert)
-          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"'$MRN'-V","nameFirst":"V","nameSecond":"V","nameFamily":"V","age":50,"dateOfBirth":"1980-01-01","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"nameFirst":"V","nameSecond":"V","nameFamily":"V","age":50,"dateOfBirth":"1980-01-01","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
           rc=$(echo "$out" | tail -1); echo "age+dateOfBirth -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | grep -q "not both" || exit 1
-          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"'$MRN'-V","nameFirst":"V","nameSecond":"V","nameFamily":"V","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"nameFirst":"V","nameSecond":"V","nameFamily":"V","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
           rc=$(echo "$out" | tail -1); echo "neither age nor dateOfBirth -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | grep -q "one of dateOfBirth or age is required" || exit 1
-          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"mrn":"'$MRN'-V","nameFirst":"V","nameSecond":"V","nameFamily":"V","dateOfBirth":"1990-13-40","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"nameFirst":"V","nameSecond":"V","nameFamily":"V","dateOfBirth":"1990-13-40","sex":"M","allergies":"n","diagnosis":"d","attending":"a","bedId":"'$B1'"}' "$API/api/icu/adt/admissions")
           rc=$(echo "$out" | tail -1); echo "malformed dateOfBirth -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
 
       - name: DOCTOR admits (actor from token) → patient on Bed Overview at the bed
         run: |
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"ADT","nameFamily":"Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            -d '{"nameFirst":"E2E","nameSecond":"ADT","nameFamily":"Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
           # EXPORT BEFORE ASSERTING (leak-prevention, adversarial-review
           # finding): the admission has already created an OPEN encounter
           # — if an assert below fails first, the always() cleanup must
           # still know the ids or the encounter leaks a bed forever.
-          vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
-          read PID EID <<<"$vals"
-          { echo "PID=$PID"; echo "EID=$EID"; } >> "$GITHUB_ENV"
+          # the MRN is AURORA-GENERATED: assert the seeded MRN-######
+          # format on the response (the hospital assigns the number — the
+          # payload above carried none)
+          vals=$(python3 -c 'import json,re; d=json.load(open("/tmp/adm.json")); m=d["patient"]["mrn"]; assert re.fullmatch(r"MRN-\d{6}", m), f"generated MRN off-format: {m}"; print(d["patient"]["patientId"], d["encounter"]["encounterId"], m)')
+          read PID EID GENMRN <<<"$vals"
+          { echo "PID=$PID"; echo "EID=$EID"; echo "GENMRN=$GENMRN"; } >> "$GITHUB_ENV"
           python3 -c 'import json; d=json.load(open("/tmp/adm.json")); assert d["encounter"]["admittedBy"]=="Dr. Sara Rahman", d'
           echo "admitted $PID encounter $EID by token actor"
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/patients" \

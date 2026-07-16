@@ -28,7 +28,13 @@ export function Admissions() {
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const [mrn, setMrn] = useState('')
+  /* the typed MRN input is RETIRED (auto-generated MRN — the #113 flag
+     resolved): the MRN is the hospital's own record number, assigned by
+     Aurora at admission — a typed field is exactly how P-1191's national
+     identity number landed in his MRN slot. RE-ADMISSION, which the
+     typed MRN used to key, is the discharged-patient picker below:
+     re-admitting keeps the stored identity AND the stored MRN. */
+  const [readmitId, setReadmitId] = useState('')
   /* STRUCTURED LEGAL NAME (the validator's design): first · second
      (father) · third (grandfather) · fourth (great-grandfather) · family.
      First/Second/Family required; Third/Fourth optional — blank is
@@ -63,14 +69,32 @@ export function Admissions() {
   const [weight, setWeight] = useState('')
   const [height, setHeight] = useState('')
 
+  const [dischargedEncounters, setDischargedEncounters] = useState<Encounter[] | null>(null)
+
   const reload = useCallback(() => {
     getAdtBeds().then(setBeds)
     getEncounters({ status: 'open' }).then(setOpenEncounters)
+    getEncounters({ status: 'discharged' }).then(setDischargedEncounters)
   }, [])
   useEffect(() => { reload() }, [reload])
 
   const freeBeds = useMemo(() => (beds ?? []).filter(b => !b.patientId), [beds])
   const occupied = useMemo(() => (beds ?? []).filter(b => b.patientId), [beds])
+
+  /* RE-ADMITTABLE patients: everyone with a closed encounter and NO open
+     one — one row per patient (latest name snapshot), so a returning
+     patient is re-admitted as WHO THEY ARE instead of via a typed MRN */
+  const readmittable = useMemo(() => {
+    if (!dischargedEncounters) return []
+    const open = new Set((openEncounters ?? []).map(e => e.patientId))
+    const byPatient = new Map<string, string>()
+    for (const e of dischargedEncounters)
+      if (!open.has(e.patientId)) byPatient.set(e.patientId, e.patientName)
+    return [...byPatient.entries()]
+      .map(([patientId, name]) => ({ patientId, name }))
+      .sort((a, b) => a.patientId.localeCompare(b.patientId))
+  }, [dischargedEncounters, openEncounters])
+  const readmitting = readmitId !== ''
 
   const kpis: KpiSpec[] = [
     { icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: beds ? `${occupied.length} / ${beds.length}` : '—', label: 'Census' },
@@ -82,8 +106,11 @@ export function Admissions() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setFormError(null)
-    let identity: { age: number } | { dateOfBirth: string }
-    if (dobUnknown) {
+    let identity: { age: number } | { dateOfBirth: string } | Record<string, never> = {}
+    if (readmitting) {
+      /* the stored identity (and MRN) stands — nothing identity-shaped
+         is sent on a re-admission */
+    } else if (dobUnknown) {
       const ageNum = Number(age)
       if (!Number.isInteger(ageNum) || ageNum < 0 || ageNum > 130) {
         setFormError('Estimated age must be a whole number between 0 and 130')
@@ -116,20 +143,25 @@ export function Admissions() {
     }
     setBusy(true)
     const res = await admitPatient({
-      mrn: mrn.trim(),
-      nameFirst: nameFirst.trim(), nameSecond: nameSecond.trim(),
-      ...(nameThird.trim() ? { nameThird: nameThird.trim() } : {}),
-      ...(nameFourth.trim() ? { nameFourth: nameFourth.trim() } : {}),
-      nameFamily: nameFamily.trim(),
-      ...(nationalId.trim() ? { nationalId: nationalId.trim() } : {}),
-      ...identity, sex,
-      allergies: allergies.trim(), diagnosis: diagnosis.trim(),
+      ...(readmitting ? { patientId: readmitId } : {
+        nameFirst: nameFirst.trim(), nameSecond: nameSecond.trim(),
+        ...(nameThird.trim() ? { nameThird: nameThird.trim() } : {}),
+        ...(nameFourth.trim() ? { nameFourth: nameFourth.trim() } : {}),
+        nameFamily: nameFamily.trim(),
+        ...(nationalId.trim() ? { nationalId: nationalId.trim() } : {}),
+        sex, allergies: allergies.trim(),
+      }),
+      ...identity,
+      diagnosis: diagnosis.trim(),
       attending: attending.trim(), bedId, ...measurements,
     })
     setBusy(false)
     if (res.kind === 'ok') {
-      showToast('Admitted', `${res.data.patient.name} (${res.data.patient.patientId}) admitted to ${res.data.encounter.bedId} — encounter ${res.data.encounter.encounterId}`)
-      setMrn(''); setNameFirst(''); setNameSecond(''); setNameThird(''); setNameFourth(''); setNameFamily(''); setNationalId('')
+      /* the toast carries the AURORA-ASSIGNED MRN — the user never typed
+         one, so this is where they learn the record number */
+      showToast(readmitting ? 'Re-admitted' : 'Admitted',
+        `${res.data.patient.name} (${res.data.patient.patientId} · ${res.data.patient.mrn}) admitted to ${res.data.encounter.bedId} — encounter ${res.data.encounter.encounterId}`)
+      setReadmitId(''); setNameFirst(''); setNameSecond(''); setNameThird(''); setNameFourth(''); setNameFamily(''); setNationalId('')
       setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
       setWeight(''); setHeight('')
       setAllergies('None documented')
@@ -141,8 +173,9 @@ export function Admissions() {
     }
   }
 
-  const formOk = mrn.trim() && nameFirst.trim() && nameSecond.trim() && nameFamily.trim()
-    && (dobUnknown ? age.trim() : dob) && allergies.trim()
+  const formOk = (readmitting
+    || (nameFirst.trim() && nameSecond.trim() && nameFamily.trim()
+      && (dobUnknown ? age.trim() : dob) && allergies.trim()))
     && diagnosis.trim() && attending.trim() && bedId
 
   return (
@@ -163,12 +196,28 @@ export function Admissions() {
           )}
 
           <div className="admcols">
-            <Card icon={<IconAdmit size={15} stroke="var(--cyan)" />} title="New Admission" aside="creates the Patient if the MRN is new">
+            <Card icon={<IconAdmit size={15} stroke="var(--cyan)" />} title="New Admission" aside="the MRN is assigned by Aurora">
               <form className="admform" onSubmit={submit}>
                 <div className="admgrid">
-                  <label>MRN
-                    <input value={mrn} onChange={e => setMrn(e.target.value)} placeholder="MRN-123456" disabled={!canAdmit} required />
+                  {/* the typed MRN input is RETIRED: the MRN is the
+                      hospital's own record number — Aurora generates it
+                      at admission (a typed field is how P-1191's national
+                      ID ended up in his MRN slot). Re-admission — which
+                      the typed MRN used to key — is this picker. */}
+                  <label className="admwide">Re-admission <i className="admopt">optional — a returning patient keeps their stored identity and MRN</i>
+                    <select value={readmitId} onChange={e => setReadmitId(e.target.value)} disabled={!canAdmit} aria-label="Re-admission of an existing patient, optional">
+                      <option value="">New patient — Aurora assigns the MRN at admission</option>
+                      {readmittable.map(p => <option key={p.patientId} value={p.patientId}>{p.name} · {p.patientId}</option>)}
+                    </select>
                   </label>
+                  {readmitting && (
+                    <div className="admwide admreadmit" role="note">
+                      Re-admitting an existing patient: identity is the stored record (name, MRN,
+                      national ID, date of birth) — corrections go through the audited identity path,
+                      never through admission. Only this episode's fields are captured below.
+                    </div>
+                  )}
+                  {!readmitting && <>
                   <label>National identity number <i className="admopt">optional — as on the card; the unidentified have none</i>
                     <input value={nationalId} onChange={e => setNationalId(e.target.value)} placeholder="as printed on the identity card" disabled={!canAdmit} aria-label="National identity number, optional, exactly as on the identity card" />
                   </label>
@@ -209,15 +258,18 @@ export function Admissions() {
                       <option value="F">F</option>
                     </select>
                   </label>
+                  </>}
                   <label>Weight (kg) <i className="admopt">optional — addable later</i>
                     <input value={weight} onChange={e => setWeight(e.target.value)} inputMode="decimal" placeholder="e.g. 78" disabled={!canAdmit} aria-label="Weight in kilograms, optional" />
                   </label>
                   <label>Height (cm) <i className="admopt">optional — addable later</i>
                     <input value={height} onChange={e => setHeight(e.target.value)} inputMode="decimal" placeholder="e.g. 172" disabled={!canAdmit} aria-label="Height in centimetres, optional" />
                   </label>
-                  <label className="admwide">Allergies
-                    <input value={allergies} onChange={e => setAllergies(e.target.value)} disabled={!canAdmit} required />
-                  </label>
+                  {!readmitting && (
+                    <label className="admwide">Allergies
+                      <input value={allergies} onChange={e => setAllergies(e.target.value)} disabled={!canAdmit} required />
+                    </label>
+                  )}
                   <label className="admwide">Admission diagnosis
                     <input value={diagnosis} onChange={e => setDiagnosis(e.target.value)} placeholder="e.g. Septic shock — pneumonia" disabled={!canAdmit} required />
                   </label>

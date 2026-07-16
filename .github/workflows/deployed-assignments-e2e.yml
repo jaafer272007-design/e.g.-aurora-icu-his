@@ -86,14 +86,13 @@ jobs:
             esac
             echo "$u: token issued"
           done
-          echo "MRN=MRN-ASGE2E-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
 
       - name: Admit THIS RUN's patient (unique MRN, dynamic free bed)
         run: |
           FREE=$(curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/adt/beds" \
             | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
           resp=$(curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d "{\"mrn\":\"$MRN\",\"nameFirst\":\"Assign\",\"nameSecond\":\"E2E\",\"nameFamily\":\"Patient\",\"age\":51,\"sex\":\"M\",\"allergies\":\"None documented\",\"bedId\":\"$FREE\",\"diagnosis\":\"assignment E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            -d "{\"nameFirst\":\"Assign\",\"nameSecond\":\"E2E\",\"nameFamily\":\"Patient\",\"age\":51,\"sex\":\"M\",\"allergies\":\"None documented\",\"bedId\":\"$FREE\",\"diagnosis\":\"assignment E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
             "$API/api/icu/adt/admissions")
           pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
           eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')

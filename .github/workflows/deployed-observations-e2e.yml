@@ -94,7 +94,6 @@ jobs:
             esac
             echo "$u: token issued"
           done
-          echo "MRN=MRN-OBS-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
 
       - name: Catalog — unauth 401; authenticated read (+ CORS) carries the §1 taxonomy
         run: |
@@ -172,7 +171,7 @@ jobs:
           curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/adt/beds" -o /tmp/beds.json
           B1=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert free, "no free beds — discharge stale encounters"; print(free[0])')
           curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"Observations","nameFamily":"Patient","age":61,"sex":"M","allergies":"None documented","diagnosis":"observations E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            -d '{"nameFirst":"E2E","nameSecond":"Observations","nameFamily":"Patient","age":61,"sex":"M","allergies":"None documented","diagnosis":"observations E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
           vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
           read PID EID <<<"$vals"
@@ -299,7 +298,7 @@ jobs:
           curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/adt/beds" -o /tmp/beds2.json
           B2=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds2.json")) if not b.get("patientId")]; assert free, "no free beds"; print(free[0])')
           curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"Observations","nameFamily":"Patient","age":61,"sex":"M","allergies":"None documented","diagnosis":"observations E2E s4","attending":"Dr. E2E","bedId":"'$B2'"}' \
+            -d '{"patientId":"'$PID'","diagnosis":"observations E2E s4","attending":"Dr. E2E","bedId":"'$B2'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm2.json
           EID2=$(python3 -c 'import json; print(json.load(open("/tmp/adm2.json"))["encounter"]["encounterId"])')
           echo "readmitted $PID on $EID2 (bed $B2)"; echo "EID2=$EID2" >> "$GITHUB_ENV"

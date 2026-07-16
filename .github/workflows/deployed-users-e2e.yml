@@ -138,7 +138,7 @@ jobs:
           { echo "UDOC=e2e.doc.${GITHUB_RUN_ID}"; echo "UNUR=e2e.nur.${GITHUB_RUN_ID}";
             echo "UPHA=e2e.pha.${GITHUB_RUN_ID}"; echo "UADM=e2e.adm.${GITHUB_RUN_ID}";
             echo "UMLT=e2e.mlt.${GITHUB_RUN_ID}";
-            echo "MRN=MRN-L3E2E-${GITHUB_RUN_ID}"; } >> "$GITHUB_ENV"
+            } >> "$GITHUB_ENV"
           echo "system administrator token issued; run users e2e.*.${GITHUB_RUN_ID}"
 
       - name: SysAdmin list works (+ CORS, roles arrays); OFFICE administrator now 403 (moved authority)
@@ -228,7 +228,7 @@ jobs:
         run: |
           FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free bed"; print(f[0])')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"L3","nameSecond":"E2E","nameFamily":"Patient","age":50,"sex":"M","allergies":"None documented","diagnosis":"users E2E authority proof","attending":"Dr. E2E Doctor","bedId":"'$FREE'"}' \
+            -d '{"nameFirst":"L3","nameSecond":"E2E","nameFamily":"Patient","age":50,"sex":"M","allergies":"None documented","diagnosis":"users E2E authority proof","attending":"Dr. E2E Doctor","bedId":"'$FREE'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
           # standalone assignment so a failing assert FAILS THIS STEP —
           # `read VAR <<<"$(…)"` swallowed it (2026-07-10 audit finding)

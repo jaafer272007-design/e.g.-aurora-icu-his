@@ -244,42 +244,66 @@ static class AdtApi
             return Results.Json(enc.ToDto(name), JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* POST /api/icu/adt/admissions — DOCTOR RBAC (adt.admit). Creates
-           the Patient if the MRN is new, opens an Encounter, assigns the
-           bed. Every draft field is validated BEFORE anything is written.
+        /* POST /api/icu/adt/admissions — DOCTOR RBAC (adt.admit). Opens an
+           Encounter, assigns the bed; creates the Patient with an
+           AURORA-GENERATED MRN, or RE-ADMITS an existing patient by
+           patientId. Every draft field is validated BEFORE anything is
+           written.
            STRUCTURED IDENTITY (the validator's design): the legal name
-           arrives as five parts (first/second/family required —
-           unidentified patients use the same fields, named "unknown" by
-           the admitting user, no special mode) plus the OPTIONAL national
-           identity number, stored as on the card, unique when present. */
+           arrives as five parts (first/second/family required on a NEW
+           patient — unidentified patients use the same fields, named
+           "unknown" by the admitting user, no special mode) plus the
+           OPTIONAL national identity number, stored as on the card,
+           unique when present.
+           AUTO-GENERATED MRN (the #113 flag resolved by the owner): the
+           MRN is the hospital's own record number — Aurora assigns it at
+           patient creation (AdtLogic.NextMrn: the seeded MRN-######
+           format, uniqueness-checked). The typed field is RETIRED
+           (Disallow → automatic 400): a user-typed MRN is exactly how
+           P-1191's national identity number landed in his MRN slot.
+           RE-ADMISSION keys on the OPTIONAL patientId instead of the
+           typed MRN: the stored identity (and MRN) stands, identity
+           fields become optional on that path, and the recorded #113
+           rules keep applying — provided names never overwrite; a
+           provided dateOfBirth/nationalId completes an absent value or
+           409s on contradiction (identity corrections are never an
+           admission side effect). */
         app.MapPost("/api/icu/adt/admissions", (AdmitRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "adt.admit") is IResult denied) return denied;
 
+            var readmission = !string.IsNullOrWhiteSpace(req.PatientId);
+            /* required on EVERY admission — the episode's own fields */
             foreach (var (name, value) in new[] {
-                ("mrn", req.Mrn), ("nameFirst", req.NameFirst), ("nameSecond", req.NameSecond),
-                ("nameFamily", req.NameFamily), ("sex", req.Sex), ("allergies", req.Allergies),
                 ("diagnosis", req.Diagnosis), ("attending", req.Attending), ("bedId", req.BedId) })
-            {
                 if (string.IsNullOrWhiteSpace(value)) return ApiError.BadRequest($"{name} is required");
-                if (value.Length > AdtLogic.MaxTextLength)
-                    return ApiError.BadRequest($"{name} exceeds {AdtLogic.MaxTextLength} characters");
-            }
-            /* third/fourth are OPTIONAL — blank is honest; bounded when given */
+            /* required on a NEW patient only — a re-admission's stored
+               identity stands (provided values validate below) */
+            if (!readmission)
+                foreach (var (name, value) in new[] {
+                    ("nameFirst", req.NameFirst), ("nameSecond", req.NameSecond),
+                    ("nameFamily", req.NameFamily), ("sex", req.Sex), ("allergies", req.Allergies) })
+                    if (string.IsNullOrWhiteSpace(value)) return ApiError.BadRequest($"{name} is required");
+            /* every provided text field is bounded regardless of path */
             foreach (var (name, value) in new[] {
-                ("nameThird", req.NameThird), ("nameFourth", req.NameFourth), ("nationalId", req.NationalId) })
+                ("patientId", req.PatientId), ("nameFirst", req.NameFirst), ("nameSecond", req.NameSecond),
+                ("nameThird", req.NameThird), ("nameFourth", req.NameFourth),
+                ("nameFamily", req.NameFamily), ("nationalId", req.NationalId),
+                ("allergies", req.Allergies), ("diagnosis", req.Diagnosis),
+                ("attending", req.Attending), ("bedId", req.BedId) })
                 if (value is not null && value.Length > AdtLogic.MaxTextLength)
                     return ApiError.BadRequest($"{name} exceeds {AdtLogic.MaxTextLength} characters");
             var nationalId = string.IsNullOrWhiteSpace(req.NationalId) ? null : req.NationalId.Trim();
-            /* IDENTITY REDESIGN: exactly ONE of dateOfBirth / age.
-               dateOfBirth ("yyyy-MM-dd") is the correct capture — age then
-               COMPUTES at read, never stored. age stays accepted for
-               estimated-age admissions (DOB genuinely unknown at the
+            /* IDENTITY REDESIGN: exactly ONE of dateOfBirth / age on a NEW
+               patient. dateOfBirth ("yyyy-MM-dd") is the correct capture —
+               age then COMPUTES at read, never stored. age stays accepted
+               for estimated-age admissions (DOB genuinely unknown at the
                bedside) and is served with its provenance. Both → 400
-               (ambiguous — the pair can drift); neither → 400. */
+               (ambiguous — the pair can drift); neither → 400 on a new
+               patient (a re-admission's stored identity stands). */
             if (req.DateOfBirth is not null && req.Age is not null)
                 return ApiError.BadRequest("provide dateOfBirth or age, not both");
-            if (req.DateOfBirth is null && req.Age is null)
+            if (!readmission && req.DateOfBirth is null && req.Age is null)
                 return ApiError.BadRequest("one of dateOfBirth or age is required");
             if (req.Age is not null && req.Age is < 0 or > 130)
                 return ApiError.BadRequest("age must be between 0 and 130");
@@ -302,12 +326,24 @@ static class AdtApi
                     return ApiError.BadRequest("dateOfBirth implies an age above 130");
                 dob = parsed.ToString("yyyy-MM-dd");
             }
-            if (req.Sex is not ("M" or "F"))
+            if (req.Sex is not null && req.Sex is not ("M" or "F"))
                 return ApiError.BadRequest("sex must be one of: M, F");
             /* Weight & Height capture — OPTIONAL admission fields (kg/cm);
                bounds-validated when provided, addable later when omitted */
             if (AdtLogic.MeasurementError(req.WeightKg, req.HeightCm) is string mErr)
                 return ApiError.BadRequest(mErr);
+            /* resolve the patient: RE-ADMISSION by patientId — an unknown
+               id is a payload reference that resolves to nothing → 400
+               (the bedId precedent); otherwise a NEW patient whose MRN
+               Aurora generates below. */
+            Patient? patient = null;
+            if (readmission)
+            {
+                var pid = req.PatientId!.Trim();
+                patient = db.AdtPatients.FirstOrDefault(p => p.PatientId == pid);
+                if (patient is null)
+                    return ApiError.BadRequest($"patientId '{pid}' does not match any patient");
+            }
             if (!db.Beds.AsNoTracking().Any(b => b.BedId == req.BedId))
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
             /* FOUR-CODE RULE (state-conflict PR): an occupied bed and a
@@ -321,8 +357,6 @@ static class AdtApi
             if (occupant is not null)
                 return ApiError.StateConflict($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
 
-            var mrn = req.Mrn!.Trim();
-            var patient = db.AdtPatients.FirstOrDefault(p => p.Mrn == mrn);
             /* NATIONAL ID — UNIQUE WHEN PRESENT (locked decision 3): a
                duplicate at admission is refused NAMING the conflict; the
                unidentified (no ID) never collide — absent is not a value. */
@@ -334,7 +368,7 @@ static class AdtApi
                     return ApiError.StateConflict(
                         $"national identity number '{nationalId}' is already recorded for patient "
                         + $"'{holder.PatientId}' ({holder.DisplayName}, {holder.Mrn}) — national identity numbers are unique; "
-                        + "if this is the same person returning, admit them under their existing MRN");
+                        + "if this is the same person returning, re-admit them as the existing patient (patientId)");
             }
             if (patient is not null)
             {
@@ -342,7 +376,7 @@ static class AdtApi
                     .FirstOrDefault(e => e.PatientId == patient.PatientId && e.Status == "open");
                 if (openEnc is not null)
                     return ApiError.StateConflict(
-                        $"patient '{patient.PatientId}' ({mrn}) already has an open encounter '{openEnc.EncounterId}'");
+                        $"patient '{patient.PatientId}' ({patient.Mrn}) already has an open encounter '{openEnc.EncounterId}'");
                 /* RE-ADMISSION IDENTITY RULES (adversarial-review finding
                    — never a silent no-op):
                    - a submitted dateOfBirth COMPLETES a legacy row that
@@ -365,7 +399,7 @@ static class AdtApi
                     }
                     else if (patient.DateOfBirth != dob)
                         return ApiError.StateConflict(
-                            $"patient '{patient.PatientId}' ({mrn}) has recorded date of birth {patient.DateOfBirth} — "
+                            $"patient '{patient.PatientId}' ({patient.Mrn}) has recorded date of birth {patient.DateOfBirth} — "
                             + $"the submitted {dob} differs; identity corrections are not part of admission");
                 }
                 /* the same rule for the national ID: a submitted ID
@@ -380,7 +414,7 @@ static class AdtApi
                         patient.NationalId = nationalId;
                     else if (patient.NationalId != nationalId)
                         return ApiError.StateConflict(
-                            $"patient '{patient.PatientId}' ({mrn}) has recorded national identity number {patient.NationalId} — "
+                            $"patient '{patient.PatientId}' ({patient.Mrn}) has recorded national identity number {patient.NationalId} — "
                             + $"the submitted {nationalId} differs; identity corrections are not part of admission");
                 }
             }
@@ -389,7 +423,10 @@ static class AdtApi
                 patient = new Patient
                 {
                     PatientId = AdtLogic.NextPatientId(),
-                    Mrn = mrn,
+                    /* the hospital's own record number — AURORA-GENERATED
+                       in the seeded MRN-###### format, uniqueness-checked;
+                       never typed (the P-1191 hole, closed) */
+                    Mrn = AdtLogic.NextMrn(db),
                     /* structured from birth — the legacy Name column stays
                        empty on new rows; the display name derives at read */
                     NameFirst = req.NameFirst!.Trim(), NameSecond = req.NameSecond!.Trim(),
@@ -539,6 +576,26 @@ static class AdtLogic
 
     public static string NextPatientId() => $"P-{Interlocked.Increment(ref _patientSeq)}";
     public static string NextEncounterId() => $"ENC-{Interlocked.Increment(ref _encounterSeq)}";
+
+    /** AURORA-GENERATED MRN (auto-generated-MRN decision): the hospital's
+        own record number in the SEEDED format — "MRN-" + six digits
+        (MRN-482913 …). Random within the format (a sequential counter
+        would leak admission order through a number that prints on
+        documents), uniqueness-checked against every existing MRN —
+        including legacy typed ones of any shape, which are NEVER
+        rewritten. The 900k space against tens of patients makes retries
+        vanishingly rare; the loop bound turns a pathological collision
+        streak into a loud 500 rather than an infinite loop. */
+    public static string NextMrn(AuroraDb db)
+    {
+        for (var i = 0; i < 1000; i++)
+        {
+            var candidate = $"MRN-{Random.Shared.Next(100000, 1000000)}";
+            if (!db.AdtPatients.AsNoTracking().Any(p => p.Mrn == candidate))
+                return candidate;
+        }
+        throw new InvalidOperationException("could not generate a unique MRN after 1000 attempts");
+    }
 
     /** PERSISTENCE DISCIPLINE (designed for the durable DB from day one):
         id counters resume from the highest persisted id — never a fixed

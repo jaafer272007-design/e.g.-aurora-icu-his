@@ -123,7 +123,6 @@ jobs:
             esac
             echo "$u: token issued"
           done
-          echo "MRN=MRN-LABS-${GITHUB_RUN_ID}" >> "$GITHUB_ENV"
 
       - name: Unauthenticated reads → 401; seeded reads are a SUBSET (+ CORS)
         run: |
@@ -151,7 +150,7 @@ jobs:
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" -o /tmp/beds.json
           B1=$(python3 -c 'import json; free=[b["bedId"] for b in json.load(open("/tmp/beds.json")) if not b.get("patientId")]; assert free, "no free beds — discharge stale encounters"; print(free[0])')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"'$MRN'","nameFirst":"E2E","nameSecond":"Labs","nameFamily":"Patient","age":58,"sex":"F","allergies":"None documented","diagnosis":"labs E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
+            -d '{"nameFirst":"E2E","nameSecond":"Labs","nameFamily":"Patient","age":58,"sex":"F","allergies":"None documented","diagnosis":"labs E2E","attending":"Dr. E2E","bedId":"'$B1'"}' \
             "$API/api/icu/adt/admissions" -o /tmp/adm.json
           vals=$(python3 -c 'import json; d=json.load(open("/tmp/adm.json")); print(d["patient"]["patientId"], d["encounter"]["encounterId"])')
           read PID EID <<<"$vals"

@@ -125,7 +125,7 @@ jobs:
           FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
             | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
           resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d '{"mrn":"MRN-MARE2E-'$GITHUB_RUN_ID'","nameFirst":"MAR","nameSecond":"E2E","nameFamily":"Patient","age":58,"sex":"F","allergies":"None known","bedId":"'$FREE'","diagnosis":"MAR E2E","attending":"Dr. Sara Rahman"}' \
+            -d '{"nameFirst":"MAR","nameSecond":"E2E","nameFamily":"Patient","age":58,"sex":"F","allergies":"None known","bedId":"'$FREE'","diagnosis":"MAR E2E","attending":"Dr. Sara Rahman"}' \
             "$API/api/icu/adt/admissions")
           pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
           eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
