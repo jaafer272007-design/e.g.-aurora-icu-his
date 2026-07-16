@@ -1,51 +1,63 @@
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
-using Aurora.Core.Shared;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Aurora.Core.Ai;
 
-/* One row per patient AI risk profile. Only the per-risk history + scalar
-   fields are stored (as a JSON column, same pattern as orders/labs); trend
-   and delta are DERIVED at read (AiLogic). Data/ai-seed.json is GENERATED
-   from src/lib/api/data/ai.ts — never hand-edit it. A Seq column preserves
-   the mock's profile order for the pre-sort ranking traversal. */
-class AiRiskRow
+/* AI ASSISTANT — GROUNDED QUERY CHAT (the validator's design).
+   THE SIMULATED RISK DOMAIN THAT LIVED HERE IS DELETED — AiRiskRow, the
+   seeded probabilities, the ranking and risks endpoints, all of it
+   (remove, don't label: the fake SOFA tiles / bell count / order drawer
+   precedent). The fabricated percentages RANKED the patient rail a
+   doctor scans to decide who is sickest — a random number was triaging
+   patients.
+   What lives here now is the opposite architecture: the server's ONLY
+   AI job is to TRANSLATE a natural-language question into a structured
+   tool call (the LLM emits a QUERY, never a VALUE) and to AUDIT the
+   question as patient-data access. The translated tool is executed by
+   the CLIENT through the same canonical, RBAC-enforced reads every
+   screen uses, on the USER's own token — this endpoint never touches
+   patient data and never returns any. */
+
+/* the QUERY AUDIT LOG — a patient-data access log (design §3): one row
+   per question, row-is-the-record (the PatientAssignment precedent —
+   appended, never edited, never deleted). Who asked what, about which
+   patient, when, under which ACTIVE role (#104), and what the model
+   translated it into (tool null = the model refused / failed — the
+   attempt is still access-relevant and still logged). */
+[Table("AiQueries")]
+class AiQueryRow
 {
     [Key]
-    public string PatientId { get; set; } = "";
+    public string QueryId { get; set; } = "";
     public int Seq { get; set; }
-    public string BedId { get; set; } = "";
-    public string PatientName { get; set; } = "";
-    public string UpdatedAt { get; set; } = "";
-    public string RisksJson { get; set; } = "[]";
-
-    public static AiRiskRow FromDto(AiProfileDto d, int seq) => new()
-    {
-        PatientId = d.PatientId, Seq = seq, BedId = d.BedId, PatientName = d.PatientName,
-        UpdatedAt = d.UpdatedAt,
-        RisksJson = JsonSerializer.Serialize(d.Risks, JsonOpts.Web),
-    };
-
-    public AiProfileDto ToDto() => new(
-        PatientId, BedId, PatientName, UpdatedAt,
-        JsonSerializer.Deserialize<List<RiskPredictionDto>>(RisksJson, JsonOpts.Web)!);
+    /* dated UTC "yyyy-MM-dd HH:mm" — an access log carries the date */
+    public string AskedAt { get; set; } = "";
+    public string Actor { get; set; } = "";
+    public string ActorRole { get; set; } = "";
+    public string Question { get; set; } = "";
+    /* the remembered-patient context the client sent, if any — part of
+       "about which patient" (tools may also name patients in args) */
+    public string? ContextPatientId { get; set; }
+    /* the translation outcome: the tool the model selected + its args
+       JSON, or null when the model declared the question unanswerable
+       or the provider call failed (Outcome says which) */
+    public string? Tool { get; set; }
+    public string? ArgsJson { get; set; }
+    public string Outcome { get; set; } = "";
 }
 
-/* wire contracts — mirror PatientRiskProfile / RiskPrediction / RiskFactor /
-   RankedRisk / RiskRankingRow in src/lib/api/types.ts (camelCase; optional
-   fields absent, not null — Suggestions/Mitigating). */
-record AiProfileDto(
-    string PatientId, string BedId, string PatientName, string UpdatedAt,
-    List<RiskPredictionDto> Risks);
+/* POST /api/icu/ai/query — request. Disallow: unknown fields fail
+   binding (the codified rule). History is the conversation-memory
+   policy made visible on the wire: the client sends AT MOST the last 6
+   (question, tool) pairs — never tool RESULTS, so prior patient data
+   never rides back through this endpoint. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record AiQueryRequest(string? Question, string? ContextPatientId, List<AiTurnDto>? History);
 
-record RiskPredictionDto(
-    string Category, int Probability, List<int> History, string Rationale,
-    List<RiskFactorDto> Factors, List<string>? Suggestions);
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record AiTurnDto(string? Question, string? Tool);
 
-record RiskFactorDto(string Label, int Weight, bool? Mitigating);
-
-record RankedRiskDto(string Category, int Probability, string Trend, int Delta);
-
-record RiskRankingRowDto(
-    string PatientId, string BedId, string PatientName, string Diagnosis,
-    RankedRiskDto Top, List<int> TopHistory, List<RankedRiskDto> AlsoElevated, string UpdatedAt);
+/* the response — A QUERY, NEVER A VALUE: the selected tool + its
+   arguments (or an honest unanswerable). No patient data field exists
+   on this contract at all. */
+record AiQueryResponseDto(string? Tool, System.Text.Json.JsonElement? Args, string? Unanswerable);

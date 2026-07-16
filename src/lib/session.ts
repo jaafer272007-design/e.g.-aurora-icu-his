@@ -1,5 +1,6 @@
 import { clearLastPatient } from './patientContext'
 import { clearPreferences } from './preferences'
+import { clearChatMemory } from './ai/chatMemory'
 
 /* Session + three-layer, permission-based RBAC (Stage 9, auth in Stage 10.2).
    User → Role (JobTitle) → PermissionProfile → Permissions — roles are
@@ -241,6 +242,9 @@ export function signOut(): void {
   /* preferences follow the same discipline (Settings design §1.1A):
      tab/session-scoped USER context, cleared with the session */
   clearPreferences()
+  /* the AI chat's conversation memory is USER context too — the next
+     sign-in (any role) must never inherit the previous user's questions */
+  clearChatMemory()
 }
 
 /** "Dr. Sara Rahman" → "sara.rahman" — deterministic demo username.

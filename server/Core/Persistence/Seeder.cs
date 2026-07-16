@@ -102,6 +102,7 @@ static class Seeder
         ResultsLogic.InitializeCounters(db);
         Aurora.Core.Assignments.AssignmentLogic.InitializeCounters(db);
         Aurora.Core.Observations.ObservationCatalog.InitializeCounters(db);
+        AiLogic.InitializeCounters(db);
     }
 
     /* ---- development / staging: the full demo set, unchanged ---- */
@@ -154,14 +155,10 @@ static class Seeder
             db.SaveChanges();
             app.Logger.LogInformation("Seeded {Count} orders", orders.Count);
         }
-        if (!db.AiRisks.Any())
-        {
-            var profiles = JsonSerializer.Deserialize<List<AiProfileDto>>(
-                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Data", "ai-seed.json")), JsonOpts.Web)!;
-            db.AiRisks.AddRange(profiles.Select((p, i) => AiRiskRow.FromDto(p, i + 1)));
-            db.SaveChanges();
-            app.Logger.LogInformation("Seeded {Count} AI risk profiles", profiles.Count);
-        }
+        /* the AI domain seeds NOTHING: the fabricated risk profiles
+           (ai-seed.json) are DELETED with the simulation, and the query
+           audit log starts empty everywhere — an access log has no
+           historical rows to invent. */
 
         /* Layer 2 ADT (Aurora Core): Patients + open Encounters are derived
            at boot from the SAME roster-seed.json the bedside table uses —

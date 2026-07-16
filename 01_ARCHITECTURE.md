@@ -121,6 +121,12 @@ alert/device models. Apply incrementally; don't wholesale-refactor existing code
   q15min history, factors, advisory suggestions. SIMULATED until Stage 11;
   trend/elevation computed at read time; threshold crossings feed the
   existing alert center (MC Smart Alerts), never a separate alert list.
+  *[Superseded 2026-07-16, per the validator's AI Assistant design: the
+  simulated risk domain is DELETED — store, seed, endpoints, ranked rail,
+  MC panel, alert term, all of it (remove, don't label). The AI surface is
+  now the grounded query chat — see "AI Assistant — grounded query
+  architecture" below. There is no AI data store: the one AI table is
+  `AiQueries`, the query AUDIT log.]*
 - Derived-only, never stored: Timeline feed (`timeline.ts`), MAR rows,
   results inbox, MC lab-trend card, rounding/assignment patient views.
 
@@ -335,6 +341,63 @@ Rules:
 - Implementation is Stage 11 scope, NOT before — do not build the
   Observation model or touch `panels.ts`, vitals, ventilator,
   hemodynamics, or infusion code until then.
+
+## AI Assistant — grounded query architecture (BUILT 2026-07-16, locked)
+
+*[Attributed addition, 2026-07-16: recorded with the grounded-query-chat
+build, from the validator's AI Assistant design document. The entirely
+simulated risk assistant it replaces was deleted, not labelled.]*
+
+**THE DEFINING RULE: the LLM emits a QUERY, never a VALUE.** An LLM that
+reads records and writes prose about them will eventually fabricate, so
+fabrication is made structurally impossible rather than unlikely:
+1. The user asks in natural language.
+2. The server (`POST /api/icu/ai/query`) has ONE job — translate the
+   question into ONE structured tool call from a fixed catalog, and AUDIT
+   the question. Its response contract (`tool`, `args`, `unanswerable`)
+   has no field that can carry a clinical value, and it never touches
+   patient rows.
+3. The CLIENT executes the returned tool through the SAME canonical,
+   RBAC-enforced reads every screen uses, on the USER's own token and
+   active role — never a service account (the #104 lesson at scale).
+4. Aurora renders the result with its own components; the tool call is
+   SHOWN with every answer, so the worst failure is a visibly wrong
+   question — never a confident invented number. The model contributes
+   NO displayed text (the prose budget, resolved to zero).
+
+Binding rules:
+- **READ-ONLY, FOREVER.** No write tool exists in the catalog or the
+  client registry — absent, not merely unused. Assert by inspection on
+  any change to `server/Core/Ai/AiApi.cs` or `src/lib/ai/tools.ts`.
+- **Every question is audited** (`AiQueries`, append-only, the
+  PatientAssignment row-is-the-record shape): who asked what, about which
+  patient, when, under which ACTIVE role, and what it translated into —
+  including refused/failed attempts. This is a patient-data access log.
+- **"Worst" is never the model's judgment.** Ranked questions translate
+  to `score_ranking`/`worst_period` with a NAMED instrument (SOFA/NEWS2);
+  Aurora computes and sorts, only COMPLETE scores rank, the INCOMPLETE
+  denominator is stated, and every ranked answer carries the same
+  decision-support / requires-clinical-validation framing as the score
+  cards. A missing score is never ranked as low.
+- **No clinical judgment, no prediction, no advice, no fabricated
+  emptiness** — a tool returning nothing renders "nothing found".
+- **Provider-agnostic adapter**: `AI_PROVIDER` (`none` default → honest
+  503) / `AI_ENDPOINT` / `AI_MODEL` / `AI_API_KEY` (optional, never
+  logged, never surfaced) against any OpenAI-compatible
+  `/chat/completions` endpoint with `tool_choice=required` — one adapter
+  covers a hosted staging model and a local llama.cpp/vLLM/Ollama server
+  in production. No model is hardcoded.
+- **Conversation memory** is (question, tool) pairs only — never tool
+  results — the last 6 ride to the model, cleared on sign-out.
+
+**Deployment (validator's locked decision 2 — a platform-wide fact):
+each hospital runs its own Aurora server. Production is ON-PREMISES, PER
+HOSPITAL; the Render service is and will only ever be staging/demo. The
+long-standing "production always-on server" idea was the wrong shape.**
+Consequently the AI model runs locally inside the hospital and patient
+data never leaves the building — which is what makes an LLM assistant
+viable here at all. Staging (Render, fake data, no PHI) may use a hosted
+model through the same adapter.
 
 ## Cross-cutting server conventions
 

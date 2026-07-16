@@ -20,7 +20,6 @@ import { IdentityDialog } from './IdentityDialog'
 import { AssignmentDialog } from './AssignmentDialog'
 import { LatestObservationsCard } from './LatestObservationsCard'
 import { DigitalTwin } from './DigitalTwin'
-import { AiPanel } from './AiPanel'
 import { LabsCard } from './LabsCard'
 import { WeightHeightCard } from './WeightHeightCard'
 import { SofaCard } from './SofaCard'
@@ -332,7 +331,6 @@ export function MissionControl() {
           {detail && (
             <div className="colR">
               <DigitalTwin organs={detail.patient.organs} />
-              <AiPanel risks={detail.aiRisks} />
             </div>
           )}
 

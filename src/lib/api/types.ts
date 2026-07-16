@@ -166,15 +166,6 @@ export interface MonitorVitals {
 export type OrganName = 'Brain' | 'Heart' | 'Lungs' | 'Kidneys' | 'Liver' | 'Circulation'
 export type OrganStatus = 'ok' | 'watch' | 'crit'
 
-/** legacy one-line risk view (Mission Control's AI panel) — DERIVED from the
-    canonical AI risk domain (Screen 8), never stored separately */
-export interface AiRisk {
-  name: string
-  /** 0–100 probability */
-  probability: number
-  rationale: string
-}
-
 export interface Patient extends PatientSummary {
   age: number
   sex: Sex
@@ -294,8 +285,6 @@ export interface TimelineEvent {
 
 export interface PatientDetailResponse {
   patient: Patient
-  /** derived view over the canonical AI risk domain (Screen 8) */
-  aiRisks: AiRisk[]
   ventilator: Ventilator
   hemodynamics: Hemodynamics
   infusions: Infusion[]
@@ -1088,71 +1077,22 @@ export interface ResultInboxItem {
   documentedAt?: string
 }
 
-/* ==================== AI Clinical Assistant domain (Screen 8) ====================
-   THE canonical source of AI risk predictions. Mission Control's AI panel is
-   a derived one-line view over this model, and risks crossing threshold are
-   surfaced through the EXISTING alert center (getPatientDetail alerts) —
-   never a separate alert system. All predictions are SIMULATED mock data
-   until the real model service arrives with device integration (Stage 11).
-   The assistant is advisory only — it never places orders or acts. */
+/* ==================== AI Assistant — grounded query chat ====================
+   The simulated risk domain that lived here (fabricated probabilities,
+   ranked rail, factors, suggestions) is DELETED. The AI surface is now ONE
+   translation contract: POST /api/icu/ai/query returns the tool the model
+   selected — A QUERY, NEVER A VALUE. No response field can carry patient
+   data; the client executes the tool through the canonical reads above,
+   on the user's own token. */
 
-export type RiskCategory = 'Sepsis' | 'AKI' | 'ARDS' | 'Delirium' | 'Mortality'
-export type RiskTrend = 'rising' | 'falling' | 'stable'
-
-export interface RiskFactor {
-  label: string
-  /** relative contribution 0–100 (drives the breakdown bar) */
-  weight: number
-  /** true = protective/mitigating factor */
-  mitigating?: boolean
-}
-
-export interface RiskPrediction {
-  category: RiskCategory
-  /** current probability 0–100 (== last history sample) */
-  probability: number
-  /** q15min model ticks, oldest → newest (~2 h window). Trend is computed
-      from this at read time — never stored (same rule as due-states). */
-  history: number[]
-  rationale: string
-  factors: RiskFactor[]
-  /** advisory suggestions — present only while the risk is elevated */
-  suggestions?: string[]
-}
-
-/* ---------- GET /api/icu/ai/risks?patientId ---------- */
-
-export interface PatientRiskProfile {
-  patientId: string
-  /** denormalized display fields */
-  bedId: string
-  patientName: string
-  /** last simulated model tick, "HH:MM" */
-  updatedAt: string
-  risks: RiskPrediction[]
-}
-
-/* ---------- GET /api/icu/ai/ranking — unit-wide, derived ---------- */
-
-export interface RankedRisk {
-  category: RiskCategory
-  probability: number
-  trend: RiskTrend
-  /** delta vs the oldest history sample (~2 h) */
-  delta: number
-}
-
-export interface RiskRankingRow {
-  patientId: string
-  bedId: string
-  patientName: string
-  diagnosis: string
-  /** highest current risk across any category */
-  top: RankedRisk
-  topHistory: number[]
-  /** every other elevated risk, highest first */
-  alsoElevated: RankedRisk[]
-  updatedAt: string
+export interface AiQueryResponse {
+  /** the selected tool name — ABSENT/null when unanswerable/refused (the
+   *  server's JSON convention drops null fields on the wire) */
+  tool?: string | null
+  /** the tool's arguments as parsed JSON (shape owned by the tool registry) */
+  args?: Record<string, unknown> | null
+  /** the model's honest refusal reason (mutually exclusive with tool) */
+  unanswerable?: string | null
 }
 
 /* ================= Layer 2 — ADT (Aurora Core) =================

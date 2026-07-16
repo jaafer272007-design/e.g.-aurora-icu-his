@@ -27,7 +27,11 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
     public DbSet<LabDrawRow> LabDraws => Set<LabDrawRow>();
     public DbSet<ImagingStudyRow> ImagingStudies => Set<ImagingStudyRow>();
     public DbSet<OrderRow> Orders => Set<OrderRow>();
-    public DbSet<AiRiskRow> AiRisks => Set<AiRiskRow>();
+    /* AI grounded query chat: the query AUDIT log (a patient-data access
+       log — append-only, the PatientAssignment row-is-the-record shape).
+       The seeded AiRisks table it replaces is DROPPED by migration: the
+       fabricated risk domain is deleted, not disabled. */
+    public DbSet<AiQueryRow> AiQueries => Set<AiQueryRow>();
     /* Layer 2 ADT (Aurora Core): Patient persists across visits; Encounter
        is one admission; Bed is a place (occupancy derived, never stored) */
     public DbSet<Patient> AdtPatients => Set<Patient>();
@@ -62,7 +66,7 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
            SQLite behavior the wire contract was verified against. These are
            the ONLY string columns ordered in SQL — PatientId (roster),
            LabId (labs), StudyId (imaging); Seq is an int, and the inbox/
-           timeline/AI-ranking sorts all happen in memory after
+           timeline sorts all happen in memory after
            AsEnumerable(). First fluent config in the project — provider
            correctness only, guarded because SQLite has no "C" collation. */
         if (Database.IsNpgsql())

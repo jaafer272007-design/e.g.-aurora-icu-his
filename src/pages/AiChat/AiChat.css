@@ -1,0 +1,76 @@
+/* AI Assistant — grounded query chat. The .ac shell follows the app-frame
+   grid convention; the chat column owns its own scroll (viewport-clip
+   rule: inner scroll, never page overflow). */
+.ac .shell{display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px;min-height:0}
+.ac main{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
+
+.ac .acdisclaimer{display:flex;gap:9px;align-items:flex-start;padding:10px 14px;border:1px solid rgba(var(--violet-rgb),.35);border-radius:12px;background:rgba(var(--violet-rgb),.08);font-size:12px;line-height:1.5;color:var(--dim)}
+.ac .acdisclaimer b{color:var(--text)}
+.ac .acdisclaimer svg{flex:none;margin-top:2px}
+
+.ac .acctx{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)}
+.ac .acctx b{color:var(--text)}
+.ac .acctx i{font-family:var(--mono);font-style:normal;color:var(--faint)}
+.ac .acctx button{border:1px solid var(--stroke);background:transparent;color:var(--dim);border-radius:8px;width:20px;height:20px;line-height:1;cursor:pointer}
+.ac .acctx button:hover{color:var(--red);border-color:var(--red)}
+
+.ac .aclog{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:16px;padding:4px 2px}
+
+.ac .acempty{margin:auto;text-align:center;color:var(--dim);font-size:13px;max-width:520px}
+.ac .acexamples{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.ac .acexamples button{border:1px solid var(--stroke);background:var(--panel);color:var(--text);border-radius:10px;padding:9px 12px;font-size:12.5px;cursor:pointer;text-align:start}
+.ac .acexamples button:hover{border-color:var(--violet)}
+
+.ac .acturn{display:flex;flex-direction:column;gap:8px}
+.ac .acq{display:flex;gap:9px;align-items:flex-start}
+.ac .acq .acwho{flex:none;width:26px;height:26px;border-radius:50%;background:rgba(var(--violet-rgb),.18);color:var(--violet);display:grid;place-items:center;font-size:10.5px;font-weight:700}
+.ac .acq p{margin:2px 0 0;font-size:13.5px;font-weight:600}
+
+.ac .acpending{font-size:12px;color:var(--faint);padding-left:35px}
+
+/* THE VISIBLE QUERY — the model's entire output, shown with every answer */
+.ac .acquery{display:flex;align-items:center;gap:8px;margin-left:35px;font-size:11.5px}
+.ac .acquery span{flex:none;font-weight:700;letter-spacing:.08em;font-size:9.5px;color:var(--violet);border:1px solid rgba(var(--violet-rgb),.4);border-radius:6px;padding:2px 6px}
+.ac .acquery code{font-family:var(--mono);color:var(--dim);word-break:break-all}
+
+.ac .acrefusal{margin-left:35px;padding:10px 12px;border:1px solid rgba(var(--amber-rgb),.4);border-radius:10px;background:rgba(var(--amber-rgb),.07);font-size:12.5px;line-height:1.5}
+.ac .acerror{margin-left:35px;padding:10px 12px;border:1px solid rgba(var(--red-rgb),.4);border-radius:10px;background:rgba(var(--red-rgb),.06);font-size:12.5px;color:var(--dim)}
+
+.ac .accard{margin-left:35px;border:1px solid var(--stroke);border-radius:var(--r);background:var(--panel);padding:13px 15px;box-shadow:var(--shadow)}
+.ac .accard h3{margin:0 0 9px;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.ac .acpat{display:inline-flex;align-items:center;gap:6px}
+.ac .acpat i{font-family:var(--mono);font-style:normal;font-size:11px;color:var(--faint)}
+.ac .aclist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ac .aclist li{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px dashed rgba(var(--steel-rgb),.12);font-size:12.5px}
+.ac .aclist li:last-child{border-bottom:none;padding-bottom:0}
+.ac .aclist i{font-family:var(--mono);font-style:normal;font-size:11px;color:var(--faint)}
+.ac .acdim{color:var(--dim);font-size:11.5px}
+.ac .acnone{color:var(--dim);font-size:12.5px;margin:4px 0}
+.ac .acdl{display:grid;grid-template-columns:auto 1fr;gap:5px 16px;margin:0;font-size:12.5px}
+.ac .acdl dt{color:var(--dim)}
+.ac .acdl dd{margin:0}
+.ac .acgroups li{flex-direction:column;align-items:stretch;gap:5px}
+.ac .acanalytes{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px}
+.ac .acanalytes .f-abnormal{color:var(--amber)}
+.ac .acanalytes .f-critical{color:var(--red);font-weight:700}
+.ac .acrank{flex:none;width:20px;text-align:end;color:var(--faint)}
+.ac .acscore{font-size:13px;margin:4px 0}
+.ac .acincomplete{color:var(--amber);font-weight:600}
+.ac .acscorefoot{margin:9px 0 0;font-size:11px;color:var(--dim);line-height:1.5}
+.ac .acseries{display:flex;flex-wrap:wrap;gap:3px;margin-top:8px}
+.ac .acseries .pt{font-family:var(--mono);font-size:10.5px;min-width:20px;text-align:center;padding:2px 3px;border-radius:5px;border:1px solid var(--stroke);color:var(--text)}
+.ac .acseries .pt.peak{border-color:var(--red);color:var(--red);font-weight:700}
+.ac .acseries .pt.inc{color:var(--faint);border-style:dashed}
+
+.ac .accomposer{display:flex;gap:9px}
+/* the dev/staging environment banner is a FIXED bottom overlay — keep the
+   composer clear of it (production renders no banner, no offset) */
+body:has(.envbanner) .ac .accomposer{margin-bottom:26px}
+.ac .accomposer input{flex:1;min-width:0;border:1px solid var(--stroke);border-radius:12px;background:var(--panel);color:var(--text);padding:11px 14px;font-size:13px;font-family:var(--sans)}
+.ac .accomposer input:focus{outline:none;box-shadow:var(--focus)}
+.ac .accomposer button{border:1px solid rgba(var(--violet-rgb),.5);border-radius:12px;background:rgba(var(--violet-rgb),.16);color:var(--violet);font-weight:700;font-size:13px;padding:0 22px;cursor:pointer}
+.ac .accomposer button:disabled{opacity:.45;cursor:default}
+
+@media (max-width: 1023px){
+  .ac .shell{grid-template-columns:minmax(0,1fr)}
+}

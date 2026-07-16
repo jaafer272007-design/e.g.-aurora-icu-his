@@ -5,11 +5,11 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
-  OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientRiskProfile, PatientSummary, ResultInboxItem,
-  RiskRankingRow, RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
+  OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
+  RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
 } from './types'
 import { composeBedsResponse } from './bedboard'
 import { BEDS_RESPONSE, UNIT_SUMMARY, mockAdtBeds } from './data/beds'
@@ -21,7 +21,6 @@ import { ACTION_QUEUES, ORDER_SETS } from './data/workspace'
 import { IO_ENTRIES, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
 import { ASSIGNMENTS, applyAssignmentEnd, insertAssignment } from './data/assignments'
 import { allConsults } from './data/consults'
-import { allRiskProfiles, deriveMissionControlRisks, deriveRiskAlerts, deriveRiskRanking, riskProfileFor } from './data/ai'
 import { notesFor } from './data/notes'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
@@ -446,15 +445,12 @@ async function getPatientDetailMock(patientId: string): Promise<PatientDetailRes
   return respond(
     {
       patient,
-      /* one-line AI risk view derived from the canonical AI domain (Screen 8) */
-      aiRisks: deriveMissionControlRisks(patientId),
       ventilator: projectVentilator(latest),
       hemodynamics: projectHemodynamics(latest, obs),
       infusions: INFUSIONS,
       /* lab trends are a derived view over the canonical results store (Screen 6) */
       labs: deriveMissionControlLabs(patientId),
-      /* AI risks crossing threshold surface in the EXISTING alert center */
-      alerts: [...deriveRiskAlerts(patientId), ...PATIENT_ALERTS],
+      alerts: PATIENT_ALERTS,
       goals: GOALS,
       /* the timeline card is a derived view over the aggregated feed
          (Screen 7) — last ~24 h, capped for the horizontal strip */
@@ -1172,52 +1168,51 @@ export function getClinicalNotes(patientId: string): Promise<ClinicalNote[]> {
   return Promise.reject(apiUnavailable('clinical notes (Stage 11 scope)'))
 }
 
-/* ---------------- AI Clinical Assistant domain (Screen 8) ----------------
-   The canonical AI risk service — REAL authenticated endpoints since Stage
-   10 Phase 3 (the FINAL domain migration), with graceful mock fallback.
-   All predictions remain SIMULATED mock model output until Stage 11 (real
-   model + device integration); the server just serves them from SQLite now.
-   Read-only for every role (both doctor and nurse read) — no endpoint here
-   mutates anything or places orders. Risk trend/delta are computed
-   server-side at read from each risk's history — never stored (locked rule).
+/* ---------------- AI Assistant — grounded query chat ----------------
+   THE SIMULATED RISK DOMAIN IS DELETED (remove, don't label): the seeded
+   probabilities, the ranked rail, trend/factor derivations — all of it.
+   What replaces it is ONE translation endpoint: the server turns a
+   natural-language question into a structured tool call (the LLM emits a
+   QUERY, never a VALUE) and audits the question as patient-data access.
+   The CLIENT executes the returned tool through the canonical reads in
+   this file, on the user's own token — see src/lib/ai/tools.ts. */
 
-   Mission Control's AI panel and the alert-center integration still derive
-   their single-patient views from the SAME mock store (via getPatientDetail
-   — deriveMissionControlRisks / deriveRiskAlerts), which reads ai.ts — the
-   exact data the AI table seeds from, so there is no parallel copy. Those
-   move to the real endpoint when getPatientDetail migrates (documented drift,
-   like the MC lab-trend and timeline cards). */
-
-/** GET /api/icu/ai/risks — every patient's simulated risk profile. No server
- *  endpoint serves the full set (ranking + per-patient cover the pages);
- *  kept as a mock convenience accessor. */
-export function getRiskProfiles(): Promise<PatientRiskProfile[]> {
-  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(allRiskProfiles(), 150)
-  return Promise.reject(apiUnavailable('AI risk profiles (mock convenience accessor)'))
+/** POST /api/icu/ai/query — translate a question into ONE tool call.
+ *  REAL-ONLY (no mock model exists — a simulated translation would be the
+ *  retired fabrication in a new coat): offline/dev-without-server gets the
+ *  same honest "not reachable" the real-only reads use. Returns the
+ *  translation, or a structured refusal { unanswerable }, or throws with
+ *  the server's precise error (503 no model configured / 502 provider). */
+export async function aiTranslateQuery(
+  question: string, contextPatientId: string | null, history: { question: string; tool: string | null }[],
+): Promise<AiQueryResponse> {
+  const token = getToken()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 65000)
+  try {
+    const res = await fetch(`${API_BASE}/api/icu/ai/query`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        question,
+        contextPatientId,
+        /* conversation memory on the wire: the last 6 (question, tool)
+           pairs — never tool RESULTS, so patient data never rides back */
+        history: history.slice(-6).map(h => ({ question: h.question, tool: h.tool })),
+      }),
+    })
+    const body = await res.json().catch(() => null)
+    if (res.ok) return body as AiQueryResponse
+    throw new Error((body as { error?: string } | null)?.error
+      ?? `the AI query endpoint returned ${res.status}`)
+  } catch (e) {
+    if (e instanceof Error && e.name !== 'AbortError') throw e
+    throw new Error('the AI service is not reachable in this session')
+  } finally {
+    clearTimeout(timer)
+  }
 }
-
-/** GET /api/icu/ai/risks?patientId — one patient's profile (REAL endpoint;
- *  mock fallback). Null when the patient has no profile / is unresolved. */
-export async function getRiskProfile(patientId: string): Promise<PatientRiskProfile | null> {
-  const real = await apiGet<PatientRiskProfile | null>(
-    `/api/icu/ai/risks?patientId=${encodeURIComponent(patientId)}`, 'AI risks')
-  if (real != null) return real
-  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(riskProfileFor(patientId), 120)
-  throw apiUnavailable('AI risks')
-}
-
-/** GET /api/icu/ai/ranking — unit-wide ranking by highest current risk,
- *  derived server-side at read (REAL endpoint; mock fallback). */
-export async function getRiskRanking(): Promise<RiskRankingRow[]> {
-  const real = await apiGet<RiskRankingRow[]>('/api/icu/ai/ranking', 'AI ranking')
-  if (real != null) return real
-  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(deriveRiskRanking(), 150)
-  throw apiUnavailable('AI ranking')
-}
-
-/* pure client-side helpers for the AI domain (trend from history, elevation
-   rule) — computed at render, never stored (locked pattern) */
-export { AI_ALERT_THRESHOLD, isElevated, riskTrendOf } from './logic'
 
 /* ---------------- Layer 2 — ADT (Aurora Core) ----------------
    The first Core-native domain and the first write feature on the durable
