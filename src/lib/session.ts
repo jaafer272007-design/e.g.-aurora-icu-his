@@ -85,6 +85,7 @@ export type Permission =
   | 'results.document'     // Lab Result-Entry: manually document/transcribe a lab result (ICU bedside team)
   | 'results.correct'      // Lab Result Editing: Tier-2 correction of a documented result (Consultant-tier ONLY — never office admin)
   | 'notes.document'       // nursing tasks, I&O, SBAR handoff
+  | 'identity.correct'     // Structured Patient Name + National ID: audited identity correction (office Administrator — registration work, not clinical data)
   | 'ai.view'
   | 'admin.view'           // administrative landing view
   | 'adt.admit'            // Layer 2 ADT: open an encounter (doctor authority)
@@ -139,7 +140,12 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   /* users.manage MOVED to the System Administrator (User Management
      design §5) — the office profile keeps its administrative landing and
      operational patient list but no longer manages accounts */
-  Administrator: ['admin.view', 'patients.view'],
+  /* identity.correct (Structured Patient Name + National ID §3): the
+     FLAGGED authority, stated — correcting a patient's legal name /
+     national ID / DOB is REGISTRATION work and identity is NOT clinical
+     data, so it sits on the office profile (the clinical exclusion is
+     untouched). */
+  Administrator: ['admin.view', 'patients.view', 'identity.correct'],
   /* the highest-privilege authority: controls who can reach patient data
      while never reaching it (no clinical atoms, not even patients.view) */
   SystemAdministrator: ['users.manage', 'users.view'],

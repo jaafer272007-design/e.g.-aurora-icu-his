@@ -53,8 +53,13 @@ export function PrintCenter() {
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return patients
+    /* one search box (name + national ID design): substring on the names
+       (display AND full legal — a grandfather's name finds the patient),
+       prefix on the numbers; never fuzzy */
     return patients.filter(p =>
-      p.name.toLowerCase().includes(q) || p.patientId.toLowerCase().includes(q) || p.mrn.toLowerCase().includes(q))
+      p.name.toLowerCase().includes(q) || (p.fullName ?? '').toLowerCase().includes(q)
+      || p.patientId.toLowerCase().includes(q) || p.mrn.toLowerCase().startsWith(q)
+      || (p.nationalId ?? '').startsWith(q))
   }, [patients, query])
 
   /* discharged patients = distinct patients across closed encounters,

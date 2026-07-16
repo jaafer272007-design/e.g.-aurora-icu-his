@@ -140,7 +140,7 @@ static class ResultsApi
             {
                 LabId = ResultsLogic.NextLabId(), PatientId = req.PatientId!,
                 EncounterId = enc!.EncounterId, OrderId = linkedOrder?.OrderId,
-                BedId = enc.BedId, PatientName = pt.Name,
+                BedId = enc.BedId, PatientName = pt.DisplayName,
                 Panel = req.Panel!.Trim(), Label = req.Label!.Trim(),
                 CollectedAt = time, ResultedAt = time,
                 ItemsJson = JsonSerializer.Serialize(items, JsonOpts.Web),
@@ -209,7 +209,7 @@ static class ResultsApi
             {
                 LabId = ResultsLogic.NextLabId(), PatientId = req.PatientId!,
                 EncounterId = enc!.EncounterId, OrderId = linkedOrder?.OrderId,
-                BedId = enc.BedId, PatientName = pt.Name,
+                BedId = enc.BedId, PatientName = pt.DisplayName,
                 Panel = test.TestId, Label = test.Name,
                 CollectedAt = time, ResultedAt = time,
                 ItemsJson = JsonSerializer.Serialize(items, JsonOpts.Web),
@@ -255,7 +255,7 @@ static class ResultsApi
             {
                 LabId = ResultsLogic.NextLabId(), PatientId = req.PatientId!,
                 EncounterId = enc!.EncounterId, OrderId = null,
-                BedId = enc.BedId, PatientName = pt.Name,
+                BedId = enc.BedId, PatientName = pt.DisplayName,
                 Panel = "Custom", Label = req.TestName!.Trim(),
                 CollectedAt = time, ResultedAt = time,
                 ItemsJson = "[]", Flag = "", Source = "manual",
@@ -409,7 +409,7 @@ static class ResultsApi
             var row = new ImagingStudyRow
             {
                 StudyId = ResultsLogic.NextStudyId(), PatientId = req.PatientId!,
-                EncounterId = enc!.EncounterId, BedId = enc.BedId, PatientName = pt.Name,
+                EncounterId = enc!.EncounterId, BedId = enc.BedId, PatientName = pt.DisplayName,
                 Modality = req.Modality!.Trim(), Description = req.Description!.Trim(),
                 OrderedAt = time, PerformedAt = time, ReportedAt = time, Status = "final",
                 Report = req.Report!.Trim(), Impression = req.Impression!.Trim(),
@@ -548,7 +548,7 @@ static class ResultsApi
             var row = new ImagingStudyRow
             {
                 StudyId = ResultsLogic.NextStudyId(), PatientId = req.PatientId!,
-                EncounterId = enc!.EncounterId, BedId = enc.BedId, PatientName = pt.Name,
+                EncounterId = enc!.EncounterId, BedId = enc.BedId, PatientName = pt.DisplayName,
                 Modality = modality, Description = description,
                 OrderedAt = orderedAt, OrderId = orderId,
                 PerformedAt = performedAt, ReportedAt = time,

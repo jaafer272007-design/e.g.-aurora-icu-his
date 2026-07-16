@@ -70,7 +70,7 @@ static class RosterApi
                     var latest = projected.GetValueOrDefault(e.EncounterId);
                     return PatientRow.ComposeDto(b, latest, e.PatientId, e.BedId,
                         p.Name, p.Mrn, p.Age, p.Sex, e.Diagnosis, p.Allergies,
-                        e.Attending, e.AdmittedAt);
+                        e.Attending, e.AdmittedAt, p.FullName, p.NationalId);
                 });
             return Results.Json(records, JsonOpts.Web);
         }).RequireAuthorization();
@@ -142,7 +142,8 @@ class PatientRow
     public static RosterRecordDto ComposeDto(PatientRow? b,
         Dictionary<string, ObservationProjection.Latest>? latest,
         string patientId, string bedId, string name, string mrn, int age, string sex,
-        string diagnosis, string allergies, string attending, string admittedAt)
+        string diagnosis, string allergies, string attending, string admittedAt,
+        string? fullName = null, string? nationalId = null)
     {
         var demoBedCard = ParseNumbers(b?.BedsideVitalsJson);
         var demoMonitor = ParseNumbers(b?.MonitorVitalsJson);
@@ -169,7 +170,8 @@ class PatientRow
             b is not null
                 ? JsonSerializer.Deserialize<JsonElement>(b.OrgansJson, JsonOpts.Web)
                 : JsonSerializer.Deserialize<JsonElement>(
-                    """{"Brain":"ok","Heart":"ok","Lungs":"ok","Kidneys":"ok","Liver":"ok","Circulation":"ok"}""", JsonOpts.Web));
+                    """{"Brain":"ok","Heart":"ok","Lungs":"ok","Kidneys":"ok","Liver":"ok","Circulation":"ok"}""", JsonOpts.Web),
+            fullName, nationalId);
     }
 
     static Dictionary<string, double>? ParseNumbers(string? json)
@@ -209,4 +211,10 @@ record RosterRecordDto(
     string Diagnosis, int Los, string Allergies, string Attending, string CodeStatus,
     string Rhythm, bool Isolation, string Severity,
     List<string> Flags, JsonElement BedsideVitals, JsonElement BedAlert,
-    List<double> MapTrend, JsonElement MonitorVitals, JsonElement Organs);
+    List<double> MapTrend, JsonElement MonitorVitals, JsonElement Organs,
+    /* STRUCTURED IDENTITY (additive nullable tail — legacy rows keep
+       their pre-feature wire bytes): fullName = the derived full legal
+       name (all present parts) on structured rows; nationalId as on the
+       card. Both feed the one-search-box requirement (any name part or
+       number finds the patient). */
+    string? FullName = null, string? NationalId = null);

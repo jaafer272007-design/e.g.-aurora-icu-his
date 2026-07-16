@@ -30,7 +30,7 @@ static class AdtApi
             foreach (var key in ctx.Request.Query.Keys)
                 return ApiError.BadRequest($"unknown query parameter '{key}'");
             var open = db.Encounters.AsNoTracking().Where(e => e.Status == "open").ToList();
-            var patients = db.AdtPatients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.Name);
+            var patients = db.AdtPatients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.DisplayName);
             var beds = db.Beds.AsNoTracking().OrderBy(b => b.Seq).AsEnumerable().Select(b =>
             {
                 var enc = open.FirstOrDefault(e => e.BedId == b.BedId);
@@ -56,7 +56,7 @@ static class AdtApi
             var q = db.Encounters.AsNoTracking().AsQueryable();
             if (patientId.Length > 0) q = q.Where(e => e.PatientId == patientId);
             if (status.Length > 0) q = q.Where(e => e.Status == status);
-            var names = db.AdtPatients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.Name);
+            var names = db.AdtPatients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.DisplayName);
             return Results.Json(q.OrderBy(e => e.EncounterId).AsEnumerable()
                 .Select(e => e.ToDto(names.GetValueOrDefault(e.PatientId, ""))), JsonOpts.Web);
         }).RequireAuthorization();
@@ -82,6 +82,126 @@ static class AdtApi
                 return ApiError.BadRequest($"unknown query parameter '{key}'");
             var patient = db.AdtPatients.AsNoTracking().FirstOrDefault(p => p.PatientId == patientId);
             return patient is null ? ApiError.NotFound() : Results.Json(patient.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* PUT /api/icu/adt/patients/{patientId}/identity — IDENTITY
+           CORRECTION (the validator's design §3 — REQUIRED by the
+           unknown-patient decision: the family arrives and the patient
+           gets a name; typos must be fixable too). A SERIOUS, AUDITED
+           identity event: actor + ACTIVE role (#104) + dated time +
+           required reason, appended to the patient's append-only identity
+           history. AMEND, NEVER ERASE — the previous identity is
+           preserved and visible (the #80 lab / #107 imaging discipline).
+           AUTHORITY (flagged choice, stated): identity.correct sits on the
+           office ADMINISTRATOR profile — registration is theirs, and
+           identity is NOT clinical data, so it fits their locked scope;
+           clinical profiles are 403.
+           Correcting the NAME requires the complete structured set
+           (first/second/family — a legacy single-name patient is
+           corrected INTO structured parts here; the stored legacy name is
+           preserved in the history and on the row). nationalId and
+           dateOfBirth correct independently — the DOB path deliberately
+           SUPERSEDES the "identity corrections are not part of admission"
+           409 for the corrected-through-this-path case: an unknown
+           patient's DOB is a guess and MUST be correctable once known, or
+           a wrong age propagates into every score and dose (attributed
+           supersede note in 02).
+           FOUR-CODE: absent patient → 404; missing reason / partial name
+           set / malformed DOB → 400; a nationalId already recorded for
+           ANOTHER patient → 409 naming the conflict; a correction that
+           changes nothing → 400 (the no-field-change precedent). */
+        app.MapPut("/api/icu/adt/patients/{patientId}/identity",
+            (string patientId, CorrectIdentityRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "identity.correct") is IResult denied) return denied;
+            if (string.IsNullOrWhiteSpace(req.Reason))
+                return ApiError.BadRequest("reason is required — an identity correction is an audited event");
+            foreach (var (field, value) in new[] {
+                ("reason", req.Reason), ("nameFirst", req.NameFirst), ("nameSecond", req.NameSecond),
+                ("nameThird", req.NameThird), ("nameFourth", req.NameFourth),
+                ("nameFamily", req.NameFamily), ("nationalId", req.NationalId) })
+                if (value is not null && value.Length > AdtLogic.MaxTextLength)
+                    return ApiError.BadRequest($"{field} exceeds {AdtLogic.MaxTextLength} characters");
+
+            var anyName = req.NameFirst is not null || req.NameSecond is not null
+                || req.NameThird is not null || req.NameFourth is not null || req.NameFamily is not null;
+            if (anyName && (string.IsNullOrWhiteSpace(req.NameFirst)
+                || string.IsNullOrWhiteSpace(req.NameSecond) || string.IsNullOrWhiteSpace(req.NameFamily)))
+                return ApiError.BadRequest(
+                    "correcting the name requires the complete structured set — nameFirst, nameSecond and nameFamily (nameThird/nameFourth optional)");
+            string? dob = null;
+            if (req.DateOfBirth is not null)
+            {
+                if (!DateTime.TryParseExact(req.DateOfBirth, "yyyy-MM-dd",
+                        null, System.Globalization.DateTimeStyles.None, out var parsed))
+                    return ApiError.BadRequest("dateOfBirth must be a valid date formatted yyyy-MM-dd");
+                var today = DateTime.UtcNow.Date;
+                if (parsed.Date > today) return ApiError.BadRequest("dateOfBirth cannot be in the future");
+                if (parsed.Date < today.AddYears(-130)) return ApiError.BadRequest("dateOfBirth implies an age above 130");
+                dob = parsed.ToString("yyyy-MM-dd");
+            }
+            var nationalId = req.NationalId is null ? null
+                : string.IsNullOrWhiteSpace(req.NationalId)
+                    ? "" /* explicit blank → 400 below: an ID is corrected to a value as on the card, never cleared here */
+                    : req.NationalId.Trim();
+            if (nationalId == "")
+                return ApiError.BadRequest("nationalId must be the number as it appears on the identity card — clearing a recorded national ID is not an identity correction");
+            if (!anyName && nationalId is null && dob is null)
+                return ApiError.BadRequest("nothing to correct — provide the structured name, nationalId, and/or dateOfBirth");
+
+            var row = db.AdtPatients.FirstOrDefault(p => p.PatientId == patientId);
+            if (row is null) return ApiError.NotFound();
+            if (nationalId is not null)
+            {
+                var holder = db.AdtPatients.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(p => p.NationalId == nationalId && p.PatientId != patientId);
+                if (holder is not null)
+                    return ApiError.StateConflict(
+                        $"national identity number '{nationalId}' is already recorded for patient "
+                        + $"'{holder.PatientId}' ({holder.DisplayName}, {holder.Mrn}) — national identity numbers are unique");
+            }
+
+            /* build the previous→new diff — the previous identity is the
+               event's payload, preserved forever (amend never erase) */
+            var parts = new List<string>();
+            var was = row.FullLegalName;
+            if (anyName)
+            {
+                string? Clean(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+                var (nf, ns, nt, n4, nl) = (Clean(req.NameFirst)!, Clean(req.NameSecond)!,
+                    Clean(req.NameThird), Clean(req.NameFourth), Clean(req.NameFamily)!);
+                if (nf != row.NameFirst || ns != row.NameSecond || nt != row.NameThird
+                    || n4 != row.NameFourth || nl != row.NameFamily)
+                {
+                    (row.NameFirst, row.NameSecond, row.NameThird, row.NameFourth, row.NameFamily) =
+                        (nf, ns, nt, n4, nl);
+                    parts.Add($"name: {was} → {row.FullLegalName}");
+                }
+            }
+            if (nationalId is not null && nationalId != row.NationalId)
+            {
+                parts.Add($"nationalId: {row.NationalId ?? "—"} → {nationalId}");
+                row.NationalId = nationalId;
+            }
+            if (dob is not null && dob != row.DateOfBirth)
+            {
+                parts.Add($"dateOfBirth: {row.DateOfBirth ?? (row.Age is int a ? $"— (estimated age {a})" : "—")} → {dob}");
+                row.DateOfBirth = dob;
+                row.Age = null;   /* age derives from DOB from now on */
+            }
+            if (parts.Count == 0)
+                return ApiError.BadRequest("no change — the provided identity matches the record");
+
+            var history = JsonSerializer.Deserialize<List<IdentityEventDto>>(row.IdentityJson, JsonOpts.Web)!;
+            history.Add(new(
+                DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"),
+                user.FindFirst("name")?.Value ?? "Unknown",
+                user.FindFirst("jobTitle")?.Value ?? "Unknown",
+                req.Reason!.Trim(),
+                string.Join(" · ", parts)));
+            row.IdentityJson = JsonSerializer.Serialize(history, JsonOpts.Web);
+            db.SaveChanges();
+            return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
         /* PUT /api/icu/adt/encounters/{encounterId}/measurements — Patient
@@ -120,25 +240,37 @@ static class AdtApi
             if (!AdtLogic.ApplyMeasurements(enc, req.WeightKg, req.HeightCm, actor, atAdmission: false))
                 return ApiError.BadRequest("no change — the provided values match the encounter's recorded weight/height");
             db.SaveChanges();
-            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).Name;
+            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
             return Results.Json(enc.ToDto(name), JsonOpts.Web);
         }).RequireAuthorization();
 
         /* POST /api/icu/adt/admissions — DOCTOR RBAC (adt.admit). Creates
            the Patient if the MRN is new, opens an Encounter, assigns the
-           bed. Every draft field is validated BEFORE anything is written. */
+           bed. Every draft field is validated BEFORE anything is written.
+           STRUCTURED IDENTITY (the validator's design): the legal name
+           arrives as five parts (first/second/family required —
+           unidentified patients use the same fields, named "unknown" by
+           the admitting user, no special mode) plus the OPTIONAL national
+           identity number, stored as on the card, unique when present. */
         app.MapPost("/api/icu/adt/admissions", (AdmitRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "adt.admit") is IResult denied) return denied;
 
             foreach (var (name, value) in new[] {
-                ("mrn", req.Mrn), ("name", req.Name), ("sex", req.Sex), ("allergies", req.Allergies),
+                ("mrn", req.Mrn), ("nameFirst", req.NameFirst), ("nameSecond", req.NameSecond),
+                ("nameFamily", req.NameFamily), ("sex", req.Sex), ("allergies", req.Allergies),
                 ("diagnosis", req.Diagnosis), ("attending", req.Attending), ("bedId", req.BedId) })
             {
                 if (string.IsNullOrWhiteSpace(value)) return ApiError.BadRequest($"{name} is required");
                 if (value.Length > AdtLogic.MaxTextLength)
                     return ApiError.BadRequest($"{name} exceeds {AdtLogic.MaxTextLength} characters");
             }
+            /* third/fourth are OPTIONAL — blank is honest; bounded when given */
+            foreach (var (name, value) in new[] {
+                ("nameThird", req.NameThird), ("nameFourth", req.NameFourth), ("nationalId", req.NationalId) })
+                if (value is not null && value.Length > AdtLogic.MaxTextLength)
+                    return ApiError.BadRequest($"{name} exceeds {AdtLogic.MaxTextLength} characters");
+            var nationalId = string.IsNullOrWhiteSpace(req.NationalId) ? null : req.NationalId.Trim();
             /* IDENTITY REDESIGN: exactly ONE of dateOfBirth / age.
                dateOfBirth ("yyyy-MM-dd") is the correct capture — age then
                COMPUTES at read, never stored. age stays accepted for
@@ -191,6 +323,19 @@ static class AdtApi
 
             var mrn = req.Mrn!.Trim();
             var patient = db.AdtPatients.FirstOrDefault(p => p.Mrn == mrn);
+            /* NATIONAL ID — UNIQUE WHEN PRESENT (locked decision 3): a
+               duplicate at admission is refused NAMING the conflict; the
+               unidentified (no ID) never collide — absent is not a value. */
+            if (nationalId is not null)
+            {
+                var holder = db.AdtPatients.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(p => p.NationalId == nationalId && p.PatientId != patient?.PatientId);
+                if (holder is not null)
+                    return ApiError.StateConflict(
+                        $"national identity number '{nationalId}' is already recorded for patient "
+                        + $"'{holder.PatientId}' ({holder.DisplayName}, {holder.Mrn}) — national identity numbers are unique; "
+                        + "if this is the same person returning, admit them under their existing MRN");
+            }
             if (patient is not null)
             {
                 var openEnc = db.Encounters.AsNoTracking()
@@ -223,13 +368,36 @@ static class AdtApi
                             $"patient '{patient.PatientId}' ({mrn}) has recorded date of birth {patient.DateOfBirth} — "
                             + $"the submitted {dob} differs; identity corrections are not part of admission");
                 }
+                /* the same rule for the national ID: a submitted ID
+                   COMPLETES a row that has none; one that CONTRADICTS the
+                   recorded ID is a 409 — identity corrections have their
+                   own audited path, never an admission side effect. The
+                   stored NAME of a known patient likewise stands: the
+                   admission's name fields never overwrite it. */
+                if (nationalId is not null)
+                {
+                    if (patient.NationalId is null)
+                        patient.NationalId = nationalId;
+                    else if (patient.NationalId != nationalId)
+                        return ApiError.StateConflict(
+                            $"patient '{patient.PatientId}' ({mrn}) has recorded national identity number {patient.NationalId} — "
+                            + $"the submitted {nationalId} differs; identity corrections are not part of admission");
+                }
             }
             else
             {
                 patient = new Patient
                 {
                     PatientId = AdtLogic.NextPatientId(),
-                    Mrn = mrn, Name = req.Name!.Trim(), Age = req.Age, DateOfBirth = dob,
+                    Mrn = mrn,
+                    /* structured from birth — the legacy Name column stays
+                       empty on new rows; the display name derives at read */
+                    NameFirst = req.NameFirst!.Trim(), NameSecond = req.NameSecond!.Trim(),
+                    NameThird = string.IsNullOrWhiteSpace(req.NameThird) ? null : req.NameThird.Trim(),
+                    NameFourth = string.IsNullOrWhiteSpace(req.NameFourth) ? null : req.NameFourth.Trim(),
+                    NameFamily = req.NameFamily!.Trim(),
+                    NationalId = nationalId,
+                    Age = req.Age, DateOfBirth = dob,
                     Sex = req.Sex!, Allergies = req.Allergies!.Trim(),
                 };
                 db.AdtPatients.Add(patient);
@@ -257,7 +425,7 @@ static class AdtApi
             AdtLogic.ApplyMeasurements(enc, req.WeightKg, req.HeightCm, actor, atAdmission: true);
             db.Encounters.Add(enc);
             db.SaveChanges();
-            return Results.Json(new { patient = patient.ToDto(), encounter = enc.ToDto(patient.Name) }, JsonOpts.Web);
+            return Results.Json(new { patient = patient.ToDto(), encounter = enc.ToDto(patient.DisplayName) }, JsonOpts.Web);
         }).RequireAuthorization();
 
         /* POST /api/icu/adt/encounters/{encounterId}/discharge — DOCTOR RBAC
@@ -301,7 +469,7 @@ static class AdtApi
                seam would decouple it.) */
             Aurora.Core.Orders.OrderLogic.DischargeCascade(db, enc.EncounterId, actor);
             db.SaveChanges();
-            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).Name;
+            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
             return Results.Json(enc.ToDto(name), JsonOpts.Web);
         }).RequireAuthorization();
 
@@ -334,7 +502,7 @@ static class AdtApi
             enc.BedId = req.BedId!;
             enc.EventsJson = AdtLogic.AppendEvent(enc.EventsJson, new(time, actor, "transferred", $"{from} → {req.BedId}"));
             db.SaveChanges();
-            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).Name;
+            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
             return Results.Json(enc.ToDto(name), JsonOpts.Web);
         }).RequireAuthorization();
     }

@@ -120,6 +120,11 @@ export interface RosterRecordDto {
   mapTrend: number[]
   monitorVitals: MonitorVitals
   organs: Record<OrganName, OrganStatus>
+  /** structured-identity tail (absent on legacy rows): the derived FULL
+   *  legal name and the national ID — both feed the one-search-box rule
+   *  (any name part or number finds the patient) */
+  fullName?: string
+  nationalId?: string
 }
 
 export interface PatientSummary {
@@ -133,6 +138,9 @@ export interface PatientSummary {
   flags: SupportFlag[]
   isolation: boolean
   alertCount: number
+  /** structured-identity tail (absent on legacy rows) — search fields */
+  fullName?: string
+  nationalId?: string
 }
 
 /* ---------- GET /api/icu/patients/:patientId ---------- */
@@ -1170,6 +1178,47 @@ export interface PatientIdentity {
   ageSource: 'dateOfBirth' | 'recordedAtAdmission'
   sex: Sex
   allergies: string
+  /** STRUCTURED IDENTITY tail (absent on legacy single-name rows —
+   *  never fabricated): the five stored parts, the derived full legal
+   *  name, the national ID as on the card, and the append-only
+   *  identity-correction history. `name` above is always the DERIVED
+   *  display name (First+Second+Family, or the stored legacy name). */
+  nameFirst?: string
+  nameSecond?: string
+  nameThird?: string
+  nameFourth?: string
+  nameFamily?: string
+  fullName?: string
+  nationalId?: string
+  identity?: IdentityEvent[]
+}
+
+/** one append-only identity-correction event — actor + ACTIVE role
+ *  (#104) + dated time + reason + the previous→new diff (the previous
+ *  identity is preserved and visible, never erased) */
+export interface IdentityEvent {
+  time: string
+  actor: string
+  role: string
+  reason: string
+  detail: string
+}
+
+/* ---------- PUT /api/icu/adt/patients/:patientId/identity ---------- */
+
+/** the audited identity correction (office Administrator authority —
+ *  identity.correct): correcting the name requires the complete
+ *  structured set; nationalId / dateOfBirth correct independently;
+ *  reason always required */
+export interface CorrectIdentityDraft {
+  nameFirst?: string
+  nameSecond?: string
+  nameThird?: string
+  nameFourth?: string
+  nameFamily?: string
+  nationalId?: string
+  dateOfBirth?: string
+  reason: string
 }
 
 /** one weight/height history entry (who / when / prior value preserved —
@@ -1190,7 +1239,20 @@ export interface MeasurementEvent {
 
 export interface AdmitDraft {
   mrn: string
-  name: string
+  /** STRUCTURED LEGAL NAME (the validator's design): five parts — first,
+   *  second (father), family REQUIRED; third (grandfather), fourth
+   *  (great-grandfather) optional, blank is honest. Unidentified
+   *  patients use the same fields, named "unknown" by the admitting
+   *  user — no special mode. Names are NOT unique. */
+  nameFirst: string
+  nameSecond: string
+  nameThird?: string
+  nameFourth?: string
+  nameFamily: string
+  /** national identity number — EXACTLY as on the identity card (no
+   *  format invention), unique when present, OPTIONAL (the unidentified
+   *  have none). Distinct from the MRN. */
+  nationalId?: string
   /** EXACTLY ONE of dateOfBirth / age. dateOfBirth ("yyyy-MM-dd") is the
    *  correct capture — age then computes at read; age remains for
    *  estimated-age admissions (DOB genuinely unknown at the bedside).

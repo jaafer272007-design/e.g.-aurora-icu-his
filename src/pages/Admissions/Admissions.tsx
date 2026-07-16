@@ -29,7 +29,19 @@ export function Admissions() {
   const [formError, setFormError] = useState<string | null>(null)
 
   const [mrn, setMrn] = useState('')
-  const [name, setName] = useState('')
+  /* STRUCTURED LEGAL NAME (the validator's design): first · second
+     (father) · third (grandfather) · fourth (great-grandfather) · family.
+     First/Second/Family required; Third/Fourth optional — blank is
+     honest. Unidentified patients use the SAME fields, named "unknown"
+     by the admitting user (no special mode). */
+  const [nameFirst, setNameFirst] = useState('')
+  const [nameSecond, setNameSecond] = useState('')
+  const [nameThird, setNameThird] = useState('')
+  const [nameFourth, setNameFourth] = useState('')
+  const [nameFamily, setNameFamily] = useState('')
+  /* national identity number — EXACTLY as on the card, optional (the
+     unidentified have none), unique when present (server-enforced) */
+  const [nationalId, setNationalId] = useState('')
   /* IDENTITY REDESIGN: date of birth is the correct capture (age computes
      at read — the clock-computed-state rule); the estimated-age path
      stays for patients whose DOB is genuinely unknown at the bedside.
@@ -104,14 +116,21 @@ export function Admissions() {
     }
     setBusy(true)
     const res = await admitPatient({
-      mrn: mrn.trim(), name: name.trim(), ...identity, sex,
+      mrn: mrn.trim(),
+      nameFirst: nameFirst.trim(), nameSecond: nameSecond.trim(),
+      ...(nameThird.trim() ? { nameThird: nameThird.trim() } : {}),
+      ...(nameFourth.trim() ? { nameFourth: nameFourth.trim() } : {}),
+      nameFamily: nameFamily.trim(),
+      ...(nationalId.trim() ? { nationalId: nationalId.trim() } : {}),
+      ...identity, sex,
       allergies: allergies.trim(), diagnosis: diagnosis.trim(),
       attending: attending.trim(), bedId, ...measurements,
     })
     setBusy(false)
     if (res.kind === 'ok') {
       showToast('Admitted', `${res.data.patient.name} (${res.data.patient.patientId}) admitted to ${res.data.encounter.bedId} — encounter ${res.data.encounter.encounterId}`)
-      setMrn(''); setName(''); setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
+      setMrn(''); setNameFirst(''); setNameSecond(''); setNameThird(''); setNameFourth(''); setNameFamily(''); setNationalId('')
+      setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
       setWeight(''); setHeight('')
       setAllergies('None documented')
       reload()
@@ -122,7 +141,8 @@ export function Admissions() {
     }
   }
 
-  const formOk = mrn.trim() && name.trim() && (dobUnknown ? age.trim() : dob) && allergies.trim()
+  const formOk = mrn.trim() && nameFirst.trim() && nameSecond.trim() && nameFamily.trim()
+    && (dobUnknown ? age.trim() : dob) && allergies.trim()
     && diagnosis.trim() && attending.trim() && bedId
 
   return (
@@ -149,8 +169,26 @@ export function Admissions() {
                   <label>MRN
                     <input value={mrn} onChange={e => setMrn(e.target.value)} placeholder="MRN-123456" disabled={!canAdmit} required />
                   </label>
-                  <label>Full name
-                    <input value={name} onChange={e => setName(e.target.value)} placeholder="Patient name" disabled={!canAdmit} required />
+                  <label>National identity number <i className="admopt">optional — as on the card; the unidentified have none</i>
+                    <input value={nationalId} onChange={e => setNationalId(e.target.value)} placeholder="as printed on the identity card" disabled={!canAdmit} aria-label="National identity number, optional, exactly as on the identity card" />
+                  </label>
+                  {/* the legal name in five parts (locked decision 1) — an
+                      unidentified patient is admitted through these SAME
+                      fields, named "unknown" (no special mode) */}
+                  <label>First name
+                    <input value={nameFirst} onChange={e => setNameFirst(e.target.value)} placeholder="e.g. Ali — or Unknown" disabled={!canAdmit} required />
+                  </label>
+                  <label>Second name (father)
+                    <input value={nameSecond} onChange={e => setNameSecond(e.target.value)} placeholder="e.g. Hassan — or Unknown" disabled={!canAdmit} required />
+                  </label>
+                  <label>Third name (grandfather) <i className="admopt">optional</i>
+                    <input value={nameThird} onChange={e => setNameThird(e.target.value)} disabled={!canAdmit} aria-label="Third name, grandfather, optional" />
+                  </label>
+                  <label>Fourth name <i className="admopt">optional</i>
+                    <input value={nameFourth} onChange={e => setNameFourth(e.target.value)} disabled={!canAdmit} aria-label="Fourth name, great-grandfather, optional" />
+                  </label>
+                  <label>Family / tribal name
+                    <input value={nameFamily} onChange={e => setNameFamily(e.target.value)} placeholder="e.g. Al-Janabi — or Unknown" disabled={!canAdmit} required />
                   </label>
                   {dobUnknown ? (
                     <label>Estimated age

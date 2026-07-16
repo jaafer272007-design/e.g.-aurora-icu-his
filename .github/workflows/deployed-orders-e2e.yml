@@ -138,7 +138,7 @@ jobs:
           # allergies "Penicillin" — deliberate: the SAFETY step exercises
           # the allergy block/warn model against this documented allergy
           resp=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
-            -d "{\"mrn\":\"$MRN\",\"name\":\"Orders E2E Patient\",\"age\":47,\"sex\":\"M\",\"allergies\":\"Penicillin\",\"bedId\":\"$FREE\",\"diagnosis\":\"orders E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            -d "{\"mrn\":\"$MRN\",\"nameFirst\":\"Orders\",\"nameSecond\":\"E2E\",\"nameFamily\":\"Patient\",\"age\":47,\"sex\":\"M\",\"allergies\":\"Penicillin\",\"bedId\":\"$FREE\",\"diagnosis\":\"orders E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
             "$API/api/icu/adt/admissions")
           pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
           eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')

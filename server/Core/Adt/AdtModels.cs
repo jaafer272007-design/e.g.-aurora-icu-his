@@ -26,7 +26,40 @@ class Patient
     [Key]
     public string PatientId { get; set; } = "";
     public string Mrn { get; set; } = "";
+    /* LEGACY single-name field (pre-structured-identity rows). NEVER
+       decomposed — "Ahmed Al-Saadi" → First: Ahmed, Family: Al-Saadi is a
+       GUESS, and "Maria Hansen" does not decompose into a five-part Iraqi
+       legal name at all (the design's §7). Legacy rows keep this value
+       byte-for-byte and render it honestly as their display name; rows
+       with structured parts leave it untouched as the pre-correction
+       record. */
     public string Name { get; set; } = "";
+    /* STRUCTURED PATIENT NAME (the clinical validator's design — locked
+       decision 1): the Iraqi legal name in five parts — first · second
+       (father) · third (grandfather) · fourth (great-grandfather) ·
+       family/tribal. First, Second, Family REQUIRED on structured rows;
+       Third/Fourth optional and BLANK IS HONEST (never a placeholder).
+       Names are NOT unique (two "Unknown" patients must both admit).
+       The display name (First + Second + Family) and the full legal name
+       are DERIVED at read — never stored concatenated. */
+    public string? NameFirst { get; set; }
+    public string? NameSecond { get; set; }
+    public string? NameThird { get; set; }
+    public string? NameFourth { get; set; }
+    public string? NameFamily { get; set; }
+    /* NATIONAL IDENTITY NUMBER (locked decision 3): stored EXACTLY as it
+       appears on the identity card — no format invention, no
+       normalisation. UNIQUE WHEN PRESENT (a duplicate at admission is a
+       409 naming the conflict); OPTIONAL — the unidentified have none,
+       and multiple ID-less patients never collide. Distinct from the
+       MRN (the hospital's own record number). */
+    public string? NationalId { get; set; }
+    /* IDENTITY CORRECTION history (§3 — append-only, amend never erase):
+       every name/national-ID/DOB correction records actor + ACTIVE role
+       (#104) + dated time + reason + the previous→new diff. A record
+       that read "Unknown" for six hours and now reads a real name is a
+       fact — orders and doses were documented against that identity. */
+    public string IdentityJson { get; set; } = "[]";
     /* IDENTITY REDESIGN (the patient-identity-read PR): exactly ONE of
        DateOfBirth / Age is populated per row. DateOfBirth ("yyyy-MM-dd")
        is captured on new admissions and age is COMPUTED at read (the
@@ -40,16 +73,45 @@ class Patient
     public string Sex { get; set; } = "";
     public string Allergies { get; set; } = "";
 
+    /* DERIVED NAME RENDERINGS (never stored — the house rule):
+       - DisplayName (locked decision 4): First + Second + Family — every
+         compact surface (rail, bed board, orders, MAR, results, timeline,
+         worklists) renders this; legacy rows honestly render their stored
+         single name (it simply IS their name — §7).
+       - FullLegalName: all present parts in order — the patient header
+         and official/print documents, alongside the national ID. */
+    public bool HasStructuredName =>
+        !string.IsNullOrEmpty(NameFirst) && !string.IsNullOrEmpty(NameSecond) && !string.IsNullOrEmpty(NameFamily);
+
+    public string DisplayName =>
+        HasStructuredName ? $"{NameFirst} {NameSecond} {NameFamily}" : Name;
+
+    public string FullLegalName =>
+        HasStructuredName
+            ? string.Join(" ", new[] { NameFirst, NameSecond, NameThird, NameFourth, NameFamily }
+                .Where(p => !string.IsNullOrEmpty(p)))
+            : Name;
+
     /* THE canonical identity resolver (the no-fork rule): the roster
        projection, the admissions response, and GET /adt/patients/{id}
        all serve identity through THIS method — one source of truth,
        several entry points, never a parallel assembly of these fields.
        Weight/height are deliberately NOT here — they are ENCOUNTER
-       attributes (see Encounter below, the project owner's decision). */
+       attributes (see Encounter below, the project owner's decision).
+       `name` on the wire is the DERIVED display name (derived at read,
+       never stored concatenated); the structured parts, the full legal
+       name, the national ID and the identity-correction history ride as
+       an ADDITIVE nullable tail (WhenWritingNull — legacy rows keep
+       their pre-feature wire bytes). */
     public PatientDto ToDto()
     {
         var (age, source) = ResolveAge();
-        return new(PatientId, Mrn, Name, DateOfBirth, age, source, Sex, Allergies);
+        var history = JsonSerializer.Deserialize<List<IdentityEventDto>>(IdentityJson, JsonOpts.Web)!;
+        return new(PatientId, Mrn, DisplayName, DateOfBirth, age, source, Sex, Allergies,
+            NameFirst, NameSecond, NameThird, NameFourth, NameFamily,
+            HasStructuredName ? FullLegalName : null,
+            NationalId,
+            history.Count == 0 ? null : history);
     }
 
     (int Age, string Source) ResolveAge()
@@ -142,10 +204,23 @@ class BedRow
 /* wire contracts. PatientDto: dateOfBirth is null on legacy rows (never
    fabricated); age is computed-at-read when dateOfBirth exists, else the
    admission-era recorded value; ageSource names which
-   ("dateOfBirth" | "recordedAtAdmission"). */
+   ("dateOfBirth" | "recordedAtAdmission"). name = the DERIVED display
+   name (First+Second+Family on structured rows, the stored legacy name
+   otherwise). The structured-identity tail (nameFirst…nameFamily,
+   fullName, nationalId, identity history) is additive and nullable —
+   legacy rows keep their pre-feature wire bytes (WhenWritingNull). */
 record PatientDto(
     string PatientId, string Mrn, string Name, string? DateOfBirth, int Age,
-    string AgeSource, string Sex, string Allergies);
+    string AgeSource, string Sex, string Allergies,
+    string? NameFirst = null, string? NameSecond = null, string? NameThird = null,
+    string? NameFourth = null, string? NameFamily = null,
+    string? FullName = null, string? NationalId = null,
+    List<IdentityEventDto>? Identity = null);
+
+/* one append-only identity-correction event (§3): dated time, actor +
+   ACTIVE role (#104), the required reason, and the previous→new diff —
+   the previous identity is preserved and visible, never erased. */
+record IdentityEventDto(string Time, string Actor, string Role, string Reason, string Detail);
 
 /* one amend-not-erase history entry for a weight/height set/change:
    field "weight" | "height"; action "recorded at admission" | "added" |
@@ -181,13 +256,33 @@ record BedSeedDto(string BedId, string Area);
 
 /* REQUEST DTOs — Disallow: an unrecognized field fails binding → automatic
    400, never a silent no-op (codified patient-safety rule) */
+/* STRUCTURED IDENTITY (the validator's design): admission captures the
+   five name parts — nameFirst/nameSecond/nameFamily REQUIRED,
+   nameThird/nameFourth optional — plus the OPTIONAL national identity
+   number (as on the card). The legacy single `name` field is RETIRED
+   from this request (Disallow → automatic 400): a new admission always
+   states the structured legal name; unidentified patients use the same
+   fields, named "unknown" by the admitting user (no special mode). */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record AdmitRequest(
-    string? Mrn, string? Name, int? Age, string? DateOfBirth, string? Sex, string? Allergies,
+    string? Mrn, string? NameFirst, string? NameSecond, string? NameThird, string? NameFourth,
+    string? NameFamily, string? NationalId,
+    int? Age, string? DateOfBirth, string? Sex, string? Allergies,
     string? Diagnosis, string? Attending, string? BedId,
     /* Weight & Height capture — OPTIONAL at admission by design (if
        omitted, a clinician adds them later on the patient record) */
     double? WeightKg = null, double? HeightCm = null);
+
+/* PUT /adt/patients/{id}/identity — the audited identity-correction path
+   (§3, REQUIRED by the unknown-patient decision): correcting the name
+   requires the COMPLETE structured set (first/second/family — the form
+   pre-fills current values); nationalId and dateOfBirth correct
+   independently; reason is always required. Amend never erase — every
+   correction appends to the patient's identity history. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record CorrectIdentityRequest(
+    string? NameFirst, string? NameSecond, string? NameThird, string? NameFourth,
+    string? NameFamily, string? NationalId, string? DateOfBirth, string? Reason);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record TransferRequest(string? BedId);
