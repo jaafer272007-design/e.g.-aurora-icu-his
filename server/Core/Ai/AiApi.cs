@@ -43,6 +43,14 @@ static class AiConfig
         (Environment.GetEnvironmentVariable("AI_MODEL") ?? "").Trim();
     public static readonly string ApiKey =
         (Environment.GetEnvironmentVariable("AI_API_KEY") ?? "").Trim();
+    /* AI_TIMEOUT_SECONDS — how long a translation may take before the
+       honest 502. Default 60 (unchanged). Raised for CPU-only hosts: the
+       local-model eval MEASURED the cold first call of the full tool
+       catalog at 60.1–60.2 s on a 4-vCPU box — exactly astride this
+       default — while warm calls ran ~5–12 s (llama-server caches the
+       shared prompt prefix). Bounded to [10, 600]. */
+    public static readonly int TimeoutSeconds =
+        Math.Clamp(int.TryParse(Environment.GetEnvironmentVariable("AI_TIMEOUT_SECONDS"), out var t) ? t : 60, 10, 600);
 }
 
 static class AiApi
@@ -80,9 +88,13 @@ static class AiApi
         + "For 'worst/sickest' questions pick score_ranking or worst_period with an instrument (default news2) — Aurora computes; you only choose the instrument. "
         + "Patient references may be Arabic or Latin names, partial names, patient ids (P-…) or beds — pass them through verbatim in the patient argument. "
         + "If a context patient is given, resolve pronouns ('his orders') to it. "
-        + "If the question asks for anything outside the tools (writing orders, advice, predictions, non-ICU data), call unanswerable.";
+        /* the W4 lesson (local-model eval): a write request must be REFUSED,
+           never silently converted into a related read — enumerate the verbs
+           so a small model cannot miss the class */
+        + "You can only LOOK THINGS UP. If the user asks you to DO anything — order, prescribe, give, administer, discontinue, hold, chart, document, record, acknowledge, sign, correct, amend, assign, transfer, admit, discharge — call unanswerable saying this assistant is read-only; NEVER answer an action request with a lookup instead. "
+        + "If the question asks for anything else outside the tools (advice, predictions, non-ICU data), call unanswerable.";
 
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(60) };
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(AiConfig.TimeoutSeconds) };
 
     public static void Map(WebApplication app)
     {
@@ -193,7 +205,18 @@ static class AiApi
                 messages.Add(new { role = "assistant", content = $"[called tool: {t.Tool ?? "unanswerable"}]" });
             }
         var context = string.IsNullOrWhiteSpace(contextPatientId) ? "" : $"[context patient: {contextPatientId}] ";
-        messages.Add(new { role = "user", content = context + question });
+        /* the multi-turn priming lesson (local-model eval): with a prior
+           lookup in the history, a small model answered "place an order…"
+           with the orders READ instead of refusing — the local pattern
+           beat the distant system rule, deterministically (2/2). A terse
+           frame on the final message restores the refusal where the
+           decision happens (the context-patient prefix precedent; the
+           audit row always stores the RAW question). */
+        /* "perform any action" over-triggered on imperative LOOKUPS
+           ("give me his orders" refused intermittently) — the frame names
+           the actual line: changing or recording something in the chart */
+        const string frame = "[translate this new question on its own; asking to SEE data is fine — but if it asks to change, create or record anything (an order, a dose, a chart entry, an acknowledgment), call unanswerable] ";
+        messages.Add(new { role = "user", content = frame + context + question });
 
         var payload = new
         {
