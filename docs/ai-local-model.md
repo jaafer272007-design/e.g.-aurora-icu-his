@@ -56,6 +56,19 @@ AI_TIMEOUT_SECONDS=<default 60; RAISE ON CPU-ONLY HOSTS — the measured
   tools anyway, but a prose answer surfaces as a 502, never as invented
   data. If 502s appear, switch to llama-server above.
 
+  *[Appliance note, 2026-07-17 (Phase 2 — supersedes the `ollama pull`
+  suggestion FOR THE APPLIANCE): the packaged appliance wires
+  llama-server, not Ollama. The enforcement caveat above could not be
+  cleared: in the Phase 2 build environment Ollama 0.32's embedded
+  runner segfaulted reproducibly loading this exact model (full
+  AVX-512 CPU, 14 GB free — the same box where source-built
+  llama-server ran the entire eval), so `tool_choice` enforcement
+  remained unverifiable there. The appliance ships the verified
+  runtime (`appliance/llama/Dockerfile`, pinned to the eval's
+  llama.cpp commit). Ollama stays a legitimate MANUAL dev option on
+  real hardware — verify it with `scripts/ai-translation-eval.mjs`
+  before relying on it.]*
+
 ## Model recommendation
 
 **Qwen 2.5 7B Instruct, Q4_K_M** (per the AI design §5): strong structured

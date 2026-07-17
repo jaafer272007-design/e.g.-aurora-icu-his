@@ -1,0 +1,13 @@
+# GPU override (design §2.3) — added by the run script ONLY when an
+# NVIDIA GPU is available to Docker. Grants the llama service the GPU;
+# everything else is unchanged. On the validator's testbed (Windows 11
+# Pro + RTX 4060) this is Docker Desktop's WSL2 GPU passthrough.
+services:
+  llama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

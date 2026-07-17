@@ -406,6 +406,17 @@ build, from the On-Premises Appliance design §1. Production remains
 on-premises per hospital (see the AI architecture section above); this is
 the architectural change that makes one build deliverable anywhere.]*
 
+*[Attributed addition, 2026-07-17 (later the same day): appliance
+Phase 2 packaged this into the Docker Compose appliance —
+`appliance/` (aurora + postgres with a named volume + llama.cpp
+`llama-server` with the sha256-pinned Qwen model shipped alongside as a
+file), a THIRD Package CI pipeline, and the GPU rule "warn and disable,
+never refuse" with the honest reason surfaced on the AI screen. The
+appliance is the validator's demo-seeded testbed in the hospital
+topology, NOT a hospital product — see the Phase 2 record in 02 for the
+production-build refusal audit and everything deliberately out of
+scope.]*
+
 - **The API base is resolved at RUNTIME, never baked into the bundle.**
   The bundle ships `/runtime-config.js` (a classic script, executed
   before the module bundle — no post-render round-trip) whose default is
