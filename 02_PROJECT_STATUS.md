@@ -1,6 +1,14 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-17 · current through APPLIANCE PHASE 1 (one build
+**Last updated: 2026-07-17 · current through the SPA-FALLBACK METHOD-SCOPE
+FIX (the #123 post-merge board caught a REGRESSION on the first live
+serving-mode deployment: an unconstrained MapFallback is a routing
+candidate for every HTTP method, so body-less POSTs to optional-body
+endpoints — the discharge every suite's cleanup relies on — were routed
+into the fallback and answered an empty 404; fixed by scoping the
+fallback to GET/HEAD via HttpMethodMetadata, tripwired read-only in the
+frontend suite — see its record below); prior marker retained: current
+through APPLIANCE PHASE 1 (one build
 runs anywhere: the API base moved from a build-time bake to
 runtime-config.js with a fail-loud gate, and the Render image now carries
 the frontend so ASP.NET serves app + /api at one origin — the appliance
@@ -4850,6 +4858,60 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### SPA-fallback method scope — the #123 post-merge regression, caught by the board and fixed
+
+The #123 post-merge routine's first write-suite run (deployed-adt,
+2026-07-17) failed with a shape no prior deployment had shown: two
+`POST …/encounters/{id}/discharge` calls returned **empty-body 404s for
+encounters the same run had just created**, while every call that carried
+a JSON body (login, admissions, identity PUTs) succeeded. The re-run then
+failed at bed-pick — the two leaked OPEN encounters occupied B-08/B-09,
+leaving one free bed.
+
+**Root cause (reproduced + isolated locally, not theorized):** with
+wwwroot present (the serving mode active on staging for the first time),
+a body-less POST to an endpoint declaring an *optional* JSON body
+(`DischargeRequest?`) is routed into the **MapFallback** instead of the
+real endpoint — ASP.NET's content-type matcher policy invalidates the
+real endpoint for a POST without `Content-Type` when a valid
+any-content-type candidate (the unconstrained fallback) exists; the
+fallback's /api guard then answers the empty 404. Same request without
+wwwroot: 200. Same request with `Content-Type: application/json` +
+`{}`: 200. The pre-#123 deployments never had a fallback, which is why
+the identical suite calls were green for weeks. Two endpoints carry
+optional bodies (discharge, assignment end); **11 of 14 deployed suites
+write body-lessly** (discharge cleanups, sign/implement/acknowledge/
+deactivate — the latter group takes no body parameter at all and stayed
+unaffected, but every discharge-dependent suite was blocked).
+
+**The fix (one hunk, Program.cs):** the fallback is scoped to GET/HEAD
+with `HttpMethodMetadata` — a browser only ever *navigates* with GET, so
+the SPA fallback has no business being a candidate for writes; every
+non-GET request reaches its real endpoint exactly as before the serving
+mode existed. Verified locally with wwwroot present, 12/12: the failing
+shape now 200s (and 403s for the nurse, 401 unauthenticated — RBAC order
+restored), re-discharge 409 carries its JSON body, deep links still serve
+index.html, unknown /api GETs stay honest markup-free 404s, /healthz +
+/build.txt unaffected, with-body shapes unchanged; rendered browser pass
+on the same-origin topology (login → census → deep link).
+
+**Tripwire (deployed-frontend-e2e):** a read-only leg asserts an
+unauthenticated **body-less POST** to a real endpoint answers **401**
+(RBAC), never 404 (the fallback swallowing a write) — the exact class,
+detectable without writing anything.
+
+**Operational note (the leak):** the two leaked encounters (ENC-1284
+"E2E ADT Patient" B-08, ENC-1285 "Unknown Unknown Unknown" B-09) were
+released by completing the adt suite's own failure-path cleanup through a
+temporary push-triggered workflow on a throwaway branch
+(`claude/staging-cleanup-leaked-encounters`, identity-checked targets,
+the temp-staging-bed-audit precedent; the discharge used the `{}`-body
+shape that routes correctly on the buggy build). Free beds confirmed ≥2;
+branch to be deleted once the board is green. Diagnostic dead end owned
+honestly: the first failure was initially read as a Render deploy-swap
+transient (the #74/#119 precedents); the local reproduction disproved
+that — it was this deterministic bug all along.
+
 ### Appliance Phase 1 — one build runs anywhere (runtime API config + ASP.NET serves the React build)
 
 Built from the On-Premises Appliance design, **Phase 1 ONLY** (Phase 2 —
@@ -4894,6 +4956,12 @@ and still valid (it asserts what the API assertions depend on). New:
 the Pages two-line contract) so the served frontend has the same
 freshness probe on any origin; the SPA fallback guard now names
 `/healthz` and `/build.txt` alongside `/api` explicitly.
+
+*[Post-merge note, 2026-07-17: the 14/14 matrix below asserted the
+fallback's both-directions contract with GETs only — no non-GET /api
+request was ever fired at the wwwroot topology, which is exactly where
+the method-scope regression lived. Caught by the post-merge board on the
+first live write suite; see the SPA-fallback method-scope record above.]*
 
 **Verified locally, all three topologies from ONE dist (14/14 browser +
 raw-HTTP legs):** SAME-ORIGIN — dotnet serving wwwroot: login + real
