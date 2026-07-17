@@ -1,7 +1,11 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-16 · current through the AI ASSISTANT GROUNDED
-QUERY CHAT (the validator's design — the entirely simulated risk
+**Last updated: 2026-07-17 · current through the LOCAL-MODEL EVAL
+GROUNDWORK for the AI chat (harness + ops guide + wire findings; THE
+REAL-MODEL TRANSLATION RUN IS STILL PENDING — blocked in the build
+environment by its egress policy, runnable on the validator's RTX 4060
+with one command; see its record below); prior marker retained: current
+through the AI ASSISTANT GROUNDED QUERY CHAT (the validator's design — the entirely simulated risk
 assistant is DELETED and replaced by a grounded query chat whose one rule
 is that the LLM emits a QUERY, never a VALUE; production is recorded in
 01 as ON-PREMISES PER HOSPITAL with Render staging-only — see its record
@@ -4835,6 +4839,81 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### AI local-model eval — groundwork built; THE REAL-MODEL RUN IS PENDING (stated, not simulated)
+
+The owner's instruction after #121: stand up a real local model (Qwen 2.5
+7B Instruct recommended) behind the existing adapter and honestly measure
+TRANSLATION QUALITY — the one thing #121 could not verify (its
+verification used a deterministic stand-in; staging honestly 503s).
+
+**Status: the translation-quality numbers do not exist yet, and nothing
+here pretends they do.** The build environment's egress policy blocks
+every trustworthy model-weight source (ollama.com, huggingface.co and its
+LFS CDN, GitHub release objects, Docker Hub's blob CDN — the manifest of
+the official `ai/qwen2.5:7B-Q4_K_M` OCI artifact was reachable, its 4.7 GB
+blob redirect was not; per the egress-proxy policy, denials are reported,
+never routed around). Two ways to produce the numbers, owner's choice:
+(a) run `node scripts/ai-translation-eval.mjs` on the RTX 4060 dev
+machine following `docs/ai-local-model.md` (one command once Ollama holds
+the model), or (b) allow a weight host in this workspace's Claude Code
+environment network policy and say the word — the container (4 vCPU /
+15 GB RAM, no GPU) is otherwise ready and would double as the CPU-only
+measurement.
+
+**What was BUILT (this PR):**
+- `scripts/ai-translation-eval.mjs` + `scripts/ai-translation-questions.json`
+  — the committed eval harness: 24 cases through the REAL endpoint — the
+  validator's three questions verbatim (Arabic), context-pronoun/bed/name
+  references, one honest read per domain, ambiguous phrasing,
+  out-of-scope/advice/prediction refusals, and the MUST-REFUSE block
+  (four write attempts + two injections). Prints a per-question verdict
+  table + latency stats; exits non-zero ONLY when a MUST-REFUSE case
+  translated to a tool. An EVALUATION for the clinical validator, not a
+  CI gate.
+- `docs/ai-local-model.md` — the ops guide: adapter contract, runtime
+  choices (Ollama for the 4060; llama-server where grammar enforcement
+  matters), official-source-only model pull with digest verification.
+- **No server or client code changed** — the adapter from #121 is the
+  interface, unforked; the model still has no voice.
+
+**Wire findings (verified here, without real weights):** llama.cpp's
+`llama-server` was built from source and driven through the adapter's
+exact request shape using a SYNTHETIC tiny qwen2-architecture GGUF
+(random weights; authentic base-qwen2 test tokenizer + the real
+Qwen2.5-7B-Instruct chat template — llama.cpp's own test assets). Found:
+(1) the request shape (`tools` + `tool_choice:"required"` + temperature 0)
+is accepted as-is; (2) `tool_choice:"required"` did NOT grammar-constrain
+output in this combination — the base tokenizer lacks the instruct
+models' `<tool_call>` special tokens the trigger machinery keys on, so
+enforcement-with-the-real-GGUF remains TO VERIFY on first real run
+(recorded in the ops guide); (3) the contract held against this
+worst-case degenerate model THROUGH THE REAL STACK: Aurora answered the
+validator's own question with an honest 502 ("the question was not
+translated; no data was accessed") and audited it as
+`provider-error` — a completely broken model cannot make the assistant
+invent anything.
+
+**Hardware (the owner's answer + the flags):**
+- Dev testbed RECORDED: NVIDIA RTX 4060 (8 GB VRAM) + Intel i7 + 16 GB
+  RAM — Qwen 2.5 7B Q4_K_M (~4.7 GB) fully fits the GPU. ESTIMATE (not a
+  measurement — the harness measures): warm translations of this
+  feature's ~2k-token prompt in roughly 1–3 s.
+- **Hospital server hardware remains UNKNOWN — standing flag.** No GPU
+  may exist. CPU-only ESTIMATE for a 16 GB-RAM class server (again not a
+  measurement): first uncached call ~30–90 s (prompt processing
+  dominates); warm calls ~5–15 s IF the runtime caches the shared
+  system+tools prefix (llama-server does). Two consequences recorded:
+  (a) procurement must not assume adequacy before running the harness on
+  the candidate box; (b) if CPU-only first calls exceed the adapter's
+  60 s HTTP timeout, a configurable `AI_TIMEOUT_SECONDS` is the likely
+  follow-up — deliberately NOT built ahead of a real measurement.
+- **Testing going forward (flag resolved by mechanism):** staging has no
+  model and production is per-hospital, so translation quality can never
+  be a hosted-CI check. The committed harness runs wherever a model
+  exists; recommended as a commissioning step per hospital install, with
+  results recorded alongside the install. The MUST-REFUSE exit code makes
+  it usable as a local gate.
 
 ### AI Assistant — grounded query chat (built — the validator's design; the simulation is DELETED)
 
