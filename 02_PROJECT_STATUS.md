@@ -1,6 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-17 · current through APPLIANCE PHASE 2 (the Docker
+**Last updated: 2026-07-17 · current through the RUN.PS1 FIRST-RUN FIXES
+(the validator's first real Windows 11 + RTX 4060 run of the Phase 2
+appliance surfaced two Windows-only run-script defects — the GPU probe
+falsely reporting "no GPU" because Windows PowerShell 5.1 turns a
+redirected native stderr write into a terminating error under
+ErrorActionPreference=Stop and docker's first-ever image pull reports
+progress on stderr, and the printed LAN URL picking the WSL virtual
+switch address instead of the adapter carrying the default route — both
+fixed in run.ps1 only, no image/compose/server change; see its record
+below); prior marker retained: current through APPLIANCE PHASE 2 (the Docker
 Compose appliance — aurora + postgres + llama-server + the sha256-pinned
 Qwen model shipped alongside as a file; a THIRD Package CI pipeline; GPU
 warn-and-disable with the honest reason on the AI screen — supersedes the
@@ -5017,7 +5026,53 @@ installer with no Docker (Phase 3+).**
    see the audit above for exactly what refuses; Phase 3+ owns closing
    it.
 
-### SPA-fallback method scope — the #123 post-merge regression, caught by the board and fixed
+### run.ps1 first-run fixes — what the validator's real Windows 11 + 4060 run surfaced (flag 2's run, first findings)
+
+The validator's first run of the appliance on the real target machine
+(Windows 11 Pro, RTX 4060, Docker Desktop 29.6.1, stock Windows
+PowerShell 5.1) brought Aurora up healthy on the first try — .env
+generated, both model shards downloaded and sha256-verified against the
+pins, image built, postgres healthy, /healthz answered, demo sign-in
+printed. Two run-script defects surfaced, both Windows-only, both in
+run.ps1, neither touching the image, the compose file, or the server:
+
+1. **The GPU probe falsely reported "no GPU" on a machine whose GPU was
+   proven working** (`docker run --rm --gpus all … nvidia-smi` had shown
+   the 4060 from inside a container minutes earlier). Root cause:
+   Windows PowerShell 5.1 converts a *redirected* stderr write from a
+   native command into a **terminating error** when
+   `$ErrorActionPreference = "Stop"` (this script's first line), and
+   docker's FIRST-EVER pull of the probe image (`ubuntu:24.04`) reports
+   its pull progress on stderr — so `docker run … 2>$null` threw
+   mid-pull, the try/catch ate it, and `$gpu` stayed false. The probe
+   was only ever green on machines that already had the image cached
+   (why the Linux-side run.sh equivalent and every dev-box test
+   passed). Fix: the probe (and the `git rev-parse` build-stamp line,
+   which carried the same latent hazard for zip-download installs) runs
+   through **cmd.exe** (`cmd /c "… >nul 2>nul"`), so stderr is
+   swallowed before PowerShell's stream machinery ever sees it;
+   `$LASTEXITCODE` still carries docker's verdict. Workaround on the
+   validator's machine before the fix: pre-pull `ubuntu:24.04` once
+   (caching it makes the probe silent), re-run `.\run.ps1`.
+
+2. **The printed LAN URL was unreachable from other devices**: the
+   script picked the FIRST non-loopback IPv4, which on a
+   Docker-Desktop/WSL2 machine is the **WSL/Hyper-V virtual switch**
+   (the validator got `172.31.224.1` — an address no iPad can route
+   to). Fix: the LAN address is now read from the adapter carrying the
+   **default route** (`Get-NetRoute 0.0.0.0/0`, lowest metric), with
+   the old first-IPv4 pick kept only as a fallback when no default
+   route is readable. The port mapping itself was always `0.0.0.0` —
+   only the *printed* address was wrong.
+
+Verification honesty: this container is Linux — a PowerShell 5.1 run of
+the fixed script cannot be executed here. The fix is verified by the
+validator's own machine (the same run that surfaced the defects is the
+rendered verification environment for them), and Package CI proves the
+appliance build/boot path is untouched (run.ps1 is outside the image
+context). The bash run.sh needed no change: POSIX redirection has no
+stderr-to-error conversion, and its `hostname -I` first-address pick is
+the standing Linux behavior.
 
 The #123 post-merge routine's first write-suite run (deployed-adt,
 2026-07-17) failed with a shape no prior deployment had shown: two
