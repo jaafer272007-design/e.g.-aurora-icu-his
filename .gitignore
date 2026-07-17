@@ -13,3 +13,8 @@ server/publish
 server/data
 *.db
 server/wwwroot/
+
+# appliance — local secrets and the model payload (shipped alongside, never committed)
+appliance/.env
+appliance/models/*.gguf
+.local-ca.crt

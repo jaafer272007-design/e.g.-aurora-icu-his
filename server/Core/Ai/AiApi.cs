@@ -51,6 +51,13 @@ static class AiConfig
        shared prompt prefix). Bounded to [10, 600]. */
     public static readonly int TimeoutSeconds =
         Math.Clamp(int.TryParse(Environment.GetEnvironmentVariable("AI_TIMEOUT_SECONDS"), out var t) ? t : 60, 10, 600);
+    /* AI_UNAVAILABLE_REASON (appliance §2.3 — warn and disable, never
+       refuse): when the AI is deliberately off, the INSTALLER says why
+       ("no GPU on this server") and the 503 carries that reason — the
+       AI screen must never let absence look like breakage. Only read
+       when Provider is "none"; never logged beyond the response. */
+    public static readonly string UnavailableReason =
+        (Environment.GetEnvironmentVariable("AI_UNAVAILABLE_REASON") ?? "").Trim();
 }
 
 static class AiApi
@@ -140,7 +147,13 @@ static class AiApi
             {
                 row.Outcome = "no-provider";
                 db.AiQueries.Add(row); db.SaveChanges();
-                return Results.Json(new { error = "no AI model is configured in this environment (AI_PROVIDER=none) — the grounded chat needs a translation model; every screen's data remains available directly" }, JsonOpts.Web, statusCode: 503);
+                /* the honesty rule (appliance §2.3): when the installer
+                   recorded WHY the AI is off, the screen says exactly that
+                   — never a bare "unavailable" that reads as breakage */
+                var msg = AiConfig.UnavailableReason != ""
+                    ? $"AI unavailable: {AiConfig.UnavailableReason}. Aurora runs fully — the AI assistant is a disabled feature on this install, not a fault; every screen's data remains available directly"
+                    : "no AI model is configured in this environment (AI_PROVIDER=none) — the grounded chat needs a translation model; every screen's data remains available directly";
+                return Results.Json(new { error = msg }, JsonOpts.Web, statusCode: 503);
             }
             if (AiConfig.Provider != "openai")
             {

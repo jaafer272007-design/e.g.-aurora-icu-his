@@ -1,6 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-17 · current through the SPA-FALLBACK METHOD-SCOPE
+**Last updated: 2026-07-17 · current through APPLIANCE PHASE 2 (the Docker
+Compose appliance — aurora + postgres + llama-server + the sha256-pinned
+Qwen model shipped alongside as a file; a THIRD Package CI pipeline; GPU
+warn-and-disable with the honest reason on the AI screen — supersedes the
+earlier refuse-without-a-GPU lean, adopted from the design's second-opinion
+review; includes the PRODUCTION-BUILD REFUSAL AUDIT: the honest inventory
+of every remaining mock, and the finding that a production bundle is
+UNUSABLE today because apiUnavailable escalates to a full-screen overlay
+on every major clinical screen — see its record below); prior marker
+retained: current through the SPA-FALLBACK METHOD-SCOPE
 FIX (the #123 post-merge board caught a REGRESSION on the first live
 serving-mode deployment: an unconstrained MapFallback is a routing
 candidate for every HTTP method, so body-less POSTs to optional-body
@@ -4857,6 +4866,156 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Appliance Phase 2 — the Docker Compose appliance (the validator's testbed in the hospital topology)
+
+Built from the On-Premises Appliance design §§2.1–2.5, after Phase 1
+landed and proved on staging (its precondition).
+
+**🔴 THE VERIFY-FIRST PRODUCTION-BUILD REFUSAL AUDIT (the honest
+inventory of every remaining mock — enumerated, NOT fixed, per the
+instruction).** Read from the real code (`src/lib/api/index.ts`,
+`EnvironmentChrome.tsx`, every consuming page), then confirmed in a
+rendered browser against the first production build ever booted:
+
+- **The structural finding that changes the picture:** in a production
+  bundle `apiUnavailable()` does not render a section error — it
+  dispatches an event the `EnvironmentGate` overlay listens for and
+  **replaces the ENTIRE app** with "AURORA API UNAVAILABLE" (by design:
+  production never substitutes mock data). Because every major clinical
+  screen pulls at least one still-mock domain, **a production bundle is
+  categorically unusable today** — not "sections rejecting" but a
+  full-screen takeover on: Bed Overview + Admin Home (`unit summary`),
+  Mission Control / Labs & Imaging / Timeline / Orders & Meds
+  (`patient detail` — the Stage-11 bedside composite is fetched for
+  header context everywhere), Doctor Workspace (`action queues`,
+  `consults`, `workspace order sets`), Nurse Workspace (`nursing
+  tasks`, `I&O entries` + both write paths).
+- **The complete Stage-11-scope refusal list** (each rejects
+  unconditionally in a production bundle, healthy API or not): unit
+  summary · patient detail (bedside composite: monitor vitals, organ
+  panels, rhythm) · action queues · consults · workspace order sets ·
+  nursing tasks · I&O entries · nursing task documentation · I&O
+  documentation · clinical notes (latent — no live caller today).
+- **Silent non-persistence (renders, saves nothing):** the SBAR handoff
+  note is pure client state (`SbarCard` + local `onSave`) — edits
+  vanish on reload in EVERY environment; the Print Center SBAR template
+  prints real identity + medication context but unpersisted write-ins.
+- **Works real in production (for the record — the surprising side of
+  the inventory):** roster/census, beds + ADT + transfers/discharges,
+  patient identity + match/history, orders full lifecycle, MAR, labs,
+  imaging, results inbox + acks, observations + device toggles,
+  timeline (server categories only — honestly thinner), assignments,
+  users, formulary/interactions/frequencies, lab catalogue, order-set
+  defs, statistics, alerts, AI chat, print center identity rungs.
+- **By-design production differences:** no environment banner; login
+  hides the demo quick-role list and name matching; bed-board physician
+  list derives from real attendings; alert count derives from the real
+  wire field alone.
+- **The environment pairing is FORCED:** `EnvironmentGate` refuses a
+  bundle whose compiled `VITE_APP_ENV` differs from the server's
+  `/healthz` environment (full-screen WRONG ENVIRONMENT). Combined with
+  the locked seed rules (production seeds NO demo patients and NO
+  shared password — T1/T2 enforced), "a production bundle over a
+  demo-seeded server" is structurally impossible. **Therefore the
+  runnable Phase 2 appliance is the STAGING flavor in the hospital
+  topology** — demo seed, staging banner, Stage-11 fixtures serving —
+  and the production flavor exists as an honest known-refusing preview
+  (`APPLIANCE_ENV=production`), which this build booted and
+  screenshotted as the audit's empirical proof. Closing the audit list
+  (Stage 11 bedside domains real, or graceful per-section degradation
+  instead of the overlay) is the gate to a usable production build —
+  the owner's call, deliberately not decided here.
+
+**What was built (§2.2):** `appliance/` — `docker-compose.yml` (aurora =
+the Phase 1 image built from `server/Dockerfile`; postgres:16 with the
+NAMED volume `aurora-pgdata`; llama = llama.cpp `llama-server` behind
+the `ai` profile), `docker-compose.gpu.yml` (NVIDIA reservation),
+`run.sh` + `run.ps1` (ONE command: Docker check → generate local
+secrets into `appliance/.env`, never committed/baked → fetch +
+**sha256-verify the OFFICIAL Qwen shards against the pinned upstream
+digests** (offline installs place the files from media; nothing is
+fetched) → GPU detect → compose up → print the LAN origin), and
+`appliance/README.md` (the validator's install guide).
+
+**Provider verdict (the §2.2 verify-first flag, answered EMPIRICALLY):**
+the adapter requires OpenAI-compatible `/chat/completions` that
+*enforces* `tool_choice:"required"`. llama.cpp `llama-server --jinja` is
+the VERIFIED runtime (#122's eval, grammar-enforced, pinned to the same
+commit in `appliance/llama/Dockerfile`). **Ollama is NOT wired:** its
+0.32 embedded runner **segfaulted reproducibly (2/2)** loading this
+exact model in the build environment (full AVX-512, 14 GB free — the
+same box where source-built llama-server ran the whole eval), so its
+enforcement could not be verified, and unverified enforcement is not
+shippable for this contract. `docs/ai-local-model.md` carries the
+attributed supersede note; the committed eval harness is the way to
+qualify Ollama on real hardware if ever wanted.
+
+**The 4.7 GB model (§2.2 flag): shipped ALONGSIDE as a file — chosen
+and stated.** The GGUF mounts read-only from `appliance/models/`; it is
+never a Docker layer (images stay small and freely updatable; the
+package still contains the model, so the offline guarantee holds). The
+run scripts download from the official source ONLY and refuse on sha256
+mismatch; offline installs pre-place the files from media.
+
+**GPU: warn and disable, never refuse (§2.3) — BUILT.** GPU present →
+full AI (CUDA build target, RTX 4060 target arch). GPU absent → Aurora
+runs fully; the run script sets `AI_PROVIDER=none` +
+`AI_UNAVAILABLE_REASON="no GPU on this server"` and the 503 now carries
+it: *"AI unavailable: no GPU on this server. Aurora runs fully — the AI
+assistant is a disabled feature on this install, not a fault…"* — the
+AiChat screen renders that exact text (the honesty rule: absence never
+looks like breakage). `AURORA_AI=cpu` forces CPU inference for testing,
+honestly slow (60–63 s cold was measured; the GPU requirement is stated
+plainly in the appliance README and the AI ops guide).
+*[Supersede, attributed: this replaces the earlier "refuse without a
+GPU" lean recorded during the local-model eval discussions — the
+correction ("the HIS must not stop because of the AI; the AI is a
+feature, not a condition for treating patients") came from the design's
+second-opinion review (ChatGPT), was adopted by the owner in the design
+document, and is implemented here.]*
+
+**Package CI (§2.1) — the THIRD pipeline, additive:**
+`.github/workflows/package-appliance.yml` builds the appliance image,
+boots the PACKAGED compose (aurora + postgres) on the runner, and
+asserts: /healthz identity, /build.txt == the packaged commit, app
+shell + deep link, both fallback directions incl. the #124 body-less
+POST tripwire, demo login + census, **the AI honest-503 contract with
+the installer's reason**, and **restart persistence on the named
+volume**. Frontend CI and Backend CI are UNTOUCHED. The llama runtimes
+get build proofs (CPU + CUDA — compiling needs no GPU; running the CUDA
+one does).
+
+**Explicitly NOT in Phase 2 (§2.4, recorded so expectations are set):**
+no first-run wizard, no production seed split beyond what §11 step 2
+already built, no backup. The appliance SEEDS DEMO DATA. It is the
+validator's testbed in the same topology a hospital will run — **NOT a
+hospital-ready product; a hospital must not receive this build.**
+
+**Recorded hospital decisions (for later phases, not this one):**
+hospital OS is Windows; a GPU is bought if absent; physical and VM both
+supported — the HIS runs fine on a VM and the AI needs a GPU it can
+reach, so a GPU-less VM is a legitimate AI-less install; administered
+by hospital IT; fully isolated, no internet at all. **Docker Desktop
+requires a paid licence at a hospital's size and activation needs
+internet — an isolated hospital cannot activate it. Docker Compose is
+therefore the VALIDATOR'S testbed only; hospitals need a native Windows
+installer with no Docker (Phase 3+).**
+
+**Flags:**
+1. **Package CI running the full deployed suites against the packaged
+   appliance (§2.5): RECOMMEND YES** — it is the only way the topology
+   hospitals actually use gets the full E2E treatment. Not built here:
+   all 15 suites hardcode the staging URL + environment gate per file;
+   parameterizing them (API=localhost, EXPECTED_ENV=staging, skipping
+   the Pages legs) is a clean standalone work item. The packaged-boot
+   contract smoke in Package CI is the down payment.
+2. **The CUDA runtime and the 4060 run are the validator's step** — no
+   GPU exists in the build environment; the CUDA image gets a build-only
+   proof in CI. Same standing pattern as the #122 4060 harness run.
+3. **The production-flavor appliance is a preview, not a product** —
+   see the audit above for exactly what refuses; Phase 3+ owns closing
+   it.
 
 ### SPA-fallback method scope — the #123 post-merge regression, caught by the board and fixed
 

@@ -1,0 +1,123 @@
+# Package CI — the THIRD pipeline (appliance design §2.1).
+#
+# Frontend CI and Backend CI are UNCHANGED — independent verification is
+# load-bearing and packaging is ADDITIVE. This pipeline proves the thing
+# the other two cannot: that the PACKAGED appliance — the compose file, the
+# image with the frontend in wwwroot, Postgres, the runtime wiring — boots
+# and serves as one artifact, exactly as a validator's machine would run it.
+#
+# What it does NOT do (recorded, §2.5 flag): run the full deployed E2E
+# suites against the packaged appliance — recommended YES as the strongest
+# available check, but the suites currently hardcode the staging URL/env
+# per file; parameterizing all 15 is its own work item awaiting the
+# owner's call. The boot-and-contract smoke below is the down payment.
+#
+# The AI leg here runs the DISABLED path (runners have no GPU): the
+# honest-503 contract. The enabled path is verified locally (CPU, slow)
+# and on the validator's 4060 (flagged). The CUDA llama image gets a
+# BUILD-ONLY proof — compiling the GPU runtime needs no GPU; running it
+# does.
+
+name: Package CI (appliance)
+on:
+  push:
+    branches: [main]
+    paths:
+      - server/**
+      - src/**
+      - public/**
+      - index.html
+      - package.json
+      - package-lock.json
+      - vite.config.ts
+      - tsconfig*.json
+      - appliance/**
+      - .github/workflows/package-appliance.yml
+  pull_request:
+    paths:
+      - appliance/**
+      - .github/workflows/package-appliance.yml
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the appliance image (frontend → wwwroot → final image)
+        run: docker build -f server/Dockerfile --build-arg VITE_APP_ENV=staging -t aurora-icu:package .
+
+      - name: Boot the packaged appliance (aurora + postgres; AI honestly disabled — runners have no GPU)
+        working-directory: appliance
+        run: |
+          cat > .env <<EOF
+          JWT_SECRET=$(openssl rand -hex 48)
+          POSTGRES_PASSWORD=$(openssl rand -hex 24)
+          EOF
+          export AURORA_TAG=package AURORA_BUILD_COMMIT="$GITHUB_SHA"
+          export AI_PROVIDER=none AI_UNAVAILABLE_REASON="no GPU on this server"
+          # image already built above — compose must not rebuild
+          docker compose up -d --no-build postgres
+          docker compose up -d --no-build aurora
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 2
+          done
+          curl -sf http://localhost:8080/healthz | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="ok" and d["environment"]=="staging", d; print("healthz:", d)'
+
+      - name: /build.txt stamps the packaged commit
+        run: |
+          bt=$(curl -sf http://localhost:8080/build.txt)
+          echo "$bt"
+          [ "$(echo "$bt" | sed -n 1p)" = "$GITHUB_SHA" ] || { echo "build.txt does not stamp the packaged commit"; exit 1; }
+          [ "$(echo "$bt" | sed -n 2p)" = "staging" ] || { echo "build.txt environment wrong"; exit 1; }
+
+      - name: The packaged origin serves app + API with the fallback contract intact
+        run: |
+          # app shell + deep link (GET fallback)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          [ "$rc" = "200" ] || { echo "root -> $rc"; exit 1; }
+          rc=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/orders/P-1001)
+          [ "$rc" = "200" ] || { echo "deep link -> $rc"; exit 1; }
+          # /api stays honest in both directions (the #124 tripwire shapes)
+          rc=$(curl -s -o /tmp/miss -w '%{http_code}' http://localhost:8080/api/icu/definitely-not-real)
+          [ "$rc" = "404" ] || { echo "unknown /api -> $rc"; exit 1; }
+          grep -qi '<html\|<div' /tmp/miss && { echo "unknown /api answered markup"; exit 1; }
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8080/api/icu/adt/encounters/ENC-0000/discharge)
+          [ "$rc" = "401" ] || { echo "body-less POST -> $rc (fallback swallowed a write?)"; exit 1; }
+          # the demo seed is live (validator's testbed): real login works
+          tok=$(curl -sf -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"username":"sara.rahman","password":"Aurora2026!"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          n=$(curl -sf -H "Authorization: Bearer $tok" http://localhost:8080/api/icu/patients | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          echo "census size: $n"; [ "$n" -ge 1 ] || exit 1
+
+      - name: AI disabled path — the 503 says WHY (never a bare 503, §2.3)
+        run: |
+          tok=$(curl -sf -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"username":"sara.rahman","password":"Aurora2026!"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          out=$(curl -s -w '\n%{http_code}' -X POST http://localhost:8080/api/icu/ai/query \
+            -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' -d '{"question":"who is on the unit?"}')
+          rc=$(echo "$out" | tail -1); body=$(echo "$out" | head -1)
+          echo "$rc $body"
+          [ "$rc" = "503" ] || { echo "AI disabled path -> $rc (want 503)"; exit 1; }
+          echo "$body" | grep -q "no GPU on this server" || { echo "503 does not carry the installer's reason"; exit 1; }
+          echo "$body" | grep -q "not a fault" || { echo "503 does not say the HIS is fine"; exit 1; }
+
+      - name: Data survives a restart (the volume is real)
+        run: |
+          tok=$(curl -sf -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"username":"sara.rahman","password":"Aurora2026!"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          before=$(curl -sf -H "Authorization: Bearer $tok" http://localhost:8080/api/icu/adt/encounters | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          cd appliance && docker compose restart aurora postgres && cd ..
+          for i in $(seq 1 60); do curl -sf http://localhost:8080/healthz >/dev/null && break; sleep 2; done
+          tok=$(curl -sf -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' \
+            -d '{"username":"sara.rahman","password":"Aurora2026!"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+          after=$(curl -sf -H "Authorization: Bearer $tok" http://localhost:8080/api/icu/adt/encounters | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          echo "encounters before=$before after=$after"
+          [ "$before" = "$after" ] || { echo "restart lost data"; exit 1; }
+
+      - name: BUILD-ONLY proof of the llama runtimes (CPU + CUDA — no GPU needed to compile)
+        working-directory: appliance/llama
+        run: |
+          docker build --target runtime-cpu -t aurora-llama:ci-cpu .
+          docker build --target runtime-cuda -t aurora-llama:ci-cuda .
