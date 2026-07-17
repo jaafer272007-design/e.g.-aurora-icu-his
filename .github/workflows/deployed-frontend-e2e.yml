@@ -93,6 +93,16 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/api/icu/patients")
           [ "$rc" = "401" ] || { echo "same-origin API broken: /api/icu/patients unauthenticated -> HTTP $rc (want 401)"; exit 1; }
           echo "same-origin API intact (401 without a token)"
+          # direction 1b: NON-GET requests reach their REAL endpoints — the
+          # 2026-07-17 regression tripwire. An unconstrained SPA fallback is
+          # a routing candidate for every method, and a body-less POST to an
+          # optional-body endpoint (discharge) got routed INTO the fallback:
+          # empty 404 instead of the endpoint's 401/403/200. Read-only probe:
+          # unauthenticated body-less POST must be refused by RBAC (401),
+          # never eaten by the fallback (404).
+          rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -X POST "$API/api/icu/adt/encounters/ENC-0000/discharge")
+          [ "$rc" = "401" ] || { echo "body-less POST to a real endpoint -> HTTP $rc (must be 401 — 404 means the fallback swallowed a WRITE)"; exit 1; }
+          echo "body-less POST reaches the real endpoint (401 from RBAC, not a fallback 404)"
           # direction 2: /healthz and /build.txt stay machine responses
           curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="ok", d' \
             || { echo "/healthz no longer JSON"; exit 1; }

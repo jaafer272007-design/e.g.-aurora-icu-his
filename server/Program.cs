@@ -242,7 +242,21 @@ if (servesFrontend)
         }
         ctx.Response.ContentType = "text/html";
         await ctx.Response.SendFileAsync(Path.Combine(wwwroot, "index.html"));
-    });
+    })
+    /* GET/HEAD ONLY — the post-#123 regression's fix. An unconstrained
+       fallback is a valid routing candidate for EVERY method, and
+       ASP.NET's content-type matcher policy prefers it over a real
+       endpoint when a POST arrives without Content-Type and the
+       endpoint declares an (even optional) JSON body — so body-less
+       POSTs to /adt/encounters/{id}/discharge fell into the fallback
+       and answered an empty 404 while the encounter existed (staging,
+       2026-07-17; 11 deployed suites write body-lessly). A browser
+       only ever NAVIGATES with GET, so the SPA fallback has no
+       business answering anything else: with method metadata the
+       fallback stops being a candidate for writes and every non-GET
+       request reaches its real endpoint exactly as it did before the
+       serving mode existed. */
+    .WithMetadata(new Microsoft.AspNetCore.Routing.HttpMethodMetadata(new[] { "GET", "HEAD" }));
 }
 
 app.Run();
