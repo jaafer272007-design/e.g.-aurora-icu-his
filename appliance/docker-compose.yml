@@ -77,7 +77,10 @@ services:
       FORMULARY_SEED: ${FORMULARY_SEED:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
+      # the aspnet runtime image ships no curl/wget — a bash /dev/tcp
+      # probe checks the listener without touching the image; the run
+      # script and Package CI assert the real /healthz from outside
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && exec 3<&- 3>&-"]
       interval: 10s
       timeout: 5s
       retries: 12
