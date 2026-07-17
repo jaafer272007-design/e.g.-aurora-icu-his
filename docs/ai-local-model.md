@@ -21,6 +21,9 @@ AI_PROVIDER=openai
 AI_ENDPOINT=<runtime base URL ending in /v1>
 AI_MODEL=<model name the runtime expects>
 AI_API_KEY=<only if the runtime requires one — local ones usually don't>
+AI_TIMEOUT_SECONDS=<default 60; RAISE ON CPU-ONLY HOSTS — the measured
+  cold first call of the full tool catalog was 60–63 s on a 4-vCPU box
+  (exactly astride the default), warm calls ~5–15 s with prefix caching>
 ```
 
 - **`tool_choice:"required"` is load-bearing.** A runtime that ignores it
@@ -28,13 +31,13 @@ AI_API_KEY=<only if the runtime requires one — local ones usually don't>
   `tool_calls` and fails as a 502 provider error — honest (nothing
   invented, nothing executed) but useless. Prefer runtimes that
   grammar-enforce the tool call.
-- **llama.cpp `llama-server`** is DESIGNED to enforce
-  `tool_choice:"required"` by grammar when started with `--jinja` (the
-  model's chat template drives tool formatting) — but a wire probe with a
-  synthetic model and the base-qwen2 test tokenizer did NOT constrain
-  output (recorded in 02: the instruct models' `<tool_call>` special
-  tokens were absent, which the trigger machinery depends on), so VERIFY
-  the enforcement on the real Qwen2.5-Instruct GGUF before relying on it.
+- **llama.cpp `llama-server`** enforces `tool_choice:"required"` when
+  started with `--jinja` — **VERIFIED with the real Qwen2.5-7B-Instruct
+  Q4_K_M GGUF** (2026-07-17 eval run: every response was a structured
+  tool call, `finish_reason: tool_calls`, zero prose). An earlier probe
+  with a synthetic model and the BASE-qwen2 test tokenizer did not
+  constrain output (the instruct `<tool_call>` special tokens were
+  absent) — that combination is not representative; use instruct GGUFs.
   Either way a prose answer surfaces as an honest 502, never as data:
   ```
   llama-server -m Qwen2.5-7B-Instruct-Q4_K_M.gguf --jinja -c 8192 --port 12434

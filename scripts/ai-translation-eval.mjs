@@ -57,7 +57,7 @@ for (let run = 1; run <= RUNS; run++) {
       const res = await fetch(`${API}/api/icu/ai/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ question: c.question, contextPatientId: c.contextPatientId ?? null }),
+        body: JSON.stringify({ question: c.question, contextPatientId: c.contextPatientId ?? null, history: c.history ?? [] }),
       })
       const ms = Date.now() - started
       const body = await res.json().catch(() => null)

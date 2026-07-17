@@ -1188,7 +1188,12 @@ export async function aiTranslateQuery(
 ): Promise<AiQueryResponse> {
   const token = getToken()
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 65000)
+  /* generous ceiling ABOVE the server's own AI_TIMEOUT_SECONDS bound
+     (max 600 s): the server is the one honest timeout authority — the
+     client must never undercut a CPU-only deployment's raised limit.
+     Measured basis: a cold full-catalog translation took ~60 s on a
+     4-vCPU host; warm calls ~5–12 s. */
+  const timer = setTimeout(() => controller.abort(), 610000)
   try {
     const res = await fetch(`${API_BASE}/api/icu/ai/query`, {
       method: 'POST',
