@@ -1,0 +1,11 @@
+# Docker build context = repo root (appliance Phase 1) — keep it lean.
+node_modules
+dist
+server/bin
+server/obj
+server/data
+.git
+.github
+docs
+reference
+*.md

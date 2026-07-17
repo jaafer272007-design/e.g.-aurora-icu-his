@@ -399,6 +399,45 @@ data never leaves the building — which is what makes an LLM assistant
 viable here at all. Staging (Render, fake data, no PHI) may use a hosted
 model through the same adapter.
 
+## One build runs anywhere — runtime API configuration (appliance Phase 1, BUILT 2026-07-17)
+
+*[Attributed addition, 2026-07-17: recorded with the appliance Phase 1
+build, from the On-Premises Appliance design §1. Production remains
+on-premises per hospital (see the AI architecture section above); this is
+the architectural change that makes one build deliverable anywhere.]*
+
+- **The API base is resolved at RUNTIME, never baked into the bundle.**
+  The bundle ships `/runtime-config.js` (a classic script, executed
+  before the module bundle — no post-render round-trip) whose default is
+  **same-origin `''`** (relative `/api`): the appliance, and Render
+  serving its own frontend. A deployment serving the bundle from a
+  DIFFERENT origin than its API (GitHub Pages) **overwrites that file at
+  deploy time** — deployment configuration, not a rebuild. `null` means
+  the no-API mock demo. NOT a bare relative URL (that breaks Pages) and
+  NOT a build-time env var (that is why one build couldn't run anywhere).
+- **Missing/malformed config FAILS LOUDLY** (`src/lib/runtimeConfig.ts` +
+  the `main.tsx` gate): the app refuses to start and says why. It never
+  silently falls back to an origin — a frontend quietly pointing at the
+  wrong hospital's API is unthinkable.
+- **Production bundles remain same-origin BY CONSTRUCTION** (§11 step 3,
+  unchanged): they ignore the config value entirely; the artifact carries
+  no hostname.
+- **ASP.NET serves the React build** when `wwwroot/index.html` exists
+  (the §11 step 3 serving mode, now exercised on staging: the Render
+  image carries the frontend). SPA fallback rule, asserted in both
+  directions by the deployed-frontend suite: unmatched routes serve
+  `index.html` so the router owns deep links, but `/api/*`, `/healthz`
+  and `/build.txt` NEVER resolve to markup — an unknown API route stays
+  an auditable 404, and `/build.txt` is served dynamically (sha +
+  environment, the Pages contract) so frontend and API freshness are
+  probeable on any origin.
+- **Residual (recorded, not hidden):** `VITE_APP_ENV` is still a
+  compiled-in environment identity (mock fallbacks, the staging banner,
+  the environment cross-check) — staging bundles and production bundles
+  remain distinct builds; the runtime mechanism covers the API base,
+  which is the per-DEPLOYMENT variable. One production build serves
+  every hospital unchanged.
+
 ## Cross-cutting server conventions
 
 *[Docs split note: the three convention blocks below were extracted verbatim
