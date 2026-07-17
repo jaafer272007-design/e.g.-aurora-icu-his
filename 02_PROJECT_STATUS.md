@@ -5074,6 +5074,19 @@ context). The bash run.sh needed no change: POSIX redirection has no
 stderr-to-error conversion, and its `hostname -I` first-address pick is
 the standing Linux behavior.
 
+**The 4060 run itself (Phase 2 flag 2 — RESOLVED, 2026-07-17):** after
+the workaround (pre-pulling the probe image so the old probe stays
+silent), the validator's re-run detected the GPU ("GPU detected - AI
+ENABLED (llama-server, CUDA build)"), compiled the pinned llama.cpp
+CUDA engine on the target in ~17 minutes (997.6 s per the compose
+summary; sm_89, CUDA 12.4.131, the full build log captured in session),
+and brought up all three containers — aurora (image byte-identical to
+the first run, every layer CACHED), postgres (healthy, same volume),
+llama (started). The validator then tested the appliance and reported
+it working end-to-end on the GPU. Together with the accidental first
+run — which exercised the honest no-GPU disable path for real — the
+one machine covered BOTH sides of §2.3's warn-and-disable contract.
+
 The #123 post-merge routine's first write-suite run (deployed-adt,
 2026-07-17) failed with a shape no prior deployment had shown: two
 `POST …/encounters/{id}/discharge` calls returned **empty-body 404s for
