@@ -11,6 +11,7 @@ import type {
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
 } from './types'
+import { runtimeApiBase } from '../runtimeConfig'
 import { composeBedsResponse } from './bedboard'
 import { BEDS_RESPONSE, UNIT_SUMMARY, mockAdtBeds } from './data/beds'
 import { allPatients, derivedAlertCount } from './data/patients'
@@ -93,13 +94,18 @@ export function getUnitSummary(): Promise<UnitSummaryResponse> {
 
 /* PRODUCTION IS SAME-ORIGIN BY CONSTRUCTION (§11 step 3): the bundle is
    served by the API process itself and calls it with a RELATIVE base —
-   the artifact carries NO hostname to point at a wrong environment, and
-   an accidentally-present VITE_API_BASE_URL is ignored. Dev/staging keep
-   the absolute cross-origin base (Pages → Render), governed by the API's
-   CORS allowlist exactly as before. */
+   the artifact carries NO hostname to point at a wrong environment.
+   [Appliance Phase 1, superseding the build-time bake:] non-production
+   bundles now resolve the base at RUNTIME from /runtime-config.js
+   (src/lib/runtimeConfig.ts) instead of a compiled-in VITE_API_BASE_URL
+   — the same bundle serves the same-origin topology (apiBaseUrl '': the
+   appliance, and Render serving its own frontend) and the cross-origin
+   one (Pages, whose deploy writes the Render URL into the file). A
+   missing/malformed config FAILS LOUDLY in main.tsx before any adapter
+   runs — never a silent guess at an origin. */
 const API_BASE = import.meta.env.VITE_APP_ENV === 'production'
   ? ''
-  : (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+  : runtimeApiBase ?? ''
 const API_TIMEOUT_MS = 8000
 
 /** exposed for diagnostics/tests: 'api' after a successful live fetch */
@@ -113,15 +119,16 @@ export let patientsSource: 'mock' | 'api' = 'mock'
    or server error) triggers the Stage 9 local-session fallback in the
    Login screen — same resilience pattern as the roster fallback below. */
 
-/** false in pure mock mode (no VITE_API_BASE_URL) — the Login screen then
- *  labels sign-ins as Stage 9 local sessions up front */
-export const authApiConfigured = import.meta.env.VITE_APP_ENV === 'production' || API_BASE !== ''
+/** false in pure mock mode (runtime config declares apiBaseUrl: null —
+ *  no API at all) — the Login screen then labels sign-ins as Stage 9
+ *  local sessions up front. '' is NOT mock: it is the same-origin API. */
+export const authApiConfigured = import.meta.env.VITE_APP_ENV === 'production' || runtimeApiBase !== null
 
 /** the wired API's /healthz URL for the runtime environment cross-check
  *  (EnvironmentGate) — null in a pure-mock dev session (no API at all,
  *  nothing to cross-check); production is always same-origin '/healthz'. */
 export function apiHealthUrl(): string | null {
-  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return null
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return null
   return `${API_BASE}/healthz`
 }
 
@@ -185,7 +192,7 @@ export type LoginResult =
 
 /** POST /api/auth/login — real credential check (Stage 10 Phase 2). */
 export async function login(username: string, password: string): Promise<LoginResult> {
-  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { ok: false, reason: 'unreachable' }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return { ok: false, reason: 'unreachable' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -269,7 +276,7 @@ const authHeaders = (): Record<string, string> => {
  *  ANY failure — unreachable, timeout, 401 (tokenless/stale session) — so
  *  each adapter falls back to its mock, console-logged, never a broken UI. */
 async function apiGet<T>(path: string, what: string): Promise<T | null> {
-  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return null
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return null
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -296,7 +303,7 @@ type ApiPostResult<T> = { kind: 'ok'; data: T } | { kind: 'denied' } | { kind: '
 async function apiPost<T>(
   path: string, what: string, body?: unknown, method: 'POST' | 'PUT' = 'POST',
 ): Promise<ApiPostResult<T>> {
-  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { kind: 'offline' }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -343,7 +350,7 @@ const toSummary = (r: RosterRecordDto): PatientSummary => ({
 /** shared real-roster fetch — getPatients' summaries and the Layer 2 bed
  *  board composition both read it; null = fall back to mock */
 async function fetchRosterRecords(): Promise<RosterRecordDto[] | null> {
-  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return null
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return null
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -1234,7 +1241,7 @@ export type AdtWriteResult<T> =
 
 async function adtPost<T>(path: string, what: string, body?: unknown,
   method: 'POST' | 'PUT' = 'POST'): Promise<AdtWriteResult<T>> {
-  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { kind: 'offline' }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -1304,7 +1311,7 @@ export async function getEncounters(filter?: { patientId?: string; status?: 'ope
  *  remaining rungs (mock roster / encounter snapshot) carry the mock and
  *  offline cases with their own honest provenance. */
 export async function getPatientIdentity(patientId: string): Promise<PatientIdentity | null> {
-  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return null
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return null
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -1401,7 +1408,7 @@ export function transferEncounter(encounterId: string, bedId: string): Promise<A
    delete. */
 
 async function usersWrite<T>(path: string, what: string, body?: unknown, method: 'POST' | 'PUT' | 'DELETE' = 'POST'): Promise<AdtWriteResult<T>> {
-  if (import.meta.env.VITE_APP_ENV !== 'production' && !API_BASE) return { kind: 'offline' }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return { kind: 'offline' }
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)

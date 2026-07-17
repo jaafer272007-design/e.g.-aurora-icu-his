@@ -12,3 +12,4 @@ server/obj
 server/publish
 server/data
 *.db
+server/wwwroot/

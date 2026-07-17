@@ -1,0 +1,128 @@
+# Deployed FRONTEND E2E — verifies the LIVE topology contract of
+# appliance Phase 1: ONE build runs anywhere. Asserted here:
+#   RENDER ORIGIN (the appliance topology, exercised on staging):
+#   - the service serves the app at its own origin (/, deep links,
+#     unknown router paths → index.html via the SPA fallback)
+#   - the SPA fallback NEVER swallows real server routes: an unknown
+#     /api/* path stays a REAL 404 (never index.html), /healthz and
+#     /build.txt stay JSON/text — both directions asserted explicitly
+#   - the API at the same origin is intact (401 without a token)
+#   - /build.txt stamps the deployed sha (== /healthz build) + staging
+#   - /runtime-config.js carries the shipped same-origin default ('')
+#   PAGES ORIGIN (the cross-origin staging frontend, unchanged):
+#   - the site serves; its runtime-config.js carries the Render URL
+#     (the API base is deployment configuration, no longer baked into
+#     the bundle); its build.txt still stamps sha + staging
+# READ-ONLY: no login, no writes — dispatchable any number of times.
+name: Deployed Frontend E2E
+on: workflow_dispatch
+
+# STRUCTURAL serialization of the deployed suites (the recorded
+# never-dispatch-concurrently lesson): one shared group across all
+# suites means two can never RUN at once.
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
+env:
+  API: https://icu-cp49.onrender.com
+  EXPECTED_ENV: staging
+  PAGES: https://jaafer272007-design.github.io/e.g.-aurora-icu-his
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objects)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ENVIRONMENT GATE — this suite only runs against its declared target
+        run: |
+          for i in $(seq 1 60); do
+            got=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environment","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: healthz environment=$got · expected=$EXPECTED_ENV"
+            [ "$got" = "$EXPECTED_ENV" ] && exit 0
+            if [ "$got" != "<unreachable>" ] && [ "$got" != "<absent>" ]; then
+              echo "WRONG ENVIRONMENT: expected '$EXPECTED_ENV', got '$got' — refusing to run." && exit 1
+            fi
+            sleep 10
+          done
+          echo "NO ENVIRONMENT IDENTITY from $API/healthz — refusing to run." && exit 1
+
+      - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+        run: |
+          # the v3 content-equality gate, verbatim from the sibling suites:
+          # the dispatched ref supplies the TEST code; the deployed build
+          # supplies the server — tree/blob comparison of server/ +
+          # render.yaml. (The frontend inside the image gets its own
+          # freshness assertion below: /build.txt == /healthz build.)
+          WANT_SRV=$(git rev-parse "$GITHUB_SHA:server")
+          WANT_YML=$(git rev-parse "$GITHUB_SHA:render.yaml")
+          echo "dispatched ref HEAD: $GITHUB_SHA"
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            BS=$(git rev-parse -q --verify "$build:server" 2>/dev/null || echo "<unknown-commit>")
+            BY=$(git rev-parse -q --verify "$build:render.yaml" 2>/dev/null || echo "<unknown-commit>")
+            echo "attempt $i: live build=$build · its server tree=$BS"
+            [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && { echo "BUILD=$build" >> "$GITHUB_ENV"; exit 0; }
+            sleep 10
+          done
+          echo "STALE DEPLOYMENT: '$build' does not carry this ref's server content — refusing to run" && exit 1
+
+      - name: RENDER ORIGIN serves the app — root, deep link, router fallback
+        run: |
+          body=$(curl -s --max-time 30 "$API/")
+          echo "$body" | grep -q '<div id="root">' || { echo "/ did not serve the app shell"; exit 1; }
+          echo "/ serves the app shell"
+          for p in /orders/P-1001 /beds /some/unknown/router/path; do
+            rc=$(curl -s -o /tmp/deep.html -w '%{http_code}' --max-time 30 "$API$p")
+            grep -q '<div id="root">' /tmp/deep.html && [ "$rc" = "200" ] || { echo "deep link $p -> HTTP $rc without the app shell"; exit 1; }
+            echo "deep link $p -> 200 index.html (router owns it)"
+          done
+
+      - name: RENDER ORIGIN — the fallback NEVER swallows real server routes (both directions)
+        run: |
+          # direction 1: unknown /api/* stays a REAL 404, never markup
+          rc=$(curl -s -o /tmp/apimiss -w '%{http_code}' --max-time 30 "$API/api/icu/definitely-not-an-endpoint")
+          [ "$rc" = "404" ] || { echo "unknown /api path -> HTTP $rc (must be 404)"; exit 1; }
+          grep -qi '<html\|<div' /tmp/apimiss && { echo "unknown /api path answered with MARKUP — the silent-blank-page failure"; exit 1; }
+          echo "unknown /api path -> honest 404, no markup"
+          # the API itself is intact at the same origin (RBAC unchanged)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$API/api/icu/patients")
+          [ "$rc" = "401" ] || { echo "same-origin API broken: /api/icu/patients unauthenticated -> HTTP $rc (want 401)"; exit 1; }
+          echo "same-origin API intact (401 without a token)"
+          # direction 2: /healthz and /build.txt stay machine responses
+          curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="ok", d' \
+            || { echo "/healthz no longer JSON"; exit 1; }
+          echo "/healthz stays JSON"
+
+      - name: RENDER ORIGIN — /build.txt stamps the deployed sha + environment
+        run: |
+          curl -s --max-time 30 "$API/build.txt" -o /tmp/build.txt
+          cat /tmp/build.txt
+          sha=$(sed -n 1p /tmp/build.txt); env2=$(sed -n 2p /tmp/build.txt)
+          [ "$sha" = "$BUILD" ] || { echo "/build.txt sha '$sha' != /healthz build '$BUILD'"; exit 1; }
+          [ "$env2" = "$EXPECTED_ENV" ] || { echo "/build.txt environment '$env2' != $EXPECTED_ENV"; exit 1; }
+          echo "/build.txt stamps the deployed commit + environment (frontend and API ship together)"
+
+      - name: RENDER ORIGIN — runtime config declares SAME-ORIGIN
+        run: |
+          curl -s --max-time 30 "$API/runtime-config.js" -o /tmp/rc.js
+          cat /tmp/rc.js
+          grep -q "AURORA_RUNTIME_CONFIG" /tmp/rc.js || { echo "runtime-config.js missing from the image bundle"; exit 1; }
+          grep -q "apiBaseUrl: ''" /tmp/rc.js || { echo "the image bundle's runtime config is not the same-origin default"; exit 1; }
+          echo "image bundle carries the same-origin runtime default"
+
+      - name: PAGES ORIGIN — cross-origin config + build identity intact
+        run: |
+          rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$PAGES/")
+          [ "$rc" = "200" ] || { echo "Pages root -> HTTP $rc"; exit 1; }
+          curl -s --max-time 30 "$PAGES/runtime-config.js" -o /tmp/prc.js
+          cat /tmp/prc.js
+          grep -q "icu-cp49.onrender.com" /tmp/prc.js || { echo "Pages runtime-config.js does not carry the staging API URL — the cross-origin topology would fail loudly"; exit 1; }
+          curl -s --max-time 30 "$PAGES/build.txt" -o /tmp/pb.txt
+          cat /tmp/pb.txt
+          [ "$(sed -n 2p /tmp/pb.txt)" = "$EXPECTED_ENV" ] || { echo "Pages build.txt environment line wrong"; exit 1; }
+          echo "Pages: runtime config carries the Render URL; build identity intact (sha $(sed -n 1p /tmp/pb.txt))"

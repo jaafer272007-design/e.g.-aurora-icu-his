@@ -16,15 +16,19 @@
 # a fresh free database and update the blueprint (data LOST — the seed
 # files repopulate baseline data on first boot, but real writes are
 # gone). See CLAUDE.md "Database persistence".
-# BUILD CONTEXT (the deployed-suite gate depends on this): Render
-# rebuilds this service only for commits touching rootDir server/ (the
-# Dockerfile lives inside it) — and, for THIS FILE, syncs the Blueprint
-# on change. Every deployed E2E suite's warm-up asserts the deployed
-# build's server content equals the dispatched ref's (git tree/blob
-# comparison of server/ + render.yaml). This comment block also serves
-# as the 2026-07-10 empirical probe of whether a render.yaml-only
-# commit triggers a redeploy under rootDir — see CLAUDE.md "The stale
-# gate's dead zone".
+# BUILD CONTEXT (the deployed-suite gate depends on this): [superseded
+# 2026-07-17, appliance Phase 1 — the original rule was "Render rebuilds
+# only for commits touching rootDir server/"]. The build context is now
+# the REPO ROOT (dockerfilePath server/Dockerfile, no rootDir) because
+# the image carries the frontend in wwwroot, whose sources live outside
+# server/. The buildFilter below reproduces the old rebuild economy:
+# only the listed paths (the image's actual inputs) trigger a rebuild —
+# docs-only merges still deploy nothing. The deployed E2E suites' gate
+# is UNCHANGED and still valid: it asserts SERVER content equality
+# (git tree/blob comparison of server/ + render.yaml), which is what the
+# API assertions depend on; the frontend now in the image has its OWN
+# freshness probe (/build.txt == /healthz build, asserted by the
+# deployed-frontend suite). This file syncs the Blueprint on change.
 databases:
   - name: aurora-db
     plan: free
@@ -35,8 +39,20 @@ services:
     runtime: docker
     repo: https://github.com/jaafer272007-design/e.g.-aurora-icu-his
     branch: main
-    rootDir: server
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./server/Dockerfile
+    buildFilter:
+      paths:
+        - server/**
+        - src/**
+        - public/**
+        - index.html
+        - package.json
+        - package-lock.json
+        - vite.config.ts
+        - tsconfig.json
+        - tsconfig.app.json
+        - tsconfig.node.json
+        - render.yaml
     plan: free
     healthCheckPath: /healthz
     autoDeploy: true

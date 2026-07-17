@@ -1,6 +1,12 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-17 · current through the REAL-MODEL TRANSLATION
+**Last updated: 2026-07-17 · current through APPLIANCE PHASE 1 (one build
+runs anywhere: the API base moved from a build-time bake to
+runtime-config.js with a fail-loud gate, and the Render image now carries
+the frontend so ASP.NET serves app + /api at one origin — the appliance
+topology exercised on staging from day one while Pages continues
+unchanged; see its record below); prior marker retained: current through
+the REAL-MODEL TRANSLATION
 EVAL for the AI chat (Qwen 2.5 7B Instruct Q4_K_M exercised through the
 real endpoint after the owner allowed weight hosts in the build
 environment: final 52/54 across two full runs with ALL 18 must-refuse
@@ -4843,6 +4849,92 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Appliance Phase 1 — one build runs anywhere (runtime API config + ASP.NET serves the React build)
+
+Built from the On-Premises Appliance design, **Phase 1 ONLY** (Phase 2 —
+the Docker Compose appliance with Postgres + Ollama + the bundled model —
+is blocked until this lands and proves on staging).
+
+**Verified against the real code first (the reported answer):** the API
+base was indeed baked at BUILD time — `VITE_API_BASE_URL` compiled into
+the bundle by deploy-pages.yml (staging), with `VITE_APP_ENV=production`
+forcing `''` (same-origin) since §11 step 3 — i.e. TWO different bundles,
+which is exactly why one build could not run everywhere. The bigger
+finding: **the server half already existed** — Program.cs has carried the
+§11 step 3 serving mode (wwwroot detection, static files, SPA fallback
+with an honest /api guard) since PR #60; no image had ever actually
+carried a wwwroot, because render.yaml's `rootDir: server` made the
+frontend sources invisible to the Docker build context.
+
+**The runtime-config mechanism (the flagged choice, §1.1):** the bundle
+ships `public/runtime-config.js` → `/runtime-config.js`, a CLASSIC script
+tag in index.html that executes during HTML parsing, strictly before the
+deferred module bundle — **no blocking round-trip after render**. It sets
+`window.AURORA_RUNTIME_CONFIG = { apiBaseUrl }`: shipped default `''`
+(same-origin — the appliance, and Render serving its own frontend);
+GitHub Pages' deploy **overwrites the file** with the Render URL
+(deployment configuration, not a rebuild — §6.4 intact: the URL lives in
+the versioned workflow file); `null` = the no-API mock demo. A missing or
+malformed config **fails loudly**: `src/lib/runtimeConfig.ts` +
+a `main.tsx` gate refuse to mount the app and say why — never a silent
+guess at an origin. Production bundles ignore the value entirely
+(same-origin by construction, §11 step 3 unchanged). Every former
+`!API_BASE` pure-mock bail in the adapters now keys on the explicit
+`null` (with `''` meaning a REAL same-origin API).
+
+**Serving (§1.2):** server/Dockerfile gained a node build stage — the
+image now carries the frontend in wwwroot, which Program.cs's existing
+serving mode picks up. render.yaml: `rootDir: server` superseded by a
+root build context (`dockerfilePath: server/Dockerfile`) with a
+`buildFilter` reproducing the old rebuild economy (docs-only merges still
+deploy nothing); the deployed suites' server content gate is UNCHANGED
+and still valid (it asserts what the API assertions depend on). New:
+`/build.txt` is served DYNAMICALLY by the server (sha + environment —
+the Pages two-line contract) so the served frontend has the same
+freshness probe on any origin; the SPA fallback guard now names
+`/healthz` and `/build.txt` alongside `/api` explicitly.
+
+**Verified locally, all three topologies from ONE dist (14/14 browser +
+raw-HTTP legs):** SAME-ORIGIN — dotnet serving wwwroot: login + real
+census over relative /api, deep link `/orders/P-1001` → the router,
+unknown `/api/*` → REAL 404 with no markup, /healthz JSON, /build.txt
+dynamic, RBAC intact (401); CROSS-ORIGIN (Pages simulation, a static
+server with NO api on another port): the SAME dist with only
+runtime-config.js overwritten logs in and renders the same census
+through CORS; FAIL-LOUD: deleting runtime-config.js yields the refusal
+screen — no login, no app, no silent default. New
+**deployed-frontend-e2e** suite asserts the full contract on staging
+(Render origin: app shell, deep links, both fallback directions,
+/build.txt == /healthz build, same-origin runtime default; Pages origin:
+runtime config carries the Render URL, build identity intact).
+
+**Honest limitations + flags:**
+1. **The local IMAGE build could not run here** — the session's egress
+   policy blocks Docker Hub's blob CDN (base images unpullable), so the
+   Dockerfile was verified by the functionally identical dotnet-served
+   wwwroot plus review; Render's own build (gated by its health check —
+   a failed build never takes traffic) and the deployed-frontend suite
+   prove the image post-merge.
+2. **"Same bundle serves Pages" is true up to the Pages BASE PATH**:
+   project Pages serve under /e.g.-aurora-icu-his/, so the Pages build
+   keeps its `--base` flag — its bundle differs from the root-served one
+   by that flag alone. The build that matters for delivery (appliance =
+   Render-origin = laptop = hospital, base '/') is ONE build; the
+   runtime-config mechanism is identical in both.
+3. **Staging topology (design §1.3 flag): BOTH, recommended and built** —
+   Pages stays (fast, free, established verification) AND Render serves
+   the frontend, so the topology hospitals will actually use is exercised
+   on staging from day one. Recorded risk if this ever regresses to
+   Pages-only: the hospital topology becomes the least-tested one.
+4. **VITE_APP_ENV residual** (recorded in 01): environment identity is
+   still compiled in — staging and production bundles remain distinct
+   builds; the runtime mechanism covers the API base, the per-DEPLOYMENT
+   variable. One production build serves every hospital.
+5. **Render deploy risk on this merge**: the render.yaml context change
+   requires a Blueprint sync + rebuild; if the swap stalls (the #119
+   precedent), a manual deploy clears it — the content gates fail loudly
+   rather than test a stale server either way.
 
 ### AI local-model eval — Qwen 2.5 7B EXERCISED for real; refusals hold, limits stated
 

@@ -130,14 +130,17 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-/* ---- §11 step 3: SAME-ORIGIN PRODUCTION FRONTEND ----
+/* ---- §11 step 3: SAME-ORIGIN FRONTEND (appliance Phase 1) ----
    When a compiled frontend bundle is present in wwwroot, this service
    serves it — the production model: ONE origin, the bundle calling its
    API with a RELATIVE base, no CORS surface, and frontend/API version
-   skew unrepresentable (they ship together). The staging Render image
-   carries no wwwroot, so nothing here registers there (GitHub Pages
-   remains staging's frontend) — byte-parity preserved. The SPA fallback
-   is mapped after the API endpoints, below. */
+   skew unrepresentable (they ship together).
+   [Superseded 2026-07-17, appliance Phase 1: the staging Render image
+   NOW CARRIES wwwroot too — the Dockerfile builds the frontend into the
+   image, so the appliance topology (server-served frontend) is exercised
+   on staging from day one, at Render's own origin, while GitHub Pages
+   keeps serving the cross-origin staging frontend unchanged.] The SPA
+   fallback is mapped after the API endpoints, below. */
 var wwwroot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 var servesFrontend = File.Exists(Path.Combine(wwwroot, "index.html"));
 if (servesFrontend)
@@ -186,6 +189,15 @@ if (!AppEnv.IsKnown)
         "Authentication is FAIL-CLOSED: no token will be issued or validated until APP_ENV is configured.");
 app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build, environment = AppEnv.Name }));
 
+/* /build.txt (appliance Phase 1) — the SAME two-line contract the Pages
+   deploy stamps into its artifact (sha, then environment), served
+   DYNAMICALLY here so a server-served frontend has the same freshness
+   probe. Runtime-resolved on purpose: the image is environment-agnostic
+   (APP_ENV is configuration), so nothing environment-specific is baked
+   into a static file. Frontend and API ship together in the image, so
+   this sha IS the served bundle's commit. */
+app.MapGet("/build.txt", () => Results.Text($"{build}\n{AppEnv.Name}\n", "text/plain"));
+
 /* endpoint groups — same registration order as the pre-split Program.cs;
    every route string is byte-identical (the /api/icu/ prefix on Core
    domains is accepted historical cosmetics — renaming it would break the
@@ -214,7 +226,16 @@ if (servesFrontend)
 {
     app.MapFallback(async ctx =>
     {
-        if (ctx.Request.Path.StartsWithSegments("/api"))
+        /* the guard list, asserted in BOTH directions by the deployed
+           frontend suite (appliance Phase 1): /api/*, /healthz and
+           /build.txt must NEVER resolve to index.html — a missing API
+           endpoint answered with markup would be a silent blank page
+           instead of an auditable 404. (/healthz and /build.txt are
+           mapped above so they normally never reach this fallback; the
+           guard makes the contract explicit rather than incidental.) */
+        if (ctx.Request.Path.StartsWithSegments("/api")
+            || ctx.Request.Path.StartsWithSegments("/healthz")
+            || ctx.Request.Path.StartsWithSegments("/build.txt"))
         {
             ctx.Response.StatusCode = 404;
             return;
