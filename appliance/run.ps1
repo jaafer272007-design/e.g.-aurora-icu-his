@@ -33,8 +33,12 @@ if (-not (Test-Path ".env")) {
   ) | Set-Content -Encoding ascii ".env"
 }
 
-# the packaged commit — /build.txt and /healthz stamp it
-$env:AURORA_BUILD_COMMIT = (& git -C .. rev-parse HEAD 2>$null); if (-not $env:AURORA_BUILD_COMMIT) { $env:AURORA_BUILD_COMMIT = "dev" }
+# the packaged commit — /build.txt and /healthz stamp it.
+# Native stderr goes through cmd.exe: under $ErrorActionPreference=Stop,
+# Windows PowerShell 5.1 turns a redirected stderr write from a native
+# command into a TERMINATING error — git printing "not a git repository"
+# (a zip-download install) would kill the whole script otherwise.
+$env:AURORA_BUILD_COMMIT = (cmd /c "git -C .. rev-parse HEAD 2>nul"); if (-not $env:AURORA_BUILD_COMMIT) { $env:AURORA_BUILD_COMMIT = "dev" }
 
 # ---- the model (alongside-as-a-file; offline-capable) ----
 New-Item -ItemType Directory -Force -Path models | Out-Null
@@ -56,8 +60,14 @@ Get-Model $MODEL2 $SHA2
 
 # ---- GPU detection → AI mode (§2.3: warn and disable, never refuse) ----
 $composeArgs = @("-f", "docker-compose.yml")
-$gpu = $false
-try { docker run --rm --gpus all ubuntu:24.04 true 2>$null; if ($LASTEXITCODE -eq 0) { $gpu = $true } } catch {}
+# The probe runs through cmd.exe for the same 5.1 stderr rule as above:
+# docker's FIRST-EVER pull of ubuntu:24.04 reports progress on stderr, so
+# `docker ... 2>$null` inside this script threw mid-pull and the probe
+# reported "no GPU" on a machine whose GPU was fine (the validator's
+# first Windows run hit exactly this). cmd.exe swallows stderr before
+# PowerShell ever sees it; $LASTEXITCODE still carries docker's verdict.
+cmd /c "docker run --rm --gpus all ubuntu:24.04 true >nul 2>nul" | Out-Null
+$gpu = ($LASTEXITCODE -eq 0)
 if ($gpu) {
   Write-Host "GPU detected - AI ENABLED (llama-server, CUDA build)"
   $env:LLAMA_RUNTIME = "cuda"; $env:AI_PROVIDER = "openai"
@@ -91,7 +101,21 @@ for ($i = 0; $i -lt 60; $i++) {
 }
 Write-Host ""
 
-$ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } | Select-Object -First 1).IPAddress
+# The LAN address other devices can reach is the one on the adapter that
+# carries the DEFAULT ROUTE — "first non-loopback IPv4" is wrong on
+# Docker-Desktop machines, where it lands on the WSL/Hyper-V virtual
+# switch (a 172.x address no iPad can reach). Fall back to the old pick
+# only if no default route is readable.
+$ip = $null
+$route = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+  Sort-Object -Property RouteMetric, ifMetric | Select-Object -First 1
+if ($route) {
+  $ip = (Get-NetIPAddress -InterfaceIndex $route.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Select-Object -First 1).IPAddress
+}
+if (-not $ip) {
+  $ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } | Select-Object -First 1).IPAddress
+}
 Write-Host ""
 Write-Host "AURORA is up:"
 Write-Host "  this machine : http://localhost:$port"
