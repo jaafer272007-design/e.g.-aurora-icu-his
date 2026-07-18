@@ -1,6 +1,25 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-18 · current through SBAR HANDOFF PERSISTENCE
+**Last updated: 2026-07-18 · current through PHASE 3 PR 1 — "STOP THE
+BLEEDING" (the #125 production-refusal audit's first fix, built after a
+verify-first field-level audit of every Stage-11 mock: the patient-detail
+composite turned out to be HEADER-ONLY on three of its four consumers —
+Orders & Meds, Timeline and Labs & Imaging use nothing but `res.patient`,
+which the real roster already serves — so those three screens are
+un-blocked by an identity-only read (`getRosterPatient`) with NO new
+server code; the domains that do not exist yet (consults, action-queue
+notes, workspace imaging vocabulary, nursing tasks, I&O, unit summary)
+now resolve NULL in production and the UI renders an explicit "not yet
+available in this version" state (owner's decision (a): the old mock
+payloads were the fabrication; an explicit not-yet state invents
+nothing); no-source KPIs are DROPPED, never dashed (decision (b)); the
+two nursing writes REJECT with a visible toast — the SBAR data-loss
+lesson — never the overlay and never silently; the dead getClinicalNotes
+export is retired (decision (c)); apiUnavailable() is now reserved for a
+REAL domain whose server is unreachable. A production build is usable on
+every screen except Mission Control (PR 2) and Admin Home renders the
+honest not-yet dashboard (real in PR 3) — see the record below);
+prior marker retained: current through SBAR HANDOFF PERSISTENCE
 (the nurse workspace's handoff card was a silent data-loss surface —
 rendered, accepted input, toasted "saved", persisted NOWHERE, in every
 environment; closed per the owner's three 2026-07-18 decisions: an
@@ -4916,6 +4935,113 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### Phase 3 PR 1 — "stop the bleeding" (the #125 refusal audit's first fix; owner-scoped)
+
+**The verify-first audit that sized it (assessment delivered before any
+build, per the owner's instruction):** read from the real code — every
+Stage-11 mock's exact return shape, every consuming screen's actual
+field usage, and the full real-endpoint inventory. Three findings
+changed the picture:
+1. **The overlay dispatches at CALL time** (`apiUnavailable()` fires the
+   event synchronously before any promise handling), so caller-side
+   `.catch()` can never prevent the takeover — degradation is an
+   API-LAYER change per domain, not a screen change.
+2. **The patient-detail composite is header-only on 3 of 4 consumers:**
+   Orders & Meds, Timeline and Labs & Imaging use nothing but
+   `res.patient` (PatientBar identity + not-found guard) — all fields
+   the REAL roster already serves. Only Mission Control consumes the
+   composite as its body (its vent/hemo panels are ALREADY the real
+   observation projection; labs/timeline cards have real sources wired
+   to mock derivations; infusions partially derivable from real orders;
+   alerts/goals + infusion trends have NO source).
+3. **`getClinicalNotes` was a dead export** — no caller anywhere.
+
+**The owner's decisions (2026-07-18):** (a) honest-empty degradation
+approved for consults, action-queue notes, order-set vocabulary,
+nursing tasks and I&O reads — "the current mock inventing consults/
+tasks is the fabrication; an explicit 'not a domain yet' state invents
+nothing"; (b) no-source KPIs (pendingConsults, planned discharges) are
+DROPPED, not dashed — "a dashed value implies zero/loading, which
+soft-fabricates; a concept with no domain shouldn't render at all";
+(c) retire the dead export. Two 🔴 conditions: the nursing writes must
+fail as a REJECTED ACTION the nurse SEES (toast — the SBAR data-loss
+lesson), and the honest-empty states must SAY "not yet available",
+never render a blank that reads as clinical absence.
+
+**What was built (client-only — no server change):**
+- **`getRosterPatient(patientId)`** — identity-only read over the real
+  roster record; Orders & Meds, Timeline and Labs & Imaging now fetch
+  it instead of the composite. `getPatientDetail` keeps its production
+  refusal with Mission Control as its ONLY remaining consumer (PR 2).
+- **NULL-resolving degradation** in the API layer (never
+  `apiUnavailable()`): getConsults, getActionQueues, getOrderSets (the
+  imaging study vocabulary — flagged follow-up: it belongs in Layer-4
+  master data, which would restore production imaging ordering),
+  getNursingTasks, getIoEntries, getUnitSummary. `null` = "not a domain
+  in this version"; `undefined` stays "loading"; demo data still serves
+  outside production.
+- **`NotYetAvailable`** shared component (`nya-` prefix — the
+  class-collision lesson): a badge + "…not recorded in this version of
+  Aurora. This panel is inactive until the domain is built; it is not
+  an empty clinical record." Rendered by: Doctor Workspace (consults
+  card, notes queue tab), Orders & Meds (imaging card), Nurse Workspace
+  (TasksCard, IoCard), Bed Overview (KPI strip, unit-alert feed, with
+  the no-source right-panel tiles dropped), Admin Home (performance +
+  operations panels, no-source counters dropped).
+- **The nursing writes reject visibly:** toggleNursingTask/recordIoEntry
+  reject in production with a PLAIN error (deliberately not
+  apiUnavailable) and both callers toast "Task/I&O NOT recorded — …".
+  The I&O entry form deliberately STAYS interactive so an attempted
+  write is refused in front of the nurse; the task checklist has no
+  rows to toggle (its reject path is defense in depth).
+- **getClinicalNotes deleted** (the mock notes STORE stays — it still
+  feeds the demo timeline's `note` category).
+
+**Verification (PRODUCTION build — the whole point).** The
+production-flavor appliance was stood up for real: fresh Postgres,
+`APP_ENV=production` — walking the tripwire chain exactly as a hospital
+would (T2 refused in turn on missing CORS_ORIGINS, on a LOOPBACK
+origin, and on the missing FORMULARY_SEED install decision — all three
+refusals observed working); production seed = reference data +
+bootstrap `admin` only; staff provisioned through Layer 3 with forced
+first-login changes (Consultant, Staff Nurse, Hospital Administrator,
+Pharmacist); the pharmacist REACTIVATED ceftriaxone (starter formulary
+ships deactivated — observed working); one real admission with charted
+observations, a signed order (the penicillin cross-reactivity WARN
+required the audited overrideJustification — observed working) and a
+real SBAR entry. **Rendered 36/36 (real Chromium against that build):**
+every screen except Mission Control free of the overlay; Doctor
+Workspace/Bed Overview/Orders/Labs/Timeline/Nurse Workspace render
+REAL bodies (rounding list, bed grid, order, timeline event, worklist,
+MAR row, SBAR entry) with the explicit not-yet cards where the domain
+is absent; the no-source KPIs verifiably ABSENT (not dashed); the I&O
+write refused by visible toast ("I&O NOT recorded — …"); AdminHome and
+/admin/users render (honest not-yet dashboard / real user admin);
+Mission Control still refuses via the overlay — deliberate until PR 2.
+**Staging spot-check 5/5:** demo consults/queues/unit-summary still
+serve, zero not-yet notes, Mission Control renders — non-production
+behavior untouched. `tsc` + staging and production `vite build` clean;
+the production bundle verifiably free of the mock stores and carrying
+the not-yet copy (bundle grep).
+
+**Two defects found and fixed by this verification (both would have
+shipped otherwise):**
+- **The "caught up" trap:** the Doctor Workspace queue rendered
+  "Nothing pending — you're caught up." for an ABSENT notes domain
+  (count 0 won before the not-yet branch) — precisely the false
+  "nothing to do" the owner's condition 2 forbids. The not-yet branch
+  now precedes the empty-queue branch, and the Notes-Due KPI tile is
+  dropped (not dashed) when the domain is absent.
+- **The DIRECT-LOAD overlay race (pre-existing, latent since the
+  overlay's design):** on a direct page load of a refusing route, React
+  runs the route's effects BEFORE EnvironmentGate's effect attaches its
+  listener — `apiUnavailable()`'s event fired into nothing and Mission
+  Control rendered a half-broken dashed chart instead of refusing.
+  Reproduced empirically (overlay absent on direct load; manual event
+  dispatch flipped it — the listener itself was fine). Fixed with a
+  module-level LATCH the gate also reads on mount; the refusal now
+  holds regardless of effect order, proven in the 36/36 pass.
+
 ### SBAR handoff persistence — the append-only series (a Stage-11 mock closure; a data-loss fix)
 
 **Report (verify-first, delivered before any design talk):** the SBAR
@@ -5199,7 +5325,13 @@ rendered browser against the first production build ever booted:
   (`patient detail` — the Stage-11 bedside composite is fetched for
   header context everywhere), Doctor Workspace (`action queues`,
   `consults`, `workspace order sets`), Nurse Workspace (`nursing
-  tasks`, `I&O entries` + both write paths).
+  tasks`, `I&O entries` + both write paths). *[Superseded in part
+  2026-07-18 by Phase 3 PR 1 ("stop the bleeding", below): only
+  Mission Control still refuses (deliberate until PR 2); every other
+  screen either serves real data or renders the explicit "not yet
+  available" state. The PR-1 audit also corrected one claim here: the
+  composite was header-context on THREE of the four screens — Mission
+  Control consumes it as its entire body.]*
 - **The complete Stage-11-scope refusal list** (each rejects
   unconditionally in a production bundle, healthy API or not): unit
   summary · patient detail (bedside composite: monitor vitals, organ

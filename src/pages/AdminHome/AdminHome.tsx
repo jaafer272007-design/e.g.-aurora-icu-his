@@ -9,6 +9,7 @@ import { VitalTile } from '../../components/VitalTile'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAdmit, IconBed, IconDischarge, IconStats, IconUsers } from '../../components/icons'
 import { getBeds, getUnitSummary } from '../../lib/api'
+import { NotYetAvailable } from '../../components/NotYetAvailable'
 import type { BedsResponse, UnitSummaryResponse } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 
@@ -21,7 +22,9 @@ export function AdminHome() {
   const { toast } = useToast()
   const session = getSession()!
   const [beds, setBeds] = useState<BedsResponse | null>(null)
-  const [summary, setSummary] = useState<UnitSummaryResponse | null>(null)
+  /* undefined = loading · null = the unit-summary domain does not exist
+     yet (production honest-empty, Phase 3 PR 1 — real in PR 3) */
+  const [summary, setSummary] = useState<UnitSummaryResponse | null | undefined>(undefined)
 
   useEffect(() => {
     getBeds().then(setBeds)
@@ -97,6 +100,7 @@ export function AdminHome() {
             </Card>
 
             <Card icon={<IconStats size={15} stroke="var(--cyan)" />} title="Unit Performance" aside="rolling · demo data">
+              {summary === null && <NotYetAvailable what="Unit performance statistics" />}
               <div className="adstats">
                 {summary?.stats.map(s => (
                   <div className="adstat" key={s.label}>
@@ -111,15 +115,20 @@ export function AdminHome() {
             <Card
               icon={<IconAdmit size={15} stroke="var(--amber)" />}
               title="Operations Today"
-              aside={summary ? `${summary.pendingConsults} consults pending` : '—'}
+              aside={summary ? `${summary.pendingConsults} consults pending` : undefined}
             >
-              <div className="adops">
-                <div className="adop"><span>Admissions in progress</span><b className="num">{summary?.admissionsInProgress ?? '—'}</b></div>
-                <div className="adop"><span>Discharges planned</span><b className="num">{summary?.dischargesPlanned ?? '—'}</b></div>
-                <div className="adop"><span>Pending consults</span><b className="num">{summary?.pendingConsults ?? '—'}</b></div>
-                <div className="adop"><span>High-priority alerts</span><b className="num" style={{ color: 'var(--red)' }}>{summary?.highPriorityAlerts.length ?? '—'}</b></div>
-              </div>
-              <h3 className="adalerthead">High-Priority Unit Alerts</h3>
+              {/* domain absent → the rows are DROPPED, not dashed (owner's
+                  decision (b)) and the card says why */}
+              {summary === null && <NotYetAvailable what="Operations counters and the unit alert feed" />}
+              {summary !== null && (
+                <div className="adops">
+                  <div className="adop"><span>Admissions in progress</span><b className="num">{summary?.admissionsInProgress ?? '—'}</b></div>
+                  <div className="adop"><span>Discharges planned</span><b className="num">{summary?.dischargesPlanned ?? '—'}</b></div>
+                  <div className="adop"><span>Pending consults</span><b className="num">{summary?.pendingConsults ?? '—'}</b></div>
+                  <div className="adop"><span>High-priority alerts</span><b className="num" style={{ color: 'var(--red)' }}>{summary?.highPriorityAlerts.length ?? '—'}</b></div>
+                </div>
+              )}
+              {summary !== null && <h3 className="adalerthead">High-Priority Unit Alerts</h3>}
               <div>
                 {summary?.highPriorityAlerts.slice(0, 4).map(a => (
                   <AlertRow key={a.message} variant="compact" severity={a.severity} text={a.message} time={a.time} />

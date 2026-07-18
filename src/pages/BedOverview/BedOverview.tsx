@@ -9,6 +9,7 @@ import { VitalTile } from '../../components/VitalTile'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconBed, IconSearch, IconVent } from '../../components/icons'
 import { getBeds, getUnassignedPatients, getUnitSummary } from '../../lib/api'
+import { NotYetAvailable } from '../../components/NotYetAvailable'
 import type { Bed, BedsResponse, UnassignedPatient, UnitSummaryResponse } from '../../lib/api/types'
 import { BedCard } from './BedCard'
 
@@ -42,7 +43,9 @@ export function BedOverview() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const [data, setData] = useState<BedsResponse | null>(null)
-  const [summary, setSummary] = useState<UnitSummaryResponse | null>(null)
+  /* undefined = loading · null = the unit-summary domain does not exist
+     yet (production honest-empty, Phase 3 PR 1 — real in PR 3) */
+  const [summary, setSummary] = useState<UnitSummaryResponse | null | undefined>(undefined)
   const [filters, setFilters] = useState<Filters>({ q: '', doc: '', area: '', vent: false, iso: false, crit: false })
   const [ringOffset, setRingOffset] = useState(RING_CIRC)
 
@@ -165,6 +168,7 @@ export function BedOverview() {
           </div>
 
           <div className="bottom">
+            {summary === null && <NotYetAvailable what="Unit KPI statistics" />}
             {summary?.stats.map(s => (
               <div className="bs" key={s.label}>
                 <div><div className="v">{s.value}</div><div className="k">{s.label}</div></div>
@@ -201,12 +205,16 @@ export function BedOverview() {
           <div className="rtiles">
             <VitalTile variant="rt" label="Avg MAP" value={stats ? stats.map : '—'} unit=" mmHg" />
             <VitalTile variant="rt" label="Avg ICU Stay" value={stats ? stats.los : '—'} unit=" days" />
-            <VitalTile variant="rt" label="Admissions" value={summary ? summary.admissionsInProgress : '—'} unit=" in progress" />
-            <VitalTile variant="rt" label="Discharges" value={summary ? summary.dischargesPlanned : '—'} unit=" planned" />
-            <VitalTile variant="rt" label="Pending Consults" value={summary ? summary.pendingConsults : '—'} />
-            <VitalTile variant="rt" label="High Priority" value={summary ? critAlerts : '—'} valueStyle={{ color: 'var(--red)' }} />
+            {/* no-source KPIs are DROPPED when the domain is absent, not
+                dashed — a dash implies zero/loading, which soft-fabricates
+                (owner's decision (b)) */}
+            {summary !== null && <VitalTile variant="rt" label="Admissions" value={summary ? summary.admissionsInProgress : '—'} unit=" in progress" />}
+            {summary !== null && <VitalTile variant="rt" label="Discharges" value={summary ? summary.dischargesPlanned : '—'} unit=" planned" />}
+            {summary !== null && <VitalTile variant="rt" label="Pending Consults" value={summary ? summary.pendingConsults : '—'} />}
+            {summary !== null && <VitalTile variant="rt" label="High Priority" value={summary ? critAlerts : '—'} valueStyle={{ color: 'var(--red)' }} />}
           </div>
           <h3 className="rphead">High Priority Alerts</h3>
+          {summary === null && <NotYetAvailable what="The unit alert feed" />}
           <div>
             {summary?.highPriorityAlerts.map(a => (
               <AlertRow key={a.message} variant="compact" severity={a.severity} text={a.message} time={a.time} />

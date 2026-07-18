@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import './EnvironmentChrome.css'
 import { APP_ENV } from '../lib/env'
-import { apiHealthUrl } from '../lib/api'
+import { apiHealthUrl, apiUnavailableLatch } from '../lib/api'
 
 /* ==================== §11 step 3 — environment chrome ====================
    The frontend-side analogues of the server's boot tripwires: a
@@ -43,6 +43,13 @@ export function EnvironmentGate({ children }: { children: ReactNode }) {
     const onUnavailable = (e: Event) =>
       setState(s => (s.kind === 'ok' ? { kind: 'api-unavailable', what: String((e as CustomEvent).detail ?? '') } : s))
     window.addEventListener('aurora:api-unavailable', onUnavailable)
+    /* the DIRECT-LOAD race (found by PR 1's production verification): on
+       first load of a refusing route, the route's effects run before
+       this one, so the event can pre-date the listener — the latch
+       carries the refusal across that gap */
+    const latched = apiUnavailableLatch()
+    if (latched !== null)
+      setState(s => (s.kind === 'ok' ? { kind: 'api-unavailable', what: latched } : s))
 
     const url = apiHealthUrl()
     if (url !== null) {

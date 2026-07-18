@@ -4,6 +4,7 @@ import './DoctorWorkspace.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Card } from '../../components/Card'
+import { NotYetAvailable } from '../../components/NotYetAvailable'
 import { BedChip, TagList } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconFlask, IconNote, IconPencil, IconUsers } from '../../components/icons'
@@ -52,8 +53,10 @@ export function DoctorWorkspace() {
      canonical results store (Screen 6). Only "notes" remains workspace-local. */
   const [pendingOrders, setPendingOrders] = useState<(Order & { leaving?: boolean })[] | null>(null)
   const [results, setResults] = useState<(ResultInboxItem & { leaving?: boolean })[] | null>(null)
-  const [queues, setQueues] = useState<Record<'notes', QueueRow[]> | null>(null)
-  const [consults, setConsults] = useState<Consult[] | null>(null)
+  /* undefined = loading · null = NOT A DOMAIN YET (production honest-empty,
+     Phase 3 PR 1) · value = data */
+  const [queues, setQueues] = useState<Record<'notes', QueueRow[]> | null | undefined>(undefined)
+  const [consults, setConsults] = useState<Consult[] | null | undefined>(undefined)
   const [qtab, setQtab] = useState<QueueKey>('orders')
 
   useEffect(() => {
@@ -64,7 +67,7 @@ export function DoctorWorkspace() {
     getPendingOrders().then(setPendingOrders)
     getResultInbox().then(setResults)
     getActionQueues().then(q =>
-      setQueues({ notes: q.notes.map(i => ({ ...i, leaving: false })) }))
+      setQueues(q ? { notes: q.notes.map(i => ({ ...i, leaving: false })) } : null))
     getConsults().then(setConsults)
   }, [])
 
@@ -105,7 +108,9 @@ export function DoctorWorkspace() {
     { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: rounding ? rounding.patients.length : '—', label: 'My Patients' },
     { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: pendingOrders ? queueCount('orders') : '—', label: 'Orders to Sign' },
     { icon: <IconFlask size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)', value: results ? queueCount('results') : '—', label: 'Results to Ack.' },
-    { icon: <IconNote size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: queues ? queueCount('notes') : '—', label: 'Notes Due' },
+    /* the notes DOMAIN may not exist (production, Phase 3 PR 1) — a
+       concept with no domain doesn't render a KPI at all (decision (b)) */
+    ...(queues === null ? [] : [{ icon: <IconNote size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: queues ? queueCount('notes') : '—', label: 'Notes Due' } as KpiSpec]),
   ]
 
   return (
@@ -168,10 +173,13 @@ export function DoctorWorkspace() {
 
             <Card
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>}
-              title="Incoming Consults" aside={consults ? `${consults.length} pending` : '—'}
+              title="Incoming Consults" aside={consults ? `${consults.length} pending` : undefined}
             >
               {/* shared consult store (patient linkage structured, not free text) —
-                  the Timeline reads the same records */}
+                  the Timeline reads the same records. NULL = consults are
+                  not a domain yet — say so, never render a blank that
+                  reads as "no consults" (owner's condition 2). */}
+              {consults === null && <NotYetAvailable what="Consults" />}
               <div>
                 {consults?.map(c => (
                   <div className="consult" key={c.consultId}>
@@ -193,7 +201,13 @@ export function DoctorWorkspace() {
                 ))}
               </div>
               <div className="qlist" role="tabpanel">
-                {queueCount(qtab) === 0 ? (
+                {/* order matters: an ABSENT notes domain must never fall
+                    into the "caught up" empty — "nothing to do" is a
+                    clinical claim; "not a domain yet" is not (owner's
+                    condition 2) */}
+                {qtab === 'notes' && queues === null ? (
+                  <NotYetAvailable what="The clinical-notes queue" />
+                ) : queueCount(qtab) === 0 ? (
                   <div className="qempty">Nothing pending — you're caught up.</div>
                 ) : qtab === 'orders' ? (
                   (pendingOrders ?? []).map(o => (

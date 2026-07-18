@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Card } from '../../components/Card'
+import { NotYetAvailable } from '../../components/NotYetAvailable'
 import { VitalTile } from '../../components/VitalTile'
 import { IO_CATEGORIES } from '../../lib/api'
 import type { AssignedPatient, IoEntry, IoKind } from '../../lib/api/types'
 
 interface IoCardProps {
-  entries: IoEntry[]
+  /** null = the I&O worksheet is NOT a domain yet (production
+   *  honest-empty, Phase 3 PR 1) — totals say so; the entry form stays
+   *  so an attempted write is VISIBLY refused (toast), never silent */
+  entries: IoEntry[] | null
   patients: AssignedPatient[]
   onRecord: (patientId: string, kind: IoKind, category: string, volumeMl: number) => void
 }
@@ -19,7 +23,7 @@ export function IoCard({ entries, patients, onRecord }: IoCardProps) {
 
   const pid = patientId || patients[0]?.patientId
   const totals = (id: string) => {
-    const mine = entries.filter(e => e.patientId === id)
+    const mine = (entries ?? []).filter(e => e.patientId === id)
     const intake = mine.filter(e => e.kind === 'intake').reduce((s, e) => s + e.volumeMl, 0)
     const output = mine.filter(e => e.kind === 'output').reduce((s, e) => s + e.volumeMl, 0)
     return { intake, output, balance: intake - output }
@@ -43,7 +47,8 @@ export function IoCard({ entries, patients, onRecord }: IoCardProps) {
       title="Intake & Output"
       aside="shift totals · quick entry"
     >
-      {patients.map(p => {
+      {entries === null && <NotYetAvailable what="The I&O worksheet" />}
+      {entries !== null && patients.map(p => {
         const t = totals(p.patientId)
         return (
           <div className="iorow" key={p.patientId}>

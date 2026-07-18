@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
@@ -22,7 +22,6 @@ import { ACTION_QUEUES, ORDER_SETS } from './data/workspace'
 import { IO_ENTRIES, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
 import { ASSIGNMENTS, applyAssignmentEnd, insertAssignment } from './data/assignments'
 import { allConsults } from './data/consults'
-import { notesFor } from './data/notes'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
 import { LAB_CATALOG } from './data/catalog'
@@ -58,7 +57,16 @@ const respond = <T>(payload: T, latencyMs: number): Promise<T> =>
    nursing tasks/IO, consults, notes, mission-control composite) refuse
    the same way in production until they become real. */
 export class ApiUnavailableError extends Error {}
+/* the LATCH (found by PR 1's production verification): on a DIRECT page
+   load of a refusing route, React runs the route's effects BEFORE the
+   parent EnvironmentGate's effect attaches its listener — the event
+   fired into nothing and the screen rendered half-broken instead of
+   refusing. The gate now also reads this latch on mount, so the refusal
+   holds regardless of who ran first. */
+let apiUnavailableLatched: string | null = null
+export function apiUnavailableLatch(): string | null { return apiUnavailableLatched }
 function apiUnavailable(what: string): ApiUnavailableError {
+  apiUnavailableLatched = what
   window.dispatchEvent(new CustomEvent('aurora:api-unavailable', { detail: what }))
   return new ApiUnavailableError(`${what}: the AURORA API is unavailable — clinical data cannot be served`)
 }
@@ -77,10 +85,23 @@ export async function getBeds(): Promise<BedsResponse> {
   throw apiUnavailable('bed board')
 }
 
-/** GET /api/icu/units/4B/summary — occupancy ring, KPI strip, unit alerts. */
-export function getUnitSummary(): Promise<UnitSummaryResponse> {
+/* ==================== Phase 3 PR 1 — HONEST-EMPTY DEGRADATION ====================
+   Owner's decision (2026-07-18): domains that DO NOT EXIST yet resolve
+   `null` in production instead of throwing the full-screen overlay —
+   `null` means "not a domain in this version" and the UI says exactly
+   that ("not yet available"), NEVER a blank that could read as clinical
+   absence. This is consistent with never-fabricate: the previous mock
+   payloads were the fabrication; an explicit not-yet state invents
+   nothing. apiUnavailable() remains reserved for a REAL domain whose
+   server is unreachable. Demo data still serves outside production. */
+
+/** GET /api/icu/units/4B/summary — occupancy ring, KPI strip, unit alerts.
+ *  NULL in production: no unit-summary domain exists yet (real in
+ *  Phase 3 PR 3) — Bed Overview's summary region and Admin Home render
+ *  the honest not-yet state instead of taking the whole app down. */
+export function getUnitSummary(): Promise<UnitSummaryResponse | null> {
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(UNIT_SUMMARY, 120)
-  return Promise.reject(apiUnavailable('unit summary (Stage 11 scope)'))
+  return Promise.resolve(null)
 }
 
 /* ---------------- Stage 10 Phase 1 — REAL roster endpoint ----------------
@@ -422,10 +443,28 @@ const rosterToPatient = (r: RosterRecordDto): Patient => ({
   organs: r.organs,
 })
 
+/** IDENTITY-ONLY patient read (Phase 3 PR 1 — the composite split): the
+ *  real roster record mapped to `Patient`, nothing else. Orders & Meds,
+ *  Timeline and Labs & Imaging need ONLY this for their PatientBar
+ *  header + not-found guard — their bodies are already real — so they
+ *  no longer pull the Stage-11 composite (whose panels kept all three
+ *  production-blocked). Null = not on the active roster (the existing
+ *  not-found card); a truly unreachable server still refuses loudly
+ *  via getRosterRecord's own production path. */
+export async function getRosterPatient(patientId: string): Promise<Patient | null> {
+  const rec = await getRosterRecord(patientId)
+  if (rec) return rosterToPatient(rec)
+  if (import.meta.env.VITE_APP_ENV !== 'production')
+    return allPatients().find(p => p.patientId === patientId) ?? null
+  return null
+}
+
 export function getPatientDetail(patientId: string): Promise<PatientDetailResponse | null> {
   /* the composite's PANELS are still mock-composed (Stage 11 absorbs the
-     bedside snapshot) — in production this screen refuses until the
-     domain is real; the identity fix below is the dev/staging path */
+     bedside snapshot) — in production MISSION CONTROL (the composite's
+     only remaining consumer after the PR-1 split) refuses until the
+     domain is real (Phase 3 PR 2); the identity fix below is the
+     dev/staging path */
   if (import.meta.env.VITE_APP_ENV === 'production') return Promise.reject(apiUnavailable('patient detail (Stage 11 scope)'))
   return getPatientDetailMock(patientId)
 }
@@ -631,23 +670,32 @@ export async function getUnassignedPatients(): Promise<{ nurse: UnassignedPatien
   }
 }
 
-/** GET /api/icu/worklist/queues — notes due (orders/results queues are derived views). */
-export function getActionQueues(): Promise<ActionQueuesResponse> {
+/** GET /api/icu/worklist/queues — notes due (orders/results queues are
+ *  derived views). NULL in production: clinical notes are not a domain
+ *  yet — the notes tab says so (honest-empty rule above). */
+export function getActionQueues(): Promise<ActionQueuesResponse | null> {
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(ACTION_QUEUES, 120)
-  return Promise.reject(apiUnavailable('action queues (Stage 11 scope)'))
+  return Promise.resolve(null)
 }
 
 /** GET /api/icu/consults — incoming consults (shared store; the Timeline
- *  reads the same records per patient). */
-export function getConsults(): Promise<Consult[]> {
+ *  reads the same records per patient). NULL in production: consults are
+ *  not a domain yet — the card says so (honest-empty rule above). */
+export function getConsults(): Promise<Consult[] | null> {
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(allConsults(), 120)
-  return Promise.reject(apiUnavailable('consults (Stage 11 scope)'))
+  return Promise.resolve(null)
 }
 
-/** GET /api/icu/order-sets — quick order sets by order type. */
-export function getOrderSets(): Promise<OrderSetsResponse> {
+/** GET /api/icu/order-sets — quick order sets by order type (the imaging
+ *  STUDY VOCABULARY consumed by the imaging order card — distinct from
+ *  the real Layer-4 order-set definitions). NULL in production: the
+ *  vocabulary has no master-data home yet — the imaging card says so
+ *  rather than offering a fabricated study list (flagged follow-up:
+ *  this vocabulary belongs in Layer-4 master data, which would restore
+ *  production imaging ordering). */
+export function getOrderSets(): Promise<OrderSetsResponse | null> {
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(ORDER_SETS, 120)
-  return Promise.reject(apiUnavailable('workspace order sets (Stage 11 scope)'))
+  return Promise.resolve(null)
 }
 
 /* ---------------- Nursing domain (Screen 4) ----------------
@@ -692,33 +740,47 @@ export function writeHandoff(
   return usersWrite<HandoffEntry>('/api/icu/nursing/handoff', 'handoff entry', { patientId, ...note })
 }
 
-/** GET /api/icu/nursing/tasks — time-driven nursing task checklist. */
-export function getNursingTasks(): Promise<NursingTask[]> {
+/** GET /api/icu/nursing/tasks — time-driven nursing task checklist.
+ *  NULL in production: nursing tasks are not a domain yet — the card
+ *  says so (honest-empty rule above). */
+export function getNursingTasks(): Promise<NursingTask[] | null> {
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(NURSING_TASKS, 120)
-  return Promise.reject(apiUnavailable('nursing tasks (Stage 11 scope)'))
+  return Promise.resolve(null)
 }
 
-/** GET /api/icu/nursing/io — intake/output entries recorded this shift. */
-export function getIoEntries(): Promise<IoEntry[]> {
+/** GET /api/icu/nursing/io — intake/output entries recorded this shift.
+ *  NULL in production: the I&O worksheet is not a domain yet — the card
+ *  says so (honest-empty rule above; the observation fluid-balance group
+ *  is the real charting path meanwhile). */
+export function getIoEntries(): Promise<IoEntry[] | null> {
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(IO_ENTRIES, 120)
-  return Promise.reject(apiUnavailable('I&O entries (Stage 11 scope)'))
+  return Promise.resolve(null)
 }
 
 /** POST /api/icu/nursing/tasks/:taskId/toggle — document (or undo) a task
  *  completion in the store, so derived views (Timeline) see it.
- *  Requires notes.document (enforced here in the service layer). */
+ *  Requires notes.document (enforced here in the service layer).
+ *  PRODUCTION: REJECTS with a plain error the caller toasts — the SBAR
+ *  lesson: a write that appears to work but stores nothing is a
+ *  data-loss bug; the nurse must SEE that it did not record. A plain
+ *  Error, deliberately NOT apiUnavailable() — a rejected action, never
+ *  the full-screen overlay. (Unreachable from the production UI — the
+ *  tasks card shows no rows — kept as defense in depth.) */
 export function toggleNursingTask(taskId: string, actor: string, jobTitle: JobTitle): Promise<NursingTask | null> {
   if (!hasPermission(jobTitle, 'notes.document')) return respond(null, 120)
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyTaskToggle(taskId, actor, nowHm()), 120)
-  return Promise.reject(apiUnavailable('nursing task documentation (Stage 11 scope)'))
+  return Promise.reject(new Error('nursing task documentation is not yet available in this version'))
 }
 
 /** POST /api/icu/nursing/io — record an intake/output entry in the store.
- *  Requires notes.document; null when the profile lacks it. */
+ *  Requires notes.document; null when the profile lacks it.
+ *  PRODUCTION: REJECTS with a plain error the caller toasts (same SBAR
+ *  lesson as toggleNursingTask above — visibly refused, never silently
+ *  dropped, never the overlay). */
 export function recordIoEntry(draft: NewIoEntry, jobTitle: JobTitle): Promise<IoEntry | null> {
   if (!hasPermission(jobTitle, 'notes.document')) return respond(null, 120)
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(insertIoEntry(draft, nowHm()), 120)
-  return Promise.reject(apiUnavailable('I&O documentation (Stage 11 scope)'))
+  return Promise.reject(new Error('I&O documentation is not yet available in this version'))
 }
 
 /* ---------------- Orders & Medication domain (Screen 5) ----------------
@@ -1194,11 +1256,10 @@ export async function getTimeline(patientId: string): Promise<TimelineEvent[]> {
   return respond([...real].sort((a, b) => timestampMinutes(b.time) - timestampMinutes(a.time)), 0)
 }
 
-/** GET /api/icu/patients/:patientId/notes — freeform clinical notes. */
-export function getClinicalNotes(patientId: string): Promise<ClinicalNote[]> {
-  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(notesFor(patientId), 120)
-  return Promise.reject(apiUnavailable('clinical notes (Stage 11 scope)'))
-}
+/* getClinicalNotes is RETIRED (Phase 3 PR 1, owner's decision (c)): a
+   dead export — no screen ever called it. Clinical notes remain a
+   future domain; the mock notes STORE (data/notes.ts) still feeds the
+   demo timeline's `note` category via deriveTimeline. */
 
 /* ---------------- AI Assistant — grounded query chat ----------------
    THE SIMULATED RISK DOMAIN IS DELETED (remove, don't label): the seeded

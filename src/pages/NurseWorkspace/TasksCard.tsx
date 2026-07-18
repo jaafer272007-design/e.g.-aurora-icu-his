@@ -1,11 +1,15 @@
 import { Card } from '../../components/Card'
+import { NotYetAvailable } from '../../components/NotYetAvailable'
 import { BedChip } from '../../components/Tag'
 import { IconCheck } from '../../components/icons'
 import { dueStateFor, useNow } from '../../lib/time'
 import type { NursingTask } from '../../lib/api/types'
 
 interface TasksCardProps {
-  tasks: NursingTask[]
+  /** null = nursing tasks are NOT a domain yet (production honest-empty,
+   *  Phase 3 PR 1) — the card says so, never a blank checklist that
+   *  reads as "nothing to do" */
+  tasks: NursingTask[] | null
   onToggle: (taskId: string) => void
 }
 
@@ -13,6 +17,13 @@ interface TasksCardProps {
  *  are re-evaluated against the clock every 30 s (real-time-ready, rule 8). */
 export function TasksCard({ tasks, onToggle }: TasksCardProps) {
   const now = useNow()
+  if (tasks === null) {
+    return (
+      <Card icon={<IconCheck size={15} stroke="var(--green)" strokeWidth={2} />} title="Nursing Tasks">
+        <NotYetAvailable what="The nursing task checklist" />
+      </Card>
+    )
+  }
   const open = tasks.filter(t => !t.done).length
   const sorted = [...tasks].sort((a, b) => a.dueTime.localeCompare(b.dueTime))
   return (
