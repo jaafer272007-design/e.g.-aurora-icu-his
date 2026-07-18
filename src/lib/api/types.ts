@@ -214,10 +214,16 @@ export interface Hemodynamics {
 export interface Infusion {
   name: string
   dose: string
-  rate: string
-  status: 'hi' | 'md' | 'ok'
+  /** ordered route — present on rows derived from REAL orders (PR 2) */
+  route?: string
+  /** PUMP-SOURCED fields — absent on rows derived from real orders: the
+   *  live rate, the trend samples and the status judgement have no
+   *  source without a device feed (Device Adapter scope), and facts are
+   *  never invented. Present only on the demo fixture rows. */
+  rate?: string
+  status?: 'hi' | 'md' | 'ok'
   /** last 7 rate samples */
-  trend: number[]
+  trend?: number[]
 }
 
 export interface LabSeries {
@@ -289,8 +295,11 @@ export interface PatientDetailResponse {
   hemodynamics: Hemodynamics
   infusions: Infusion[]
   labs: Labs
-  alerts: PatientAlert[]
-  goals: Goal[]
+  /** NULL = the per-patient alerts domain does not exist in this
+   *  version (production, Phase 3 PR 2) — the card says so */
+  alerts: PatientAlert[] | null
+  /** NULL = the care-plan domain does not exist in this version */
+  goals: Goal[] | null
   timeline: TimelineEvent[]
 }
 

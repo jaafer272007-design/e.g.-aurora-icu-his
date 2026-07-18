@@ -6,7 +6,7 @@
 
 import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
-  DocumentImagingDraft, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
+  DocumentImagingDraft, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
@@ -459,51 +459,123 @@ export async function getRosterPatient(patientId: string): Promise<Patient | nul
   return null
 }
 
-export function getPatientDetail(patientId: string): Promise<PatientDetailResponse | null> {
-  /* the composite's PANELS are still mock-composed (Stage 11 absorbs the
-     bedside snapshot) — in production MISSION CONTROL (the composite's
-     only remaining consumer after the PR-1 split) refuses until the
-     domain is real (Phase 3 PR 2); the identity fix below is the
-     dev/staging path */
-  if (import.meta.env.VITE_APP_ENV === 'production') return Promise.reject(apiUnavailable('patient detail (Stage 11 scope)'))
-  return getPatientDetailMock(patientId)
-}
-
-async function getPatientDetailMock(patientId: string): Promise<PatientDetailResponse | null> {
-  /* IDENTITY comes from the REAL roster first (the system of record for
-     who is admitted where) and only falls back to the mock store when
-     the live roster is unreachable or doesn't know the id (pure-mock
-     dev, or a seeded-only mock session). The per-patient derived views
-     below legitimately resolve EMPTY for a fresh admission — the mock
-     ai/results stores have no entry for it — which renders as "no data",
-     never as "no patient". */
+/* ---------------- Phase 3 PR 2 — the composite made REAL ----------------
+   Mission Control (the composite\'s only consumer since the PR-1 split)
+   no longer refuses in production: every panel now composes from reads
+   that are already real —
+   - identity: the real roster record (unchanged);
+   - ventilator/hemodynamics: the real Observations projection (§12
+     step 4, unchanged — confirmed, not rebuilt);
+   - labs trend card: RE-DERIVED client-side over the REAL
+     GET /api/icu/results/labs draws (deriveLabsFromDraws below) —
+     the same values the Labs & Imaging screen shows;
+   - timeline card: the REAL GET /api/icu/timeline feed (getTimeline\'s
+     own env rules), last ~24 h capped at 20 — the same events the
+     Timeline screen shows;
+   - infusions: derived from REAL active structured-infusion orders
+     (drug/dose/route real; the 7-point RATE TREND has NO source — a
+     pump/device feed is Device Adapter scope — so no sparkline is
+     rendered, honestly, and no fabricated rate/status appears);
+   - alerts/goals: NO domain exists (per-patient alert rules, care
+     plans) — NULL in production, the not-yet card renders (PR-1 rule);
+     demo lists still serve outside production.
+   Mock fallbacks remain non-production-only, per part. */
+export async function getPatientDetail(patientId: string): Promise<PatientDetailResponse | null> {
   const roster = await fetchRosterRecords()
-  const real = roster?.find(r => r.patientId === patientId)
-  const patient = real ? rosterToPatient(real)
-    : allPatients().find(p => p.patientId === patientId)
+  const realRec = roster?.find(r => r.patientId === patientId)
+  const patient = realRec ? rosterToPatient(realRec)
+    : import.meta.env.VITE_APP_ENV !== 'production'
+      ? allPatients().find(p => p.patientId === patientId)
+      : undefined
+  if (roster === null && import.meta.env.VITE_APP_ENV === 'production') throw apiUnavailable('roster')
   if (!patient) return respond(null, 120)
-  /* §12 step 4 — the read-swap: the ventilator/hemodynamics panels project
-     from the REAL Observations read (latest charted per type, real-or-'—');
-     the simulated panels.ts data for them is gone. In a pure-mock offline
-     session the read resolves null → the panels render honestly blank. */
   const obs = (await getObservations(patientId).catch(() => null)) ?? []
   const latest = latestObservations(obs)
+  /* the three real feeds load together; each keeps its own env-aware
+     fallback semantics */
+  const [draws, timelineFeed, orders] = await Promise.all([
+    getLabDraws(patientId).catch(() => null),
+    getTimeline(patientId).catch(() => [] as TimelineEvent[]),
+    /* orders feed the PRODUCTION infusion derivation only — outside
+       production the card keeps the demo PUMP fixture verbatim (rates,
+       trends, status dots: the device-feed preview the demo has always
+       shown; deriving from orders there would silently change staging) */
+    import.meta.env.VITE_APP_ENV === 'production'
+      ? getPatientOrders(patientId).catch(() => null)
+      : Promise.resolve(null),
+  ])
+  const labs = draws !== null
+    ? deriveLabsFromDraws(draws)
+    : import.meta.env.VITE_APP_ENV !== 'production'
+      ? deriveMissionControlLabs(patientId)
+      : { drawTimes: [], panels: [] }
+  const infusions = import.meta.env.VITE_APP_ENV === 'production'
+    ? deriveInfusionsFromOrders(orders ?? [])
+    : INFUSIONS
   return respond(
     {
       patient,
       ventilator: projectVentilator(latest),
       hemodynamics: projectHemodynamics(latest, obs),
-      infusions: INFUSIONS,
-      /* lab trends are a derived view over the canonical results store (Screen 6) */
-      labs: deriveMissionControlLabs(patientId),
-      alerts: PATIENT_ALERTS,
-      goals: GOALS,
-      /* the timeline card is a derived view over the aggregated feed
-         (Screen 7) — last ~24 h, capped for the horizontal strip */
-      timeline: deriveTimeline(patientId).filter(e => dayOffsetOf(e.time) >= -1).slice(0, 20),
+      infusions,
+      labs,
+      alerts: import.meta.env.VITE_APP_ENV !== 'production' ? PATIENT_ALERTS : null,
+      goals: import.meta.env.VITE_APP_ENV !== 'production' ? GOALS : null,
+      timeline: timelineFeed.filter(e => dayOffsetOf(e.time) >= -1).slice(0, 20),
     },
     120,
   )
+}
+
+/* the labs trend card re-derived over REAL draws — the same LabDraw rows
+   the Labs & Imaging screen renders, grouped by panel: the LATEST draw\'s
+   items are the results column; numeric analytes present across draws
+   become the trend series (up to 3 per panel, oldest→newest). Values are
+   the wire values verbatim — nothing recomputed, nothing invented. */
+const SERIES_COLORS = ['#4da3ff', '#35e0d0', '#ffb454']
+export function deriveLabsFromDraws(draws: LabDraw[]): Labs {
+  const structured = draws.filter(d => !d.custom)
+  if (structured.length === 0) return { drawTimes: [], panels: [] }
+  const byTime = [...structured].sort((a, b) => timestampMinutes(a.collectedAt) - timestampMinutes(b.collectedAt))
+  const recent = byTime.slice(-6)
+  const drawTimes = recent.map(d => d.collectedAt)
+  const panelNames = [...new Set(recent.map(d => d.panel))]
+  const panels = panelNames.map(name => {
+    const mine = recent.filter(d => d.panel === name)
+    const latestDraw = mine[mine.length - 1]
+    const results = latestDraw.items.map(it => ({
+      analyte: it.analyte,
+      value: `${it.value} ${it.unit}`.trim(),
+      flag: (it.flag === 'critical' ? 'crit2' : it.flag === 'abnormal' ? 'abn' : '') as '' | 'abn' | 'crit2',
+    }))
+    const series = latestDraw.items
+      .map(it => it.analyte)
+      .filter(an => mine.filter(d => d.items.some(i => i.analyte === an)).length >= 2)
+      .slice(0, 3)
+      .map((an, i) => ({
+        label: an,
+        color: SERIES_COLORS[i % SERIES_COLORS.length],
+        points: mine.filter(d => d.items.some(x => x.analyte === an))
+          .map(d => d.items.find(x => x.analyte === an)!.value),
+      }))
+    return { name, series, results }
+  })
+  return { drawTimes, panels }
+}
+
+/* active infusions from REAL orders: active Medication orders carrying
+   the structured infusion dose. dose/route are the ordered facts; rate,
+   trend and the status judgement have NO source without a pump feed, so
+   they are simply ABSENT (the card renders neither a sparkline nor a
+   status dot for them — facts are never invented). */
+export function deriveInfusionsFromOrders(orders: Order[]): Infusion[] {
+  return orders
+    .filter(o => o.category === 'Medication' && o.status === 'active' && o.medication?.infusion)
+    .map(o => ({
+      name: o.medication!.drug,
+      dose: o.medication!.dose,
+      route: o.medication!.route,
+    }))
 }
 
 /* ---------------- Patient Assignment & Responsibility (Aurora Core) ----------------

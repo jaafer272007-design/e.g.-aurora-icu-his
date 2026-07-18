@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './MissionControl.css'
 import { Card } from '../../components/Card'
+import { NotYetAvailable } from '../../components/NotYetAvailable'
 import { Badge } from '../../components/Badge'
 import { BedChip, TagList } from '../../components/Tag'
 import { AlertRow } from '../../components/AlertRow'
@@ -71,6 +72,10 @@ export function MissionControl() {
   const [query, setQuery] = useState('')
   const [alerts, setAlerts] = useState<LiveAlert[]>([])
   const [goals, setGoals] = useState<{ label: string; done: boolean }[]>([])
+  /* false = the domain does not exist in this version (production,
+     Phase 3 PR 2) — the cards render the honest not-yet state */
+  const [alertsAvailable, setAlertsAvailable] = useState(true)
+  const [goalsAvailable, setGoalsAvailable] = useState(true)
   /* §12 step 4: the latest-per-type observation map for the bedside card
      (real read; empty when nothing is charted or the API is unreachable —
      the card then shows demo-tagged fallbacks or honest blanks) */
@@ -142,8 +147,10 @@ export function MissionControl() {
         return
       }
       setDetail(res)
-      setAlerts(res.alerts.map((a, i) => ({ ...a, key: i, leaving: false })))
-      setGoals(res.goals)
+      setAlertsAvailable(res.alerts !== null)
+      setGoalsAvailable(res.goals !== null)
+      setAlerts((res.alerts ?? []).map((a, i) => ({ ...a, key: i, leaving: false })))
+      setGoals(res.goals ?? [])
     })
     return () => { stale = true }
   }, [patientId])
@@ -171,7 +178,11 @@ export function MissionControl() {
     setGoals(prev => prev.map((goal, k) => (k === i ? { ...goal, done: !goal.done } : goal)))
   const goalPct = goals.length ? Math.round((goals.filter(x => x.done).length / goals.length) * 100) : 0
 
-  const runningInfusions = detail ? detail.infusions.filter(m => m.trend[m.trend.length - 1] > 0).length : 0
+  /* "running" is a PUMP fact — computable only on trend-carrying demo
+     rows; real order-derived rows have no trend, so the aside counts
+     ordered channels instead of claiming run states */
+  const infusionsHaveTrends = detail ? detail.infusions.some(m => m.trend) : false
+  const runningInfusions = detail ? detail.infusions.filter(m => m.trend && m.trend[m.trend.length - 1] > 0).length : 0
 
   return (
     <div className="app-frame mc">
@@ -382,16 +393,29 @@ export function MissionControl() {
           {detail && (
             <Card id="meds"
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2" width="10" height="20" rx="4" /><path d="M7 9h10M7 15h10" /></svg>}
-              title="Active Infusions" aside={`${runningInfusions} running · ${detail.infusions.length} channels`}>
+              title="Active Infusions"
+              aside={infusionsHaveTrends
+                ? `${runningInfusions} running · ${detail.infusions.length} channels`
+                : `${detail.infusions.length} active infusion order${detail.infusions.length === 1 ? '' : 's'}`}>
               <div>
+                {detail.infusions.length === 0 && (
+                  /* a REAL empty — the orders domain answered and holds no
+                     active infusion orders; a clinical statement, not a
+                     missing domain */
+                  <p className="mednone">No active infusion orders for this patient.</p>
+                )}
                 {detail.infusions.map(m => {
-                  const running = m.trend[m.trend.length - 1] > 0
+                  const running = m.trend ? m.trend[m.trend.length - 1] > 0 : false
                   return (
                     <div className="medrow" key={m.name}>
-                      <div><div className="mn">{m.name}</div><div className="md">{m.dose}</div></div>
-                      <div className="mr">{m.rate}</div>
-                      <Sparkline data={m.trend} color={running ? 'var(--cyan)' : 'rgba(var(--steel-rgb),.3)'} width={62} height={22} baseline="zero" />
-                      <span className={`mwarn ${m.status}`} title={m.status === 'hi' ? 'High-dose warning' : m.status === 'md' ? 'Review due' : 'Nominal'} />
+                      <div><div className="mn">{m.name}</div><div className="md">{m.dose}{m.route ? ` · ${m.route}` : ''}</div></div>
+                      {/* rate/trend/status are PUMP facts — rendered only
+                          when a source exists (demo fixture); real
+                          order-derived rows show NO sparkline, NO rate,
+                          NO status dot (never fabricated) */}
+                      {m.rate !== undefined && <div className="mr">{m.rate}</div>}
+                      {m.trend && <Sparkline data={m.trend} color={running ? 'var(--cyan)' : 'rgba(var(--steel-rgb),.3)'} width={62} height={22} baseline="zero" />}
+                      {m.status && <span className={`mwarn ${m.status}`} title={m.status === 'hi' ? 'High-dose warning' : m.status === 'md' ? 'Review due' : 'Nominal'} />}
                     </div>
                   )
                 })}
@@ -404,7 +428,13 @@ export function MissionControl() {
           {detail && (
             <Card id="alerts"
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l10 18H2L12 3z" /><path d="M12 10v5m0 3v.01" /></svg>}
-              title="Smart Alerts" aside={`${activeAlerts.length} active`}>
+              title="Smart Alerts" aside={alertsAvailable ? `${activeAlerts.length} active` : undefined}>
+              {/* the per-patient alerts DOMAIN does not exist yet (alert
+                  rules are a future domain; the roster bedAlert and the
+                  unacked-results inbox are the nearest real signals and
+                  are NOT synthesized into a feed here) — say so, never a
+                  blank that reads "no alerts" (the PR-1 rule) */}
+              {!alertsAvailable && <NotYetAvailable what="Per-patient smart alerts" />}
               <div className="alist">
                 {alerts.map(a => (
                   <AlertRow key={a.key} severity={a.severity} text={a.message} time={a.time} leaving={a.leaving} onAck={() => ackAlert(a.key)} />
@@ -414,7 +444,9 @@ export function MissionControl() {
           )}
 
           {detail && (
-            <Card id="goals" icon={<IconCheck size={15} stroke="var(--green)" strokeWidth={2} />} title="Daily Goals · Rounding Checklist" aside="Tap to complete">
+            <Card id="goals" icon={<IconCheck size={15} stroke="var(--green)" strokeWidth={2} />} title="Daily Goals · Rounding Checklist" aside={goalsAvailable ? 'Tap to complete' : undefined}>
+              {!goalsAvailable && <NotYetAvailable what="The care-goals checklist" />}
+              {goalsAvailable && (<>
               <div className="gprog">
                 <div className="gbar"><i style={{ width: `${goalPct}%` }} /></div>
                 <b>{goalPct}%</b>
@@ -427,6 +459,7 @@ export function MissionControl() {
                   </button>
                 ))}
               </div>
+              </>)}
             </Card>
           )}
 
