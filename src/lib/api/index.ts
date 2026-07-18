@@ -6,7 +6,7 @@
 
 import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, ClinicalNote, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
-  DocumentImagingDraft, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
+  DocumentImagingDraft, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
@@ -658,7 +658,9 @@ export function getOrderSets(): Promise<OrderSetsResponse> {
    POST /api/icu/nursing/orders/:orderId/complete
    POST /api/icu/nursing/tasks/:taskId/complete
    POST /api/icu/nursing/io                          { patientId, kind, category, volumeMl }
-   PUT  /api/icu/nursing/handoff/:patientId          { s, b, a, r }              */
+   The SBAR handoff is REAL (see getHandoffEntries/writeHandoff below) —
+   the PUT-per-patient sketch that lived here was Stage-4 scaffolding and
+   is superseded by the append-only, encounter-scoped series. */
 
 /* I&O category vocabulary — re-exported so pages never import a data store
    directly (service-layer rule); becomes master data at Layer 4 */
@@ -666,6 +668,29 @@ export { IO_CATEGORIES } from './logic'
 
 /* getNurseAssignment is RETIRED (Patient Assignment & Responsibility) —
    the nurse worklist derives from REAL assignments: getNurseWorklist(). */
+
+/** GET /api/icu/nursing/handoff — the append-only SBAR series for the
+ *  patient's OPEN encounter (or an explicit encounterId), NEWEST first.
+ *  REAL-ONLY read (the observations pattern): null when the server is
+ *  unreachable — the UI says so honestly; no mock series exists. */
+export async function getHandoffEntries(patientId: string, encounterId?: string): Promise<HandoffEntry[] | null> {
+  const real = await apiGet<HandoffEntry[]>(
+    `/api/icu/nursing/handoff?patientId=${encodeURIComponent(patientId)}`
+    + (encounterId ? `&encounterId=${encodeURIComponent(encounterId)}` : ''), 'handoff')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return null
+  throw apiUnavailable('handoff')
+}
+
+/** POST /api/icu/nursing/handoff — write ONE new immutable SBAR entry
+ *  (append-only: prior entries are never touched). REAL-ONLY write on
+ *  the user's own token; the server gates on handoff.document + an
+ *  ACTIVE nurse assignment and stamps author/role/time itself. */
+export function writeHandoff(
+  patientId: string, note: { s: string; b: string; a: string; r: string },
+): Promise<AdtWriteResult<HandoffEntry>> {
+  return usersWrite<HandoffEntry>('/api/icu/nursing/handoff', 'handoff entry', { patientId, ...note })
+}
 
 /** GET /api/icu/nursing/tasks — time-driven nursing task checklist. */
 export function getNursingTasks(): Promise<NursingTask[]> {

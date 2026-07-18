@@ -269,7 +269,7 @@ PermissionProfile → Permissions (and Dashboard landing view):
 |---|---|---|
 | Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge, observations.record (Stage 11 §4 F1) | /workspace |
 | SeniorDoctor         | everything Doctor has + observations.correct (Stage 11 §8 F2 — tier-2 retrospective correction) + observations.configure (Stage 11 §3 F3 — group enablement). HARD CONSTRAINT (§4): these two NEVER sit on the office Administrator profile | /workspace |
-| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer, observations.record (Stage 11 §4 F1) | /nurse |
+| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer, observations.record (Stage 11 §4 F1), handoff.document *(added 2026-07-18, per the project owner: SBAR handoff entries are nurse-only for now — the doctor handoff is a separate record, not yet designed, and the two must NOT be merged; the write additionally requires an ACTIVE nurse assignment on the open encounter, checked server-side — see the scoped exception under Locked Decisions)* | /nurse |
 | Administrator        | admin.view, patients.view, users.manage | /admin |
 | Pharmacist           | patients.view, orders.view, results.view, formulary.manage, ordersets.manage (Layer 4 — maintain the formulary + author order sets) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
@@ -647,6 +647,21 @@ as ruled write-in areas — never fabricated. Generation metadata (the
   branch that already has an open PR — one screen (or fix-set) per PR.
 - Time-relative states (OVERDUE/DUE for tasks, meds, etc.) are computed
   against the current clock at render time — never stored in data.
+- *[Added 2026-07-18, per the project owner (SBAR handoff persistence):*
+  *a SCOPED EXCEPTION to WORKLIST, NEVER AUTHORITY (the assignments*
+  *record's locked decision 6 in 02). The SBAR handoff write is gated on*
+  *an ACTIVE nurse assignment (primary or secondary) on the patient's*
+  *open encounter — the owner's decision: "Any nurse assigned to the*
+  *patient (Primary or Secondary) may write a handoff entry… the nurse*
+  *actually caring for the patient hands over; Secondary is included*
+  *because handover is exactly when they're covering. Not gated to*
+  *Primary only, not open to every nurse in the unit." The exception is*
+  *deliberately narrow: it applies to `handoff.document` writes ONLY.*
+  *`meds.administer` stays global (the asserted emergency case stands)*
+  *and no OTHER clinical endpoint consults the assignments table. The*
+  *handoff series itself is append-only and immutable — every save is a*
+  *new entry stamped author + active role + dated time; there is no edit*
+  *or delete path; a correction is the next entry.]*
 
 ## Design System (extract into src/styles/tokens.css, reuse everywhere)
 Dark medical theme, glassmorphism, background `#060b13`.

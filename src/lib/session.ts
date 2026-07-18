@@ -85,7 +85,8 @@ export type Permission =
   | 'results.create'       // results audit PR: enter a lab/imaging result (producing service / future LIS)
   | 'results.document'     // Lab Result-Entry: manually document/transcribe a lab result (ICU bedside team)
   | 'results.correct'      // Lab Result Editing: Tier-2 correction of a documented result (Consultant-tier ONLY — never office admin)
-  | 'notes.document'       // nursing tasks, I&O, SBAR handoff
+  | 'notes.document'       // nursing tasks, I&O
+  | 'handoff.document'     // SBAR handoff entry (Nurse ONLY — owner's 2026-07-18 decision; the write additionally requires an ACTIVE nurse assignment, checked server-side)
   | 'identity.correct'     // Structured Patient Name + National ID: audited identity correction (office Administrator — registration work, not clinical data)
   | 'ai.view'
   | 'admin.view'           // administrative landing view
@@ -136,7 +137,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
      from the producing-service results.create (kept on Ancillary). */
   Nurse: [
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
-    'notes.document', 'results.view', 'results.document', 'ai.view', 'adt.transfer',
+    'notes.document', 'handoff.document', 'results.view', 'results.document', 'ai.view', 'adt.transfer',
     'observations.record', 'patients.measure',
   ],
   /* administrative landing view + census-level board + user administration */

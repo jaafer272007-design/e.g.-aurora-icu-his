@@ -1,0 +1,220 @@
+# Deployed Handoff E2E — verifies the SBAR SHIFT HANDOFF live: the
+# append-only, ENCOUNTER-scoped series (owner's 2026-07-18 model) with
+# writes gated to the ASSIGNED nursing team — primary or secondary — on
+# the open encounter (the owner's scoped exception to
+# worklist-never-authority; handoff.document is Nurse-only, so a doctor
+# is 403 even when assigned). Asserted here:
+#   - a fresh admission answers the HONEST EMPTY series ([]), never a
+#     fabricated note
+#   - unauth 401; a DOCTOR's write 403 (nurse-only); an UNASSIGNED
+#     nurse's write 403; the same nurse writes the moment she is
+#     assigned — secondary counts (handover is exactly when they cover)
+#   - validation is loud: all-empty SBAR, oversized field, unknown
+#     patient, unknown body field → 400
+#   - entries stamp author + ACTIVE role + dated server time; a second
+#     nurse READS the first nurse's entry (patients.view)
+#   - append-only structurally: no PUT/PATCH/DELETE surface exists
+#   - discharge closes WRITES (409) while the series stays readable via
+#     the explicit encounterId; the open-encounter read honestly answers
+#     [] once no encounter is open
+#
+# SELF-SUFFICIENT: every mutation targets THIS RUN's admitted patient
+# and THIS RUN's assignments; cleanup discharges the run's encounter in
+# an always() step (failure-path cleanup discipline).
+name: Deployed Handoff E2E
+on: workflow_dispatch
+
+# STRUCTURAL serialization of the deployed suites (the recorded
+# never-dispatch-concurrently lesson): one shared group across all
+# suites means two can never RUN at once.
+concurrency:
+  group: deployed-e2e
+  cancel-in-progress: false
+
+env:
+  API: https://icu-cp49.onrender.com
+  EXPECTED_ENV: staging
+  PAGES_ORIGIN: https://jaafer272007-design.github.io
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objects)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+        run: |
+          for i in $(seq 1 60); do
+            got=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("environment","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            echo "attempt $i: healthz environment=$got · expected=$EXPECTED_ENV"
+            [ "$got" = "$EXPECTED_ENV" ] && exit 0
+            if [ "$got" != "<unreachable>" ] && [ "$got" != "<absent>" ]; then
+              echo "WRONG ENVIRONMENT: this suite writes test data for '$EXPECTED_ENV' but $API/healthz reports '$got' — refusing to run ANY leg." && exit 1
+            fi
+            sleep 10
+          done
+          echo "NO ENVIRONMENT IDENTITY: $API/healthz never reported an environment field — refusing to run." && exit 1
+
+      - name: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+        run: |
+          WANT_SRV=$(git rev-parse "$GITHUB_SHA:server")
+          WANT_YML=$(git rev-parse "$GITHUB_SHA:render.yaml")
+          echo "dispatched ref HEAD: $GITHUB_SHA"
+          echo "expected build context: server tree $WANT_SRV · render.yaml blob $WANT_YML"
+          for i in $(seq 1 60); do
+            build=$(curl -s --max-time 30 "$API/healthz" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("build","<absent>"))' 2>/dev/null || echo "<unreachable>")
+            BS=$(git rev-parse -q --verify "$build:server" 2>/dev/null || echo "<unknown-commit>")
+            BY=$(git rev-parse -q --verify "$build:render.yaml" 2>/dev/null || echo "<unknown-commit>")
+            echo "attempt $i: live build=$build · its server tree=$BS"
+            [ "$BS" = "$WANT_SRV" ] && [ "$BY" = "$WANT_YML" ] && exit 0
+            sleep 10
+          done
+          if [ "$BS" = "$WANT_SRV" ] && [ "$BY" != "$WANT_YML" ]; then
+            echo "CONFIG MISMATCH: server/ trees are EQUAL but render.yaml differs between this ref and the deployed build '$build' — trigger a MANUAL DEPLOY of the latest commit to clear this gate." && exit 1
+          fi
+          echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV)" && exit 1
+
+      - name: Login (SeniorDoctor assigner + two nurses)
+        run: |
+          for u in sara.rahman maya.chen priya.patel; do
+            t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
+              -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+            case $u in
+              sara.rahman) echo "SEN=$t" >> "$GITHUB_ENV";;
+              maya.chen)   echo "NUR1=$t" >> "$GITHUB_ENV";;
+              priya.patel) echo "NUR2=$t" >> "$GITHUB_ENV";;
+            esac
+            echo "$u: token issued"
+          done
+
+      - name: Admit THIS RUN's patient (dynamic free bed)
+        run: |
+          FREE=$(curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/adt/beds" \
+            | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
+          resp=$(curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d "{\"nameFirst\":\"Handoff\",\"nameSecond\":\"E2E\",\"nameFamily\":\"Patient\",\"age\":47,\"sex\":\"F\",\"allergies\":\"None documented\",\"bedId\":\"$FREE\",\"diagnosis\":\"handoff E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            "$API/api/icu/adt/admissions")
+          pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
+          eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+          { echo "PID=$pid"; echo "EID=$eid"; } >> "$GITHUB_ENV"
+          echo "admitted $pid ($eid) at $FREE"
+
+      - name: HONEST EMPTY — a fresh admission has no handoff, [] never a fabricated note (+ CORS)
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/nursing/handoff?patientId=$PID")
+          echo "unauth read -> HTTP $code"; [ "$code" = "401" ] || exit 1
+          curl -sf -D /tmp/h -H "Authorization: Bearer $NUR1" -H "Origin: $PAGES_ORIGIN" \
+            "$API/api/icu/nursing/handoff?patientId=$PID" -o /tmp/e.json
+          grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
+          python3 -c 'import json; d=json.load(open("/tmp/e.json")); assert d == [], d; print("fresh admission: [] — the honest empty series")'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR1" "$API/api/icu/nursing/handoff?patientId=$PID&bogus=1")
+          echo "unknown query param -> HTTP $code"; [ "$code" = "400" ] || exit 1
+
+      - name: WRITE GATES — doctor 403 (nurse-only), UNASSIGNED nurse 403, unauth 401
+        run: |
+          body='{"patientId":"'$PID'","s":"gate probe","b":"","a":"","r":""}'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H 'Content-Type: application/json' -d "$body")
+          echo "unauth write -> HTTP $code"; [ "$code" = "401" ] || exit 1
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d "$body")
+          echo "DOCTOR write -> HTTP $code (handoff.document is Nurse-only — the doctor handoff is a separate, undesigned record)"; [ "$code" = "403" ] || exit 1
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' -d "$body")
+          echo "UNASSIGNED nurse write -> HTTP $code (the assignment gate — the owner's scoped exception)"; [ "$code" = "403" ] || exit 1
+
+      - name: Assign NUR1 primary → validation is loud → the FIRST entry persists with author + active role + dated time
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d "{\"patientId\":\"$PID\",\"userId\":\"maya.chen\",\"kind\":\"nurse\",\"role\":\"primary\",\"shift\":\"day\"}" \
+            "$API/api/icu/assignments" > /dev/null
+          echo "maya.chen assigned primary"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","s":"","b":"","a":"","r":""}')
+          echo "all-empty SBAR -> HTTP $code"; [ "$code" = "400" ] || exit 1
+          LONG=$(python3 -c 'print("x"*4001)')
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","s":"'$LONG'","b":"","a":"","r":""}')
+          echo "oversized field -> HTTP $code"; [ "$code" = "400" ] || exit 1
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"patientId":"P-NOPE","s":"x","b":"","a":"","r":""}')
+          echo "unknown patient -> HTTP $code"; [ "$code" = "400" ] || exit 1
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","s":"x","bogus":1}')
+          echo "unknown body field -> HTTP $code"; [ "$code" = "400" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","s":"Ventilated, stable on current settings.","b":"Handoff E2E admission.","a":"No acute change this shift.","r":"Chase morning bloods."}' \
+            "$API/api/icu/nursing/handoff" -o /tmp/h1.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/h1.json"))
+          assert d["handoffId"].startswith("HDO-"), d
+          assert d["encounterId"] == "'$EID'" and d["patientId"] == "'$PID'", d
+          assert d["recordedByUser"] == "maya.chen" and d["recordedRole"] == "Nurse", d
+          import re; assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", d["recordedAt"]), d["recordedAt"]
+          print(f"entry {d[\"handoffId\"]} — author maya.chen · Nurse · {d[\"recordedAt\"]} (dated, server-stamped)")'
+          echo "HDO1=$(python3 -c 'import json; print(json.load(open("/tmp/h1.json"))["handoffId"])')" >> "$GITHUB_ENV"
+
+      - name: A SECOND NURSE reads it; her write is 403 until assigned SECONDARY — then she writes (the owner's inclusion)
+        run: |
+          curl -sf -H "Authorization: Bearer $NUR2" "$API/api/icu/nursing/handoff?patientId=$PID" -o /tmp/r2.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/r2.json"))
+          assert len(d) == 1 and d[0]["handoffId"] == "'$HDO1'", d
+          assert d[0]["s"].startswith("Ventilated"), d
+          print("second nurse READS the first entry (patients.view — reading is clinical safety)")'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H "Authorization: Bearer $NUR2" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","s":"covering entry","b":"","a":"","r":""}')
+          echo "NUR2 unassigned write -> HTTP $code"; [ "$code" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d "{\"patientId\":\"$PID\",\"userId\":\"priya.patel\",\"kind\":\"nurse\",\"role\":\"secondary\",\"shift\":\"day\"}" \
+            "$API/api/icu/assignments" > /dev/null
+          echo "priya.patel assigned SECONDARY"
+          curl -sf -X POST -H "Authorization: Bearer $NUR2" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","s":"Covering handover: no events while covering.","b":"","a":"","r":"Continue current plan."}' \
+            "$API/api/icu/nursing/handoff" -o /tmp/h2.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/h2.json"))
+          assert d["recordedByUser"] == "priya.patel" and d["recordedRole"] == "Nurse", d
+          print(f"secondary nurse wrote {d[\"handoffId\"]} — handover is exactly when they cover")'
+
+      - name: APPEND-ONLY — series is newest-first, prior entries untouched, and NO edit surface exists
+        run: |
+          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/nursing/handoff?patientId=$PID" -o /tmp/series.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/series.json"))
+          assert len(d) == 2, d
+          assert d[0]["recordedByUser"] == "priya.patel" and d[1]["recordedByUser"] == "maya.chen", d
+          assert d[1]["handoffId"] == "'$HDO1'" and d[1]["s"].startswith("Ventilated"), "prior entry mutated!"
+          print("series: 2 entries, newest first, the first entry byte-identical")'
+          for m in PUT PATCH DELETE; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X $m "$API/api/icu/nursing/handoff/$HDO1" -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' -d '{}')
+            echo "$m /handoff/$HDO1 -> HTTP $code (no edit surface exists)"; [ "$code" = "404" ] || [ "$code" = "405" ] || exit 1
+          done
+
+      - name: DISCHARGE closes writes (409) while history stays readable by encounterId; open-encounter read answers []
+        run: |
+          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{}' \
+            "$API/api/icu/adt/encounters/$EID/discharge" > /dev/null
+          echo "discharged $EID"
+          code=$(curl -s -o /tmp/w.json -w '%{http_code}' -X POST "$API/api/icu/nursing/handoff" -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","s":"post-discharge probe","b":"","a":"","r":""}')
+          echo "write after discharge -> HTTP $code: $(cat /tmp/w.json)"; [ "$code" = "409" ] || exit 1
+          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/nursing/handoff?patientId=$PID&encounterId=$EID" -o /tmp/hist.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/hist.json"))
+          assert len(d) == 2, d
+          print("closed-encounter history: both entries readable forever")'
+          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/nursing/handoff?patientId=$PID" -o /tmp/open.json
+          python3 -c '
+          import json; d=json.load(open("/tmp/open.json"))
+          assert d == [], d
+          print("no open encounter -> [] — the honest empty, the closed series never leaks into the current view")'
+
+      - name: CLEANUP (always) — discharge this run's encounter if still open
+        if: always()
+        run: |
+          [ -n "$EID" ] || exit 0
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{}' \
+            "$API/api/icu/adt/encounters/$EID/discharge")
+          echo "cleanup discharge $EID -> HTTP $code (409 = already closed by the suite's own leg — fine)"

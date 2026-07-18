@@ -1462,6 +1462,23 @@ export interface ObsAmendment {
   amenderRole: string
 }
 
+/* ---- SBAR shift handoff (owner's 2026-07-18 model): append-only
+   immutable entries per ENCOUNTER — four structured fields, author +
+   ACTIVE role + dated server time. No edit shape exists on purpose. */
+export interface HandoffEntry {
+  handoffId: string
+  encounterId: string
+  patientId: string
+  s: string
+  b: string
+  a: string
+  r: string
+  recordedByUser: string
+  recordedBy: string
+  recordedRole: string
+  recordedAt: string
+}
+
 export interface Observation {
   observationId: string
   patientId: string
