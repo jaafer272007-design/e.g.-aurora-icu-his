@@ -1,6 +1,24 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-18 · current through PHASE 3 PR 1 — "STOP THE
+**Last updated: 2026-07-18 · current through PHASE 3 PR 2 — MISSION
+CONTROL REAL (the composite's production refusal is CLOSED, client-only:
+the labs trend card RE-DERIVES over the real GET /api/icu/results/labs
+draws — the same values Labs & Imaging shows; the timeline card reads
+the real GET /api/icu/timeline feed — the same events the Timeline
+screen shows; active infusions derive from real structured-infusion
+orders (drug/dose/route real; the rate, the 7-point trend and the
+status judgement are PUMP facts with no source — Device Adapter scope —
+so real rows render NO sparkline, NO rate, NO status dot, and the aside
+counts ordered channels instead of claiming run states); vent/hemo stay
+the real observation projection (confirmed, not rebuilt); the alerts
+and care-goals cards — domains that do not exist — resolve NULL in
+production and render the PR-1 "not yet available" state, never a
+blank; NON-production keeps the demo pump fixture, demo alerts/goals
+and zero not-yet cards — verified unchanged. A production build now has
+NO overlay-throwing screen: Mission Control renders real end-to-end;
+Admin Home's unit summary remains the honest not-yet dashboard until
+PR 3 — see the record below);
+prior marker retained: current through PHASE 3 PR 1 — "STOP THE
 BLEEDING" (the #125 production-refusal audit's first fix, built after a
 verify-first field-level audit of every Stage-11 mock: the patient-detail
 composite turned out to be HEADER-ONLY on three of its four consumers —
@@ -4934,6 +4952,66 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Phase 3 PR 2 — Mission Control real (the composite's refusal closed; client-only)
+
+**Scope (the owner's instruction, exactly the audit's proposal):** rewire
+the composite's remaining mock-fed panels to reads that already exist;
+honest not-yet for the two no-source cards; nothing fabricated.
+
+**What was built (CLIENT-ONLY — zero server changes, confirmed on the
+diff; the light post-merge routine applies):**
+- `getPatientDetail` now COMPOSES REAL in every environment where the
+  server answers: identity (roster), vent/hemo (the §12 step 4
+  observation projection — untouched), labs (`deriveLabsFromDraws` — a
+  client re-derivation over the real lab draws: latest draw's items as
+  the results column, analytes present across draws as up-to-3 trend
+  series, values verbatim from the wire), timeline (the real feed, last
+  ~24 h capped 20 — the same `getTimeline` the Timeline screen uses),
+  infusions (`deriveInfusionsFromOrders` — active Medication orders
+  carrying the structured infusion dose; PRODUCTION-only: outside
+  production the demo PUMP fixture serves verbatim so staging renders
+  identically to before).
+- `Infusion.rate/trend/status` became OPTIONAL — pump facts with no
+  source on real rows; the card renders neither a sparkline nor a rate
+  nor a status dot for them, and the aside says "N active infusion
+  order(s)" instead of claiming run states. An EMPTY real list renders
+  "No active infusion orders for this patient." — a REAL empty (the
+  orders domain answered), not a missing domain.
+- `PatientDetailResponse.alerts/goals` became NULLABLE: null in
+  production (no per-patient alert-rules domain, no care-plan domain —
+  the roster bedAlert and the unacked inbox are the nearest real
+  signals and are NOT synthesized into a feed); the cards render the
+  PR-1 "not yet available" state, never a blank that reads "no alerts"/
+  "no goals". Demo lists serve outside production.
+
+**Verification (rendered, both builds).** PRODUCTION (the standing
+production appliance; dataset extended through the real APIs: two
+documented CBC draws, a signed noradrenaline 0.12 µg/kg/min continuous
+infusion via the structured path — the starter-formulary reactivation
+and the batch order contract exercised again — and a full charted
+observation set): 12/12 + 9-leg first pass — Mission Control renders on
+DIRECT load with no overlay (the PR-1 latch holding); the labs card
+shows the real CBC values AND the Labs & Imaging screen shows the SAME
+values (cross-checked); the timeline card's events match the Timeline
+screen; the infusion row matches the Orders screen's dose; ZERO
+sparklines/status dots inside real rows; alerts+goals not-yet cards;
+vent/hemo render the real charted HFNC/FiO₂/CVP/lactate/urine-output.
+STAGING (preview bundle): 9/9 — no overlay, ZERO not-yet cards, the
+demo pump fixture with sparklines/status dots/"running · channels"
+aside, demo alerts list, demo goals checklist, demo timeline events —
+identical to before (an in-flight regression WAS caught here: the first
+cut derived staging infusions from the mock orders store, losing the
+fixture's pump preview — fixed by gating the orders derivation to
+production before any commit). Screenshots delivered in session.
+
+**Found along the way (verification data, not app code):** PR-1's
+provisioning script had charted observations with a wrong field name
+(`observations` vs `entries`) and its silent `-o /dev/null` hid the
+400 — the observations it claimed to chart never existed (nothing in
+PR-1's verified claims depended on them; its vent/hemo evidence was the
+honest-blank path). The PR-2 dataset charts them correctly and the
+panels are now positively proven with real values.
 
 ### Phase 3 PR 1 — "stop the bleeding" (the #125 refusal audit's first fix; owner-scoped)
 
