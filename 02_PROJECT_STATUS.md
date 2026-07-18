@@ -4927,6 +4927,16 @@ text is the one labeled commentary block.
   never recommend/start/stop/adjust any treatment, medication, dose,
   fluid, oxygen or ventilation setting, never propose investigations —
   "management decisions belong to the treating team".
+- **Broadened to the FULL current picture on the owner's follow-up**
+  ("make him read all the patient data"; also: "give me the patient
+  data" had answered with observations only — a real routing gap): the
+  overview now carries identity (age/sex/allergies), admission
+  (admitted/attending), both scores, the latest 24 observations, the 6
+  most recent lab draws and every active+pending order; the translation
+  prompt routes whole-picture questions ("give me the patient data",
+  "everything about X") to `condition_interpretation` while single-
+  domain questions keep their own tools; the appliance llama-server
+  context is raised 4096→8192 to fit the larger snapshot.
 - **The snapshot is exactly the rendered card** (`conditionSnapshot`):
   the commentary can only discuss what the user already sees, fetched
   on the user's own token; no identifiers beyond the display name ride

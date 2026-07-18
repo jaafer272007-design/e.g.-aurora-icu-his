@@ -94,7 +94,7 @@ static class AiApi
         /* the interpretation layer (owner's 2026-07-18 decision): condition
            questions stop being unanswerable — Aurora fetches the data and a
            SEPARATE, labeled step comments on it. Treatment stays refused. */
-        ("condition_interpretation", "A patient's current condition overview: Aurora fetches the real scores, observations, labs and orders, and a clearly-labeled AI step adds a short interpretation of trends and severity. Use when asked how a patient is doing, their condition, an impression, or to interpret their data. NEVER for treatment, medication or management advice — that stays unanswerable.", """{"type":"object","properties":{"patient":{"type":"string","description":"patient name (any part, Arabic or Latin), patient id like P-1001, or bed id"}},"required":["patient"],"additionalProperties":false}"""),
+        ("condition_interpretation", "A patient's FULL current picture: Aurora fetches identity, admission, both clinical scores, recent observations, recent labs and open orders, and a clearly-labeled AI step adds a short interpretation of trends and severity. Use when asked how a patient is doing, their condition, an impression, to interpret their data, or for the patient's data/full picture as a whole. NEVER for treatment, medication or management advice — that stays unanswerable.", """{"type":"object","properties":{"patient":{"type":"string","description":"patient name (any part, Arabic or Latin), patient id like P-1001, or bed id"}},"required":["patient"],"additionalProperties":false}"""),
         ("unanswerable", "Use when the question cannot be answered by any tool here (wrong domain, asks for treatment/medication/management advice or a prediction, requires data Aurora does not hold, or requires writing/ordering — this assistant is read-only).", """{"type":"object","properties":{"reason":{"type":"string","description":"one short sentence saying why"}},"required":["reason"],"additionalProperties":false}"""),
     };
 
@@ -102,7 +102,7 @@ static class AiApi
         "You translate a clinician's question about ICU patients into EXACTLY ONE tool call from the provided tools. "
         + "You are a query translator, not a clinical assistant: you never answer in prose, never state clinical values, "
         + "never predict, rank by your own judgment, or give treatment, medication or management advice. "
-        + "For questions about a patient's condition, how they are doing, an overall impression, or an interpretation of their data, call condition_interpretation — Aurora fetches the data and a separate, clearly-labeled step comments on it. "
+        + "For questions about a patient's condition, how they are doing, an overall impression, an interpretation of their data, or their data/full picture AS A WHOLE ('give me the patient data', 'everything about X'), call condition_interpretation — Aurora fetches the full current picture and a separate, clearly-labeled step comments on it. A question about ONE named domain (only the orders, only the labs, only the observations) still uses that domain's own tool. "
         + "For 'worst/sickest' questions pick score_ranking or worst_period with an instrument (default news2) — Aurora computes; you only choose the instrument. "
         + "Patient references may be Arabic or Latin names, partial names, patient ids (P-…) or beds — pass them through verbatim in the patient argument. "
         + "If a context patient is given, resolve pronouns ('his orders') to it. "

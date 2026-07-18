@@ -539,6 +539,12 @@ function ResultBlock({ r }: { r: AiToolResult }) {
       return (
         <div className="accard">
           <h3>Condition overview — <PatientLine p={r.patient} /></h3>
+          <p className="acdim">
+            {r.patient.diagnosis}
+            {r.identity && <> · {r.identity.age} y · {r.identity.sex} · allergies: {r.identity.allergies || 'none recorded'}</>}
+            {r.encounter?.admittedAt && <> · admitted {r.encounter.admittedAt}</>}
+            {r.encounter?.attending && <> · {r.encounter.attending}</>}
+          </p>
           <p className="acscore">
             NEWS2: <ScoreLine result={r.news2.result} />
             {r.news2.result.complete && r.news2.band && <span> · band: {r.news2.band.label} (display only)</span>}
@@ -576,11 +582,11 @@ function ResultBlock({ r }: { r: AiToolResult }) {
               ))}
             </ul>
           )}
-          <h4 className="acsub">Active orders ({r.activeOrders.length})</h4>
-          {r.activeOrders.length === 0 ? <Empty what={`active orders for ${r.patient.name}`} /> : (
+          <h4 className="acsub">Active + pending orders ({r.activeOrders.length})</h4>
+          {r.activeOrders.length === 0 ? <Empty what={`active or pending orders for ${r.patient.name}`} /> : (
             <ul className="aclist">
               {r.activeOrders.map(o => (
-                <li key={o.orderId}><i className="num">{o.orderId}</i><b>{o.summary}</b></li>
+                <li key={o.orderId}><i className="num">{o.orderId}</i><b>{o.summary}</b><span className="acdim">{o.status}</span></li>
               ))}
             </ul>
           )}

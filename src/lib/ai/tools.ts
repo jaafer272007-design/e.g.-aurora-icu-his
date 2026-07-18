@@ -71,6 +71,7 @@ export type AiToolResult =
   | { kind: 'timeline'; patient: PatientSummary; rows: TimelineEvent[] }
   | {
       kind: 'condition'; patient: PatientSummary
+      identity: PatientIdentity | null; encounter: Encounter | null
       news2: News2Computation; sofa: SofaComputation
       observations: Observation[]; labs: LabDraw[]; activeOrders: Order[]
     }
@@ -117,7 +118,7 @@ function argInstrument(args: Record<string, unknown> | null): SeriesInstrument {
 
 /* ---------- score input assembly (the SofaCard read set, unchanged) ---------- */
 async function scoreInputs(patient: PatientSummary): Promise<
-  { ok: true; labs: LabDraw[]; observations: Observation[]; orders: Order[]; weightKg: number | null } | { ok: false }> {
+  { ok: true; labs: LabDraw[]; observations: Observation[]; orders: Order[]; weightKg: number | null; encounter: Encounter | null } | { ok: false }> {
   const [enc, labs, obs, orders] = await Promise.all([
     getEncounters({ patientId: patient.patientId, status: 'open' }),
     getLabDraws(patient.patientId),
@@ -125,7 +126,7 @@ async function scoreInputs(patient: PatientSummary): Promise<
     getPatientOrders(patient.patientId),
   ])
   if (obs === null) return { ok: false } // the real-only observations read is unreachable — honest unavailable
-  return { ok: true, labs, observations: obs, orders, weightKg: enc[0]?.weightKg ?? null }
+  return { ok: true, labs, observations: obs, orders, weightKg: enc[0]?.weightKg ?? null, encounter: enc[0] ?? null }
 }
 
 /* ---------- the executor ---------- */
@@ -214,22 +215,30 @@ export async function executeAiTool(tool: string, args: Record<string, unknown> 
       }
     }
     case 'condition_interpretation': {
-      /* the condition overview — the SofaCard read set plus both scores:
-         everything the labeled interpretation may later comment on is
-         fetched HERE, through the same canonical reads, and rendered
-         before any commentary is requested */
+      /* the FULL-RECORD condition overview (the owner's ask: the
+         interpretation reads all the patient's current data) — the
+         SofaCard read set plus identity, admission, both scores, the
+         recent observation history, the recent draws and every
+         not-yet-completed order. Everything the labeled interpretation
+         may later comment on is fetched HERE, through the same
+         canonical reads, and rendered before any commentary is
+         requested. Bounds exist only to fit the model's context —
+         stated on the card, never silently. */
       const inputs = await scoreInputs(patient)
       if (!inputs.ok) return { kind: 'unavailable', what: `the observations chart for ${patient.name} (a condition overview needs it)` }
+      const identity = await getPatientIdentity(patient.patientId).catch(() => null)
       const byTime = (a: LabDraw, b: LabDraw) =>
         (b.resultedAt ?? b.collectedAt ?? '').localeCompare(a.resultedAt ?? a.collectedAt ?? '')
       return {
         kind: 'condition',
         patient,
+        identity,
+        encounter: inputs.encounter,
         news2: computeNews2({ observations: inputs.observations, now: new Date() }),
         sofa: computeSofa({ labs: inputs.labs, observations: inputs.observations, orders: inputs.orders, weightKg: inputs.weightKg, now: new Date() }),
-        observations: inputs.observations.slice(-8), // oldest-first read → the latest 8
-        labs: [...inputs.labs].sort(byTime).slice(0, 3),
-        activeOrders: inputs.orders.filter(o => o.status === 'active'),
+        observations: inputs.observations.slice(-24), // oldest-first read → the latest 24
+        labs: [...inputs.labs].sort(byTime).slice(0, 6),
+        activeOrders: inputs.orders.filter(o => o.status === 'active' || o.status === 'pending'),
       }
     }
     case 'worst_period': {
@@ -258,7 +267,12 @@ const scoreJson = (r: ScoreResult) => r.complete
 
 export function conditionSnapshot(r: Extract<AiToolResult, { kind: 'condition' }>): unknown {
   return {
-    patient: { name: r.patient.name, diagnosis: r.patient.diagnosis },
+    patient: {
+      name: r.patient.name,
+      diagnosis: r.patient.diagnosis,
+      ...(r.identity ? { age: r.identity.age, sex: r.identity.sex, allergies: r.identity.allergies || 'none recorded' } : {}),
+      ...(r.encounter ? { admitted: r.encounter.admittedAt ?? undefined, attending: r.encounter.attending } : {}),
+    },
     scores: {
       news2: { ...scoreJson(r.news2.result), ...(r.news2.result.complete && r.news2.band ? { band: r.news2.band.label } : {}), ...(r.news2.ventilated ? { onRespiratorySupport: true } : {}) },
       sofa: { worst24h: scoreJson(r.sofa.worst), latest: scoreJson(r.sofa.latest) },
