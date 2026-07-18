@@ -5010,6 +5010,44 @@ production-refused per §9's inventory). The Print Center SBAR template
 still prints write-in areas, not this series, and the timeline has no
 handoff category — both flagged follow-ups, not silently absorbed.
 
+**Post-merge routine (merge 753b145, the full account — three findings,
+none in the server code):**
+- **The suite's first live run found a SUITE bug, and proved the server
+  on the way down:** against staging the content gate, honest-empty,
+  doctor/unassigned 403s and all validation 400s passed and the first
+  entry WROTE — then the run died on the suite's own success-print
+  (backslash-escaped quotes inside f-string expressions are a Python
+  syntax error). 2-line workflow-only fix (plain concatenation),
+  fix-forward PR #130; the failure-path cleanup discharged the run's
+  encounter as designed.
+- **Render rolled back mid-board:** minutes after serving 753b145
+  (proven by that first run), staging answered 120 consecutive gate
+  polls over 23 minutes with build 6e11236 — TWO merges back; Package
+  CI booting the packaged appliance on the same commit (migration +
+  API + restart-persistence green) exonerated the code. The owner
+  redeployed manually on Render (the #119/#127 pattern) and the gate
+  went green.
+- **A Pages serving anomaly:** the Pages origin served the site root
+  200 but answered GitHub's GENERIC 404 for runtime-config.js —
+  twice, ~40 min after a fully-green deploy of the same artifact, with
+  the github-pages deployment marked live via the API. Re-dispatching
+  deploy-pages.yml cleared it (the #39 stale-Pages precedent); cause
+  on GitHub's side, not diagnosable from the artifact (verified the
+  push-triggered branch run's deploy job was SKIPPED — nothing
+  overwrote the site).
+- **The board:** Pages (both jobs, every step) + Package CI (all 11
+  steps incl. packaged boot + data-survives-restart) + ci.yml green on
+  753b145; then ALL 16 deployed suites sequentially green — 15 on main
+  753b145, deployed-handoff-e2e green end-to-end from the #130 branch
+  5b272b6 (same server tree; the content gate proved staging carries
+  the merge's server content), every step of every run verified
+  individually. The handoff suite's green run exercised the full
+  clinical contract live on staging: honest empty, nurse-only +
+  assignment gate (generic 403s), loud validation, stamped immutable
+  entries, secondary-nurse inclusion, newest-first series with the
+  prior entry byte-identical, no PUT/PATCH/DELETE surface, and the
+  discharge lifecycle (write 409, history readable, open-read []).
+
 ### Management-row layout fix — the .al class-collision lesson, hit a second time
 
 **Report (tester on a standard laptop + the owner on ultrawide + iPad,
