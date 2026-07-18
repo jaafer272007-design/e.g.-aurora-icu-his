@@ -40,8 +40,10 @@ export function NurseWorkspace() {
   const [mar, setMar] = useState<MarRow[] | null>(null)
   const [orders, setOrders] = useState<Order[] | null>(null)
   const [implementedIds, setImplementedIds] = useState<Set<string>>(new Set())
-  const [tasks, setTasks] = useState<NursingTask[] | null>(null)
-  const [io, setIo] = useState<IoEntry[] | null>(null)
+  /* undefined = loading · null = NOT A DOMAIN YET (production honest-empty,
+     Phase 3 PR 1) · value = data */
+  const [tasks, setTasks] = useState<NursingTask[] | null | undefined>(undefined)
+  const [io, setIo] = useState<IoEntry[] | null | undefined>(undefined)
   /* the SBAR handoff series per selected patient — REAL data from the
      append-only store (undefined = loading, null = unreachable). The
      old page-local Record<pid, note> that silently discarded every
@@ -106,6 +108,11 @@ export function NurseWorkspace() {
     toggleNursingTask(taskId, session.name, session.jobTitle).then(updated => {
       if (!updated) return
       setTasks(prev => prev && prev.map(t => (t.taskId === taskId ? updated : t)))
+    }).catch((e: Error) => {
+      /* the SBAR lesson: a write that stores nothing must be SEEN to
+         fail — a rejected action the nurse reads, never a silent no-op
+         and never the full-screen overlay */
+      showToast('Task NOT recorded', e.message)
     })
   }
 
@@ -114,6 +121,9 @@ export function NurseWorkspace() {
       if (!entry) return
       setIo(prev => prev && [...prev, entry])
       showToast('I&O recorded', `${kind === 'intake' ? '+' : '−'}${volumeMl} mL ${category} · ${patientName(patientId)} · ${entry.time}`)
+    }).catch((e: Error) => {
+      /* same SBAR lesson as toggleTask above: visibly refused */
+      showToast('I&O NOT recorded', e.message)
     })
   }
 
@@ -140,7 +150,7 @@ export function NurseWorkspace() {
     r => r.status === 'scheduled' && !r.prn && dueStateFor(r.scheduledTime, now) !== 'upcoming',
   ).length
   const ordersPending = orders ? orders.filter(o => !implementedIds.has(o.orderId)).length : undefined
-  const tasksOpen = tasks?.filter(t => !t.done).length
+  const tasksOpen = tasks ? tasks.filter(t => !t.done).length : undefined
 
   const kpis: KpiSpec[] = [
     { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: worklist ? patients.length : '—', label: 'My Patients' },
@@ -170,14 +180,14 @@ export function NurseWorkspace() {
           <div className="col">
             {worklist && <AssignedPatientsCard patients={patients} />}
             {mar && worklist && <MarCard rows={mar} patients={patients} onDocument={documentMar} />}
-            {io && worklist && <IoCard entries={io} patients={patients} onRecord={recordIo} />}
+            {io !== undefined && worklist && <IoCard entries={io} patients={patients} onRecord={recordIo} />}
           </div>
           <div className="col">
             {/* the safety net: nurse-unassigned open encounters, visible to
                 everyone — zero assignments is allowed but never silent */}
             {unassigned && <UnassignedCard kind="nurse" patients={unassigned} />}
             {orders && <OrdersCard orders={orders} completedIds={implementedIds} onComplete={completeOrder} />}
-            {tasks && <TasksCard tasks={tasks} onToggle={toggleTask} />}
+            {tasks !== undefined && <TasksCard tasks={tasks} onToggle={toggleTask} />}
             {worklist && <SbarCard patients={patients} entriesByPatient={handoffs} busy={handoffBusy} onSelect={loadHandoffs} onSave={saveSbar} />}
           </div>
         </main>

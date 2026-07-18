@@ -10,7 +10,7 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconPencil, IconPill } from '../../components/icons'
 import {
   completeImplementation, createOrders, discontinueOrder, getEncounters, getFormulary,
-  getInteractionRules, getLabCatalog, getOrderSetDefs, getOrderSets, getPatientDetail,
+  getInteractionRules, getLabCatalog, getOrderSetDefs, getOrderSets, getRosterPatient,
   getPatientOrders, getPatients, getPendingOrders, modifyOrder, signOrder,
 } from '../../lib/api'
 import type {
@@ -24,6 +24,7 @@ import { NewOrderCard } from './NewOrderCard'
 import { OrderSetsCard } from './OrderSetsCard'
 import { LabOrderCard } from './LabOrderCard'
 import { ImagingOrderCard } from './ImagingOrderCard'
+import { NotYetAvailable } from '../../components/NotYetAvailable'
 import { DiscontinueDialog, ModifyDialog } from './OrderDialogs'
 
 
@@ -56,7 +57,9 @@ export function OrdersMedication() {
      data (Portable CXR / CT Abdomen-Pelvis / Bedside Echo). The Doctor
      Workspace demo drawer that once rendered the same list is retired;
      this canonical screen is the imaging entry point. */
-  const [imagingStudies, setImagingStudies] = useState<string[]>([])
+  /* null = the vocabulary is NOT master data yet (production honest-empty,
+     Phase 3 PR 1) — the card says so instead of a fabricated study list */
+  const [imagingStudies, setImagingStudies] = useState<string[] | null>([])
   /* the OPEN encounter's recorded weight (PR #83, encounter-scoped) —
      drives the structured-infusion absolute-rate preview; undefined =
      not recorded, handled honestly (no fabricated rate) */
@@ -70,7 +73,7 @@ export function OrdersMedication() {
     getLabCatalog().then(setLabCatalog)
     getInteractionRules().then(setRules)
     getOrderSetDefs().then(setSetDefs)
-    getOrderSets().then(s => setImagingStudies(s.Imaging ?? []))
+    getOrderSets().then(s => setImagingStudies(s ? (s.Imaging ?? []) : null))
   }, [])
 
   /* no patient in the URL → the remembered cross-section patient when
@@ -95,7 +98,9 @@ export function OrdersMedication() {
       .then(list => { if (!stale) setWeightKg(list[0]?.weightKg) })
       .catch(() => {})
     setMissing(false)
-    getPatientDetail(patientId).then(res => {
+    /* Phase 3 PR 1: IDENTITY ONLY from the real roster — this screen's
+       body is already real; it no longer pulls the Stage-11 composite */
+    getRosterPatient(patientId).then(res => {
       if (stale) return
       if (!res) {
         /* locked decision: explicit not-found — never another patient's data */
@@ -104,7 +109,7 @@ export function OrdersMedication() {
         setMissing(true)
         return
       }
-      setPatient(res.patient)
+      setPatient(res)
     })
     refresh()
     return () => { stale = true }
@@ -283,7 +288,10 @@ export function OrdersMedication() {
                 {labCatalog && canPrescribe && (
                   <LabOrderCard catalog={labCatalog} onOrder={handleLabOrder} />
                 )}
-                {imagingStudies.length > 0 && canPrescribe && (
+                {imagingStudies === null && canPrescribe && (
+                  <NotYetAvailable what="The imaging study list" />
+                )}
+                {imagingStudies !== null && imagingStudies.length > 0 && canPrescribe && (
                   <ImagingOrderCard studies={imagingStudies} onOrder={handleImagingOrder} />
                 )}
                 {formulary && canPrescribe && (

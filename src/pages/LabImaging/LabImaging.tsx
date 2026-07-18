@@ -10,7 +10,7 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconFlask } from '../../components/icons'
 import {
   acknowledgeImaging, acknowledgeLab, correctImagingReport, getImagingStudies, getLabDraws,
-  getPatientDetail, getPatientOrders, getPatients, getResultInbox, unacknowledgeImaging, unacknowledgeLab,
+  getRosterPatient, getPatientOrders, getPatients, getResultInbox, unacknowledgeImaging, unacknowledgeLab,
 } from '../../lib/api'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
@@ -77,7 +77,9 @@ export function LabImaging() {
     if (!patientId) return
     let stale = false
     setMissing(false)
-    getPatientDetail(patientId).then(res => {
+    /* Phase 3 PR 1: IDENTITY ONLY from the real roster — this screen's
+       body is already real; it no longer pulls the Stage-11 composite */
+    getRosterPatient(patientId).then(res => {
       if (stale) return
       if (!res) {
         /* locked decision: explicit not-found — never another patient's data */
@@ -87,7 +89,7 @@ export function LabImaging() {
         setMissing(true)
         return
       }
-      setPatient(res.patient)
+      setPatient(res)
     })
     refresh()
     return () => { stale = true }

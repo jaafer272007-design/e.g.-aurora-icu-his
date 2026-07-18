@@ -1,0 +1,26 @@
+/* NotYetAvailable — the honest not-yet state (Phase 3 PR 1).
+   `nya-` prefix is unique to this component (class-collision lesson). */
+.nya-note{
+  margin:10px 0 0;
+  padding:12px 14px;
+  border:1px dashed rgba(var(--dim-rgb),.45);
+  border-radius:12px;
+  background:rgba(var(--dim-rgb),.06);
+}
+.nya-badge{
+  display:inline-block;
+  font-size:9.5px;
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:var(--dim);
+  border:1px solid rgba(var(--dim-rgb),.4);
+  border-radius:99px;
+  padding:2px 9px;
+}
+.nya-text{
+  margin:8px 0 0;
+  font-size:11.5px;
+  line-height:1.5;
+  color:var(--dim);
+}

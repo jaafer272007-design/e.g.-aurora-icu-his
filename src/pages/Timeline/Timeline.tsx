@@ -8,7 +8,7 @@ import { PatientBar } from '../../components/PatientBar'
 import { PatientRail } from '../../components/PatientRail'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconClock, IconNote, IconPill } from '../../components/icons'
-import { getPatientDetail, getPatients, getTimeline } from '../../lib/api'
+import { getRosterPatient, getPatients, getTimeline } from '../../lib/api'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import type { Patient, PatientSummary, TimelineCategory, TimelineEvent } from '../../lib/api/types'
@@ -74,7 +74,9 @@ export function Timeline() {
     setCats(new Set())
     setDay('all')
     setShift('all')
-    getPatientDetail(patientId).then(res => {
+    /* Phase 3 PR 1: IDENTITY ONLY from the real roster — this screen's
+       body is already real; it no longer pulls the Stage-11 composite */
+    getRosterPatient(patientId).then(res => {
       if (stale) return
       if (!res) {
         /* locked decision: explicit not-found — never another patient's data */
@@ -83,7 +85,7 @@ export function Timeline() {
         setMissing(true)
         return
       }
-      setPatient(res.patient)
+      setPatient(res)
     })
     getTimeline(patientId).then(evs => { if (!stale) setEvents(evs) })
     return () => { stale = true }
