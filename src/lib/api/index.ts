@@ -1226,6 +1226,38 @@ export async function aiTranslateQuery(
   }
 }
 
+/** POST /api/icu/ai/interpret — the INTERPRETATION LAYER (owner's
+ *  2026-07-18 decision): labeled AI commentary on a data snapshot this
+ *  client just fetched and rendered. REAL-ONLY like the query endpoint
+ *  (no mock interpretation exists — simulated commentary would be the
+ *  retired fabrication again). The snapshot is exactly what is on
+ *  screen; the server reads no patient rows for this call. Throws with
+ *  the server's precise error (honest 503 when no model / 502 provider). */
+export async function aiInterpretCondition(
+  question: string, patient: string, data: unknown,
+): Promise<{ text: string }> {
+  const token = getToken()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 610000)
+  try {
+    const res = await fetch(`${API_BASE}/api/icu/ai/interpret`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ question, patient, data }),
+    })
+    const body = await res.json().catch(() => null)
+    if (res.ok) return body as { text: string }
+    throw new Error((body as { error?: string } | null)?.error
+      ?? `the AI interpret endpoint returned ${res.status}`)
+  } catch (e) {
+    if (e instanceof Error && e.name !== 'AbortError') throw e
+    throw new Error('the AI service is not reachable in this session')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /* ---------------- Layer 2 — ADT (Aurora Core) ----------------
    The first Core-native domain and the first write feature on the durable
    database. READS fall back to display-only mock derivations offline;

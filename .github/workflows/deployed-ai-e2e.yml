@@ -1,17 +1,22 @@
 # Deployed AI E2E — verifies the LIVE Render service's AI GROUNDED QUERY
 # contract (the grounded-query-chat rework: the fabricated risk domain is
-# DELETED — this suite proves it stays deleted). The one endpoint is
-# POST /api/icu/ai/query: it translates a natural-language question into a
-# structured tool call (the LLM emits a QUERY, never a VALUE) and audits
+# DELETED — this suite proves it stays deleted). Two endpoints:
+# POST /api/icu/ai/query translates a natural-language question into a
+# structured tool call (the LLM emits a QUERY, never a FACT) and audits
 # the question; it NEVER executes reads and its response carries no
-# patient data. Asserted here:
+# patient data. POST /api/icu/ai/interpret (the interpretation layer —
+# owner's 2026-07-18 decision) returns ONE text of labeled commentary
+# over a data snapshot the CLIENT fetched and rendered; it reads no
+# patient rows and its contract has no field besides that text.
+# Asserted here:
 #   - the retired simulation endpoints (/ai/ranking, /ai/risks) are 404
-#   - unauthenticated query is 401; a clerk profile (no ai.view) is 403
-#   - validation is loud: empty/oversized question and unknown fields 400
-#   - the response is EITHER an honest 503 "no model configured" (staging
-#     has no AI_PROVIDER by default) OR, when a provider is configured, a
-#     200 whose body contains ONLY tool/args/unanswerable — never any
-#     field that could carry a clinical value
+#   - unauthenticated query/interpret is 401; a clerk (no ai.view) is 403
+#   - validation is loud: empty/oversized question, missing snapshot and
+#     unknown fields 400
+#   - each response is EITHER an honest 503 "no model configured"
+#     (staging has no AI_PROVIDER by default) OR, when a provider is
+#     configured, a 200 matching the closed contract — tool/args/
+#     unanswerable for query, text for interpret — never any other field
 # Dispatch manually after merging /server to main.
 #
 # IDEMPOTENT BY DESIGN: the suite only writes AiQueries audit rows (an
@@ -190,3 +195,45 @@ jobs:
               echo "unexpected status $rc" && exit 1
             fi
           done
+
+      - name: Interpretation layer — labeled commentary or an honest 503, on a CLOSED one-field contract
+        run: |
+          # the interpretation layer (owner's 2026-07-18 decision): the
+          # endpoint accepts the question + the snapshot the client
+          # rendered, and answers with ONE text field of commentary. Same
+          # gate pattern as the query leg: staging without a provider →
+          # the honest 503; with one → a 200 whose body carries ONLY
+          # {text}. RBAC and validation are asserted unconditionally.
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/interpret" \
+            -H "Content-Type: application/json" -d '{"question":"how is he doing","patient":"x","data":{}}')
+          echo "POST /ai/interpret (no token) -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/interpret" -H "Authorization: Bearer $CLK" \
+            -H "Content-Type: application/json" -d '{"question":"how is he doing","patient":"x","data":{}}')
+          echo "POST /ai/interpret (clerk) -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/interpret" -H "Authorization: Bearer $DOC" \
+            -H "Content-Type: application/json" -d '{"question":"","patient":"x","data":{}}')
+          echo "empty question -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/interpret" -H "Authorization: Bearer $DOC" \
+            -H "Content-Type: application/json" -d '{"question":"how is he doing","patient":"x"}')
+          echo "missing snapshot -> HTTP $rc (interpretation only ever comments on fetched data)"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/api/icu/ai/interpret" -H "Authorization: Bearer $DOC" \
+            -H "Content-Type: application/json" -d '{"question":"x","patient":"x","data":{},"bogus":1}')
+          echo "unknown field -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /tmp/i.json -w '%{http_code}' -X POST "$API/api/icu/ai/interpret" \
+            -H "Authorization: Bearer $DOC" -H "Origin: $PAGES_ORIGIN" -H "Content-Type: application/json" \
+            -d '{"question":"how is this patient doing?","patient":"Test Patient","data":{"scores":{"news2":{"total":4,"max":20}},"latestObservations":[{"time":"2026-07-18 10:00","type":"HR","value":"96","unit":"bpm"}]}}')
+          echo "DOC interpret -> HTTP $rc: $(cat /tmp/i.json)"
+          if [ "$rc" = "503" ]; then
+            python3 -c '
+          import json; d=json.load(open("/tmp/i.json"))
+          assert "no AI model is configured" in d["error"], d
+          print("honest no-provider refusal — no commentary generated, nothing accessed")'
+          elif [ "$rc" = "200" ]; then
+            python3 -c '
+          import json; d=json.load(open("/tmp/i.json"))
+          assert set(d.keys()) <= {"text"}, f"interpret contract violated: {sorted(d.keys())}"
+          assert isinstance(d.get("text"), str) and d["text"].strip(), d
+          print("labeled commentary returned on the closed one-field contract")'
+          else
+            echo "unexpected status $rc" && exit 1
+          fi

@@ -57,7 +57,24 @@ record AiQueryRequest(string? Question, string? ContextPatientId, List<AiTurnDto
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record AiTurnDto(string? Question, string? Tool);
 
-/* the response — A QUERY, NEVER A VALUE: the selected tool + its
+/* the response — A QUERY, NEVER A FACT: the selected tool + its
    arguments (or an honest unanswerable). No patient data field exists
    on this contract at all. */
 record AiQueryResponseDto(string? Tool, System.Text.Json.JsonElement? Args, string? Unanswerable);
+
+/* POST /api/icu/ai/interpret — THE INTERPRETATION LAYER (the owner's
+   2026-07-18 decision, superseding the zero-prose reading of the
+   defining rule): the model may COMMENT on data Aurora fetched —
+   trends, abnormalities, severity — in a block the UI labels as
+   AI-generated commentary. Treatment, medication and management advice
+   remain refused, in the interpretation prompt and in the translation
+   catalog alike. The client sends the QUESTION and the exact snapshot
+   it just RENDERED (the same values on screen, read on the user's own
+   token) — the model sees nothing the user could not already see, and
+   its output is displayed as commentary, never merged into any record. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record AiInterpretRequest(string? Question, string? Patient, System.Text.Json.JsonElement? Data);
+
+/* the response: ONE text field of labeled commentary — nothing else
+   rides on this contract */
+record AiInterpretResponseDto(string Text);

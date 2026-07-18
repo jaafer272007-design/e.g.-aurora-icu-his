@@ -365,6 +365,24 @@ fabrication is made structurally impossible rather than unlikely:
    question — never a confident invented number. The model contributes
    NO displayed text (the prose budget, resolved to zero).
 
+*[Superseded in part, owner's decision 2026-07-18 (after the validator's
+4060 run: a request for an impression of a patient's condition was
+refused, and the owner chose the middle scope from the three offered —
+interpretation of fetched data, never treatment advice). The defining
+rule narrows from "never a VALUE" to "never a FACT": every clinical
+value on screen still comes from Aurora's canonical reads alone, but a
+SECOND endpoint (`POST /api/icu/ai/interpret`) may generate bounded
+COMMENTARY — trends, abnormalities, severity — over the exact snapshot
+the client just fetched and rendered (`condition_interpretation` in the
+catalog). The commentary renders in a block labeled AI INTERPRETATION
+("generated commentary — not part of the record", with a
+verify-against-the-data footer), is audited like every question, is
+never merged into any record, and its prompt and the translation
+catalog both refuse treatment, medication and management advice — the
+boundary the owner kept. Point 4's "prose budget zero" is superseded by
+exactly this one labeled block; points 1–3 and every binding rule below
+stand unchanged.]*
+
 Binding rules:
 - **READ-ONLY, FOREVER.** No write tool exists in the catalog or the
   client registry — absent, not merely unused. Assert by inspection on
