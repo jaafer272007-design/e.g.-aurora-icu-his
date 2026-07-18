@@ -74,3 +74,14 @@ body:has(.envbanner) .ac .accomposer{margin-bottom:26px}
 @media (max-width: 1023px){
   .ac .shell{grid-template-columns:minmax(0,1fr)}
 }
+
+/* the interpretation layer (owner's 2026-07-18 decision) — the ONLY
+   model-written text on the screen, visually distinct from every data
+   card: violet-edged, tagged AI INTERPRETATION, with the boundary
+   stated in the footer */
+.ac .acinterp{margin-left:35px;padding:11px 14px;border:1px dashed rgba(var(--violet-rgb),.55);border-radius:12px;background:rgba(var(--violet-rgb),.06)}
+.ac .acinterp>p{margin:8px 0 0;font-size:12.5px;line-height:1.6}
+.ac .acinterphead{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim)}
+.ac .acinterptag{font-weight:700;letter-spacing:.06em;font-size:10px;color:var(--violet);border:1px solid rgba(var(--violet-rgb),.5);border-radius:6px;padding:2px 7px;background:rgba(var(--violet-rgb),.12)}
+.ac .acinterpfoot{margin:9px 0 0;font-size:11px;color:var(--dim);line-height:1.5}
+.ac .acsub{margin:11px 0 6px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim)}

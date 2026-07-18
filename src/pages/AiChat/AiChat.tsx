@@ -6,9 +6,9 @@ import { NavSidebar } from '../../components/NavSidebar'
 import { Badge } from '../../components/Badge'
 import { BedChip } from '../../components/Tag'
 import { IconBrain } from '../../components/icons'
-import { aiTranslateQuery, getPatients } from '../../lib/api'
+import { aiInterpretCondition, aiTranslateQuery, getPatients } from '../../lib/api'
 import type { PatientSummary } from '../../lib/api/types'
-import { executeAiTool, type AiToolResult } from '../../lib/ai/tools'
+import { conditionSnapshot, executeAiTool, type AiToolResult } from '../../lib/ai/tools'
 import { chatHistory, pushChatTurn } from '../../lib/ai/chatMemory'
 import { lastPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
@@ -47,11 +47,18 @@ interface ChatEntry {
   unanswerable: string | null
   error: string | null
   result: AiToolResult | null
+  /* the interpretation layer (owner's 2026-07-18 decision): labeled
+     commentary generated AFTER the data card rendered, over exactly the
+     snapshot it shows — pending while the model writes, then text or an
+     honest error. Only condition results ever have one. */
+  interp: 'pending' | 'done' | null
+  interpText: string | null
+  interpError: string | null
 }
 
 const EXAMPLES = [
   'Give me all the orders for رضا',
-  'Give me the worst period that رضا was in',
+  'How is رضا doing right now?',
   'Who was assigned today, and who is the worst of them by NEWS2?',
 ]
 
@@ -92,6 +99,7 @@ export function AiChat() {
     const id = nextId++
     setEntries(prev => [...prev, {
       id, question, state: 'pending', tool: null, args: null, unanswerable: null, error: null, result: null,
+      interp: null, interpText: null, interpError: null,
     }])
     const patch = (p: Partial<ChatEntry>) =>
       setEntries(prev => prev.map(e => (e.id === id ? { ...e, ...p } : e)))
@@ -110,6 +118,19 @@ export function AiChat() {
       try {
         const result = await executeAiTool(tool, args)
         patch({ state: 'done', result })
+        /* the interpretation stage: only after the DATA is on screen, and
+           only for a condition overview — the commentary comments on the
+           rendered snapshot, nothing else. A failed interpretation never
+           touches the data card: the fetched facts stand on their own. */
+        if (result.kind === 'condition') {
+          patch({ interp: 'pending' })
+          try {
+            const { text } = await aiInterpretCondition(question, result.patient.name, conditionSnapshot(result))
+            patch({ interp: 'done', interpText: text })
+          } catch (e) {
+            patch({ interp: 'done', interpError: e instanceof Error ? e.message : 'no interpretation was generated' })
+          }
+        }
       } catch (e) {
         patch({ state: 'done', error: e instanceof Error ? e.message : 'the query could not be executed' })
       }
@@ -149,10 +170,13 @@ export function AiChat() {
           <div className="acdisclaimer" role="note">
             <IconBrain size={14} stroke="var(--violet)" />
             <span>
-              <b>Grounded query chat.</b> The model only translates your question into the query
-              shown with each answer — every clinical value on this screen comes from Aurora's own
-              records, read with your role's permissions. Read-only: this screen can never order,
-              chart or change anything. Every question is logged as patient-data access.
+              <b>Grounded query chat.</b> The model translates your question into the query shown
+              with each answer — every clinical value on this screen comes from Aurora's own records,
+              read with your role's permissions. For condition questions, a block labeled
+              AI&nbsp;INTERPRETATION adds the model's commentary on the fetched data — the only
+              model-written text on this screen, always labeled, never treatment advice. Read-only:
+              this screen can never order, chart or change anything. Every question is logged as
+              patient-data access.
             </span>
           </div>
 
@@ -194,6 +218,22 @@ export function AiChat() {
                 )}
                 {e.error !== null && <div className="acerror">{e.error}</div>}
                 {e.result && <ResultBlock r={e.result} />}
+                {e.interp === 'pending' && <div className="acpending">interpreting the fetched data…</div>}
+                {e.interpText !== null && (
+                  <div className="acinterp">
+                    <div className="acinterphead">
+                      <span className="acinterptag">AI INTERPRETATION</span>
+                      <span>generated commentary — not part of the record</span>
+                    </div>
+                    <p>{e.interpText}</p>
+                    <p className="acinterpfoot">
+                      ⚠ Written by the model from the data card above ONLY. It may be wrong and must be
+                      verified against that data; it never contains treatment advice — management
+                      decisions belong to the treating team.
+                    </p>
+                  </div>
+                )}
+                {e.interpError !== null && <div className="acerror">{e.interpError}</div>}
               </div>
             ))}
           </div>
@@ -487,6 +527,64 @@ function ResultBlock({ r }: { r: AiToolResult }) {
                 <p className="acdim">Showing the latest {latest.length} of {r.rows.length} — the full feed is on the Timeline screen.</p>}
             </>
           )}
+        </div>
+      )
+    }
+    case 'condition': {
+      /* the condition overview — the data card the interpretation layer
+         comments on: both scores, the latest observations, the most
+         recent lab draws, active orders. All values verbatim from the
+         canonical reads; the AI-written commentary renders SEPARATELY
+         below this card, labeled. */
+      return (
+        <div className="accard">
+          <h3>Condition overview — <PatientLine p={r.patient} /></h3>
+          <p className="acscore">
+            NEWS2: <ScoreLine result={r.news2.result} />
+            {r.news2.result.complete && r.news2.band && <span> · band: {r.news2.band.label} (display only)</span>}
+            {' · '}SOFA worst-in-24h: <ScoreLine result={r.sofa.worst} /> · latest: <ScoreLine result={r.sofa.latest} />
+          </p>
+          {r.news2.ventilated && <p className="acdim">On respiratory support — standard NEWS2 has known limitations under mechanical ventilation (shown, never silently adjusted).</p>}
+          <h4 className="acsub">Latest observations ({r.observations.length})</h4>
+          {r.observations.length === 0 ? <Empty what={`charted observations for ${r.patient.name}`} /> : (
+            <ul className="aclist">
+              {r.observations.map(o => (
+                <li key={o.observationId}>
+                  <span className="num">{o.clinicalTime}</span>
+                  <b>{o.typeCode}</b>
+                  <span>{o.value} {o.unit}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <h4 className="acsub">Most recent lab draws ({r.labs.length})</h4>
+          {r.labs.length === 0 ? <Empty what={`lab results for ${r.patient.name}`} /> : (
+            <ul className="aclist acgroups">
+              {r.labs.map(d => (
+                <li key={d.labId}>
+                  <div><b>{d.label}</b> <span className="acdim">{d.resultedAt || d.collectedAt}</span></div>
+                  <div className="acanalytes">
+                    {d.custom
+                      ? <span>{d.customValue} {d.customUnit}</span>
+                      : d.items.map(it => (
+                        <span key={it.analyte} className={it.flag !== 'normal' ? `f-${it.flag}` : ''}>
+                          {it.analyte} <b className="num">{it.value}</b> {it.unit}
+                        </span>
+                      ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <h4 className="acsub">Active orders ({r.activeOrders.length})</h4>
+          {r.activeOrders.length === 0 ? <Empty what={`active orders for ${r.patient.name}`} /> : (
+            <ul className="aclist">
+              {r.activeOrders.map(o => (
+                <li key={o.orderId}><i className="num">{o.orderId}</i><b>{o.summary}</b></li>
+              ))}
+            </ul>
+          )}
+          <ScoreFooter instrument="news2" />
         </div>
       )
     }

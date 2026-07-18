@@ -7,8 +7,14 @@ using Microsoft.EntityFrameworkCore;
 namespace Aurora.Core.Ai;
 
 /* ---------------- AI Assistant — grounded query chat (server half) ----------------
-   THE DEFINING RULE (design §2): the LLM emits a QUERY, never a VALUE.
-   This endpoint translates a natural-language question into ONE
+   THE DEFINING RULE (design §2): the LLM emits a QUERY, never a FACT.
+   [Superseded in part, owner's decision 2026-07-18: the zero-prose
+   reading is widened by ONE addition — the /interpret endpoint below may
+   generate labeled COMMENTARY on data Aurora fetched (trends, severity),
+   rendered by the UI as AI-generated and never merged into any record.
+   Treatment, medication and management advice remain refused in both
+   layers. Every clinical FACT on screen still comes from Aurora alone.]
+   The /query endpoint translates a natural-language question into ONE
    structured tool call from a fixed, READ-ONLY catalog — and that is
    ALL it does. It never executes the tool, never touches patient rows,
    and its response contract has no field that could carry a clinical
@@ -85,13 +91,18 @@ static class AiApi
         ("score_ranking", "Rank the CURRENT unit by a NAMED instrument (sofa or news2), computed by Aurora. Use for 'who is the worst/sickest' — never decide worst yourself; Aurora computes and the instrument is named.", """{"type":"object","properties":{"instrument":{"type":"string","enum":["sofa","news2"]}},"required":["instrument"],"additionalProperties":false}"""),
         ("worst_period", "A patient's WORST period in their current admission by a NAMED instrument: Aurora computes the score across the encounter's history and reports the peak. instrument: sofa or news2.", """{"type":"object","properties":{"patient":{"type":"string"},"instrument":{"type":"string","enum":["sofa","news2"]}},"required":["patient","instrument"],"additionalProperties":false}"""),
         ("timeline", "A patient's clinical timeline — aggregated events (orders, meds, results, notes) in time order.", """{"type":"object","properties":{"patient":{"type":"string"}},"required":["patient"],"additionalProperties":false}"""),
-        ("unanswerable", "Use when the question cannot be answered by any tool here (wrong domain, requires prediction/diagnosis/advice, requires data Aurora does not hold, or requires writing/ordering — this assistant is read-only).", """{"type":"object","properties":{"reason":{"type":"string","description":"one short sentence saying why"}},"required":["reason"],"additionalProperties":false}"""),
+        /* the interpretation layer (owner's 2026-07-18 decision): condition
+           questions stop being unanswerable — Aurora fetches the data and a
+           SEPARATE, labeled step comments on it. Treatment stays refused. */
+        ("condition_interpretation", "A patient's current condition overview: Aurora fetches the real scores, observations, labs and orders, and a clearly-labeled AI step adds a short interpretation of trends and severity. Use when asked how a patient is doing, their condition, an impression, or to interpret their data. NEVER for treatment, medication or management advice — that stays unanswerable.", """{"type":"object","properties":{"patient":{"type":"string","description":"patient name (any part, Arabic or Latin), patient id like P-1001, or bed id"}},"required":["patient"],"additionalProperties":false}"""),
+        ("unanswerable", "Use when the question cannot be answered by any tool here (wrong domain, asks for treatment/medication/management advice or a prediction, requires data Aurora does not hold, or requires writing/ordering — this assistant is read-only).", """{"type":"object","properties":{"reason":{"type":"string","description":"one short sentence saying why"}},"required":["reason"],"additionalProperties":false}"""),
     };
 
     const string SystemPrompt =
         "You translate a clinician's question about ICU patients into EXACTLY ONE tool call from the provided tools. "
         + "You are a query translator, not a clinical assistant: you never answer in prose, never state clinical values, "
-        + "never predict, diagnose, rank by your own judgment, or suggest management. "
+        + "never predict, rank by your own judgment, or give treatment, medication or management advice. "
+        + "For questions about a patient's condition, how they are doing, an overall impression, or an interpretation of their data, call condition_interpretation — Aurora fetches the data and a separate, clearly-labeled step comments on it. "
         + "For 'worst/sickest' questions pick score_ranking or worst_period with an instrument (default news2) — Aurora computes; you only choose the instrument. "
         + "Patient references may be Arabic or Latin names, partial names, patient ids (P-…) or beds — pass them through verbatim in the patient argument. "
         + "If a context patient is given, resolve pronouns ('his orders') to it. "
@@ -99,7 +110,7 @@ static class AiApi
            never silently converted into a related read — enumerate the verbs
            so a small model cannot miss the class */
         + "You can only LOOK THINGS UP. If the user asks you to DO anything — order, prescribe, give, administer, discontinue, hold, chart, document, record, acknowledge, sign, correct, amend, assign, transfer, admit, discharge — call unanswerable saying this assistant is read-only; NEVER answer an action request with a lookup instead. "
-        + "If the question asks for anything else outside the tools (advice, predictions, non-ICU data), call unanswerable.";
+        + "If the question asks for anything else outside the tools (treatment or management advice, predictions, non-ICU data), call unanswerable.";
 
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(AiConfig.TimeoutSeconds) };
 
@@ -200,6 +211,74 @@ static class AiApi
                 return Results.Json(new { error = "the AI model endpoint did not answer — the question was not translated; no data was accessed" }, JsonOpts.Web, statusCode: 502);
             }
         }).RequireAuthorization();
+
+        /* POST /api/icu/ai/interpret — the INTERPRETATION LAYER (owner's
+           2026-07-18 decision). Same RBAC (ai.view), same audit-every-
+           attempt rule, same provider honesty. The client sends the exact
+           snapshot it just rendered — data the user's own token already
+           read; this endpoint reads NO patient rows itself. The reply is
+           ONE bounded text of commentary the UI labels as AI-generated.
+           The prompt forbids treatment/medication/management advice — the
+           boundary the owner kept when widening the rule. */
+        app.MapPost("/api/icu/ai/interpret",
+            async (AiInterpretRequest req, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Identity.Rbac.Deny(user, "ai.view") is IResult denied) return denied;
+            var question = req.Question?.Trim() ?? "";
+            if (question == "") return ApiError.BadRequest("question is required");
+            if (question.Length > 2000) return ApiError.BadRequest("question exceeds 2000 characters");
+            var patient = req.Patient?.Trim() ?? "";
+            if (patient.Length > 200) return ApiError.BadRequest("patient exceeds 200 characters");
+            if (req.Data is not { } data || data.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+                return ApiError.BadRequest("data snapshot is required — interpretation only ever comments on fetched data");
+            var dataJson = JsonSerializer.Serialize(data, JsonOpts.Web);
+            if (dataJson.Length > 60_000) return ApiError.BadRequest("data snapshot exceeds 60000 characters");
+
+            var row = new AiQueryRow
+            {
+                QueryId = AiLogic.NextQueryId(),
+                Seq = AiLogic.NextSeq(db),
+                AskedAt = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"),
+                Actor = user.FindFirst("name")?.Value ?? "Unknown",
+                ActorRole = user.FindFirst("jobTitle")?.Value ?? "Unknown",
+                Question = question,
+                /* the snapshot itself is NOT persisted — the audit records
+                   the access (who asked what about whom), never a second
+                   copy of patient data */
+                ContextPatientId = null,
+                Tool = "condition_interpretation",
+            };
+
+            if (AiConfig.Provider == "none")
+            {
+                row.Outcome = "no-provider";
+                db.AiQueries.Add(row); db.SaveChanges();
+                var msg = AiConfig.UnavailableReason != ""
+                    ? $"AI unavailable: {AiConfig.UnavailableReason}. Aurora runs fully — the AI assistant is a disabled feature on this install, not a fault; every screen's data remains available directly"
+                    : "no AI model is configured in this environment (AI_PROVIDER=none) — the interpretation layer needs a model; the fetched data above is complete without it";
+                return Results.Json(new { error = msg }, JsonOpts.Web, statusCode: 503);
+            }
+            if (AiConfig.Provider != "openai")
+            {
+                row.Outcome = "bad-provider";
+                db.AiQueries.Add(row); db.SaveChanges();
+                return Results.Json(new { error = $"unknown AI_PROVIDER '{AiConfig.Provider}' — supported: none, openai (any OpenAI-compatible endpoint, hosted or local)" }, JsonOpts.Web, statusCode: 503);
+            }
+
+            try
+            {
+                var text = await Interpret(question, patient, dataJson);
+                row.Outcome = "interpreted";
+                db.AiQueries.Add(row); db.SaveChanges();
+                return Results.Json(new AiInterpretResponseDto(text), JsonOpts.Web);
+            }
+            catch (Exception ex)
+            {
+                row.Outcome = $"provider-error: {Bound(ex.Message, 300)}";
+                db.AiQueries.Add(row); db.SaveChanges();
+                return Results.Json(new { error = "the AI model endpoint did not answer — no interpretation was generated; the fetched data above is complete without it" }, JsonOpts.Web, statusCode: 502);
+            }
+        }).RequireAuthorization();
     }
 
     static string Bound(string s, int max) => s.Length <= max ? s : s[..max];
@@ -267,6 +346,55 @@ static class AiApi
            receives an unparseable payload */
         using var _ = JsonDocument.Parse(argsRaw);
         return (name, argsRaw);
+    }
+
+    /* the interpretation prompt — THE KEPT BOUNDARY, stated where the
+       generation happens: comment on the snapshot, never manage the
+       patient. Everything the model writes lands in a UI block labeled
+       as AI commentary; nothing it writes is ever merged into a record. */
+    const string InterpretPrompt =
+        "You are the interpretation layer of an ICU information system. You receive a clinician's question and a JSON "
+        + "snapshot of ONE patient's real data (clinical scores, recent observations, recent labs, active orders) that the "
+        + "system just fetched from the record and displayed. Write a SHORT interpretation — three to five plain sentences: "
+        + "describe the trends, abnormalities and overall severity visible in the snapshot, citing only values that are "
+        + "present in it. State uncertainty where the data is sparse; if the snapshot is too thin to interpret, say exactly "
+        + "that. ABSOLUTE RULES: never recommend, suggest, start, stop or adjust any treatment, medication, dose, fluid, "
+        + "oxygen or ventilation setting, and never propose investigations or management steps. If the question asks which "
+        + "treatment to give, what dose, or what to do, do NOT engage with that choice at all — not even conditionally or "
+        + "by saying more data would be needed to choose; describe the data, then end with exactly: 'Management decisions "
+        + "belong to the treating team - I interpret data only.' Never invent or estimate values missing from the "
+        + "snapshot. No markdown, no lists, no headings — plain sentences only.";
+
+    /* the interpretation call: a plain completion (no tools) at
+       temperature 0 with a hard output ceiling — commentary is short or
+       it is not commentary */
+    static async Task<string> Interpret(string question, string patient, string dataJson)
+    {
+        var payload = new
+        {
+            model = AiConfig.Model,
+            messages = new object[]
+            {
+                new { role = "system", content = InterpretPrompt },
+                new { role = "user", content = $"Patient: {(patient == "" ? "(unnamed)" : patient)}\nQuestion: {question}\nData snapshot (JSON, fetched from the record and shown to the user):\n{dataJson}" },
+            },
+            temperature = 0,
+            max_tokens = 350,
+        };
+        using var msg = new HttpRequestMessage(HttpMethod.Post, $"{AiConfig.Endpoint}/chat/completions")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload, JsonOpts.Web), Encoding.UTF8, "application/json"),
+        };
+        if (AiConfig.ApiKey != "") msg.Headers.Add("Authorization", $"Bearer {AiConfig.ApiKey}");
+        using var res = await Http.SendAsync(msg);
+        var body = await res.Content.ReadAsStringAsync();
+        if (!res.IsSuccessStatusCode)
+            throw new InvalidOperationException($"model endpoint returned {(int)res.StatusCode}");
+        using var doc = JsonDocument.Parse(body);
+        var text = (doc.RootElement.GetProperty("choices")[0].GetProperty("message")
+            .TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null)?.Trim() ?? "";
+        if (text == "") throw new InvalidOperationException("model returned an empty interpretation");
+        return Bound(text, 2000);
     }
 }
 
