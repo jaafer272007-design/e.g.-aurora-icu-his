@@ -54,6 +54,7 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
        the data-driven Type Catalogue and group enablement — types and
        groups are DATA, never schema */
     public DbSet<Aurora.Core.Observations.ObservationRow> Observations => Set<Aurora.Core.Observations.ObservationRow>();
+    public DbSet<Aurora.Core.Nursing.HandoffRow> Handoffs => Set<Aurora.Core.Nursing.HandoffRow>();
     public DbSet<Aurora.Core.Observations.ObservationTypeRow> ObservationTypes => Set<Aurora.Core.Observations.ObservationTypeRow>();
     public DbSet<Aurora.Core.Observations.ObservationGroupRow> ObservationGroups => Set<Aurora.Core.Observations.ObservationGroupRow>();
 

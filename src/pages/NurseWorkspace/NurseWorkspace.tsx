@@ -7,11 +7,11 @@ import { displayStamp, dueStateFor, nowHm, useNow } from '../../lib/time'
 import { IconCheck, IconPencil, IconUsers } from '../../components/icons'
 import {
   completeImplementation, documentAdministration, getImplementationQueue, getIoEntries,
-  getMarRows, getNurseWorklist, getNursingTasks, getUnassignedPatients, recordIoEntry, toggleNursingTask,
+  getHandoffEntries, getMarRows, getNurseWorklist, getNursingTasks, getUnassignedPatients, recordIoEntry, toggleNursingTask, writeHandoff,
 } from '../../lib/api'
 import type {
   AdministrationAction, AssignedPatient, Assignment, IoEntry, IoKind, MarRow, NursingTask, Order,
-  UnassignedPatient,
+  UnassignedPatient, HandoffEntry,
 } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { AssignedPatientsCard } from './AssignedPatientsCard'
@@ -42,7 +42,19 @@ export function NurseWorkspace() {
   const [implementedIds, setImplementedIds] = useState<Set<string>>(new Set())
   const [tasks, setTasks] = useState<NursingTask[] | null>(null)
   const [io, setIo] = useState<IoEntry[] | null>(null)
-  const [sbarNotes, setSbarNotes] = useState<Record<string, SbarNote>>({})
+  /* the SBAR handoff series per selected patient — REAL data from the
+     append-only store (undefined = loading, null = unreachable). The
+     old page-local Record<pid, note> that silently discarded every
+     save on navigation is DELETED — the data-loss bug this replaces. */
+  const [handoffs, setHandoffs] = useState<Record<string, HandoffEntry[] | null | undefined>>({})
+  const [handoffBusy, setHandoffBusy] = useState(false)
+
+  const loadHandoffs = (patientId: string) => {
+    if (!patientId) return
+    setHandoffs(prev => ({ ...prev, [patientId]: prev[patientId] ?? undefined }))
+    getHandoffEntries(patientId).then(entries =>
+      setHandoffs(prev => ({ ...prev, [patientId]: entries })))
+  }
 
   useEffect(() => {
     getNurseWorklist(session.name, session.jobTitle).then(w => {
@@ -50,6 +62,7 @@ export function NurseWorkspace() {
       const ids = w.patients.map(p => p.patientId)
       getMarRows(ids).then(setMar)
       getImplementationQueue(ids).then(setOrders)
+      if (ids[0]) loadHandoffs(ids[0])
     })
     /* the Unassigned panel (unit-level safety view): open encounters with
        no active NURSE — so no patient silently falls through */
@@ -104,9 +117,22 @@ export function NurseWorkspace() {
     })
   }
 
-  const saveSbar = (patientId: string, note: SbarNote) => {
-    setSbarNotes(prev => ({ ...prev, [patientId]: note }))
-    showToast('Handoff saved', `SBAR note for ${patientName(patientId)} · ${nowHm()}`)
+  /* append ONE immutable entry — the toast fires only on the server's
+     confirmation (the old fixture toasted while saving nothing) */
+  const saveSbar = async (patientId: string, note: SbarNote): Promise<boolean> => {
+    setHandoffBusy(true)
+    try {
+      const res = await writeHandoff(patientId, note)
+      if (res.kind === 'ok') {
+        showToast('Handoff recorded', `${res.data.handoffId} · ${patientName(patientId)} · ${res.data.recordedAt}`)
+        loadHandoffs(patientId)
+        return true
+      }
+      showToast('Handoff NOT recorded', res.kind === 'rejected' ? res.error : 'the server is not reachable — nothing was saved')
+      return false
+    } finally {
+      setHandoffBusy(false)
+    }
   }
 
   const now = useNow()
@@ -152,7 +178,7 @@ export function NurseWorkspace() {
             {unassigned && <UnassignedCard kind="nurse" patients={unassigned} />}
             {orders && <OrdersCard orders={orders} completedIds={implementedIds} onComplete={completeOrder} />}
             {tasks && <TasksCard tasks={tasks} onToggle={toggleTask} />}
-            {worklist && <SbarCard patients={patients} notes={sbarNotes} onSave={saveSbar} />}
+            {worklist && <SbarCard patients={patients} entriesByPatient={handoffs} busy={handoffBusy} onSelect={loadHandoffs} onSave={saveSbar} />}
           </div>
         </main>
       </div>

@@ -103,6 +103,7 @@ static class Seeder
         Aurora.Core.Assignments.AssignmentLogic.InitializeCounters(db);
         Aurora.Core.Observations.ObservationCatalog.InitializeCounters(db);
         AiLogic.InitializeCounters(db);
+        Aurora.Core.Nursing.HandoffLogic.InitializeCounters(db);
     }
 
     /* ---- development / staging: the full demo set, unchanged ---- */
@@ -188,6 +189,7 @@ static class Seeder
         }
         SeedBeds(app, db);
         SeedDemoAssignments(app, db);
+        SeedDemoHandoffs(app, db);
 
         /* Layer 4 Master Data (Aurora Core): the formulary, the named
            frequency vocabulary (moved from OrderLogic's hardcoded array),
@@ -248,6 +250,44 @@ static class Seeder
         db.Assignments.AddRange(rows);
         db.SaveChanges();
         app.Logger.LogInformation("Seeded {Count} demo patient assignments (open encounters only)", rows.Count);
+    }
+
+    /* demo SBAR handoff series — ONE encounter gets a two-entry series
+       (the append-only shape visible on staging/appliance), authored by
+       the nurse the demo assignments already place on that patient.
+       Timestamps "" on seed rows — facts are never invented (the
+       assignment-seed convention). Production seeds NONE. */
+    static void SeedDemoHandoffs(WebApplication app, AuroraDb db)
+    {
+        if (db.Handoffs.Any()) return;
+        var enc = db.Encounters.AsNoTracking()
+            .FirstOrDefault(e => e.EncounterId == "ENC-1001" && e.Status == "open");
+        if (enc is null) return;
+        db.Handoffs.AddRange(
+            new Aurora.Core.Nursing.HandoffRow
+            {
+                HandoffId = "HDO-1001", Seq = 1,
+                EncounterId = enc.EncounterId, PatientId = enc.PatientId,
+                S = "Ventilated, sedated, stable overnight on current settings.",
+                B = "Admitted with severe pneumonia; central line day 2, urinary catheter in situ.",
+                A = "Oxygenation slowly improving; secretions moderate; haemodynamically stable on low-dose support.",
+                R = "Chase morning gas, wean sedation per plan if gas acceptable, mouth care 4-hourly.",
+                RecordedByUser = "maya.chen", RecordedBy = "Maya Chen", RecordedRole = "Nurse",
+                RecordedAt = "",
+            },
+            new Aurora.Core.Nursing.HandoffRow
+            {
+                HandoffId = "HDO-1002", Seq = 2,
+                EncounterId = enc.EncounterId, PatientId = enc.PatientId,
+                S = "Day shift: lighter on sedation hold, obeying commands, self-ventilating trial planned.",
+                B = "As prior entry; line sites clean.",
+                A = "Improving; one febrile spike 38.2 mid-shift, cultures already pending.",
+                R = "Watch temperature trend, keep strict I&O, physio referral chased for tomorrow.",
+                RecordedByUser = "maya.chen", RecordedBy = "Maya Chen", RecordedRole = "Nurse",
+                RecordedAt = "",
+            });
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded demo SBAR handoff series (2 entries on ENC-1001)");
     }
 
     /* ---- production: reference data + bootstrap admin ONLY ---- */

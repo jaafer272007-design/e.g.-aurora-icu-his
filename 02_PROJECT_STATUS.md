@@ -1,6 +1,20 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-18 · current through the MANAGEMENT-ROW LAYOUT FIX
+**Last updated: 2026-07-18 · current through SBAR HANDOFF PERSISTENCE
+(the nurse workspace's handoff card was a silent data-loss surface —
+rendered, accepted input, toasted "saved", persisted NOWHERE, in every
+environment; closed per the owner's three 2026-07-18 decisions: an
+APPEND-ONLY immutable series (no edit path — a correction is the next
+entry), the structured four-field SBAR form kept, and writes gated to
+the nursing team ASSIGNED to the patient (primary or secondary; a
+scoped, attributed exception to worklist-never-authority) — nurse-only,
+the undesigned doctor handoff deliberately NOT merged; new Handoffs
+table + GET/POST /api/icu/nursing/handoff (new Nurse-only
+handoff.document permission, generic 403, EncounterGuard 409,
+encounter-scoped with closed-admission history readable), entries stamp
+author + ACTIVE role + dated UTC time, honest empty/unreachable states,
+16th deployed suite deployed-handoff-e2e — see its record below);
+prior marker retained: current through the MANAGEMENT-ROW LAYOUT FIX
 (a tester + the owner reported the /lab-catalog row actions piled
 vertically into the analyte chips at every width; root cause was NOT
 positioning but a cross-component class collision — the Alerts .al
@@ -4902,6 +4916,100 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### SBAR handoff persistence — the append-only series (a Stage-11 mock closure; a data-loss fix)
+
+**Report (verify-first, delivered before any design talk):** the SBAR
+handoff card on /nurse rendered and accepted input but persisted
+NOWHERE — pure client state (`SbarCard` + a local `onSave` that only
+cleared the form and toasted "SBAR note saved", a misleading success for
+a write that never happened). No endpoint existed (only a stale
+`PUT /api/icu/nursing/handoff/:patientId` comment sketch in the API
+client), the state died on unmount (navigate away = gone, reload = gone,
+in EVERY environment including production), the card was keyed by
+PATIENT (violating the ORD-113 encounter-scope lesson), and the Print
+Center SBAR template's write-ins were a separate unpersisted surface
+(unchanged here — flagged follow-up). A nurse could write a handover,
+watch it "save", and the next shift would find nothing.
+
+**The owner's model (2026-07-18, three decisions, binding):**
+1. **Append-only series.** Every save is a NEW immutable entry stamped
+   with author, active role and dated time; prior entries stay visible
+   forever as the record of what was communicated at each handover. NO
+   edit path — a correction is simply the next entry (the
+   PatientAssignment/audit row-is-the-record pattern).
+2. **The structured four-field SBAR form stands** (Situation,
+   Background, Assessment, Recommendation). SBAR is a discipline; the
+   four fields make a handover scannable. Not free text.
+3. **Any nurse ASSIGNED to the patient (Primary or Secondary) may
+   write.** Assignment is the worklist — the nurse actually caring for
+   the patient hands over; Secondary is included because handover is
+   exactly when they're covering. Not gated to Primary only, not open to
+   every nurse in the unit. NURSE-ONLY for now — the doctor handoff is a
+   separate record, not yet designed; the two must NOT be merged. This
+   is a deliberate SCOPED EXCEPTION to worklist-never-authority
+   (attributed notes in 01 Locked Decisions + the assignments record's
+   locked decision 6 above).
+
+**Build:** new `Handoffs` table (EF migration `AddHandoffs`) +
+`server/Core/Nursing/` (HandoffModels + HandoffApi). `GET
+/api/icu/nursing/handoff?patientId[&encounterId]` (patients.view — the
+observations-chart read precedent): no encounterId resolves the OPEN
+encounter; none open → `[]` (the honest empty); an explicit encounterId
+reads that admission forever — the lifecycle closes writes, never
+history; series newest-first. `POST /api/icu/nursing/handoff` (new
+`handoff.document` permission, Nurse profile ONLY) — gate order:
+permission → shape (patient exists; ≥1 of the four fields non-empty
+else 400; each ≤4000 chars; unknown body/query members 400 per
+Disallow) → EncounterGuard (409 on a closed episode) → the assignment
+gate (an ACTIVE nurse assignment, primary or secondary, on THIS
+encounter, matched on the caller's own token; failure answers the
+GENERIC four-code 403 — the UI states the rule as static text instead).
+Entries stamp `HDO-####` id, seq, author (sub + display name), ACTIVE
+ROLE (`Rbac.ProfileOf(jobTitle)` — the #104 lesson) and the dated
+"yyyy-MM-dd HH:mm" UTC stamp (#95). NO update, NO delete route exists —
+immutability by construction. Client: `getHandoffEntries` (real-only
+read, null = honest unreachable) + `writeHandoff` (usersWrite);
+`SbarCard` rewritten — the form appends, the series renders below it
+newest-first with author/role/time/id meta lines, states are honest
+(loading / unreachable-no-substitute / "No handoff recorded for this
+admission yet"), and the misleading toast is dead: success toasts the
+server's `handoffId` + stamp, failure toasts "Handoff NOT recorded" +
+the server's reason, and the draft clears ONLY on confirmed persistence.
+Demo seed: a 2-entry series on ENC-1001 by maya.chen (RecordedAt "" —
+facts are never invented); production seeds none. 16th deployed suite
+`deployed-handoff-e2e` added to the sequential board.
+
+**Verification (local appliance, fresh Postgres volume, the branch's
+image):** `tsc --noEmit` + `vite build` + `dotnet build -c Release` all
+clean; the `AddHandoffs` migration applied on boot and the demo series
+seeded. **API 35/35:** honest `[]` before any entry · read unauth 401 ·
+unknown query param 400 · CORS preflight · write unauth 401 · DOCTOR
+403 generic · UNASSIGNED-nurse 403 generic · all-empty/4001-char/
+unknown-patient/unknown-body-field 400s · first entry (HDO- id,
+encounter-scoped, recordedByUser + Nurse role + `yyyy-MM-dd HH:mm`
+stamp) · second nurse reads it but writes 403 UNTIL assigned SECONDARY,
+then writes · series 2 entries newest-first with the first entry
+byte-identical after the second write · PUT/PATCH/DELETE on an entry →
+405 (no edit surface exists) · demo seed on P-1001 with blank stamps ·
+discharge → write 409, closed-admission history readable via
+`?encounterId`, open-encounter read honestly `[]`. **Rendered 15/15
+(real Chromium):** the seeded series renders with author/role and
+"time not recorded" for blank stamps; the honest empty state on the
+second worklist patient; a new entry records (success toast carries the
+SERVER's id + stamp; the draft clears only on confirmed persistence),
+renders newest-first, PERSISTS across reload AND a full re-login, and
+priya.patel — assigned secondary — sees Maya Chen's entry under Maya's
+name. Screenshots delivered in session. "Audited with the active role"
+is satisfied by the platform's row-is-the-record convention (the
+assignments precedent): the immutable row itself carries actor, active
+role and stamp; there is no separate audit table in this codebase.
+
+**Scope honesty:** this closes ONE of the nurse workspace's three
+fixtures — nursing tasks and I&O remain Stage-11 mocks (still
+production-refused per §9's inventory). The Print Center SBAR template
+still prints write-in areas, not this series, and the timeline has no
+handoff category — both flagged follow-ups, not silently absorbed.
+
 ### Management-row layout fix — the .al class-collision lesson, hit a second time
 
 **Report (tester on a standard laptop + the owner on ultrawide + iPad,
@@ -5064,6 +5172,10 @@ rendered browser against the first production build ever booted:
   note is pure client state (`SbarCard` + local `onSave`) — edits
   vanish on reload in EVERY environment; the Print Center SBAR template
   prints real identity + medication context but unpersisted write-ins.
+  *[Superseded 2026-07-18: the SBAR handoff HALF is closed — the
+  append-only persisted series (see "SBAR handoff persistence" below).
+  The Print Center SBAR template's write-ins remain unpersisted —
+  flagged follow-up.]*
 - **Works real in production (for the record — the surprising side of
   the inventory):** roster/census, beds + ADT + transfers/discharges,
   patient identity + match/history, orders full lifecycle, MAR, labs,
@@ -5991,7 +6103,12 @@ could not be created.
   (MarApi's recorded rule — comment updated in place) whose source is
   now the real assignments read. THE EMERGENCY CASE IS ASSERTED
   EXPLICITLY: an unassigned nurse documents a dose 200, locally and in
-  the deployed suite.
+  the deployed suite. *[Scoped exception added 2026-07-18, per the
+  project owner (SBAR handoff persistence): the `handoff.document`
+  write — and ONLY that write — is gated on an active nurse assignment
+  (primary or secondary) on the open encounter; see the attributed note
+  under Locked Decisions in 01 and the SBAR record below. meds.administer
+  stays global; the emergency case above is unchanged.]*
 - **Lifecycle:** discharge auto-ends every active assignment in the SAME
   transaction (`AssignmentLogic.DischargeCascade`, mirroring the order
   cascade) — audited with the discharging clinician + active role,
@@ -6018,7 +6135,10 @@ could not be created.
   server for the offline demo. **Still fixtures, deliberately untouched
   (recorded per §9):** the nurse workspace's nursing tasks, I&O, and the
   SBAR handoff note — this build made the assignment/MAR/implement
-  halves honest and did not touch those.
+  halves honest and did not touch those. *[Superseded in part
+  2026-07-18: the SBAR handoff is now the real append-only series
+  ("SBAR handoff persistence" above); nursing tasks and I&O remain
+  fixtures.]*
 - **`Encounter.Attending` — flagged, resolved as LEFT ALONE (the
   design's recommendation):** it remains the legacy free-text display
   string on the encounter/admission form, joined to nothing; the real

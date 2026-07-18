@@ -94,7 +94,7 @@ static class Rbac
             "observations.correct", "observations.configure", "patients.measure",
             "assignments.manage"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
-            "notes.document", "results.view", "results.document", "ai.view", "adt.transfer",
+            "notes.document", "handoff.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record", "patients.measure"],
         /* users.manage MOVED to the System Administrator (User Management
            design §5: the atoms are held ONLY by that role) — the office
