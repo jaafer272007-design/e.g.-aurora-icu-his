@@ -1,6 +1,29 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-18 · current through PHASE 3 PR 2 — MISSION
+**Last updated: 2026-07-18 · current through PHASE 3 PR 3 — UNIT
+SUMMARY DERIVED (the last honest-degraded dashboard regions render REAL
+figures, client-only: no unit-summary domain was built — Bed Overview's
+KPI strip/right panel and Admin Home compose a DERIVED summary at load
+from canonical reads that already exist (admissions/discharges falling
+on today's UTC day from ADT encounters; unacknowledged clinician-marked
+criticals from the results inbox, rendered as a "Critical
+Unacknowledged Results" section — the REAL signal behind the demo alert
+feed, never a synthesized one; vent utilization/census from the real
+bed board the pages already read), every figure NAMING its source where
+the demo showed a fabricated trend delta; no-source concepts stay
+DROPPED per decision (b) (pending consults, planned discharges, all
+deltas), and mortality/length-of-stay point to Statistics where the
+real denominators live; the derived read is AUTHORITY-AWARE — the
+results inbox demands results.view, which the office Administrator
+profile deliberately lacks, so for that viewer the inbox is never
+fetched and the criticals regions are ABSENT by authority, never a
+fabricated zero (found when the first cut overlaid /admin: the 403
+escalated to the production refusal); getUnitSummary itself is
+untouched, so staging renders the demo fixture pixel-identically with
+ZERO derived network reads — proven by request interception; production
+34/34 value-for-value against ADT/inbox/bed board + cross-screen
+checks, staging 15/15 — see the record below);
+prior marker retained: current through PHASE 3 PR 2 — MISSION
 CONTROL REAL (the composite's production refusal is CLOSED, client-only:
 the labs trend card RE-DERIVES over the real GET /api/icu/results/labs
 draws — the same values Labs & Imaging shows; the timeline card reads
@@ -4952,6 +4975,135 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Phase 3 PR 3 — unit summary derived (the honest not-yet dashboards become real; client-only)
+
+**Scope (the owner's instruction — polish, not a gate):** replace PR-1's
+"not yet available" cards on Bed Overview's summary regions and Admin
+Home with real derived numbers where real sources exist; anything with
+a genuine source derived honestly and NAMING the source; the no-source
+concepts stay dropped per decision (b) — pending consults, planned
+discharges, and every demo KPI trend delta (no trend synthesized from
+adjacent data); verify against the real code first; client-only if
+possible; flag the performance cost if any figure needs a unit-wide
+aggregate per load; verify both builds value-for-value against the
+canonical screens; then enumerate what still says "not yet available".
+
+**Verify-first findings (before any code):** the demo fixture
+(UNIT_SUMMARY) carries admissionsInProgress/dischargesPlanned/
+pendingConsults, a derived demo alert feed, and six KPI stats of which
+every delta and the Mortality/Readmissions values are fabricated. Real
+sources already serving: GET /api/icu/adt/encounters lists ALL
+encounters unfiltered (both query params optional — confirmed in
+AdtApi.cs), with UTC 'yyyy-MM-dd HH:mm' admission/discharge stamps;
+GET /api/icu/results/inbox serves unit-wide unacknowledged results
+with the clinician-marked critical flag; the bed board composition
+(getBeds) already real on both pages. The Statistics page already
+performs the SAME unfiltered encounters read on every load — the
+performance precedent existed before this PR.
+
+**What was built (CLIENT-ONLY — `git diff server/` empty; the light
+post-merge routine applies):**
+- **`DerivedUnitSummary` + `getUnitSummaryDerived()`** — a client
+  composition, NOT a wire contract: admissionsToday/dischargesToday
+  (encounter stamps matched against today's UTC day — the client
+  compares date-strings in the same UTC the server stamps),
+  criticalUnacked/criticalResults (inbox rows with flag 'critical',
+  titles rendered AS SERVED — the server already composes bed +
+  patient into them). Concepts with no source are absent from the
+  SHAPE, not just the render.
+- **`getUnitSummary` untouched** (demo fixture | null-in-production) —
+  staging pixel-stability by construction: the pages call the derived
+  read ONLY inside their `summary === null` branch, which never runs
+  outside production.
+- **Bed Overview:** the bottom strip's not-yet card is replaced by four
+  sourced tiles (Admissions Today · ADT, Discharges Today · ADT, Vent
+  Utilization · bed board, Critical Results Unacked · results inbox —
+  the source label sits where the demo's fabricated delta sat); the
+  right panel gains a Critical Results tile and a "Critical
+  Unacknowledged Results" section with an honest empty ("none — every
+  result is acknowledged"); the no-source tiles stay dropped; no
+  NotYetAvailable remains on this screen.
+- **Admin Home:** the header KPI becomes "Discharges Today" with the
+  real count (production only — the demo keeps "Discharges Planned"
+  verbatim); Unit Performance renders the sourced tiles under a
+  "derived · live records" aside plus an explicit pointer ("Mortality
+  & length-of-stay → Statistics" — real denominators live there);
+  Operations Today lists the sourced counters; no NotYetAvailable
+  remains on this screen.
+
+**The authority boundary (found by this PR's own production
+verification — the first cut OVERLAID /admin):** the results inbox
+demands results.view, which the office Administrator profile
+deliberately lacks (clinical results never on administrative roles —
+the locked RBAC matrix), and in production a denied real read
+escalates to apiUnavailable. The composition is now AUTHORITY-AWARE:
+it checks the session's results.view before fetching the inbox;
+without it the critical figures come back NULL and every criticals
+region is ABSENT for that viewer — an authority boundary, never a
+fabricated zero and never the overlay. Proven both ways: the doctor
+sees the criticals everywhere; the office Administrator opens /admin
+AND /beds with no overlay, no criticals region, and no leaked result
+row.
+
+**Performance (flagged as instructed):** production Bed Overview /
+Admin Home each add ONE unfiltered encounters read + (clinical roles
+only) ONE inbox read per load — the same cost class Statistics has
+incurred on every load since it shipped; no per-encounter fan-out, no
+new precedent. The recorded Statistics growth concern (full-history
+encounter lists growing without pagination) now covers these two
+consumers as well.
+
+**Verification (rendered, both builds; every expectation computed live
+from the API inside the test, never hardcoded).** PRODUCTION 34/34 on
+the appliance (dataset extended through the real APIs: two admissions
+today — one discharged with disposition 'ward' — and a clinician-marked
+critical portable-CXR report, exercising the imaging documentation
+path): strip and panel figures match ADT/inbox/bed-board value-for-
+value (3 admissions · 1 discharge · 0/16 vent · 1 critical · 2/16
+occupied); the SAME critical row renders on Labs & Imaging; today's
+admission on /admissions and today's discharge on /discharges; sources
+named on every tile; demo deltas and no-source stats absent; zero
+NotYetAvailable on both screens; the office-Administrator authority
+legs above. STAGING 15/15 (preview bundle): all six demo KPI stats
+verbatim including deltas, demo tiles, demo alert feed and headings
+unchanged, NO derived-summary string anywhere in the DOM, and ZERO
+requests to encounters/inbox from either screen (request
+interception; the doctor's post-login landing legitimately reads the
+inbox — Doctor Workspace has since PR #110's era — and was excluded as
+pre-existing). Screenshots delivered in session.
+
+**Hygiene finding:** NavSidebar declares an `alertCount` prop that no
+code renders (dead since the Alerts page took over attention
+surfacing) — pages still pass values into it; harmless, recorded for
+a future cleanup rather than widened into this PR.
+
+**What still says "not yet available" in a production build after
+PR-3 (missing DOMAINS, not broken screens — every screen renders):**
+- **Per-patient smart alerts** (Mission Control card) — no alert-rules
+  domain; the roster bedAlert and the unacked inbox are the nearest
+  real signals and are deliberately not synthesized into a feed.
+- **Care-goals checklist** (Mission Control) — no care-plan domain.
+- **Consults** (Doctor Workspace card) — no consult domain.
+- **Clinical-notes queue** (Doctor Workspace notes tab) — no notes
+  domain (the dead export was retired in PR-1).
+- **Nursing task checklist** (Nurse Workspace) — no tasks domain;
+  reads null, writes visibly refused.
+- **I&O worksheet** (Nurse Workspace) — no I&O domain; the entry form
+  stays interactive and refuses in front of the nurse.
+- **Imaging study vocabulary** (Orders & Meds imaging card) — the
+  carried Layer-4 master-data follow-up; building it would restore
+  production imaging ORDERING (imaging result documentation already
+  works).
+- **Domains with no screen presence at all, named by the owner so the
+  gap stays on the record: plan of care, problem list, surgical
+  history** — no store, no endpoint, no screen; future domains, not
+  degraded panels.
+- Retired concepts (dropped, not pending): unit KPI trend deltas,
+  pending consults, planned discharges (no source exists); infusion
+  pump rate/trend/status (Device Adapter scope); mortality/
+  readmissions/average-stay figures live on Statistics with real
+  denominators instead of the demo strip.
 
 ### Phase 3 PR 2 — Mission Control real (the composite's refusal closed; client-only)
 

@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
@@ -34,7 +34,7 @@ import {
   deriveMissionControlLabs, deriveResultInbox,
   imagingFor, labDrawsFor,
 } from './data/results'
-import { SAMPLE_STAFF, getToken, hasPermission, profileOf, usernameOf, type JobTitle } from '../session'
+import { SAMPLE_STAFF, getSession, getToken, hasPermission, profileOf, usernameOf, type JobTitle } from '../session'
 import { dayOffsetOf, nowHm, timestampMinutes } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
@@ -102,6 +102,40 @@ export async function getBeds(): Promise<BedsResponse> {
 export function getUnitSummary(): Promise<UnitSummaryResponse | null> {
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(UNIT_SUMMARY, 120)
   return Promise.resolve(null)
+}
+
+/** Phase 3 PR 3 — the summary figures that DO have canonical sources,
+ *  derived client-side from the real reads: ADT encounters (admissions /
+ *  discharges falling on today's UTC day — the server stamps
+ *  'yyyy-MM-dd HH:mm' in UTC) and the results inbox (unacknowledged
+ *  clinician-marked criticals). Bed Overview and Admin Home call this
+ *  ONLY after getUnitSummary resolved null (production) — staging keeps
+ *  the demo fixture and never issues these requests. The unfiltered
+ *  encounter list is the same per-load read the Statistics page already
+ *  performs (its recorded growth concern covers this too — no new
+ *  precedent). If either source is unreachable the underlying read
+ *  throws apiUnavailable, which is correct: these ARE real domains.
+ *  AUTHORITY (found by this PR's own production verification): the
+ *  results inbox demands results.view, which the office Administrator
+ *  profile deliberately lacks — for such a viewer the inbox is NOT
+ *  fetched and the critical figures come back null (region absent by
+ *  authority), instead of the 403 escalating to the full-screen
+ *  refusal on Admin Home. */
+export async function getUnitSummaryDerived(): Promise<DerivedUnitSummary> {
+  const session = getSession()
+  const mayViewResults = session !== null && hasPermission(session.jobTitle, 'results.view')
+  const [encounters, inbox] = await Promise.all([
+    getEncounters(),
+    mayViewResults ? getResultInbox() : Promise.resolve(null),
+  ])
+  const today = new Date().toISOString().slice(0, 10)
+  const criticalResults = inbox === null ? null : inbox.filter(r => r.flag === 'critical')
+  return {
+    admissionsToday: encounters.filter(e => e.admittedAt.startsWith(today)).length,
+    dischargesToday: encounters.filter(e => e.status === 'discharged' && (e.dischargedAt ?? '').startsWith(today)).length,
+    criticalUnacked: criticalResults === null ? null : criticalResults.length,
+    criticalResults,
+  }
 }
 
 /* ---------------- Stage 10 Phase 1 — REAL roster endpoint ----------------

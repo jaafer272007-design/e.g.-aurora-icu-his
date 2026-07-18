@@ -91,6 +91,30 @@ export interface UnitSummaryResponse {
   stats: UnitKpiStat[]
 }
 
+/* ---------- Phase 3 PR 3 — DERIVED unit summary (production) ----------
+   Not a wire contract: no unit-summary endpoint exists. These are the
+   summary figures that already have canonical sources, composed client-
+   side at load from the real reads — ADT encounters and the results
+   inbox. Concepts with no source (pending consults, planned discharges,
+   trend deltas) are ABSENT from this shape by design: dropped, never
+   fabricated (owner's decision (b)). */
+
+export interface DerivedUnitSummary {
+  /** encounters whose server-stamped admittedAt falls on today's UTC day */
+  admissionsToday: number
+  /** discharged encounters whose dischargedAt falls on today's UTC day */
+  dischargesToday: number
+  /** unacknowledged results carrying the clinician-marked critical flag.
+   *  NULL = the signed-in role holds no results.view authority (the RBAC
+   *  matrix keeps clinical results off office/administrative profiles) —
+   *  the UI region is ABSENT for that viewer, never a fabricated zero */
+  criticalUnacked: number | null
+  /** those same critical rows, as the inbox serves them — the REAL signal
+   *  behind the demo "unit alert feed" region (no alert domain exists; a
+   *  synthesized feed would fabricate). Same null semantics as above. */
+  criticalResults: ResultInboxItem[] | null
+}
+
 /* ---------- GET /api/icu/patients ----------
    STAGE 10 PHASE 1: this endpoint is REAL (ASP.NET Core + SQLite, /server).
    The wire response is RosterRecordDto[] below — the canonical roster

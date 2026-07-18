@@ -8,9 +8,8 @@ import { AlertRow } from '../../components/AlertRow'
 import { VitalTile } from '../../components/VitalTile'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconBed, IconSearch, IconVent } from '../../components/icons'
-import { getBeds, getUnassignedPatients, getUnitSummary } from '../../lib/api'
-import { NotYetAvailable } from '../../components/NotYetAvailable'
-import type { Bed, BedsResponse, UnassignedPatient, UnitSummaryResponse } from '../../lib/api/types'
+import { getBeds, getUnassignedPatients, getUnitSummary, getUnitSummaryDerived } from '../../lib/api'
+import type { Bed, BedsResponse, DerivedUnitSummary, UnassignedPatient, UnitSummaryResponse } from '../../lib/api/types'
 import { BedCard } from './BedCard'
 
 interface Filters {
@@ -44,8 +43,12 @@ export function BedOverview() {
   const { toast } = useToast()
   const [data, setData] = useState<BedsResponse | null>(null)
   /* undefined = loading · null = the unit-summary domain does not exist
-     yet (production honest-empty, Phase 3 PR 1 — real in PR 3) */
+     (production) — PR 3: null now triggers the DERIVED summary below,
+     composed from the canonical reads that do exist */
   const [summary, setSummary] = useState<UnitSummaryResponse | null | undefined>(undefined)
+  /* production only — null until the derived figures load; staging never
+     fetches them (summary stays the demo fixture) */
+  const [derived, setDerived] = useState<DerivedUnitSummary | null>(null)
   const [filters, setFilters] = useState<Filters>({ q: '', doc: '', area: '', vent: false, iso: false, crit: false })
   const [ringOffset, setRingOffset] = useState(RING_CIRC)
 
@@ -56,7 +59,12 @@ export function BedOverview() {
 
   useEffect(() => {
     getBeds().then(setData)
-    getUnitSummary().then(setSummary)
+    getUnitSummary().then(s => {
+      setSummary(s)
+      /* an unreachable source dispatches the overlay on its own — the
+         swallow only silences the duplicate rejection */
+      if (s === null) getUnitSummaryDerived().then(setDerived).catch(() => {})
+    })
     getUnassignedPatients().then(setUnassigned).catch(() => setUnassigned({ nurse: [], doctor: [] }))
   }, [])
 
@@ -168,7 +176,38 @@ export function BedOverview() {
           </div>
 
           <div className="bottom">
-            {summary === null && <NotYetAvailable what="Unit KPI statistics" />}
+            {/* PR 3: production renders the figures with CANONICAL sources,
+                each tile naming its source where the demo showed a trend
+                delta (deltas have no source — dropped, decision (b)).
+                Mortality / readmissions / avg-stay live on Statistics. */}
+            {summary === null && derived && data && (
+              <>
+                <div className="bs">
+                  <div><div className="v">{derived.admissionsToday}</div><div className="k">Admissions Today</div></div>
+                  <span className="delta" style={{ color: 'var(--faint)' }}>ADT · UTC day</span>
+                </div>
+                <div className="bs">
+                  <div><div className="v">{derived.dischargesToday}</div><div className="k">Discharges Today</div></div>
+                  <span className="delta" style={{ color: 'var(--faint)' }}>ADT · UTC day</span>
+                </div>
+                <div className="bs">
+                  <div>
+                    <div className="v">{occupied.filter(b => b.patient!.flags.includes('vent')).length} / {data.capacity}</div>
+                    <div className="k">Vent Utilization</div>
+                  </div>
+                  <span className="delta" style={{ color: 'var(--faint)' }}>bed board</span>
+                </div>
+                {derived.criticalUnacked !== null && (
+                  <div className="bs">
+                    <div>
+                      <div className="v" style={derived.criticalUnacked > 0 ? { color: 'var(--red)' } : undefined}>{derived.criticalUnacked}</div>
+                      <div className="k">Critical Results Unacked</div>
+                    </div>
+                    <span className="delta" style={{ color: 'var(--faint)' }}>results inbox</span>
+                  </div>
+                )}
+              </>
+            )}
             {summary?.stats.map(s => (
               <div className="bs" key={s.label}>
                 <div><div className="v">{s.value}</div><div className="k">{s.label}</div></div>
@@ -207,19 +246,49 @@ export function BedOverview() {
             <VitalTile variant="rt" label="Avg ICU Stay" value={stats ? stats.los : '—'} unit=" days" />
             {/* no-source KPIs are DROPPED when the domain is absent, not
                 dashed — a dash implies zero/loading, which soft-fabricates
-                (owner's decision (b)) */}
+                (owner's decision (b)); PR 3 adds the one panel figure that
+                DOES have a source (the results inbox) in production */}
             {summary !== null && <VitalTile variant="rt" label="Admissions" value={summary ? summary.admissionsInProgress : '—'} unit=" in progress" />}
             {summary !== null && <VitalTile variant="rt" label="Discharges" value={summary ? summary.dischargesPlanned : '—'} unit=" planned" />}
             {summary !== null && <VitalTile variant="rt" label="Pending Consults" value={summary ? summary.pendingConsults : '—'} />}
             {summary !== null && <VitalTile variant="rt" label="High Priority" value={summary ? critAlerts : '—'} valueStyle={{ color: 'var(--red)' }} />}
+            {summary === null && derived && derived.criticalUnacked !== null && (
+              <VitalTile
+                variant="rt" label="Critical Results" value={derived.criticalUnacked} unit=" unacked"
+                valueStyle={derived.criticalUnacked > 0 ? { color: 'var(--red)' } : undefined}
+              />
+            )}
           </div>
-          <h3 className="rphead">High Priority Alerts</h3>
-          {summary === null && <NotYetAvailable what="The unit alert feed" />}
-          <div>
-            {summary?.highPriorityAlerts.map(a => (
-              <AlertRow key={a.message} variant="compact" severity={a.severity} text={a.message} time={a.time} />
-            ))}
-          </div>
+          {/* PR 3: no unit-alert domain exists — production shows the REAL
+              signal behind this region (unacknowledged criticals from the
+              results inbox), named as exactly that; a viewer without
+              results.view gets NO section (absent by authority, never a
+              fabricated zero). Rows open nothing here; acknowledgment
+              stays on Labs & Imaging — one truth. */}
+          {summary === null && derived && derived.criticalResults !== null && (
+            <>
+              <h3 className="rphead">Critical Unacknowledged Results</h3>
+              <div>
+                {derived.criticalResults.length === 0
+                  ? <div className="uab-empty">none — every result is acknowledged</div>
+                  : derived.criticalResults.slice(0, 6).map(r => (
+                      /* the inbox title is server-composed and already carries
+                         bed + patient — rendered as served, never re-derived */
+                      <AlertRow key={r.id} variant="compact" severity="crit" text={r.title} time={r.time} />
+                    ))}
+              </div>
+            </>
+          )}
+          {summary !== null && (
+            <>
+              <h3 className="rphead">High Priority Alerts</h3>
+              <div>
+                {summary?.highPriorityAlerts.map(a => (
+                  <AlertRow key={a.message} variant="compact" severity={a.severity} text={a.message} time={a.time} />
+                ))}
+              </div>
+            </>
+          )}
           {/* Unassigned patients — zero assignments is allowed but must be
               VISIBLE (the P-1191 failure made structural). Both kinds shown
               separately; rows open the chart, where assignment is managed. */}
