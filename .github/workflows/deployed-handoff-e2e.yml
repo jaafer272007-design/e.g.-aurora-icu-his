@@ -152,7 +152,7 @@ jobs:
           assert d["encounterId"] == "'$EID'" and d["patientId"] == "'$PID'", d
           assert d["recordedByUser"] == "maya.chen" and d["recordedRole"] == "Nurse", d
           import re; assert re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", d["recordedAt"]), d["recordedAt"]
-          print(f"entry {d[\"handoffId\"]} — author maya.chen · Nurse · {d[\"recordedAt\"]} (dated, server-stamped)")'
+          print("entry " + d["handoffId"] + " — author maya.chen · Nurse · " + d["recordedAt"] + " (dated, server-stamped)")'
           echo "HDO1=$(python3 -c 'import json; print(json.load(open("/tmp/h1.json"))["handoffId"])')" >> "$GITHUB_ENV"
 
       - name: A SECOND NURSE reads it; her write is 403 until assigned SECONDARY — then she writes (the owner's inclusion)
@@ -176,7 +176,7 @@ jobs:
           python3 -c '
           import json; d=json.load(open("/tmp/h2.json"))
           assert d["recordedByUser"] == "priya.patel" and d["recordedRole"] == "Nurse", d
-          print(f"secondary nurse wrote {d[\"handoffId\"]} — handover is exactly when they cover")'
+          print("secondary nurse wrote " + d["handoffId"] + " — handover is exactly when they cover")'
 
       - name: APPEND-ONLY — series is newest-first, prior entries untouched, and NO edit surface exists
         run: |
