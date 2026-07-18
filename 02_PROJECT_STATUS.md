@@ -1,6 +1,18 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-18 · current through the AI INTERPRETATION LAYER
+**Last updated: 2026-07-18 · current through the MANAGEMENT-ROW LAYOUT FIX
+(a tester + the owner reported the /lab-catalog row actions piled
+vertically into the analyte chips at every width; root cause was NOT
+positioning but a cross-component class collision — the Alerts .al
+lesson repeated: UnassignedCard.css (PR #114) shipped an unscoped global
+`.uarow{display:flex}` that leaked onto all four `.ua` management
+screens (/users, /formulary, /lab-catalog, /order-sets), turning their
+block rows into flex rows, collapsing the actions grid column to
+min-content and stacking every button; fixed by renaming the
+component's classes to the `un` prefix with the lesson recorded in the
+file header; verified 53/53 across the four screens × laptop/ultrawide/
+iPad plus the workspaces' renamed panel — see its record below); prior
+marker retained: current through the AI INTERPRETATION LAYER
 (the owner's decision after the validator's 4060 run: a request for an
 impression of رضا's condition was refused by design, the owner asked for
 the refusal's removal, and — offered three scopes — chose the middle one:
@@ -4889,6 +4901,44 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Management-row layout fix — the .al class-collision lesson, hit a second time
+
+**Report (tester on a standard laptop + the owner on ultrawide + iPad,
+identical break at every width):** on /lab-catalog every row's four
+action controls (History/Edit/Retire/Remove) piled vertically into the
+analyte-chips column, unusable. **Measured reproduction** (real browser
+against the appliance build, before theorizing): buttons were static-
+positioned flex children — NOT absolute positioning — stacked one per
+line 46 px apart in a 67 px-wide column, with `.uamain` resolving to
+`150px 150px 55px 67px` and `.fmtags` rendering BESIDE the grid.
+
+**Root cause (the Alerts .al→.att lesson repeated):** bundled CSS is
+global, and `src/components/UnassignedCard.css` — the zero-assignment
+safety-net panel shipped with Patient Assignment (#114) — defined an
+UNSCOPED `.uarow{display:flex;align-items:center;…}`. The `.ua`
+management screens' own `.ua .uarow` never declares `display`, so the
+leaked flex won unopposed: the block row became a flex ROW (chips
+pulled up beside the grid), the actions `auto` column collapsed to
+min-content, and `flex-wrap` stacked all four buttons. All four `.ua`
+screens were hit — /users, /formulary, /lab-catalog, /order-sets — a
+regression present since #114 and invisible to the headless suites
+(layout geometry is browser-only evidence).
+
+**Fix:** rename the component's six classes to the `un` prefix
+(`unlist/unrow/unname/undx/ungo/unempty`), CSS + TSX together, with the
+lesson recorded in the file header ("a component's classes must never
+share a prefix with a page's"). No page markup, no semantics, no
+Retire/Remove/Reactivate behavior touched — layout only.
+
+**Verification (rendered, 53/53):** all four management screens ×
+laptop 1440 / ultrawide 3840 / iPad 1024 assert per row: the leak is
+gone (`.uarow` computes block), ≥2–4 buttons with ZERO pairwise
+bounding-box overlaps, the actions cluster ≤ one wrap line (h=40
+everywhere), every control ≥40 px tappable, and on /lab-catalog the
+analyte chips sit strictly BELOW the row grid; plus the workspaces'
+renamed Unassigned panel still renders flex-styled rows. Screenshots
+delivered in session.
 
 ### AI interpretation layer — the owner's widening of the defining rule (interpret data, never treat)
 

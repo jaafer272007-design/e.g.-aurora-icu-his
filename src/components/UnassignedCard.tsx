@@ -22,22 +22,22 @@ export function UnassignedCard({ kind, patients }: { kind: 'nurse' | 'doctor'; p
       aside={patients.length ? `${patients.length} patient${patients.length === 1 ? '' : 's'}` : 'none'}
     >
       {patients.length === 0 ? (
-        <div className="uaempty">Every open encounter has an active {kind} assigned.</div>
+        <div className="unempty">Every open encounter has an active {kind} assigned.</div>
       ) : (
-        <div className="ualist" role="list">
+        <div className="unlist" role="list">
           {patients.map(p => (
             <button
               key={p.patientId}
-              className="uarow"
+              className="unrow"
               role="listitem"
               aria-label={`Open chart ${p.name}, bed ${p.bedId} — no ${kind} assigned`}
               onClick={() => navigate(`/patients/${p.patientId}`)}
             >
               <BedChip bedId={p.bedId} />
               <SeverityDot sev={p.severity} />
-              <span className="uaname">{p.name}</span>
-              <span className="uadx">{p.diagnosis}</span>
-              <span className="uago">Assign →</span>
+              <span className="unname">{p.name}</span>
+              <span className="undx">{p.diagnosis}</span>
+              <span className="ungo">Assign →</span>
             </button>
           ))}
         </div>
