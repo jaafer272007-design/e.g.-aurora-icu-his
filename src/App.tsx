@@ -82,7 +82,11 @@ export default function App() {
         {/* Configuration area (first tenant: the Code Status vocabulary —
             clinical governance): codestatus.manage = SeniorDoctor only,
             unreachable by the office Administrator (the F2/F3 rule) */}
-        <Route path="/config" element={<RequireSession permission="codestatus.manage"><Configuration /></RequireSession>} />
+        {/* the Configuration AREA is multi-tenant: any-of gate — each
+            section inside is gated to its own authority (hospital
+            identity → hospital.configure; code status →
+            codestatus.manage) */}
+        <Route path="/config" element={<RequireSession anyPermission={['hospital.configure', 'codestatus.manage']}><Configuration /></RequireSession>} />
         <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />

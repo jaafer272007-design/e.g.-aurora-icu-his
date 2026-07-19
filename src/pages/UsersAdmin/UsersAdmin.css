@@ -44,10 +44,11 @@
 .ua .uafields label{display:flex;flex-direction:column;gap:5px;font-size:10.5px;letter-spacing:.6px;
  text-transform:uppercase;color:var(--dim)}
 .ua .uawide{grid-column:1 / -1}
-.ua .uafields input,.ua .uafields select{min-height:40px;padding:8px 11px;border-radius:10px;font-size:12.5px;
+.ua .uafields input,.ua .uafields select,.ua .uafields textarea{min-height:40px;padding:8px 11px;border-radius:10px;font-size:12.5px;
  color:var(--text);border:1px solid var(--stroke);background:rgba(var(--lift-rgb),.03)}
-.ua .uafields input:focus-visible,.ua .uafields select:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
-.ua .uafields input:disabled,.ua .uafields select:disabled{opacity:.5}
+.ua .uafields input:focus-visible,.ua .uafields select:focus-visible,.ua .uafields textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.ua .uafields input:disabled,.ua .uafields select:disabled,.ua .uafields textarea:disabled{opacity:.5}
+.ua .uafields textarea{resize:vertical;font-family:inherit}
 .ua .uaform{display:flex;flex-direction:column;gap:12px}
 .ua .uasubmit{min-height:44px;padding:10px 18px;border-radius:11px;font-size:12.5px;font-weight:700;
  color:var(--ink2);background:linear-gradient(120deg,var(--cyan),var(--blue));transition:.15s;align-self:flex-start}

@@ -4,36 +4,46 @@ import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Card } from '../../components/Card'
 import { Toast, useToast } from '../../components/Toast'
-import { IconCheck, IconClock, IconPulse, IconSettings } from '../../components/icons'
+import { IconCheck, IconClock, IconGrid, IconPulse, IconSettings } from '../../components/icons'
 import {
-  createCodeStatus, deactivateCodeStatus, getCodeStatuses, reactivateCodeStatus, updateCodeStatus,
+  createCodeStatus, deactivateCodeStatus, getCodeStatuses, getHospitalIdentityHistory,
+  reactivateCodeStatus, updateCodeStatus, updateHospitalIdentity,
 } from '../../lib/api'
 import type { AdtWriteResult } from '../../lib/api'
-import type { CodeStatusEntry } from '../../lib/api/types'
-import { getSession, initialsOf, profileOf } from '../../lib/session'
+import type { CodeStatusEntry, HospitalIdentityWithHistory } from '../../lib/api/types'
+import { invalidateHospitalIdentity } from '../../lib/hospitalIdentity'
+import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 
 /* ==================== Configuration (/config) ====================
    The per-hospital CONFIGURATION AREA — what varies from one hospital to
    the next is editable, governed DATA here, never a code change (one
    codebase, many configurations, zero forks).
 
-   FIRST TENANT: the Code Status vocabulary — pulled ahead of the rest of
-   the configurability work because it is a SAFETY FIX (a resuscitation
-   instruction was an ungoverned free-text string). This page is the
-   MINIMAL config home that tenant needs — deliberately a section layout
-   so the later config-home work EXTENDS it (adds sections) rather than
-   duplicates it. Route + nav gate: codestatus.manage (SeniorDoctor —
-   clinical governance, the observations.configure precedent; NEVER the
-   office Administrator). When non-clinical tenants land (hospital
-   identity, beds), gating becomes per-section — recorded flag.
+   MULTI-TENANT (the Config Home + Hospital Identity design — the
+   recorded per-section-gating flag from the code-status PR, realized):
+   ONE area, each section gated to its OWN authority, and a session sees
+   only its sections. The administrative/clinical split, confirmed:
+   - HOSPITAL IDENTITY (hospital.configure — office Administrator): the
+     install's own name/unit/short name/letterhead address —
+     administrative, no clinical data, finally a config surface that IS
+     the office profile's. One record: edit-in-place, audited,
+     amend-never-erase.
+   - CODE STATUS VOCABULARY (codestatus.manage — SeniorDoctor): clinical
+     governance, the observations.configure precedent; never the office
+     Administrator.
+   Future tenants (beds, imaging catalogue, dispositions, …) add
+   sections here on the same pattern — extend, never duplicate.
 
-   The manager is the formulary/lab-catalogue pattern verbatim: natural
-   key, Active flag, append-only audit, deactivate-never-delete,
-   REAL-ONLY writes. */
+   Every manager uses the formulary/lab-catalogue pattern: validated
+   REAL-ONLY writes, append-only audit, deactivate-never-delete (where a
+   lifecycle exists). */
 export function Configuration() {
   const { toast, showToast } = useToast()
   const session = getSession()!
+  const canIdentity = hasPermission(session.jobTitle, 'hospital.configure')
+  const canCodeStatus = hasPermission(session.jobTitle, 'codestatus.manage')
 
+  /* ---- code status vocabulary (clinical section) ---- */
   const [entries, setEntries] = useState<CodeStatusEntry[] | null>(null)
   const [busy, setBusy] = useState(false)
   const [panel, setPanel] = useState<{ kind: 'edit' | 'retire' | 'history'; code: string } | null>(null)
@@ -44,7 +54,26 @@ export function Configuration() {
   const [cLabel, setCLabel] = useState('')
   const [eLabel, setELabel] = useState('')
 
-  const reload = useCallback(() => { getCodeStatuses().then(setEntries) }, [])
+  /* ---- hospital identity (administrative section) ---- */
+  const [ident, setIdent] = useState<HospitalIdentityWithHistory | null>(null)
+  const [identLoaded, setIdentLoaded] = useState(false)
+  const [hName, setHName] = useState('')
+  const [hUnit, setHUnit] = useState('')
+  const [hShort, setHShort] = useState('')
+  const [hAddr, setHAddr] = useState('')
+  const [identBusy, setIdentBusy] = useState(false)
+  const [identError, setIdentError] = useState<string | null>(null)
+  const [identHistoryOpen, setIdentHistoryOpen] = useState(false)
+
+  const reload = useCallback(() => {
+    if (canCodeStatus) getCodeStatuses().then(setEntries)
+    if (canIdentity) {
+      getHospitalIdentityHistory().then(r => {
+        setIdent(r); setIdentLoaded(true)
+        setHName(r.name); setHUnit(r.unitName); setHShort(r.shortName); setHAddr(r.address)
+      }).catch(() => setIdentLoaded(true))
+    }
+  }, [canCodeStatus, canIdentity])
   useEffect(() => { reload() }, [reload])
 
   const stats = useMemo(() => {
@@ -53,9 +82,15 @@ export function Configuration() {
   }, [entries])
 
   const kpis: KpiSpec[] = [
-    { icon: <IconPulse size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.13)', value: entries ? stats.total : '—', label: 'Code Statuses' },
-    { icon: <IconCheck size={12} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: entries ? stats.active : '—', label: 'Active' },
-    { icon: <IconClock size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: entries ? stats.retired : '—', label: 'Retired' },
+    ...(canIdentity ? [{
+      icon: <IconGrid size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)',
+      value: identLoaded ? (ident?.configured ? ident.name : 'Not configured') : '—', label: 'Hospital Identity',
+    } satisfies KpiSpec] : []),
+    ...(canCodeStatus ? [
+      { icon: <IconPulse size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.13)', value: entries ? stats.total : '—', label: 'Code Statuses' },
+      { icon: <IconCheck size={12} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)', value: entries ? stats.active : '—', label: 'Active' },
+      { icon: <IconClock size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: entries ? stats.retired : '—', label: 'Retired' },
+    ] satisfies KpiSpec[] : []),
   ]
 
   const offlineMsg = (what: string) => `Configuration changes require the live server — ${what} was NOT saved`
@@ -105,6 +140,28 @@ export function Configuration() {
     setPanel({ kind, code: e.code })
   }
 
+  async function doSaveIdentity() {
+    setIdentBusy(true); setIdentError(null)
+    const res = await updateHospitalIdentity({
+      name: hName.trim(), unitName: hUnit.trim(), shortName: hShort.trim(), address: hAddr.trim(),
+    })
+    setIdentBusy(false)
+    if (res.kind === 'ok') {
+      setIdent(res.data)
+      /* every mounted surface (headers, login, letterhead) re-reads
+         through the one resolver */
+      invalidateHospitalIdentity()
+      showToast('Hospital identity saved', `${res.data.name} — the change is on the identity's audit history`)
+      return
+    }
+    setIdentError(res.kind === 'rejected' ? res.error : offlineMsg('the identity'))
+  }
+
+  const identDirty = ident
+    ? (hName.trim() !== ident.name || hUnit.trim() !== ident.unitName
+      || hShort.trim() !== ident.shortName || hAddr.trim() !== ident.address)
+    : (hName.trim().length > 0 || hUnit.trim().length > 0 || hShort.trim().length > 0 || hAddr.trim().length > 0)
+
   return (
     <div className="app-frame ua">
       <AppHeader
@@ -113,18 +170,92 @@ export function Configuration() {
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
-        <NavSidebar active="config" footerLines={['Clinical governance', 'Configuration · Aurora Core']} />
+        <NavSidebar active="config" footerLines={[
+          canIdentity ? 'Administrative configuration' : 'Clinical governance',
+          'Configuration · Aurora Core']} />
 
         <main>
           <div className="uanote" role="note">
             <b>Configuration</b> — what varies per hospital is editable, governed data, never a code
-            change. First section: the <b>Code Status vocabulary</b>. A resuscitation instruction is
-            <b> selected from this list, never typed</b>; retiring an entry is a status change, never
-            a delete (patients carrying it keep rendering it — it just cannot be newly assigned);
-            every change lands on the entry&apos;s permanent audit history; an unset patient always
-            reads an explicit <b>&ldquo;Not recorded&rdquo;</b> — never a default.
+            change. One area, each section gated to its own authority: <b>hospital identity</b> is
+            administrative (office Administrator), <b>clinical vocabularies</b> are clinically
+            governed. Every change lands on a permanent audit history — amended, never erased.
           </div>
 
+          {canIdentity && (
+            <div className="uacols">
+              <Card icon={<IconGrid size={15} stroke="var(--cyan)" />} title="Hospital Identity"
+                aside={identLoaded ? (ident?.configured ? 'configured' : 'NOT CONFIGURED') : '—'}>
+                {!identLoaded && <div className="uaempty">Loading the identity record…</div>}
+                {identLoaded && (
+                  <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doSaveIdentity() }}>
+                    {!ident?.configured && (
+                      <span className="uaconfirm">
+                        This install&apos;s identity is <b>not configured</b> — every surface (print
+                        letterhead, headers, login) shows a neutral placeholder until it is set here.
+                        Nothing defaults to a demo hospital&apos;s name.
+                      </span>
+                    )}
+                    <div className="uafields">
+                      <label>Hospital name (letterhead + every identity surface)
+                        <input value={hName} onChange={e => setHName(e.target.value)} disabled={identBusy}
+                          placeholder="e.g. St. Mary's Teaching Hospital" maxLength={120} />
+                      </label>
+                      <label>Unit / ICU name (headers, bed board — this install&apos;s one unit)
+                        <input value={hUnit} onChange={e => setHUnit(e.target.value)} disabled={identBusy}
+                          placeholder="e.g. Adult ICU — Unit 1" maxLength={80} />
+                      </label>
+                      <label>Short name / abbreviation (compact headers)
+                        <input value={hShort} onChange={e => setHShort(e.target.value)} disabled={identBusy}
+                          placeholder="e.g. SMTH" maxLength={20} />
+                      </label>
+                      <label>Address block (printed under the letterhead; optional)
+                        <textarea value={hAddr} onChange={e => setHAddr(e.target.value)} disabled={identBusy}
+                          rows={3} maxLength={400} placeholder={'Street, City\nPhone · Fax'} />
+                      </label>
+                    </div>
+                    {identError && <div className="uaerr" role="alert">{identError}</div>}
+                    <div className="uapanelacts">
+                      <button className="uasubmit" type="submit" disabled={identBusy || !identDirty || !hName.trim()}>
+                        {identBusy ? 'Saving…' : (ident?.configured ? 'Save identity changes' : 'Configure identity')}
+                      </button>
+                      <button className="uaact" type="button" aria-expanded={identHistoryOpen}
+                        onClick={() => setIdentHistoryOpen(o => !o)}>
+                        History ({ident?.history.length ?? 0})
+                      </button>
+                    </div>
+                    {identHistoryOpen && (
+                      <div className="uapanel" role="region" aria-label="Hospital identity history">
+                        {(ident?.history.length ?? 0) === 0 && (
+                          <span className="uaconfirm">
+                            No recorded events{ident?.configured
+                              ? ' — a seeded identity (historical data carries no invented audit).'
+                              : ' — the identity has never been configured.'}
+                          </span>
+                        )}
+                        {ident?.history.map((ev, i) => (
+                          <div className="uaevent" key={i}>
+                            <span className="num">{ev.time}</span> · {ev.actor} · {ev.action}{ev.detail ? ` — ${ev.detail}` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </form>
+                )}
+              </Card>
+
+              <Card icon={<IconSettings size={15} stroke="var(--faint)" />} title="Coming to this area" aside="built over successive PRs">
+                <div className="uaempty">
+                  Next tenants on this same pattern: bed management, the imaging catalogue, then the
+                  smaller vocabularies (isolation types, dispositions). A letterhead <b>logo image </b>
+                  is a recorded fast-follow to identity. The Formulary and Lab Catalogue keep their
+                  existing managers (linked from the sidebar).
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {canCodeStatus && (
           <div className="uacols">
             <Card icon={<IconPulse size={15} stroke="var(--red)" />} title="Code Status Vocabulary"
               aside={entries ? `${stats.active} active · ${stats.retired} retired` : '—'}>
@@ -231,6 +362,7 @@ export function Configuration() {
               </form>
             </Card>
           </div>
+          )}
         </main>
       </div>
       <Toast state={toast} accent="blue" />

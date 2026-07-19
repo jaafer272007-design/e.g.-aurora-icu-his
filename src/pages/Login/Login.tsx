@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './Login.css'
 import { IconPulse } from '../../components/icons'
+import { unitSuffix, useHospitalIdentity } from '../../lib/hospitalIdentity'
 import { authApiConfigured, changePassword, login, selectRole } from '../../lib/api'
 import type { LoginResult } from '../../lib/api'
 import {
@@ -25,6 +26,9 @@ const matchStaff = (input: string): Session | undefined => {
  *  console, same resilience pattern as the roster adapter. Profile and
  *  permissions remain derived from the JobTitle at read time, never stored. */
 export function Login() {
+  /* the CONFIGURED hospital identity (anonymous read — pre-auth) */
+  const identity = useHospitalIdentity()
+  const unitSuffix2 = identity ? unitSuffix(identity) : ''
   const navigate = useNavigate()
   const existing = getSession()
   const [username, setUsername] = useState('')
@@ -139,7 +143,9 @@ export function Login() {
         <section className="lgcard card">
           <div className="lgbrand">
             <div className="logo"><IconPulse size={20} stroke="var(--ink)" strokeWidth={2.6} /></div>
-            <div className="lgtitle">AURORA ICU<small>Hospital Information System · Unit 4B</small></div>
+            {/* unit segment from the CONFIGURED hospital identity (one
+                resolver) — omitted while unset, never a hardcoded name */}
+            <div className="lgtitle">AURORA ICU<small>Hospital Information System{unitSuffix2}</small></div>
           </div>
 
           <div className="lgcols">
