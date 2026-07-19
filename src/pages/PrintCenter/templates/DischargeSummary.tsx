@@ -1,6 +1,7 @@
 import { FactGrid, MedTable, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { DischargeSummaryData } from '../types'
 import { dispositionLabel } from '../../../lib/api'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Template 3 — Discharge Summary. The medication sections are the
  *  historical-rendering guarantee in action: "medications at discharge"
@@ -28,8 +29,8 @@ export function DischargeSummary({ data }: { data: DischargeSummaryData }) {
 
       <Section title={`Hospital course${mark}`}>
         <FactGrid facts={[
-          ['Admitted', `${enc?.admittedAt || '—'}${enc?.admittedBy ? ` · ${enc.admittedBy}` : ''}`],
-          ['Discharged', enc?.status === 'discharged' ? `${enc.dischargedAt || '—'}${enc.dischargedBy ? ` · ${enc.dischargedBy}` : ''}` : 'encounter still open — printed before discharge'],
+          ['Admitted', `${displayFullStamp(enc?.admittedAt) || '—'}${enc?.admittedBy ? ` · ${enc.admittedBy}` : ''}`],
+          ['Discharged', enc?.status === 'discharged' ? `${displayFullStamp(enc.dischargedAt) || '—'}${enc.dischargedBy ? ` · ${enc.dischargedBy}` : ''}` : 'encounter still open — printed before discharge'],
           /* the recorded stay OUTCOME — honest when absent (pre-feature
              discharges recorded none; a value is never fabricated) */
           ['Disposition', enc?.status === 'discharged'
@@ -44,7 +45,7 @@ export function DischargeSummary({ data }: { data: DischargeSummaryData }) {
             <thead><tr><th>Time{mark}</th><th>Encounter event</th><th>By</th></tr></thead>
             <tbody>
               {encounterEvents.map((e, i) => (
-                <tr key={i}><td>{e.time || '—'}</td><td>{e.action}{e.detail ? ` — ${e.detail}` : ''}</td><td>{e.actor || '—'}</td></tr>
+                <tr key={i}><td>{displayFullStamp(e.time) || '—'}</td><td>{e.action}{e.detail ? ` — ${e.detail}` : ''}</td><td>{e.actor || '—'}</td></tr>
               ))}
             </tbody>
           </table>
@@ -75,7 +76,7 @@ export function DischargeSummary({ data }: { data: DischargeSummaryData }) {
             <thead><tr><th>Time{mark}</th><th>Medication</th><th>Change</th><th>By</th></tr></thead>
             <tbody>
               {medicationChanges.map((c, i) => (
-                <tr key={i}><td>{c.time}</td><td>{c.drug}<span className="pd-sub"> {c.orderId}</span></td><td>{c.detail}</td><td>{c.actor}</td></tr>
+                <tr key={i}><td>{displayFullStamp(c.time)}</td><td>{c.drug}<span className="pd-sub"> {c.orderId}</span></td><td>{c.detail}</td><td>{c.actor}</td></tr>
               ))}
             </tbody>
           </table>

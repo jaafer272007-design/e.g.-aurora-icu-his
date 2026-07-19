@@ -1,6 +1,6 @@
 import type { AdtBed, Encounter, FormularyDrug, LabDraw, Observation, Order } from './api/types'
 import { isDeathDisposition } from './api'
-import { datedEpoch } from './time'
+import { datedEpoch, epochOfLocalStamp, localYmd } from './time'
 import { computeNews2, computeSofa } from './scoring'
 import { NEWS2_V1, NEWS2_WINDOW_MINUTES, buildNews2Context } from './scoring/news2'
 import { aggregate } from './scoring/engine'
@@ -23,23 +23,32 @@ import { aggregate } from './scoring/engine'
    - A real 0 is a real 0 — the model distinguishes "computed 0" from
      "no computable inputs" (value: null). */
 
-/* ---------- period helpers (UTC calendar periods — stated on the page) ---------- */
+/* ---------- period helpers (calendar periods on the DISPLAY CLOCK —
+   the server's own zone, stated on the page; Locale/Timezone §1).
+   Storage stays UTC: these compute the LOCAL midnight / Monday / 1st
+   as epoch bounds via the one conversion path (time.ts), so "today"
+   starts when the hospital's day starts, not UTC's. The stamp
+   comparisons below stay pure epoch math. ---------- */
 
 const DAY_MS = 86_400_000
 
-/** UTC midnight of the day containing `t` */
-const utcDayStart = (t: number): number => Math.floor(t / DAY_MS) * DAY_MS
+/** epoch of the display clock's midnight opening the day containing `t` */
+const localDayStart = (t: number): number =>
+  epochOfLocalStamp(`${localYmd(t)} 00:00`) ?? Math.floor(t / DAY_MS) * DAY_MS
 
-/** start of the UTC calendar week (Monday) containing `now` */
-export function utcWeekStart(now: Date): number {
-  const day = utcDayStart(now.getTime())
-  const dow = new Date(day).getUTCDay() // 0=Sun
-  return day - ((dow + 6) % 7) * DAY_MS
+/** start of the display-clock calendar week (Monday) containing `now` */
+export function localWeekStart(now: Date): number {
+  const [y, mo, d] = localYmd(now.getTime()).split('-').map(Number)
+  const ymdUtc = Date.UTC(y, mo - 1, d) // calendar arithmetic only
+  const monday = new Date(ymdUtc - ((new Date(ymdUtc).getUTCDay() + 6) % 7) * DAY_MS)
+  const ymd = `${monday.getUTCFullYear()}-${String(monday.getUTCMonth() + 1).padStart(2, '0')}-${String(monday.getUTCDate()).padStart(2, '0')}`
+  return epochOfLocalStamp(`${ymd} 00:00`) ?? monday.getTime()
 }
 
-/** start of the UTC calendar month containing `now` */
-export function utcMonthStart(now: Date): number {
-  return Date.parse(`${new Date(now).toISOString().slice(0, 7)}-01T00:00:00Z`)
+/** start of the display-clock calendar month containing `now` */
+export function localMonthStart(now: Date): number {
+  const [y, mo] = localYmd(now.getTime()).split('-').map(Number)
+  return epochOfLocalStamp(`${y}-${String(mo).padStart(2, '0')}-01 00:00`) ?? Date.UTC(y, mo - 1, 1)
 }
 
 /* ---------- model ---------- */
@@ -158,9 +167,9 @@ const isAntibiotic = (formulary: FormularyDrug[], drugId: string): boolean =>
 export function computeStatistics(inputs: StatisticsInputs): StatisticsModel {
   const { beds, encounters, formulary, patients, now } = inputs
   const nowMs = now.getTime()
-  const todayStart = utcDayStart(nowMs)
-  const weekStart = utcWeekStart(now)
-  const monthStart = utcMonthStart(now)
+  const todayStart = localDayStart(nowMs)
+  const weekStart = localWeekStart(now)
+  const monthStart = localMonthStart(now)
 
   /* ----- unit status ----- */
   /* Bed Registry: census denominators count ACTIVE beds only — a retired

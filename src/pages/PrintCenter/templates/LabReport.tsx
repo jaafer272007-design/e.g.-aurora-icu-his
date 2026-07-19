@@ -1,5 +1,6 @@
 import { Section, SignatureBlock } from '../primitives'
 import type { LabReportData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Contract #5 — Laboratory Report. Every lab result on the encounter,
  *  oldest → newest, with reference ranges, flags, and the acknowledgment
@@ -17,7 +18,7 @@ export function LabReport({ data }: { data: LabReportData }) {
         </Section>
       )}
       {draws.map(d => (
-        <Section key={d.labId} title={`${d.panel} — collected ${d.collectedAt}${mark} · resulted ${d.resultedAt}${mark}`}>
+        <Section key={d.labId} title={`${d.panel} — collected ${displayFullStamp(d.collectedAt)}${mark} · resulted ${displayFullStamp(d.resultedAt)}${mark}`}>
           <table className="pd-table">
             <thead><tr><th>Analyte</th><th>Value</th><th>Unit</th><th>Reference</th><th>Flag</th></tr></thead>
             <tbody>

@@ -1,5 +1,6 @@
 import { FactGrid, Section, SignatureBlock } from '../primitives'
 import type { ImagingReportData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Contract #6 — Imaging Report. Every imaging study on the encounter
  *  with its report/impression text exactly as persisted, its status
@@ -21,7 +22,7 @@ export function ImagingReport({ data }: { data: ImagingReportData }) {
             ['Study', x.studyId],
             ['Status', x.status],
             ['Ordered', `${x.orderedAt}${mark}`],
-            ['Performed', x.performedAt ? `${x.performedAt}${mark}` : '—'],
+            ['Performed', x.performedAt ? `${displayFullStamp(x.performedAt)}${mark}` : '—'],
             ['Reported', x.reportedAt ? `${x.reportedAt}${mark}` : '—'],
             ['Flag', x.flag],
           ]} />

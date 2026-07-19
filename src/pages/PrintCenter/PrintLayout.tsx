@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { PrintContext } from './types'
 import { useHospitalIdentity, HOSPITAL_NAME_UNSET } from '../../lib/hospitalIdentity'
+import { displayFullStamp } from '../../lib/time'
 
 /* ==================== Shared printable layout ====================
    The common chrome every printed clinical document shares: hospital
@@ -59,6 +60,7 @@ export function PrintLayout({ title, context, printedBy, printedAt, children }: 
             absent national ID prints a dash — never fabricated */}
         <div><span className="pd-k">Patient</span><span className="pd-v">{patient.fullName ?? patient.name}</span></div>
         <div><span className="pd-k">National ID</span><span className="pd-v">{patient.nationalId ?? dash}</span></div>
+        <div><span className="pd-k">File No.</span><span className="pd-v">{patient.fileNumber ?? dash}</span></div>
         <div><span className="pd-k">Patient ID</span><span className="pd-v">{patient.patientId}</span></div>
         <div><span className="pd-k">MRN</span><span className="pd-v">{patient.mrn ?? dash}</span></div>
         <div><span className="pd-k">Age / Sex</span><span className="pd-v">{patient.age ?? dash} / {patient.sex ?? dash}</span></div>
@@ -73,9 +75,9 @@ export function PrintLayout({ title, context, printedBy, printedAt, children }: 
         <section className="pd-band pd-band-enc" aria-label="Encounter">
           <div><span className="pd-k">Encounter</span><span className="pd-v">{encounter.encounterId}</span></div>
           <div><span className="pd-k">Status</span><span className="pd-v">{encounter.status}</span></div>
-          <div><span className="pd-k">Admitted</span><span className="pd-v">{encounter.admittedAt || dash}{encounter.admittedBy ? ` · ${encounter.admittedBy}` : ''}</span></div>
+          <div><span className="pd-k">Admitted</span><span className="pd-v">{displayFullStamp(encounter.admittedAt) || dash}{encounter.admittedBy ? ` · ${encounter.admittedBy}` : ''}</span></div>
           {encounter.dischargedAt !== undefined && (
-            <div><span className="pd-k">Discharged</span><span className="pd-v">{encounter.dischargedAt || dash}{encounter.dischargedBy ? ` · ${encounter.dischargedBy}` : ''}</span></div>
+            <div><span className="pd-k">Discharged</span><span className="pd-v">{displayFullStamp(encounter.dischargedAt) || dash}{encounter.dischargedBy ? ` · ${encounter.dischargedBy}` : ''}</span></div>
           )}
         </section>
       )}

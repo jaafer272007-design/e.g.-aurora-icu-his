@@ -36,6 +36,10 @@ export interface PrintPatientIdentity {
    *  the derived display name / legacy stored name. */
   fullName: string | null
   nationalId: string | null
+  /** PATIENT FILE NUMBER (Locale/File-Number §2.5 — the flagged print
+   *  choice, taken: YES): the hospital files its paper record by this
+   *  number, so their printed documents carry it. Dash when absent. */
+  fileNumber: string | null
   /** where the identity fields came from — surfaced on the document when
    *  it is the narrower encounter snapshot. 'patient-record' is the Core
    *  patient-identity read (the middle rung): full person-level identity

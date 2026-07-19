@@ -167,6 +167,9 @@ export function PatientHistory() {
                 {pid.nationalId
                   ? <span className="num">National ID {pid.nationalId}</span>
                   : <span className="phmuted">no national ID recorded</span>}
+                {pid.fileNumber
+                  ? <span className="num">File no. {pid.fileNumber}</span>
+                  : <span className="phmuted">no file number recorded</span>}
                 {encounters !== null && deceased && <span className="phdead">Deceased</span>}
                 {encounters !== null && openEnc && <span className="phadm">Currently admitted · Bed {openEnc.bedId}</span>}
               </div>

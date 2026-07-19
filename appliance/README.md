@@ -34,11 +34,16 @@ cd appliance
 ```
 
 The script: checks Docker → generates local secrets into `appliance/.env`
-(never committed, never baked into an image) → downloads the **official**
-Qwen model into `appliance/models/` and **sha256-verifies every byte**
-against the pinned upstream digests (for a fully offline install, copy the
-two `.gguf` files there from install media first — nothing is fetched) →
-detects the GPU → starts everything → prints the URLs.
+(never committed, never baked into an image) → **detects this machine's
+timezone** into `TZ=` in `appliance/.env` (Aurora stores UTC and displays
+the server's local time — a container defaults to UTC, so the host's IANA
+zone is handed in; if detection fails the script says so and tells you the
+exact line to add, e.g. `TZ=Asia/Baghdad` — it never guesses) → downloads
+the **official** Qwen model into `appliance/models/` and **sha256-verifies
+every byte** against the pinned upstream digests (for a fully offline
+install, copy the two `.gguf` files there from install media first —
+nothing is fetched) → detects the GPU → starts everything → prints the
+URLs.
 
 Open `http://localhost:8080` on the server, or `http://<server-ip>:8080`
 from any device on the network — iPad included. Demo sign-in:

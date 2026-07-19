@@ -9,6 +9,7 @@ import {
   getObservations, getPatientOrders,
 } from '../../lib/api'
 import { computeStatistics, type StatisticsModel, type TrendPoint } from '../../lib/statistics'
+import { clockZone } from '../../lib/time'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 
 /** Statistics — the ICU Analytics Dashboard (docs/design/
@@ -125,7 +126,8 @@ export function Statistics() {
           {state === 'ready' && m && (
             <>
               <div className="st-honesty" role="note">
-                All values are computed at render from the live records. Calendar periods are UTC.
+                All values are computed at render from the live records. Calendar periods follow the
+                server's own clock{clockZone() ? ` (${clockZone()})` : ''}.
                 Dated timestamps and discharge dispositions exist on records created after their
                 respective fixes — time-based metrics and mortality are accurate but will be sparse
                 until new data accumulates; denominators below say exactly what each number covers.
@@ -159,8 +161,8 @@ export function Statistics() {
               <Card icon={<IconAdmit size={15} stroke="var(--cyan)" />} title="Admissions" aside={`${m.admissionsDatedTotal} dated admissions on record`}>
                 <div className="st-grid">
                   <Stat label="Today" value={`${m.admissionsToday}`} />
-                  <Stat label="This week" value={`${m.admissionsWeek}`} sub="UTC calendar week (since Monday)" />
-                  <Stat label="This month" value={`${m.admissionsMonth}`} sub="UTC calendar month" />
+                  <Stat label="This week" value={`${m.admissionsWeek}`} sub="calendar week (since Monday)" />
+                  <Stat label="This month" value={`${m.admissionsMonth}`} sub="calendar month" />
                 </div>
                 {m.admissionsUndatedTotal > 0 && (
                   <p className="st-foot">

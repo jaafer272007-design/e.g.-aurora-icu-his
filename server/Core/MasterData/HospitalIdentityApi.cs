@@ -43,7 +43,14 @@ static class HospitalIdentityApi
             foreach (var key in ctx.Request.Query.Keys)
                 return ApiError.BadRequest($"unknown query parameter '{key}'");
             var row = db.HospitalIdentity.AsNoTracking().FirstOrDefault(r => r.Id == RowId);
-            return Results.Json(row?.ToDto() ?? new HospitalIdentityDto("", "", "", "", false), JsonOpts.Web);
+            /* the machine clock (Locale/Timezone §1.3): the server's OWN
+               zone, read from the OS at request time — an unset container
+               TZ honestly reports UTC (staging on Render does exactly
+               that), never a guessed hospital zone */
+            var tz = TimeZoneInfo.Local;
+            var offset = (int)tz.GetUtcOffset(DateTimeOffset.UtcNow).TotalMinutes;
+            return Results.Json((row?.ToDto() ?? new HospitalIdentityDto("", "", "", "", false))
+                with { ServerTimeZone = tz.Id, ServerUtcOffsetMinutes = offset }, JsonOpts.Web);
         });
 
         /* GET /api/icu/hospital-identity/history — identity + the full

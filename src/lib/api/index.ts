@@ -37,7 +37,7 @@ import {
   imagingFor, labDrawsFor,
 } from './data/results'
 import { SAMPLE_STAFF, getSession, getToken, hasPermission, profileOf, usernameOf, type JobTitle } from '../session'
-import { dayOffsetOf, nowHm, timestampMinutes } from '../time'
+import { datedEpoch, dayOffsetOf, localDayNumber, nowHm, setServerClock, timestampMinutes } from '../time'
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v))
 const respond = <T>(payload: T, latencyMs: number): Promise<T> =>
@@ -108,7 +108,7 @@ export function getUnitSummary(): Promise<UnitSummaryResponse | null> {
 
 /** Phase 3 PR 3 — the summary figures that DO have canonical sources,
  *  derived client-side from the real reads: ADT encounters (admissions /
- *  discharges falling on today's UTC day — the server stamps
+ *  discharges falling on today's server-local day — the server stamps
  *  'yyyy-MM-dd HH:mm' in UTC) and the results inbox (unacknowledged
  *  clinician-marked criticals). Bed Overview and Admin Home call this
  *  ONLY after getUnitSummary resolved null (production) — staging keeps
@@ -130,11 +130,18 @@ export async function getUnitSummaryDerived(): Promise<DerivedUnitSummary> {
     getEncounters(),
     mayViewResults ? getResultInbox() : Promise.resolve(null),
   ])
-  const today = new Date().toISOString().slice(0, 10)
+  /* "today" on the DISPLAY CLOCK (Locale/Timezone §1): the day boundary
+     staff experience is the server's local midnight, not UTC's — the
+     stored stamps stay UTC and convert here at read */
+  const todayNo = localDayNumber(Date.now())
+  const isToday = (t: string | null | undefined): boolean => {
+    const ms = t ? datedEpoch(t) : null
+    return ms !== null && localDayNumber(ms) === todayNo
+  }
   const criticalResults = inbox === null ? null : inbox.filter(r => r.flag === 'critical')
   return {
-    admissionsToday: encounters.filter(e => e.admittedAt.startsWith(today)).length,
-    dischargesToday: encounters.filter(e => e.status === 'discharged' && (e.dischargedAt ?? '').startsWith(today)).length,
+    admissionsToday: encounters.filter(e => isToday(e.admittedAt)).length,
+    dischargesToday: encounters.filter(e => e.status === 'discharged' && isToday(e.dischargedAt)).length,
     criticalUnacked: criticalResults === null ? null : criticalResults.length,
     criticalResults,
   }
@@ -332,8 +339,34 @@ const authHeaders = (): Record<string, string> => {
 /** Shared GET against the real API (Stage 10 Phase 3+). Resolves null on
  *  ANY failure — unreachable, timeout, 401 (tokenless/stale session) — so
  *  each adapter falls back to its mock, console-logged, never a broken UI. */
+/* SERVER-CLOCK PRIME (Locale/Timezone §1.3): before the first data read
+   of a session resolves, fetch the anonymous hospital-identity record —
+   the one boot read — and hand its serverTimeZone/serverUtcOffsetMinutes
+   to the display clock (src/lib/time.ts). Timestamps only render from
+   fetched data, and every read below awaits this once, so no
+   timestamp-bearing screen paints on the wrong clock. sessionStorage
+   makes reloads synchronous; the serverless mock demo (apiBaseUrl null)
+   has no server clock and honestly renders the device's own. An
+   unreachable server resolves without a clock — those same reads are
+   falling back to mock anyway, and the next successful session primes. */
+const clockReady: Promise<void> = (() => {
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return Promise.resolve()
+  try { if (sessionStorage.getItem('aurora.serverClock') !== null) return Promise.resolve() } catch { /* private mode */ }
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+  return fetch(`${API_BASE}/api/icu/hospital-identity`, { signal: ctrl.signal })
+    .then(res => (res.ok ? (res.json() as Promise<HospitalIdentity>) : null))
+    .then(d => {
+      if (d?.serverTimeZone !== undefined && d.serverUtcOffsetMinutes !== undefined)
+        setServerClock(d.serverTimeZone, d.serverUtcOffsetMinutes)
+    })
+    .catch(() => { /* asleep/unreachable — reads fall back to mock; primes next session */ })
+    .finally(() => clearTimeout(timer))
+})()
+
 async function apiGet<T>(path: string, what: string): Promise<T | null> {
   if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return null
+  await clockReady
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -361,6 +394,7 @@ async function apiPost<T>(
   path: string, what: string, body?: unknown, method: 'POST' | 'PUT' = 'POST',
 ): Promise<ApiPostResult<T>> {
   if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return { kind: 'offline' }
+  await clockReady
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
@@ -395,6 +429,7 @@ const toSummary = (r: RosterRecordDto): PatientSummary => ({
   isolationTypes: r.isolationTypes,
   fullName: r.fullName,
   nationalId: r.nationalId,
+  fileNumber: r.fileNumber,
   /* alertCount stays client-derived — see the wire-contract note in
      types.ts. Dev/staging enrich it from the MOCK ai/results stores
      (documented drift); production carries no mock stores, so it derives
@@ -1075,7 +1110,13 @@ export function setEncounterCodeStatus(encounterId: string, code: string): Promi
  *  null = unreachable (surfaces render the neutral placeholder). */
 export async function getHospitalIdentity(): Promise<HospitalIdentity | null> {
   const real = await apiGet<HospitalIdentity>('/api/icu/hospital-identity', 'hospital identity')
-  if (real) return real
+  if (real) {
+    /* keep the display clock current — the same fields the session prime
+       reads (a zone change on the server reaches clients here) */
+    if (real.serverTimeZone !== undefined && real.serverUtcOffsetMinutes !== undefined)
+      setServerClock(real.serverTimeZone, real.serverUtcOffsetMinutes)
+    return real
+  }
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(HOSPITAL_IDENTITY, 80)
   return null
 }

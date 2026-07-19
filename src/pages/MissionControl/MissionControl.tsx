@@ -40,7 +40,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 /* ONE SEARCH BOX (locked decision 5) — type a name or a number. Stated
    semantics (the flagged choice): SUBSTRING across the name fields — the
    display name AND the full legal name, so a grandfather's name finds the
-   patient — plus the bed; PREFIX/EXACT on the numbers (MRN, national ID).
+   patient — plus the bed; PREFIX/EXACT on the numbers (MRN, national ID,
+   and the hospital's own file number — the number staff actually know).
    NO fuzzy/phonetic matching: a near-miss on patient identity is a safety
    risk, not a convenience. */
 function matches(p: PatientSummary, filter: Filter, query: string): boolean {
@@ -49,6 +50,7 @@ function matches(p: PatientSummary, filter: Filter, query: string): boolean {
     const hit = names.includes(query)
       || p.mrn.toLowerCase().startsWith(query)
       || (p.nationalId ?? '').startsWith(query)
+      || (p.fileNumber ?? '').toLowerCase().startsWith(query)
     if (!hit) return false
   }
   if (filter === 'all') return true
@@ -298,6 +300,7 @@ export function MissionControl() {
               <div className="sub">
                 <span>{p?.mrn ?? 'MRN —'}</span> · <span>Bed {p?.bedId ?? '—'}</span>
                 {pid?.nationalId && <> · <span className="num" title="National identity number — as on the identity card">ID {pid.nationalId}</span></>}
+                {pid?.fileNumber && <> · <span className="num" title="Patient file number — the hospital's own chart number">File {pid.fileNumber}</span></>}
                 {(pid?.identity?.length ?? 0) > 0 && (
                   <> · <span
                     className="idmark"
@@ -445,7 +448,7 @@ export function MissionControl() {
             <div className="searchbox">
               <IconSearch size={14} />
               <input
-                placeholder="Search name, bed, MRN…" aria-label="Search name, bed, MRN"
+                placeholder="Search name, bed, MRN, file no…" aria-label="Search name, bed, MRN, national ID or file number"
                 value={query} onChange={e => setQuery(e.target.value.trim().toLowerCase())}
               />
             </div>

@@ -67,7 +67,20 @@ class HospitalIdentityRow
 
 /* ---------- wire contracts (camelCase over the wire) ---------- */
 
-record HospitalIdentityDto(string Name, string UnitName, string ShortName, string Address, bool Configured);
+/* serverTimeZone/serverUtcOffsetMinutes (the Locale/Timezone design §1.3
+   mechanism, stated): the MACHINE CLOCK rides the install's one anonymous
+   boot read. Storage stays UTC everywhere — these two fields exist so the
+   client can DISPLAY stored UTC stamps in the server's own zone ("the
+   hospital's server is one machine in one place — its OS timezone IS the
+   hospital's"). The IANA id comes from TimeZoneInfo.Local (the container's
+   TZ env / OS setting — NOT a configured value, so it is computed at read,
+   never stored on the identity row); the current offset is the fallback
+   for a client whose Intl tables don't know the zone name. Only the
+   PUBLIC read carries them (the history/edit responses are configuration
+   surfaces, not the boot read) — the record defaults keep every other
+   composition site unchanged. */
+record HospitalIdentityDto(string Name, string UnitName, string ShortName, string Address, bool Configured,
+    string ServerTimeZone = "UTC", int ServerUtcOffsetMinutes = 0);
 
 record HospitalIdentityWithHistoryDto(string Name, string UnitName, string ShortName, string Address, bool Configured,
     List<FormularyEventDto> History);

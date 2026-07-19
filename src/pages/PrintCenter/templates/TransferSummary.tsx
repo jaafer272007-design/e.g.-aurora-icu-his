@@ -1,5 +1,6 @@
 import { FactGrid, MedTable, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { TransferSummaryData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Contract #9 — Transfer / Referral Summary. For moving the patient to
  *  another unit or hospital: identity through the canonical resolver,
@@ -46,7 +47,7 @@ export function TransferSummary({ data }: { data: TransferSummaryData }) {
               {latestLabs.map(d => (
                 <tr key={d.labId}>
                   <td>{d.panel}<span className="pd-sub"> {d.labId}</span></td>
-                  <td>{d.resultedAt}</td>
+                  <td>{displayFullStamp(d.resultedAt)}</td>
                   <td className={d.flag !== 'normal' ? 'pd-flag' : undefined}>{d.flag}</td>
                   <td>
                     {(d.items.filter(i => i.flag !== 'normal').length ? d.items.filter(i => i.flag !== 'normal') : d.items)
@@ -65,7 +66,7 @@ export function TransferSummary({ data }: { data: TransferSummaryData }) {
         {adtEvents.length === 0 ? <p className="pd-empty">No ADT events recorded.</p> : (
           <ul className="pd-list">
             {adtEvents.map((ev, i) => (
-              <li key={i}>{ev.time || '—'} — {ev.action}{ev.detail ? ` (${ev.detail})` : ''} · {ev.actor || '—'}</li>
+              <li key={i}>{displayFullStamp(ev.time) || '—'} — {ev.action}{ev.detail ? ` (${ev.detail})` : ''} · {ev.actor || '—'}</li>
             ))}
           </ul>
         )}

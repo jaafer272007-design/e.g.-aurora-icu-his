@@ -33,6 +33,32 @@ if (-not (Test-Path ".env")) {
   ) | Set-Content -Encoding ascii ".env"
 }
 
+# ---- the hospital's timezone (Locale/Timezone design §1.3) ----
+# The app stores UTC and DISPLAYS the server's local time; the container
+# defaults to UTC, so the HOST's zone must be handed in as an IANA id.
+# Windows names zones its own way ("Arab Standard Time") — .NET 6+ can
+# convert (PowerShell 7); Windows PowerShell 5.1 cannot, and a WRONG
+# guess would stamp every screen with the wrong wall clock, so when the
+# conversion API is unavailable we WARN with the exact line to add
+# instead of guessing. Written once; correctable in appliance\.env.
+if (-not (Select-String -Path ".env" -Pattern '^TZ=' -Quiet)) {
+  $iana = $null
+  try {
+    $winId = (Get-TimeZone).Id
+    $out = $null
+    if ([System.TimeZoneInfo].GetMethod('TryConvertWindowsIdToIanaId', [type[]]@([string], [string].MakeByRefType()))) {
+      if ([System.TimeZoneInfo]::TryConvertWindowsIdToIanaId($winId, [ref]$out)) { $iana = $out }
+    }
+  } catch { $iana = $null }
+  if ($iana) {
+    Add-Content -Encoding ascii ".env" "TZ=$iana"
+    Write-Host "timezone: $iana (converted from this machine's '$((Get-TimeZone).Id)' - edit TZ= in appliance\.env if wrong)"
+  } else {
+    Write-Host "WARNING: could not convert this machine's Windows timezone to an IANA id - Aurora will DISPLAY times in UTC." -ForegroundColor Yellow
+    Write-Host "         Set it explicitly: add a line like  TZ=Asia/Baghdad  to appliance\.env and re-run.  (PowerShell 7 converts automatically.)" -ForegroundColor Yellow
+  }
+}
+
 # the packaged commit — /build.txt and /healthz stamp it.
 # Native stderr goes through cmd.exe: under $ErrorActionPreference=Stop,
 # Windows PowerShell 5.1 turns a redirected stderr write from a native

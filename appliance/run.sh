@@ -37,6 +37,29 @@ if [ ! -f .env ]; then
   } > .env
 fi
 
+# ---- 2b. the hospital's timezone (Locale/Timezone design §1.3) ----
+# The app stores UTC and DISPLAYS the server's local time; the container
+# defaults to UTC, so the HOST's zone must be handed in. Detect the IANA
+# id from the OS — never guess one. Written once; correctable any time by
+# editing TZ= in appliance/.env.
+if ! grep -q '^TZ=' .env; then
+  HOST_TZ=""
+  if command -v timedatectl >/dev/null 2>&1; then
+    HOST_TZ=$(timedatectl show -p Timezone --value 2>/dev/null || true)
+  fi
+  [ -z "$HOST_TZ" ] && [ -f /etc/timezone ] && HOST_TZ=$(cat /etc/timezone)
+  if [ -z "$HOST_TZ" ] && [ -L /etc/localtime ]; then
+    HOST_TZ=$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')
+  fi
+  if [ -n "$HOST_TZ" ]; then
+    echo "TZ=$HOST_TZ" >> .env
+    echo "timezone: $HOST_TZ (from this machine's OS — edit TZ= in appliance/.env if wrong)"
+  else
+    echo "WARNING: could not detect this machine's timezone — Aurora will DISPLAY times in UTC."
+    echo "         Set it explicitly: add a line like  TZ=Asia/Baghdad  to appliance/.env and re-run."
+  fi
+fi
+
 # the packaged commit — /build.txt and /healthz stamp it
 AURORA_BUILD_COMMIT=$(git -C .. rev-parse HEAD 2>/dev/null || echo dev)
 export AURORA_BUILD_COMMIT

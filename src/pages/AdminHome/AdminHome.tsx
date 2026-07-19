@@ -137,12 +137,12 @@ export function AdminHome() {
                   <div className="adstat">
                     <div className="adsv num">{derived?.admissionsToday ?? '—'}</div>
                     <div className="adsl">Admissions Today</div>
-                    <span className="adsd">ADT · UTC day</span>
+                    <span className="adsd">ADT · local day</span>
                   </div>
                   <div className="adstat">
                     <div className="adsv num">{derived?.dischargesToday ?? '—'}</div>
                     <div className="adsl">Discharges Today</div>
-                    <span className="adsd">ADT · UTC day</span>
+                    <span className="adsd">ADT · local day</span>
                   </div>
                   <div className="adstat">
                     <div className="adsv num">{stats ? `${stats.vent} / ${stats.capacity}` : '—'}</div>

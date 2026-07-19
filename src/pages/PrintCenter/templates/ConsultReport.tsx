@@ -1,5 +1,6 @@
 import { Section, SignatureBlock, WriteIn } from '../primitives'
 import type { ConsultReportData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Contract #8 — Consultation Report. Specialist consultations in
  *  chronological order, exactly as the aggregated feed carries them —
@@ -20,7 +21,7 @@ export function ConsultReport({ data }: { data: ConsultReportData }) {
             <tbody>
               {consultEvents.map(e => (
                 <tr key={e.id}>
-                  <td>{e.time}</td>
+                  <td>{displayFullStamp(e.time)}</td>
                   <td>{e.title}{e.detail ? ` — ${e.detail}` : ''}</td>
                   <td>{e.actor ?? '—'}</td>
                 </tr>

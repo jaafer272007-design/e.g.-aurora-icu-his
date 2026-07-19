@@ -1,5 +1,6 @@
 import { FactGrid, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { FaceSheetData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Contract #1 — Patient Face Sheet. Registration-style identity +
  *  encounter summary: the file-open / transfer banner document. Identity
@@ -32,9 +33,9 @@ export function FaceSheet({ data }: { data: FaceSheetData }) {
             ['Bed', p.bedId],
             ['Admission diagnosis', p.diagnosis],
             ['Attending', p.attending],
-            ['Admitted', e.admittedAt ? `${e.admittedAt}${mark} · ${e.admittedBy || '—'}` : '—'],
+            ['Admitted', e.admittedAt ? `${displayFullStamp(e.admittedAt)}${mark} · ${e.admittedBy || '—'}` : '—'],
             ...(e.status === 'discharged'
-              ? [['Discharged', `${e.dischargedAt ?? '—'}${mark} · ${e.dischargedBy ?? '—'}`] as [string, string]]
+              ? [['Discharged', `${displayFullStamp(e.dischargedAt) || '—'}${mark} · ${e.dischargedBy ?? '—'}`] as [string, string]]
               : []),
           ]} />
         ) : (
@@ -49,7 +50,7 @@ export function FaceSheet({ data }: { data: FaceSheetData }) {
             <tbody>
               {adtEvents.map((ev, i) => (
                 <tr key={i}>
-                  <td>{ev.time || '—'}</td>
+                  <td>{displayFullStamp(ev.time) || '—'}</td>
                   <td>{ev.action}</td>
                   <td>{ev.actor || '—'}</td>
                   <td>{ev.detail ?? '—'}</td>

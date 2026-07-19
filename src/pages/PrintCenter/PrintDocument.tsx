@@ -6,6 +6,7 @@ import { getSession } from '../../lib/session'
 import { PrintLayout } from './PrintLayout'
 import { templateById } from './registry'
 import type { PrintContext } from './types'
+import { clockZone, localStamp } from '../../lib/time'
 
 /** /print/:templateId/:patientId(?enc=ENC-xxxx) — the printable document.
  *  On screen: a paper preview with a toolbar (hidden when printing).
@@ -28,7 +29,7 @@ export function PrintDocument() {
       if (!live) return
       setState(d)
       /* generation metadata — the one clock-derived line on the page */
-      setPrintedAt(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC')
+      setPrintedAt(`${localStamp(Date.now())} ${clockZone() ?? 'local time'}`)
     })
     return () => { live = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps

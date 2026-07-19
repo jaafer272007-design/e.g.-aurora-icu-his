@@ -64,6 +64,7 @@ export function MatchDialog(
                      sends a maskable-length value in full */
                   ? <i>national ID recorded — too short to display masked</i>
                   : <>National ID <b className="num">···· {m.nationalIdLast4}</b></>}</span>
+              {m.fileNumber != null && <span>File no. <b className="num">{m.fileNumber}</b></span>}
               <span>{m.age} y{m.ageSource === 'recordedAtAdmission' && <i> (estimated)</i>} · {m.sex === 'M' ? 'Male' : 'Female'}</span>
               <span>Last admission <b className="num">{m.lastAdmission ? displayStamp(m.lastAdmission) : '—'}</b></span>
               <span>Admissions <b className="num">{m.admissionCount}</b></span>

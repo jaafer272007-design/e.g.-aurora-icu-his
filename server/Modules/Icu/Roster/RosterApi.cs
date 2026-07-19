@@ -95,10 +95,11 @@ static class RosterApi
                         p.Name, p.Mrn, p.Age, p.Sex, e.Diagnosis, p.Allergies,
                         e.Attending, e.AdmittedAt, p.FullName, p.NationalId,
                         codeStatus, codeStatusCode, codeStatusLegacy,
+                        fileNumber: p.FileNumber,
                         /* isolation now reads THE OPEN ENCOUNTER's selected
                            types (the boolean upgrade) — the bedside
                            snapshot's legacy flag column is no longer read */
-                        e.IsolationTypes());
+                        isolationTypes: e.IsolationTypes());
                 });
             return Results.Json(records, JsonOpts.Web);
         }).RequireAuthorization();
@@ -179,7 +180,10 @@ class PatientRow
         /* the OPEN encounter's isolation-type codes — the bool on the
            wire derives from this set (the legacy bedside boolean column
            is no longer read; its truth migrated to the encounter) */
-        List<string>? isolationTypes = null)
+        List<string>? isolationTypes = null,
+        /* the hospital's own chart number (Locale/File-Number §2) —
+           rides the one-search-box requirement like the national ID */
+        string? fileNumber = null)
     {
         var demoBedCard = ParseNumbers(b?.BedsideVitalsJson);
         var demoMonitor = ParseNumbers(b?.MonitorVitalsJson);
@@ -208,7 +212,8 @@ class PatientRow
                 : JsonSerializer.Deserialize<JsonElement>(
                     """{"Brain":"ok","Heart":"ok","Lungs":"ok","Kidneys":"ok","Liver":"ok","Circulation":"ok"}""", JsonOpts.Web),
             fullName, nationalId, codeStatusCode, codeStatusLegacy ? true : null,
-            isolationTypes is { Count: > 0 } ? isolationTypes : null);
+            isolationTypes is { Count: > 0 } ? isolationTypes : null,
+            fileNumber);
     }
 
     static Dictionary<string, double>? ParseNumbers(string? json)
@@ -270,4 +275,9 @@ record RosterRecordDto(
        keeps working unchanged; the bedside snapshot's legacy boolean
        column is no longer read (its true rows were migrated to
        ["unspecified"] on the open encounter — preserve, never guess). */
-    List<string>? IsolationTypes = null);
+    List<string>? IsolationTypes = null,
+    /* PATIENT FILE NUMBER (Locale/File-Number §2, additive nullable
+       tail — WhenWritingNull): the hospital's own chart number, served
+       so the rail's one search box finds patients by the number the
+       staff actually know. Absent is honest (most rows predate it). */
+    string? FileNumber = null);
