@@ -34,9 +34,9 @@ static class AdtApi
             var beds = db.Beds.AsNoTracking().OrderBy(b => b.Seq).AsEnumerable().Select(b =>
             {
                 var enc = open.FirstOrDefault(e => e.BedId == b.BedId);
-                return new AdtBedDto(b.BedId, b.Area, enc?.PatientId,
+                return new AdtBedDto(b.BedId, b.Area, b.Seq, b.Active, enc?.PatientId,
                     enc is null ? null : patients.GetValueOrDefault(enc.PatientId),
-                    enc?.EncounterId);
+                    enc?.EncounterId, b.History());
             });
             return Results.Json(beds, JsonOpts.Web);
         }).RequireAuthorization();
@@ -531,14 +531,19 @@ static class AdtApi
                 if (patient is null)
                     return ApiError.BadRequest($"patientId '{pid}' does not match any patient");
             }
-            if (!db.Beds.AsNoTracking().Any(b => b.BedId == req.BedId))
+            var bedRow = db.Beds.AsNoTracking().FirstOrDefault(b => b.BedId == req.BedId);
+            if (bedRow is null)
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
             /* FOUR-CODE RULE (state-conflict PR): an occupied bed and a
                patient already admitted are RESOURCE STATE, not payload
                validation — the same request succeeds once the bed frees /
                the prior encounter closes → 409 (was 400, pre-convention).
                An unknown bedId stays 400: the payload references a bed
-               that does not exist. */
+               that does not exist. A RETIRED bed is state too (the same
+               request succeeds once it is reactivated) → 409. */
+            if (!bedRow.Active)
+                return ApiError.StateConflict(
+                    $"bed '{req.BedId}' is retired — reactivate it in Configuration before admitting into it");
             var occupant = db.Encounters.AsNoTracking()
                 .FirstOrDefault(e => e.Status == "open" && e.BedId == req.BedId);
             if (occupant is not null)
@@ -748,8 +753,12 @@ static class AdtApi
             if (enc.Status == "discharged")
                 return ApiError.StateConflict(
                     $"encounter '{encounterId}' is discharged — a closed encounter cannot be transferred");
-            if (!db.Beds.AsNoTracking().Any(b => b.BedId == req.BedId))
+            var targetBed = db.Beds.AsNoTracking().FirstOrDefault(b => b.BedId == req.BedId);
+            if (targetBed is null)
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
+            if (!targetBed.Active)
+                return ApiError.StateConflict(
+                    $"bed '{req.BedId}' is retired — reactivate it in Configuration before transferring into it");
             if (enc.BedId == req.BedId)
                 return ApiError.StateConflict($"encounter '{encounterId}' is already in bed '{req.BedId}'");
             var occupant = db.Encounters.AsNoTracking()

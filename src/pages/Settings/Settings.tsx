@@ -59,7 +59,7 @@ export function Settings() {
     setPrefsState(merged)
   }
 
-  const areas = beds ? [...new Set(beds.map(b => b.area))] : []
+  const areas = beds ? [...new Set(beds.filter(b => b.active).map(b => b.area))] : []
   const deviceWantsLight = systemPrefersUnavailableLight()
 
   return (
@@ -148,15 +148,21 @@ export function Settings() {
                   <p className="se-sub">bed registry unavailable — requires the live server (nothing fabricated)</p>
                 ) : (
                   <>
-                    <p className="se-sub">{beds.length} beds · {areas.map(a => `${a}: ${beds.filter(b => b.area === a).length}`).join(' · ')}</p>
+                    {/* the unit's ACTIVE beds (the Bed Registry); retired
+                        beds leave the layout but keep rendering on the
+                        historical records that carry them */}
+                    <p className="se-sub">
+                      {beds.filter(b => b.active).length} beds · {areas.map(a => `${a}: ${beds.filter(b => b.active && b.area === a).length}`).join(' · ')}
+                      {beds.some(b => !b.active) ? ` · ${beds.filter(b => !b.active).length} retired` : ''}
+                    </p>
                     <div className="se-beds num">
-                      {beds.map(b => <span className="se-bed" key={b.bedId}>{b.bedId}</span>)}
+                      {beds.filter(b => b.active).map(b => <span className="se-bed" key={b.bedId}>{b.bedId}</span>)}
                     </div>
                   </>
                 )}
                 <div className="se-ntrow se-ntinline">
-                  <span className="se-ntbadge">not tracked yet</span>
-                  <div><b>Bed layout editing</b><small>no bed-management endpoint exists — display only</small></div>
+                  <span className="se-ntbadge">managed elsewhere</span>
+                  <div><b>Bed layout editing</b><small>add/retire beds in Configuration → Bed Registry (beds.manage)</small></div>
                 </div>
               </div>
             </div>

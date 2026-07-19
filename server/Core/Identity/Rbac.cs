@@ -100,12 +100,19 @@ static class Rbac
            selected from is CLINICAL GOVERNANCE — Consultant tier only,
            the observations.configure precedent, and the same hard
            constraint: NEVER on the office Administrator profile. */
+        /* beds.manage (Bed Registry design §3/§8.1 — the FLAGGED authority,
+           VALIDATOR'S DECISION): a DISTINCT atom held by BOTH the
+           SeniorDoctor (unit command runs the unit's bed layout) and the
+           office Administrator (facility configuration). Beds are PLACES,
+           not patient data — the locked clinical exclusion is untouched
+           either way. */
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
             "results.document", "results.correct", "labcatalog.manage", "notes.document",
             "ai.view", "adt.admit", "adt.discharge", "observations.record",
             "observations.correct", "observations.configure", "patients.measure",
-            "assignments.manage", "codestatus.set", "codestatus.manage", "imagingcatalog.manage"],
+            "assignments.manage", "codestatus.set", "codestatus.manage", "imagingcatalog.manage",
+            "beds.manage"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "handoff.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record", "patients.measure"],
@@ -135,7 +142,11 @@ static class Rbac
            Administrator; clinical vocabularies (codestatus.manage) →
            SeniorDoctor. The System Administrator does NOT hold this —
            they govern accounts, not the hospital's public identity. */
-        ["Administrator"] = ["admin.view", "patients.view", "identity.correct", "hospital.configure"],
+        /* beds.manage — see the SeniorDoctor comment above: the validator's
+           decision grants it to BOTH profiles (unit command + facility
+           administration). Beds carry no clinical data. */
+        ["Administrator"] = ["admin.view", "patients.view", "identity.correct", "hospital.configure",
+            "beds.manage"],
         /* the highest-privilege authority in the system: whoever holds it
            controls who can reach patient data — while never reaching it
            themselves (NO clinical atoms, not even patients.view; the

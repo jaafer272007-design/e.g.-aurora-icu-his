@@ -106,7 +106,9 @@ export function Admissions() {
     return () => { stale = true }
   }, [readmitId])
 
-  const freeBeds = useMemo(() => (beds ?? []).filter(b => !b.patientId), [beds])
+  /* Bed Registry: only ACTIVE beds are admittable — a retired bed leaves
+     this picker (and the server refuses it with 409 regardless) */
+  const freeBeds = useMemo(() => (beds ?? []).filter(b => b.active && !b.patientId), [beds])
   const occupied = useMemo(() => (beds ?? []).filter(b => b.patientId), [beds])
   const readmitting = readmitId !== ''
   const clearReadmit = () => navigate('/admissions', { replace: true })
@@ -379,7 +381,11 @@ export function Admissions() {
 
             <Card icon={<IconBed size={15} stroke="var(--blue)" />} title="Current Census" aside={beds ? `${freeBeds.length} bed(s) free` : '—'}>
               <div className="admcensus">
-                {(beds ?? []).map(b => (
+                {/* ACTIVE beds only — a retired bed is not unit census
+                    and must never read "Available" (it cannot be
+                    admitted into; the verification caught the raw list
+                    rendering a retired bed as free) */}
+                {(beds ?? []).filter(b => b.active).map(b => (
                   <button
                     key={b.bedId}
                     className={`admbed${b.patientId ? '' : ' free'}`}

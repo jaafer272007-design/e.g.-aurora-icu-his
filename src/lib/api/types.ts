@@ -1198,10 +1198,26 @@ export interface AiQueryResponse {
 export interface AdtBed {
   bedId: string
   area: string
+  seq: number
+  /** Bed Registry (4th Configuration tenant): retired beds leave the
+   *  board and the admit/transfer pickers but keep rendering on
+   *  historical records carrying their bedId (FK-free snapshots). */
+  active: boolean
   /** occupancy — absent = bed free (derived from open encounters) */
   patientId?: string
   patientName?: string
   encounterId?: string
+  /** append-only audit (added/retired/reactivated); seeded beds carry
+   *  an empty history — no invented audit */
+  history: FormularyEvent[]
+}
+
+/** POST /api/icu/adt/beds — add a bed to the registry (beds.manage).
+ *  Add/retire only, NEVER rename — no edit draft exists by design. */
+export interface CreateBedDraft {
+  bedId: string
+  area: string
+  seq?: number
 }
 
 /* ---------- GET /api/icu/adt/encounters?patientId&status ---------- */

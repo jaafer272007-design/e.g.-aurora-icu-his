@@ -37,14 +37,24 @@ export const toBedPatient = (r: RosterRecordDto): BedPatient => ({
    from Core encounters. */
 export function composeBedsResponse(adtBeds: AdtBed[], roster: RosterRecordDto[]): BedsResponse {
   const byId = new Map(roster.map(r => [r.patientId, r]))
+  /* Bed Registry: the BOARD shows the unit's ACTIVE beds only — a retired
+     bed leaves the layout (it cannot be occupied: retiring an occupied bed
+     is refused server-side). Capacity and areas are COUNTED from the
+     active registry, never a literal (the ?? 16 / ?? Pod A/B fallbacks
+     are dead — a hospital sees exactly its own beds). */
+  const active = adtBeds.filter(b => b.active)
   return {
+    /* the pre-existing data-layer unit key — SINGLE-UNIT BOUNDARY
+       (flagged, not deepened): display surfaces use #135's configured
+       unit name, and the later multi-unit project replaces this key with
+       real per-unit scoping. Nothing else reads '4B'. */
     unitId: '4B',
-    capacity: adtBeds.length,
+    capacity: active.length,
     physicians: import.meta.env.VITE_APP_ENV !== 'production'
       ? DEMO_DOCS
       : [...new Set(roster.map(r => r.attending).filter(Boolean))],
-    areas: [...new Set(adtBeds.map(b => b.area))],
-    beds: adtBeds.map(({ bedId, area, patientId }): Bed => {
+    areas: [...new Set(active.map(b => b.area))],
+    beds: active.map(({ bedId, area, patientId }): Bed => {
       const record = patientId ? byId.get(patientId) : undefined
       return { bedId, area, patient: record ? toBedPatient(record) : null }
     }),

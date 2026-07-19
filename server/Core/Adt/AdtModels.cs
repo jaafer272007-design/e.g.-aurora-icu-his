@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
+using Aurora.Core.MasterData;
 using Aurora.Core.Shared;
 
 namespace Aurora.Core.Adt;
@@ -214,12 +215,35 @@ class Encounter
 /* a bed is a PLACE — occupancy is derived from open encounters at read
    time, never stored (locked derived-state rule) */
 [Table("Beds")]
+/* The BED REGISTRY (bed-registry design): the physical beds of the ONE
+   configured unit, on the proven catalogue pattern (Active flag,
+   append-only audit, deactivate-never-delete) — with the rule that sets
+   beds apart from inert catalogues: a bed is OCCUPIED (occupancy derived
+   from open encounters, never stored), so retiring is guarded by LIVE
+   occupancy, and beds are NEVER renamed (a renamed occupied bed is a
+   wrong-patient-location risk — BedId is stable once created; there is
+   deliberately no edit endpoint). Historical references are FK-free
+   BedId snapshots that keep rendering after retirement.
+   SINGLE-UNIT BOUNDARY (flagged, not deepened): today all beds belong to
+   the one configured unit (#135's hospital identity names it); the later
+   multi-unit project adds a units catalogue and a UnitId scoping column
+   here — nothing in this model or its consumers assumes the unit is
+   '4B' beyond the pre-existing data-layer key. */
 class BedRow
 {
     [Key]
     public string BedId { get; set; } = "";
     public string Area { get; set; } = "";
     public int Seq { get; set; }
+    /* catalogue pattern (NEW): retired beds leave the board and the
+       admit/transfer pickers but keep rendering on historical records */
+    public bool Active { get; set; } = true;
+    /* append-only audit — who added/retired/reactivated, when, as which
+       role; seeded beds carry an empty history (no invented audit) */
+    public string EventsJson { get; set; } = "[]";
+
+    public List<FormularyEventDto> History() =>
+        JsonSerializer.Deserialize<List<FormularyEventDto>>(EventsJson, JsonOpts.Web)!;
 }
 
 /* wire contracts. PatientDto: dateOfBirth is null on legacy rows (never
@@ -289,7 +313,14 @@ record SetCodeStatusRequest(string? Code);
 
 /* bed registry row incl. derived occupancy — feeds the admission form's
    free-bed picker, transfer target picker, and the bed board layout */
-record AdtBedDto(string BedId, string Area, string? PatientId, string? PatientName, string? EncounterId);
+record AdtBedDto(string BedId, string Area, int Seq, bool Active, string? PatientId, string? PatientName,
+    string? EncounterId, List<FormularyEventDto> History);
+
+/* POST /adt/beds — add a bed to the registry (bed-registry design §3).
+   Add/retire only, NEVER rename (locked decision 2) — hence no edit
+   request exists. Seq optional: appended after the area's last bed. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record CreateBedRequest(string? BedId, string? Area, int? Seq = null);
 
 record BedSeedDto(string BedId, string Area);
 

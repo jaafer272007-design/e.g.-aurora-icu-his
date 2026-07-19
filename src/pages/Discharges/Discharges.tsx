@@ -65,7 +65,9 @@ export function Discharges() {
     })
   }, [discharged])
 
-  const freeBeds = useMemo(() => (beds ?? []).filter(b => !b.patientId), [beds])
+  /* Bed Registry: transfer targets are ACTIVE free beds only — a retired
+     bed leaves this picker (the server refuses it with 409 regardless) */
+  const freeBeds = useMemo(() => (beds ?? []).filter(b => b.active && !b.patientId), [beds])
 
   const kpis: KpiSpec[] = [
     { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: open?.length ?? '—', label: 'Open Encounters' },

@@ -160,8 +160,12 @@ export function computeStatistics(inputs: StatisticsInputs): StatisticsModel {
   const monthStart = utcMonthStart(now)
 
   /* ----- unit status ----- */
-  const bedsOccupied = beds.filter(b => b.patientId).length
-  const bedsTotal = beds.length
+  /* Bed Registry: census denominators count ACTIVE beds only — a retired
+     bed is not unit capacity (it cannot be occupied either: retiring an
+     occupied bed is refused server-side) */
+  const activeBeds = beds.filter(b => b.active)
+  const bedsOccupied = activeBeds.filter(b => b.patientId).length
+  const bedsTotal = activeBeds.length
   const open = encounters.filter(e => e.status === 'open')
 
   /* ventilated — from charted resp_support/vent context (the NEWS2 context
