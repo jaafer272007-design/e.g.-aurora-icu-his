@@ -140,6 +140,19 @@ static class Seeder
            null codes; the bedside string itself is never modified. */
         BackfillEncounterCodeStatus(app, db);
 
+        /* ISOLATION BACKFILL (one-time, idempotent — the boolean's
+           upgrade, Configuration Vocabularies §2): an OPEN encounter
+           whose patient carries the pre-vocabulary bedside
+           `isolation: true` flag gets the neutral 'unspecified' type —
+           the recorded fact was "isolated", NEVER which kind, so no
+           type is ever guessed (a fabricated isolation type is a real
+           IPC error); a clinician refines it at the bedside. false →
+           no precautions (nothing written). Audited as a System event
+           on the encounter's history. Idempotent: only fills encounters
+           with an empty set AND no prior isolation event (so a
+           clinician CLEARING precautions later is never re-filled). */
+        BackfillEncounterIsolation(app, db);
+
         /* resume the generated-id counters from the persisted data — on a
            fresh database this resolves to the historical floors, so
            first-boot behavior is unchanged (see OrderLogic notes) */
@@ -296,6 +309,9 @@ static class Seeder
         SeedOrderSets(app, db);
         SeedObservationCatalog(app, db);
         SeedCodeStatuses(app, db);
+        SeedDispositions(app, db);
+        SeedIsolationTypes(app, db);
+        SeedShifts(app, db);
         SeedDemoHospitalIdentity(app, db);
         SeedImagingCatalog(app, db, demo: true);
     }
@@ -390,6 +406,9 @@ static class Seeder
         SeedOrderSets(app, db);
         SeedObservationCatalog(app, db);
         SeedCodeStatuses(app, db);
+        SeedDispositions(app, db);
+        SeedIsolationTypes(app, db);
+        SeedShifts(app, db);
         SeedImagingCatalog(app, db, demo: false);
         SeedProductionFormulary(app, db);
         SeedSystemPrincipal(app, db);
@@ -687,6 +706,111 @@ static class Seeder
         db.NamedFrequencies.AddRange(freqs.Select((v, i) => new NamedFrequencyRow { Value = v, Seq = i + 1 }));
         db.SaveChanges();
         app.Logger.LogInformation("Seeded {Count} named frequencies", freqs.Count);
+    }
+
+    /* ---- Configuration Vocabularies (the last four of the arc) ----
+       Reference data in EVERY seed mode (like code statuses): the
+       starting sets are PLACEHOLDERS each hospital finalises through
+       Configuration — that being possible is the whole point. Seed rows
+       carry empty audit histories (historical data — facts are never
+       invented). */
+
+    /** dispositions — verbatim the array AdtLogic hardcoded (codes AND
+        labels), so existing behavior becomes data with zero drift; the
+        'died' row carries the IMMUTABLE IsDeath attribute the deceased
+        guard resolves through, and is reserved-unretireable in the API */
+    static void SeedDispositions(WebApplication app, AuroraDb db)
+    {
+        if (db.Dispositions.Any()) return;
+        var entries = new (string Code, string Label, bool IsDeath)[]
+        {
+            ("home", "Home", false),
+            ("ward", "Ward (step-down / general floor)", false),
+            ("transfer_out", "Another facility / transfer out", false),
+            ("higher_care", "Higher care / another ICU", false),
+            ("died", "Died", true),
+            ("other", "Other", false),
+        };
+        db.Dispositions.AddRange(entries.Select((e, i) => new Aurora.Core.MasterData.DispositionRow
+        {
+            Code = e.Code, Label = e.Label, IsDeath = e.IsDeath, Seq = i + 1, Active = true, EventsJson = "[]",
+        }));
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded {Count} disposition vocabulary entries", entries.Length);
+    }
+
+    /** isolation types — the standard IPC categories plus the neutral
+        'unspecified' the boolean migration lands on (the recorded fact
+        was "isolated", never which kind — a clinician refines it) */
+    static void SeedIsolationTypes(WebApplication app, AuroraDb db)
+    {
+        if (db.IsolationTypes.Any()) return;
+        var entries = new (string Code, string Label)[]
+        {
+            ("contact", "Contact"),
+            ("droplet", "Droplet"),
+            ("airborne", "Airborne"),
+            ("protective", "Protective (reverse)"),
+            ("unspecified", "Isolation (unspecified)"),
+        };
+        db.IsolationTypes.AddRange(entries.Select((e, i) => new Aurora.Core.MasterData.IsolationTypeRow
+        {
+            Code = e.Code, Label = e.Label, Seq = i + 1, Active = true, EventsJson = "[]",
+        }));
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded {Count} isolation-type vocabulary entries", entries.Length);
+    }
+
+    /* the isolation backfill described at the call site — bedside
+       `isolation: true` → ['unspecified'] on the patient's OPEN
+       encounter, System-audited; anything else untouched. Closed
+       encounters are untouched too: no per-stay isolation was ever
+       recorded for them (the boolean was a current-state display), and
+       history is never invented. */
+    static void BackfillEncounterIsolation(WebApplication app, AuroraDb db)
+    {
+        if (!db.IsolationTypes.Any(t => t.Code == "unspecified")) return;
+        var isolated = db.Patients.AsNoTracking().Where(p => p.Isolation)
+            .Select(p => p.PatientId).ToHashSet();
+        if (isolated.Count == 0) return;
+        var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+        var filled = 0;
+        foreach (var enc in db.Encounters
+            .Where(e => e.Status == "open" && e.IsolationJson == "[]").ToList())
+        {
+            if (!isolated.Contains(enc.PatientId)) continue;
+            if (enc.EventsJson.Contains("isolation precautions")) continue;
+            enc.IsolationJson = """["unspecified"]""";
+            enc.EventsJson = Aurora.Core.Adt.AdtLogic.AppendEvent(enc.EventsJson,
+                new(time, "System", "isolation precautions",
+                    "Isolation (unspecified) — backfilled from the pre-vocabulary isolation flag; a clinician refines the type (never guessed)"));
+            filled++;
+        }
+        if (filled > 0)
+        {
+            db.SaveChanges();
+            app.Logger.LogInformation(
+                "Isolation backfill: {Count} open encounters carried the pre-vocabulary isolation flag → 'unspecified' (type never guessed)", filled);
+        }
+    }
+
+    /** shifts — verbatim the day/night labels the assignment dialog
+        displayed, so existing assignment rows (which store the codes)
+        stay valid as data; three-shift hospitals edit the list live */
+    static void SeedShifts(WebApplication app, AuroraDb db)
+    {
+        if (db.Shifts.Any()) return;
+        var entries = new (string Code, string Label)[]
+        {
+            ("day", "Day (07–19)"),
+            ("night", "Night (19–07)"),
+        };
+        db.Shifts.AddRange(entries.Select((e, i) => new Aurora.Core.MasterData.ShiftRow
+        {
+            Code = e.Code, Label = e.Label, Seq = i + 1, Active = true, EventsJson = "[]",
+        }));
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded {Count} shift vocabulary entries", entries.Length);
     }
 
     static void SeedInteractions(WebApplication app, AuroraDb db)

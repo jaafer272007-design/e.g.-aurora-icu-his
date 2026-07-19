@@ -7,8 +7,8 @@ import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconBed, IconDischarge, IconUsers } from '../../components/icons'
-import { DISPOSITIONS, dischargeEncounter, dispositionLabel, getAdtBeds, getEncounters, transferEncounter } from '../../lib/api'
-import type { AdtBed, DispositionCode, Encounter } from '../../lib/api/types'
+import { dischargeEncounter, dispositionLabel, getAdtBeds, getDispositions, getEncounters, transferEncounter } from '../../lib/api'
+import type { AdtBed, DispositionCode, DispositionEntry, Encounter } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { displayStamp } from '../../lib/time'
 
@@ -26,6 +26,12 @@ export function Discharges() {
   const canTransfer = hasPermission(session.jobTitle, 'adt.transfer')
 
   const [open, setOpen] = useState<Encounter[] | null>(null)
+  /* the MANAGED disposition vocabulary (Configuration Vocabularies):
+     the picker offers ACTIVE entries only — a retired one is not newly
+     recordable (the server refuses it with 409 regardless); the read
+     also primes dispositionLabel for the Recently Discharged panel,
+     where RETIRED entries keep resolving on historical rows. */
+  const [dispositions, setDispositions] = useState<DispositionEntry[] | null>(null)
   const [discharged, setDischarged] = useState<Encounter[] | null>(null)
   const [beds, setBeds] = useState<AdtBed[] | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
@@ -41,6 +47,7 @@ export function Discharges() {
     getEncounters({ status: 'open' }).then(setOpen)
     getEncounters({ status: 'discharged' }).then(setDischarged)
     getAdtBeds().then(setBeds)
+    getDispositions().then(setDispositions).catch(() => setDispositions(null))
   }, [])
   useEffect(() => { reload() }, [reload])
 
@@ -158,7 +165,7 @@ export function Discharges() {
                             the encounter (unlocks honest mortality tracking) */}
                         <select value={disposition} onChange={ev => setDisposition(ev.target.value as DispositionCode | '')} aria-label="Discharge disposition">
                           <option value="" disabled>Disposition…</option>
-                          {DISPOSITIONS.map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
+                          {(dispositions ?? []).filter(d => d.active).map(d => <option key={d.code} value={d.code}>{d.label}</option>)}
                         </select>
                         <button className="disact warn" disabled={!disposition || busy} onClick={() => doDischarge(e.encounterId)}>
                           {busy ? 'Discharging…' : 'Confirm discharge'}

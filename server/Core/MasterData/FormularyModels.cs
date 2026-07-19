@@ -82,12 +82,19 @@ class FormularyDrugRow
     OrderLogic's hardcoded array — "per CRRT protocol" was ICU-specific
     content sitting in Core/Orders). Order validation reads THIS table:
     a valid frequency is a named value ∪ q<1-48>h, byte-identical to the
-    pre-Layer-4 behavior. */
+    pre-Layer-4 behavior.
+    MANAGED since the Configuration Vocabularies build (design §4):
+    Active + append-only audit on the catalogue pattern — a hospital
+    adds/retires NAMED values (the q<n>h structured pattern stays code).
+    A retired value keeps rendering on every order that stored it;
+    NEW orders and NEW per-drug lists are refused it (409/400). */
 class NamedFrequencyRow
 {
     [Key]
     public string Value { get; set; } = "";
     public int Seq { get; set; }
+    public bool Active { get; set; } = true;
+    public string EventsJson { get; set; } = "[]";
 }
 
 /** pairwise drug-interaction rules (symmetric — checked both directions).

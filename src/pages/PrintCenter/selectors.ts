@@ -1,5 +1,5 @@
 import {
-  getEncounters, getImagingStudies, getLabDraws, getObservationCatalog, getObservations,
+  getDispositions, getEncounters, getImagingStudies, getLabDraws, getObservationCatalog, getObservations,
   getPatientIdentity, getPatientOrders, getRosterRecord, getTimeline,
 } from '../../lib/api'
 import { resolveCodeStatus } from '../../lib/codeStatus'
@@ -113,6 +113,9 @@ export interface ResolvedContext {
  *  several encounters exist; otherwise the open encounter wins, then the
  *  most recent discharged one. */
 export async function resolveContext(patientId: string, preferredEncounterId?: string): Promise<ResolvedContext | null> {
+  /* primes dispositionLabel (the MANAGED vocabulary) before any template
+     renders — historical documents resolve retired entries too */
+  await getDispositions().catch(() => {})
   const [roster, encounters, allOrders] = await Promise.all([
     getRosterRecord(patientId),
     getEncounters({ patientId }),

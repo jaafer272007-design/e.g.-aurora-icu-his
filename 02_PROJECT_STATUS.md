@@ -1,6 +1,61 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-19 · current through the CONCURRENT-BOOT
+**Last updated: 2026-07-19 · current through the CONFIGURATION
+VOCABULARIES — the LAST FOUR vocabularies of the configurability arc
+(dispositions, isolation types, shifts, named frequencies), each a
+Configuration tenant on the proven catalogue pattern, closing the
+arc's vocabulary work. The three touchpoints that determined
+correctness, verified against the real code first: (1) the #120
+DECEASED GUARD keyed on the encounter's STORED code — now resolved
+through the vocabulary's IMMUTABLE-at-creation `isDeath` attribute
+(rows never delete → resolution total; the edit contract has no
+isDeath field → no edit can rewrite a recorded outcome) AND the
+seeded 'died' row is RESERVED-UNRETIREABLE (a rule in code, like the
+q<n>h pattern) so death stays recordable — a custom 'brain_death'
+disposition proven to arm the same 409; (2) #114's
+PatientAssignment.shift ('day'|'night' hardcoded) became a managed
+vocabulary seeded day/night — SNAPSHOT semantics (retiring never
+touches existing assignments, proven); (3) order validation = NAMED
+set ∪ q<1-48>h regex — the named set became managed while the
+STRUCTURED PATTERN STAYS CODE (a safety-shaped rule, never a hospital
+list): retired named → 409 at order create/modify, refused in NEW
+per-drug lists (400), stored orders keep rendering; retire is
+allowed-but-surfaced (the response names the drugs listing it).
+ISOLATION upgraded from the bedside boolean (which had NO write path
+— Statistics honestly said "not tracked") to ENCOUNTER-SCOPED
+MULTIPLE IPC types (contact+droplet is clinically real) with a
+bedside setter on observations.record; migration preserved, never
+guessed: `isolation:true` → 'Isolation (unspecified)' a clinician
+refines (both seeded flagged patients proven; false → none;
+Statistics' tile is now REAL). RBAC per domain, stated:
+dispositions/isolation/shifts.manage → SeniorDoctor (the
+codestatus.manage precedent), frequencies.manage → Pharmacist (the
+formulary governance); NONE on the office Administrator or System
+Administrator (403s proven both directions). THE CONFIGURATION AREA
+REDESIGNED as one coherent family (the validator's §6 ask): a grouped
+section rail (Hospital / Clinical vocabularies / Catalogues &
+registry), ONE tenant on screen at a time, and ONE shared
+VocabManager component now rendering code status + the four new
+vocabularies (the pattern can no longer drift tenant-by-tenant);
+identity/imaging/beds keep their specialized forms inside the same
+frame; tokens only. Verified: 92/92 headless on dev SQLite AND 92/92
+on a fresh-Postgres appliance (which caught a real Npgsql
+nested-reader 500 SQLite tolerated — fixed); LIVE-UPGRADE replica
+green (pending-migration chain applied to a seeded database;
+frequencies stayed ACTIVE via hand-set migration defaults — the
+generated default would have retired the whole vocabulary on upgrade;
+roster byte-parity; backfill exactly P-1003/P-1007 → unspecified;
+double-boot idempotent); 28/28 rendered browser (three RBAC rails,
+reserved-died rendering, create/retire/reactivate flows, the MC
+bedside refine unspecified→Contact, discharge picker incl. a
+run-created disposition, the real Statistics tile); production seed
+mode proven (0 patients, all vocabularies, died.isDeath). Suites
+amended in-PR: the formulary frequencies-GET exactness assertion →
+subset-in-seed-order (its "no management endpoint mutates it" premise
+died with this build), and the assignments invalid-shift probe
+'evening' → 'no_such_shift_e2e' (a hospital may legitimately add
+Evening — the probe must stay invalid forever) — see the record below;
+prior marker retained: current through the CONCURRENT-BOOT
 ADVISORY LOCK — the root-cause fix for the recurring Render "exited
 139" on server merges (the validator pushed back on "recovered on
 retry" — correctly: a segfault that passes on retry is unexplained,
@@ -5155,6 +5210,174 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Configuration Vocabularies (built) — dispositions, isolation types, shifts, named frequencies (the arc's last four)
+
+Built from the validator's CONFIG_VOCABULARIES_DESIGN.md (2026-07-19).
+Every hospital-varying vocabulary is now editable, governed data on the
+proven catalogue pattern (natural key, Active, append-only audit,
+deactivate-never-delete, validated writes); the safety invariants stay
+code. The three correctness-critical touchpoints were verified against
+the real code FIRST and reported:
+
+- **The Died guard (#96/#120)** — found: `AdtLogic.Dispositions` was a
+  hardcoded array (AdtApi); discharge snapshots the CODE onto the
+  encounter; the #120 deceased re-admission 409 and the match-card
+  status compared the STORED string to the literal `"died"`, and client
+  mortality/deceased checks did the same. History was therefore already
+  snapshot-safe; the exposures were FORWARD (retiring `died` would make
+  death unrecordable and silently kill the mortality numerator) and
+  COVERAGE (a hospital-added death disposition would never arm the
+  guard). DECISION — both halves of the design's either/or, each
+  closing a distinct hole: `DispositionRow.IsDeath` is an
+  IMMUTABLE-AT-CREATION attribute (the edit contract has no such field;
+  rows never delete, so `stored code → row → IsDeath` resolves totally
+  and stably — server guard, match-card status, client statistics and
+  the PatientHistory deceased banner all key on it, never the label);
+  AND the seeded `died` row is RESERVED — deactivate answers 409 naming
+  the rule (code, like the q<n>h pattern — never hospital data). Proven:
+  a custom `brain_death` disposition created with isDeath arms the SAME
+  re-admission 409; retiring a recorded disposition never rewrites the
+  closed encounter; the label is editable, the semantics are not.
+- **#114's shift** — found: `PatientAssignment.Shift` validated against
+  a hardcoded `("day" or "night")`; the model's own comment said "No
+  Shift entity exists". Now a managed vocabulary seeded day/night
+  (labels verbatim from the assignment dialog, so existing rows are
+  valid as data). SNAPSHOT semantics (the design's recommendation):
+  unknown shift → 400 naming the active vocabulary, RETIRED → 409;
+  retiring never touches existing assignments — proven: an assignment
+  on a run-created `evening` shift survived the shift's retirement and
+  kept rendering through the label resolver while NEW assignment on it
+  answered 409.
+- **Named frequencies** — found: the `NamedFrequencies` table (Value+
+  Seq, GET-only, seeded 9) ∪ the `^q(\d{1,2})h$` 1–48 regex IN CODE
+  (FormularyLogic), with per-drug lists validated against the same
+  union. The table gained Active + audit + management (add / retire /
+  reactivate — NO edit: the value IS the identity and what orders
+  store; a value matching q<n>h is refused as built-in). THE REGEX
+  STAYS CODE (the design's recommendation, confirmed — the
+  infusion-unit-closed-union precedent). The four-code split holds:
+  IsValidFrequency stays SHAPE (any named ∪ regex — a retired value is
+  not malformed, every stored order keeps resolving); the RETIRED state
+  answers 409 at order create/modify beside the inactive-drug check;
+  NEW per-drug lists require ACTIVE ∪ regex (400); the plain
+  frequencies GET now serves ACTIVE values (wire shape unchanged);
+  retire is allowed-but-surfaced — the entries read carries
+  referencedBy (drug names listing the value) and the UI confirm shows
+  it.
+- **Isolation** — found: a seeded BOOLEAN on the ICU bedside snapshot
+  with NO write path anywhere (Statistics honestly rendered "not
+  tracked — no capture path exists"). Upgraded to real IPC types:
+  a managed vocabulary (contact / droplet / airborne / protective +
+  the neutral `unspecified`) and ENCOUNTER-SCOPED precautions
+  (`Encounters.IsolationJson`, the code-status scoping rule: a
+  re-admission starts fresh) supporting MULTIPLE types (the design's
+  recommendation — contact AND droplet is clinically real). The
+  bedside setter (`POST /adt/encounters/{id}/isolation`, the
+  REPLACEMENT set, [] clears) rides `observations.record` — any doctor
+  or nurse, exactly the codestatus.set/manage split — audited into the
+  encounter's events with the prior set and active role; closed
+  encounter 409, unknown type 400, retired type 409, same-set replay
+  409. The roster's `isolation` bool is now DERIVED from the open
+  encounter's set (wire parity — every pill/filter/count unchanged)
+  plus an additive `isolationTypes` tail; the legacy bedside column is
+  no longer read. MIGRATION preserved, never guessed: `isolation:true`
+  → `["unspecified"]` on the OPEN encounter, System-audited, a
+  clinician refines it (a fabricated isolation type is a real IPC
+  error); false → nothing; closed encounters untouched (no per-stay
+  isolation was ever recorded); idempotent (empty-set + no-prior-event
+  guard — a later clinician CLEAR is never re-filled). Statistics'
+  isolation tile is now REAL (open encounters carrying precautions).
+- **RBAC (per-domain atoms, stated)** — `dispositions.manage`,
+  `isolation.manage`, `shifts.manage` on SeniorDoctor (the
+  codestatus.manage precedent); `frequencies.manage` on Pharmacist
+  (the formulary governance — the Consultant is 403 there, proven).
+  NONE on the office Administrator or the System Administrator (403
+  both directions, headless + rendered). The /config route + sidebar
+  any-of gates widened to the four new atoms (found live: the
+  pharmacist could not reach /config until the gate widened — caught
+  by the rendered pass).
+- **The Configuration area redesigned (§6 — the validator's design
+  ask)** — from four stacked hand-rolled sections to ONE coherent
+  family: a grouped section rail (Hospital / Clinical vocabularies /
+  Catalogues & registry) with active/total count chips, RBAC-filtered
+  per session (a group with nothing visible hides), ONE tenant on
+  screen at a time, and a per-tenant context blurb. ONE shared
+  `VocabManager` component now renders code status AND the four new
+  vocabularies — the reconciliation: the list pattern, add form,
+  inline edit/retire/history panels and the active/retired language
+  are one implementation and cannot drift. Identity, imaging and beds
+  keep their specialized forms (one record edit-in-place; modality/
+  attributes + true-delete; occupancy-guarded never-renamed) inside
+  the same frame. Tokens only (no hardcoded colors/spacing), 44px
+  targets, focus-visible ring on the rail, aria-current on the active
+  section. Consumers rewired: the Discharges disposition picker and
+  the assignment dialog's shift picker offer ACTIVE vocabulary
+  entries; the order form filters retired named frequencies from the
+  per-drug picker; Mission Control gains the Isolation chip + popover
+  (multi-select, bedside); labels everywhere resolve through cache-
+  primed resolvers with raw-code fallback (historical rendering never
+  breaks — print selectors prime before templates build).
+
+**Verification** — 92/92 headless (dev SQLite) AND 92/92 against a
+fresh-Postgres appliance: reads + management RBAC both directions for
+six profiles, the reserved-died 409, isDeath immutability (unknown
+edit field → 400 by Disallow), discharge unknown-400/retired-409/
+custom-200, history snapshot after retire, re-admission allowed after
+a non-death discharge and 409 after `died` AND after `brain_death`,
+shift unknown/retired/snapshot legs, the isolation matrix (RBAC,
+vocab codes, replay, clear, roster derivation, closed encounter),
+the frequency matrix (q6h stays code; q99h and junk 400; retired 409
+at ordering and 400 at formulary authoring; reactivate restores). The
+POSTGRES RUN CAUGHT A REAL BUG the SQLite run tolerated: the
+frequency-entries projection nested a per-row drug query inside the
+open outer reader → Npgsql `NpgsqlOperationInProgressException` (500);
+fixed by materializing the outer rows first — exactly why the
+discipline verifies on the real provider. LIVE-UPGRADE replica: the
+pre-vocabulary appliance image seeded a Postgres, then this build
+booted on the SAME database — the pending chain incl.
+`AddConfigVocabularies` applied; the migration's HAND-SET defaults
+proved themselves (the scaffolded `Active=false` default would have
+RETIRED the entire named-frequency vocabulary on upgrade and refused
+every new order; hand-set true + `"[]"` for the JSON columns — all 9
+frequencies active post-upgrade, deserializers safe); roster
+byte-parity on identity/isolation/codeStatus for all 14 patients;
+backfill exactly P-1003 + P-1007 → unspecified; double boot = no
+reseed, backfill once, run-created rows intact. RENDERED 28/28 on the
+staging appliance (Playwright, screenshots): the three rails
+(Consultant: clinical vocabularies + catalogues, NO identity, NO
+frequencies; Pharmacist: frequencies ONLY; office admin: identity +
+beds ONLY — the hard constraint rendered), died Reserved marker +
+counts-as-death tag + no Retire action, create→retire→reactivate
+through the manager UI, the referencedBy surface ('daily — listed by
+6 drugs'), the MC chip rendering the BACKFILLED unspecified and a
+nurse REFINING it to Contact from the popover, the discharge picker
+offering a run-created disposition immediately, and the Statistics
+isolation tile real and non-zero. PRODUCTION seed mode: healthz
+production, 0 patients, 6/5/2 vocabularies + 9 active frequencies +
+died.isDeath (the T2 FORMULARY_SEED tripwire fired first — correct
+refusal — and the boot completed with the policy stated). Suites
+amended in-PR (both YAML-parsed + logic-simulated): formulary's
+frequencies-GET exactness → 9-seeded-subset-in-seed-order;
+assignments' invalid-shift probe `evening` → `no_such_shift_e2e`.
+
+**Flags stated:** (1) the isolation SETTER rides `observations.record`
+(bedside-clinician authority — recording a precaution state is
+bedside documentation); a dedicated atom is a row edit away if the
+owner wants narrower gating. (2) Admission-time isolation capture was
+deliberately NOT added (precautions are typically established after
+admission on swab/clinical grounds); bedside-set only — a fast-follow
+if wanted. (3) Full unification of imaging/beds/identity INTO the
+generic VocabManager was deliberately not forced — their domain
+semantics differ (true-delete, occupancy guard, one-record form);
+they share the frame, rows and language instead. (4) Mission
+Control's unit census still renders a literal "/ 16" denominator
+(MissionControl.tsx — predates the bed registry and is OUTSIDE the
+`?? 16` fallback family killed in #137; the board/statistics count
+from the registry): recorded as a small follow-up — the census
+denominator should read the active registry. (5) The mock stores
+mirror the seeds for the no-API demo; mock referencedBy stays []
+(display-only convenience the live server computes).
 
 ### Concurrent-boot advisory lock (built) — the Render "exited 139" root-cause fix
 

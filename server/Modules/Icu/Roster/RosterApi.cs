@@ -94,7 +94,11 @@ static class RosterApi
                     return PatientRow.ComposeDto(b, latest, e.PatientId, e.BedId,
                         p.Name, p.Mrn, p.Age, p.Sex, e.Diagnosis, p.Allergies,
                         e.Attending, e.AdmittedAt, p.FullName, p.NationalId,
-                        codeStatus, codeStatusCode, codeStatusLegacy);
+                        codeStatus, codeStatusCode, codeStatusLegacy,
+                        /* isolation now reads THE OPEN ENCOUNTER's selected
+                           types (the boolean upgrade) — the bedside
+                           snapshot's legacy flag column is no longer read */
+                        e.IsolationTypes());
                 });
             return Results.Json(records, JsonOpts.Web);
         }).RequireAuthorization();
@@ -171,7 +175,11 @@ class PatientRow
         /* the RESOLVED code status (governed label · legacy free text ·
            "" = not recorded — the caller resolves; the old fabricated
            "Full Code" fallback is gone) */
-        string codeStatus = "", string? codeStatusCode = null, bool codeStatusLegacy = false)
+        string codeStatus = "", string? codeStatusCode = null, bool codeStatusLegacy = false,
+        /* the OPEN encounter's isolation-type codes — the bool on the
+           wire derives from this set (the legacy bedside boolean column
+           is no longer read; its truth migrated to the encounter) */
+        List<string>? isolationTypes = null)
     {
         var demoBedCard = ParseNumbers(b?.BedsideVitalsJson);
         var demoMonitor = ParseNumbers(b?.MonitorVitalsJson);
@@ -189,7 +197,7 @@ class PatientRow
             patientId, bedId, name, mrn, age, sex, diagnosis, b?.Los ?? 0, allergies,
             attending, codeStatus,
             latest.Text("cardiac_rhythm") ?? b?.Rhythm ?? "—",
-            b?.Isolation ?? false, b?.Severity ?? "stable",
+            isolationTypes is { Count: > 0 }, b?.Severity ?? "stable",
             b is null ? [] : JsonSerializer.Deserialize<List<string>>(b.FlagsJson, JsonOpts.Web)!,
             MergeVitals(BedCardMap, latest, demoBedCard),
             alert,
@@ -199,7 +207,8 @@ class PatientRow
                 ? JsonSerializer.Deserialize<JsonElement>(b.OrgansJson, JsonOpts.Web)
                 : JsonSerializer.Deserialize<JsonElement>(
                     """{"Brain":"ok","Heart":"ok","Lungs":"ok","Kidneys":"ok","Liver":"ok","Circulation":"ok"}""", JsonOpts.Web),
-            fullName, nationalId, codeStatusCode, codeStatusLegacy ? true : null);
+            fullName, nationalId, codeStatusCode, codeStatusLegacy ? true : null,
+            isolationTypes is { Count: > 0 } ? isolationTypes : null);
     }
 
     static Dictionary<string, double>? ParseNumbers(string? json)
@@ -253,4 +262,12 @@ record RosterRecordDto(
        codeStatusLegacy = true when the value is preserved pre-vocabulary
        free text awaiting clinician re-confirmation (never dropped, never
        guessed). */
-    string? CodeStatusCode = null, bool? CodeStatusLegacy = null);
+    string? CodeStatusCode = null, bool? CodeStatusLegacy = null,
+    /* ISOLATION PRECAUTIONS (Configuration Vocabularies §2, additive
+       nullable tail — WhenWritingNull): the OPEN encounter's selected
+       type CODES. The Isolation bool above stays on the wire DERIVED
+       from this set (non-empty = isolated) so every pill/filter/count
+       keeps working unchanged; the bedside snapshot's legacy boolean
+       column is no longer read (its true rows were migrated to
+       ["unspecified"] on the open encounter — preserve, never guess). */
+    List<string>? IsolationTypes = null);

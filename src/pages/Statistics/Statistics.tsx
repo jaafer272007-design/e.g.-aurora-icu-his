@@ -141,8 +141,9 @@ export function Statistics() {
                   <Stat label="Vasopressor patients" value={`${m.vasopressor.count}`}
                     sub={`active vasopressor-class medication orders — over ${m.vasopressor.withOrders} of ${m.vasopressor.total} current patients with order data`}
                     kind={m.vasopressor.withOrders === 0 ? 'insufficient' : 'real'} />
-                  <Stat label="Isolation patients" value="" kind="nottracked"
-                    sub="no capture path exists for a real isolation status — needs a field/observation (recorded as future)" />
+                  <Stat label="Isolation patients" value={`${m.isolation.count}`}
+                    sub={`open encounters carrying isolation precautions (typed per the IPC vocabulary; pre-vocabulary flags were preserved as "unspecified", never guessed)`}
+                    kind="real" />
                   <Stat label="Average SOFA" value={fmt(m.avgSofa.value)}
                     sub={`over ${m.avgSofa.computable} of ${m.avgSofa.total} current patients with complete data — INCOMPLETE scores are never averaged as zero`}
                     kind={m.avgSofa.value === null ? 'insufficient' : 'real'} />

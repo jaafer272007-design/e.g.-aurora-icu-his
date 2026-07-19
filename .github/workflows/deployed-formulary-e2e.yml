@@ -142,10 +142,19 @@ jobs:
           n=[x for x in d if x["drugId"]=="noradrenaline"][0]
           assert n["doseLimits"]=={"perKg":"1 µg/kg/min max"} and isinstance(n["active"],bool) and isinstance(n["history"],list)
           print(f"formulary: {len(d)} drugs (19 seeded present; run drugs accumulate)")'
-          # the vocabulary is EXACT: no management endpoint mutates it, so
-          # exactness is safe (unlike row counts) and IS the parity claim
+          # the vocabulary is MANAGED since the Configuration Vocabularies
+          # build (add/retire/reactivate exist), so exactness is no longer
+          # safe — the parity claim becomes the SUBSET discipline every
+          # managed catalogue uses: the 9 seeded values present, in seed
+          # order, among the ACTIVE values this GET serves
           curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/formulary/frequencies" \
-            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d==["continuous","daily","bid","tid","qid","once","sliding scale","per level","per CRRT protocol"], d; print("vocabulary exact:", d)'
+            | python3 -c '
+          import json,sys
+          d=json.load(sys.stdin)
+          seeded=["continuous","daily","bid","tid","qid","once","sliding scale","per level","per CRRT protocol"]
+          idx=[d.index(v) for v in seeded]  # raises if any seeded value is missing
+          assert idx==sorted(idx), ("seed order broken", d)
+          print(f"vocabulary: {len(d)} active values, 9 seeded present in seed order")'
           curl -sf -H "Authorization: Bearer $ADM" "$API/api/icu/formulary/interactions" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d)>=6 and {"a":"enoxaparin","b":"heparin","severity":"block","note":"Duplicate therapeutic anticoagulation — bleeding risk."} in d, d; print(f"interactions: {len(d)}")'
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/formulary?active=true")

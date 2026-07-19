@@ -424,3 +424,7 @@
 .mc .csopt.cscancel{color:var(--faint);font-weight:500}
 .mc .csperr{font-size:11px;color:var(--red)}
 .mc .cswrap{position:relative;display:inline-flex}
+/* isolation popover — the code-status popover family, with checkbox rows
+   (multiple precaution types are clinically real) */
+.mc .csopt.isochk{display:flex;align-items:center;gap:8px;cursor:pointer}
+.mc .csopt.isochk input{width:15px;height:15px;accent-color:var(--violet);cursor:pointer}

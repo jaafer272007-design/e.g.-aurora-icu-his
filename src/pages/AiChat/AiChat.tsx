@@ -6,7 +6,7 @@ import { NavSidebar } from '../../components/NavSidebar'
 import { Badge } from '../../components/Badge'
 import { BedChip } from '../../components/Tag'
 import { IconBrain } from '../../components/icons'
-import { aiInterpretCondition, aiTranslateQuery, getPatients } from '../../lib/api'
+import { aiInterpretCondition, aiTranslateQuery, dispositionLabel, getPatients } from '../../lib/api'
 import type { PatientSummary } from '../../lib/api/types'
 import { conditionSnapshot, executeAiTool, type AiToolResult } from '../../lib/ai/tools'
 import { chatHistory, pushChatTurn } from '../../lib/ai/chatMemory'
@@ -367,7 +367,7 @@ function ResultBlock({ r }: { r: AiToolResult }) {
                   <span className="acdim">
                     {e.admittedAt || 'admission time not recorded'}
                     {e.dischargedAt ? ` → ${e.dischargedAt}` : ''}
-                    {e.disposition ? ` · ${e.disposition}` : ''}
+                    {e.disposition ? ` · ${dispositionLabel(e.disposition)}` : ''}
                   </span>
                 </li>
               ))}

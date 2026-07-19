@@ -70,6 +70,15 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
     public DbSet<Aurora.Core.Nursing.HandoffRow> Handoffs => Set<Aurora.Core.Nursing.HandoffRow>();
     public DbSet<Aurora.Core.Observations.ObservationTypeRow> ObservationTypes => Set<Aurora.Core.Observations.ObservationTypeRow>();
     public DbSet<Aurora.Core.Observations.ObservationGroupRow> ObservationGroups => Set<Aurora.Core.Observations.ObservationGroupRow>();
+    /* Configuration Vocabularies (the last four of the arc): discharge
+       dispositions (with the immutable IsDeath attribute the deceased
+       guard resolves through), IPC isolation types (the boolean's
+       upgrade), and working shifts (the #114 assignment vocabulary) —
+       each clinically governed (SeniorDoctor), catalogue pattern.
+       Named frequencies live above (NamedFrequencies, now managed). */
+    public DbSet<DispositionRow> Dispositions => Set<DispositionRow>();
+    public DbSet<IsolationTypeRow> IsolationTypes => Set<IsolationTypeRow>();
+    public DbSet<ShiftRow> Shifts => Set<ShiftRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
