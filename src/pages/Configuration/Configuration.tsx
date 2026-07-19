@@ -4,15 +4,15 @@ import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Card } from '../../components/Card'
 import { Toast, useToast } from '../../components/Toast'
-import { IconCheck, IconClock, IconFlask, IconGrid, IconPulse, IconSettings } from '../../components/icons'
+import { IconBed, IconCheck, IconClock, IconFlask, IconGrid, IconPulse, IconSettings } from '../../components/icons'
 import {
-  createCodeStatus, createImagingStudy, deactivateCodeStatus, deactivateImagingStudy,
-  deleteImagingStudy, getCodeStatuses, getHospitalIdentityHistory, getImagingCatalog,
-  reactivateCodeStatus, reactivateImagingStudy, updateCodeStatus, updateHospitalIdentity,
-  updateImagingStudy,
+  createBed, createCodeStatus, createImagingStudy, deactivateCodeStatus, deactivateImagingStudy,
+  deleteImagingStudy, getAdtBeds, getCodeStatuses, getHospitalIdentityHistory, getImagingCatalog,
+  reactivateBed, reactivateCodeStatus, reactivateImagingStudy, retireBed, updateCodeStatus,
+  updateHospitalIdentity, updateImagingStudy,
 } from '../../lib/api'
 import type { AdtWriteResult } from '../../lib/api'
-import type { CodeStatusEntry, HospitalIdentityWithHistory, ImagingStudyDef } from '../../lib/api/types'
+import type { AdtBed, CodeStatusEntry, HospitalIdentityWithHistory, ImagingStudyDef } from '../../lib/api/types'
 import { IMAGING_MODALITIES } from '../../lib/api/types'
 import { invalidateHospitalIdentity } from '../../lib/hospitalIdentity'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
@@ -39,8 +39,14 @@ import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/sess
      radiology and the lab are different producing services): the coded
      study definitions imaging ordering reads — the third tenant, and
      the one that UNBLOCKED production imaging ordering.
-   Future tenants (beds, dispositions, …) add sections here on the same
-   pattern — extend, never duplicate.
+   - BED REGISTRY (beds.manage — SeniorDoctor AND office Administrator,
+     the validator's decision: unit command + facility configuration;
+     beds are places, not patient data): the unit's physical beds — the
+     fourth tenant, with the rule that sets beds apart from inert
+     catalogues: RETIRING AN OCCUPIED BED IS REFUSED (live occupancy,
+     never a stored flag), and beds are NEVER renamed.
+   Future tenants (dispositions, vocabularies, …) add sections here on
+   the same pattern — extend, never duplicate.
 
    Every manager uses the formulary/lab-catalogue pattern: validated
    REAL-ONLY writes, append-only audit, deactivate-never-delete (where a
@@ -51,6 +57,7 @@ export function Configuration() {
   const canIdentity = hasPermission(session.jobTitle, 'hospital.configure')
   const canCodeStatus = hasPermission(session.jobTitle, 'codestatus.manage')
   const canImaging = hasPermission(session.jobTitle, 'imagingcatalog.manage')
+  const canBeds = hasPermission(session.jobTitle, 'beds.manage')
 
   /* ---- code status vocabulary (clinical section) ---- */
   const [entries, setEntries] = useState<CodeStatusEntry[] | null>(null)
@@ -81,6 +88,16 @@ export function Configuration() {
   const [eiContrast, setEiContrast] = useState(false)
   const [eiPortable, setEiPortable] = useState(false)
 
+  /* ---- bed registry (unit operations — SeniorDoctor + office admin) ---- */
+  const [bedRows, setBedRows] = useState<AdtBed[] | null>(null)
+  const [bedBusy, setBedBusy] = useState(false)
+  const [bedPanel, setBedPanel] = useState<{ kind: 'retire' | 'history'; id: string } | null>(null)
+  const [bedRowError, setBedRowError] = useState<{ id: string; error: string } | null>(null)
+  const [bedFormError, setBedFormError] = useState<string | null>(null)
+  const [bId, setBId] = useState('')
+  const [bArea, setBArea] = useState('')
+  const [bSeq, setBSeq] = useState('')
+
   /* ---- hospital identity (administrative section) ---- */
   const [ident, setIdent] = useState<HospitalIdentityWithHistory | null>(null)
   const [identLoaded, setIdentLoaded] = useState(false)
@@ -95,13 +112,14 @@ export function Configuration() {
   const reload = useCallback(() => {
     if (canCodeStatus) getCodeStatuses().then(setEntries)
     if (canImaging) getImagingCatalog().then(setImgStudies)
+    if (canBeds) getAdtBeds().then(setBedRows).catch(() => setBedRows(null))
     if (canIdentity) {
       getHospitalIdentityHistory().then(r => {
         setIdent(r); setIdentLoaded(true)
         setHName(r.name); setHUnit(r.unitName); setHShort(r.shortName); setHAddr(r.address)
       }).catch(() => setIdentLoaded(true))
     }
-  }, [canCodeStatus, canIdentity, canImaging])
+  }, [canBeds, canCodeStatus, canIdentity, canImaging])
   useEffect(() => { reload() }, [reload])
 
   const stats = useMemo(() => {
@@ -117,6 +135,10 @@ export function Configuration() {
     ...(canImaging ? [{
       icon: <IconFlask size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.13)',
       value: imgStudies ? `${imgStudies.filter(s => s.active).length}/${imgStudies.length}` : '—', label: 'Imaging Studies (active)',
+    } satisfies KpiSpec] : []),
+    ...(canBeds ? [{
+      icon: <IconBed size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.13)',
+      value: bedRows ? `${bedRows.filter(b => b.active).length}/${bedRows.length}` : '—', label: 'Beds (active)',
     } satisfies KpiSpec] : []),
     ...(canCodeStatus ? [
       { icon: <IconPulse size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.13)', value: entries ? stats.total : '—', label: 'Code Statuses' },
@@ -232,6 +254,48 @@ export function Configuration() {
       setEiContrast(st.contrast); setEiPortable(st.portable)
     }
     setImgPanel({ kind, id: st.studyId })
+  }
+
+  /* ---- bed registry writes (REAL-ONLY, the shared refusal) ---- */
+  async function applyBedWrite(id: string | null, what: string,
+    run: () => Promise<AdtWriteResult<AdtBed>>, onOk: (b: AdtBed) => void) {
+    setBedBusy(true); setBedRowError(null); setBedFormError(null)
+    const res = await run()
+    setBedBusy(false)
+    if (res.kind === 'ok') { onOk(res.data); reload(); return }
+    const error = res.kind === 'rejected' ? res.error : offlineMsg(what)
+    if (id) setBedRowError({ id, error })
+    else setBedFormError(error)
+  }
+
+  async function doBedCreate() {
+    const seq = bSeq.trim()
+    await applyBedWrite(null, 'the bed', () => createBed({
+      bedId: bId.trim(), area: bArea.trim(),
+      ...(seq ? { seq: Number(seq) } : {}),
+    }), b => {
+      showToast('Bed added', `${b.bedId} (${b.area}) is on the board and admittable immediately`)
+      setBId(''); setBArea(''); setBSeq('')
+    })
+  }
+
+  async function doBedRetire(b: AdtBed) {
+    await applyBedWrite(b.bedId, 'the retirement', () => retireBed(b.bedId), upd => {
+      showToast('Bed retired', `${upd.bedId} left the board and the admit/transfer pickers (historical records keep rendering it)`)
+      setBedPanel(null)
+    })
+  }
+
+  async function doBedReactivate(b: AdtBed) {
+    await applyBedWrite(b.bedId, 'the reactivation', () => reactivateBed(b.bedId), upd => {
+      showToast('Bed reactivated', `${upd.bedId} is back on the board and admittable`)
+    })
+  }
+
+  function openBedPanel(kind: 'retire' | 'history', b: AdtBed) {
+    setBedRowError(null)
+    if (bedPanel?.kind === kind && bedPanel.id === b.bedId) { setBedPanel(null); return }
+    setBedPanel({ kind, id: b.bedId })
   }
 
   async function doSaveIdentity() {
@@ -595,6 +659,111 @@ export function Configuration() {
                 <button className="uasubmit" type="submit"
                   disabled={imgBusy || !iId.trim() || !iName.trim()}>
                   {imgBusy ? 'Adding…' : 'Add to catalogue'}
+                </button>
+              </form>
+            </Card>
+          </div>
+          )}
+
+          {/* ============ BED REGISTRY (beds.manage — SeniorDoctor + office
+              Administrator, the validator's decision) ============
+              Add / retire / reactivate ONLY — beds are NEVER renamed (a
+              renamed occupied bed is a wrong-patient-location risk) and
+              never deleted (historical records reference FK-free bedId
+              strings). Retiring an OCCUPIED bed is refused by the server
+              (live occupancy) — the refusal renders on the row. */}
+          {canBeds && (
+          <div className="uacols">
+            <Card icon={<IconBed size={15} stroke="var(--blue)" />} title="Bed Registry"
+              aside={bedRows ? `${bedRows.filter(b => b.active).length} active · ${bedRows.filter(b => !b.active).length} retired` : '—'}>
+              <div className="uarows">
+                {bedRows === null && (
+                  <div className="uaempty">bed registry unavailable — requires the live server (nothing fabricated)</div>
+                )}
+                {(bedRows ?? []).map(b => {
+                  const open = bedPanel?.id === b.bedId ? bedPanel.kind : null
+                  return (
+                    <div className={`uarow${b.active ? '' : ' off'}`} key={b.bedId}>
+                      <div className="uamain">
+                        <span className="uawho">
+                          <b className="num">{b.bedId}</b>
+                          <small>{b.area}</small>
+                        </span>
+                        <span className="uarole">
+                          <span>{b.patientId ? `Occupied · ${b.patientName ?? b.patientId}` : 'Free'}</span>
+                          <small className="uaprofile">{b.patientId ? `${b.patientId} · ${b.encounterId}` : 'no open encounter'}</small>
+                        </span>
+                        <span className={`uastatus ${b.active ? 'on' : 'offed'}`}>{b.active ? 'Active' : 'Retired'}</span>
+                        <span className="uaacts">
+                          <button className="uaact" onClick={() => openBedPanel('history', b)} aria-expanded={open === 'history'}>
+                            History ({b.history.length})
+                          </button>
+                          {b.active && (
+                            <button className="uaact warn" onClick={() => openBedPanel('retire', b)} aria-expanded={open === 'retire'}>Retire</button>
+                          )}
+                          {!b.active && (
+                            <button className="uaact" disabled={bedBusy} onClick={() => doBedReactivate(b)}>Reactivate</button>
+                          )}
+                        </span>
+                      </div>
+
+                      {open === 'history' && (
+                        <div className="uapanel" role="region" aria-label={`History: ${b.bedId}`}>
+                          {b.history.length === 0 && (
+                            <span className="uaconfirm">No recorded events — a seeded bed (historical data carries no invented audit).</span>
+                          )}
+                          {b.history.map((ev, i) => (
+                            <div className="uaevent" key={i}>
+                              <span className="num">{ev.time}</span> · {ev.actor} · {ev.action}{ev.detail ? ` — ${ev.detail}` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {open === 'retire' && (
+                        <div className="uapanel" role="alertdialog" aria-label={`Confirm retirement: ${b.bedId}`}>
+                          <span className="uaconfirm">
+                            Retire <b className="num">{b.bedId}</b>? It leaves the board and the admit/transfer
+                            pickers; historical records carrying it keep rendering. The server REFUSES
+                            this while a patient is in the bed. Reversible via Reactivate.
+                          </span>
+                          <div className="uapanelacts">
+                            <button className="uaact warn" disabled={bedBusy} onClick={() => doBedRetire(b)}>
+                              {bedBusy ? 'Retiring…' : 'Confirm retirement'}
+                            </button>
+                            <button className="uaact" onClick={() => setBedPanel(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {bedRowError?.id === b.bedId && <div className="uaerr" role="alert">{bedRowError.error}</div>}
+                    </div>
+                  )
+                })}
+                {bedRows?.length === 0 && <div className="uaempty">No beds — add the unit&apos;s beds below.</div>}
+              </div>
+            </Card>
+
+            <Card icon={<IconSettings size={15} stroke="var(--blue)" />} title="Add Bed" aside="on the board and admittable immediately">
+              <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doBedCreate() }}>
+                <div className="uafields">
+                  <label>Bed id (permanent — never renamed once created)
+                    <input value={bId} onChange={e => setBId(e.target.value)} disabled={bedBusy}
+                      placeholder="B-17" autoComplete="off" maxLength={20} />
+                  </label>
+                  <label>Area (the board groups beds by area)
+                    <input value={bArea} onChange={e => setBArea(e.target.value)} disabled={bedBusy}
+                      placeholder="Pod C" maxLength={40} />
+                  </label>
+                  <label>Position (optional — ordering on the board; appended last when omitted)
+                    <input value={bSeq} onChange={e => setBSeq(e.target.value.replace(/[^0-9]/g, ''))} disabled={bedBusy}
+                      placeholder="17" inputMode="numeric" maxLength={4} />
+                  </label>
+                </div>
+                {bedFormError && <div className="uaerr" role="alert">{bedFormError}</div>}
+                <button className="uasubmit" type="submit"
+                  disabled={bedBusy || !bId.trim() || !bArea.trim()}>
+                  {bedBusy ? 'Adding…' : 'Add bed'}
                 </button>
               </form>
             </Card>

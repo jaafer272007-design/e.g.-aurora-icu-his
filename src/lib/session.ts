@@ -107,6 +107,7 @@ export type Permission =
   | 'codestatus.manage'    // Code Status SAFETY FIX: maintain the vocabulary (clinical governance — SeniorDoctor ONLY, the observations.configure precedent; never office admin)
   | 'imagingcatalog.manage' // Imaging Catalogue: maintain the study catalogue (CLINICAL — the lab-catalogue gating: Ancillary + SeniorDoctor; a DISTINCT atom from labcatalog.manage because radiology and the lab are different producing services; never office admin)
   | 'hospital.configure'   // Config Home + Hospital Identity: manage the install's identity (name/unit/short name/letterhead address) — ADMINISTRATIVE, not clinical (the identity.correct precedent): office Administrator; the split holds (clinical vocabularies stay on clinical profiles)
+  | 'beds.manage'          // Bed Registry: add/retire/reactivate the unit's beds (VALIDATOR'S DECISION: SeniorDoctor — unit command — AND office Administrator — facility config; beds are places, not patient data, so the clinical exclusion is untouched). Never rename, never delete; retire refused while occupied.
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -135,7 +136,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'adt.admit', 'adt.discharge', 'observations.record',
     'observations.correct', 'observations.configure', 'patients.measure',
     'assignments.manage', 'codestatus.set', 'codestatus.manage',
-    'imagingcatalog.manage',
+    'imagingcatalog.manage', 'beds.manage',
   ],
   /* administer + document only — cannot originate orders (locked decision).
      results.document (Lab Result-Entry): the ICU bedside team transcribes
@@ -161,7 +162,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
      locked clinical exclusion is untouched (finally a config surface
      that IS the office profile's). The System Administrator does NOT
      hold it — accounts, not identity. */
-  Administrator: ['admin.view', 'patients.view', 'identity.correct', 'hospital.configure'],
+  Administrator: ['admin.view', 'patients.view', 'identity.correct', 'hospital.configure', 'beds.manage'],
   /* the highest-privilege authority: controls who can reach patient data
      while never reaching it (no clinical atoms, not even patients.view) */
   SystemAdministrator: ['users.manage', 'users.view'],

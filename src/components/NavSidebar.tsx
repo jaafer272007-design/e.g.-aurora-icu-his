@@ -67,14 +67,13 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     { key: 'formulary', label: 'Formulary', icon: <IconPill />, to: '/formulary', perm: 'formulary.manage' },
     { key: 'labcatalog', label: 'Lab Catalogue', icon: <IconFlask size={16} />, to: '/lab-catalog', perm: 'labcatalog.manage' },
     { key: 'ordersets', label: 'Order Sets', icon: <IconGrid />, to: '/order-sets', perm: 'ordersets.manage' },
-    /* Configuration — the per-hospital configuration area, now
-       MULTI-TENANT (the recorded per-section-gating flag, realized):
-       shown to whoever holds at least one section's authority — the
-       office Administrator (hospital.configure: hospital identity,
-       administrative) and the SeniorDoctor (codestatus.manage: the
-       clinical vocabulary). Each section inside is gated to its own
-       authority; the administrative/clinical split holds. */
-    { key: 'config', label: 'Configuration', icon: <IconSettings size={16} />, to: '/config', anyPerm: ['hospital.configure', 'codestatus.manage', 'imagingcatalog.manage'] },
+    /* Configuration — the per-hospital configuration area, MULTI-TENANT:
+       shown to whoever holds at least one section's authority (hospital
+       identity → hospital.configure; code status → codestatus.manage;
+       imaging catalogue → imagingcatalog.manage; bed registry →
+       beds.manage). Each section inside is gated to its own authority;
+       the administrative/clinical split holds. */
+    { key: 'config', label: 'Configuration', icon: <IconSettings size={16} />, to: '/config', anyPerm: ['hospital.configure', 'codestatus.manage', 'imagingcatalog.manage', 'beds.manage'] },
     /* Alerts — the Clinical Attention Center (was the second dead nav
        item; now a real screen). CLINICAL, patient-identifiable — gated on
        results.view, which every clinical profile carries and the office

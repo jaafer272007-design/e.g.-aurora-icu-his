@@ -100,7 +100,10 @@ export function AdminHome() {
           </div>
 
           <div className="adcols">
-            <Card icon={<IconBed size={15} stroke="var(--blue)" />} title="Unit Occupancy" aside={beds ? `${beds.unitId} · ${beds.capacity} beds` : '—'}>
+            {/* capacity counted from the active Bed Registry; the '4B'
+                unit key no longer surfaces (single-unit boundary — the
+                configured unit name is the display identity, #135) */}
+            <Card icon={<IconBed size={15} stroke="var(--blue)" />} title="Unit Occupancy" aside={beds ? `${beds.capacity} beds` : '—'}>
               <div className="adtiles">
                 <VitalTile variant="rt" label="Occupied" value={stats ? String(stats.occupied) : '—'} valueStyle={{ color: 'var(--blue)' }} />
                 <VitalTile variant="rt" label="Available" value={stats ? String(stats.available) : '—'} valueStyle={{ color: 'var(--green)' }} />

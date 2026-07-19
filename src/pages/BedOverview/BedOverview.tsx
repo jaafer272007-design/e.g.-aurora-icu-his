@@ -129,11 +129,12 @@ export function BedOverview() {
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
-        {/* unit name from the CONFIGURED identity (one resolver) — the
-            '16 beds' capacity figure is the beds tenant's concern (next
-            PR); an unset unit renders the honest prompt, never a name */}
+        {/* unit name from the CONFIGURED identity (one resolver) + the
+            capacity COUNTED from the active Bed Registry — the '16 beds'
+            literal is dead (bed-registry design §4); while the board is
+            loading the count is simply omitted, never fabricated */}
         <NavSidebar active="beds" footerLines={[
-          `${hospIdentity?.unitName ? hospIdentity.unitName : 'Unit not configured'} · 16 beds`, 'Sync: live']} />
+          `${hospIdentity?.unitName ? hospIdentity.unitName : 'Unit not configured'}${data ? ` · ${data.capacity} beds` : ''}`, 'Sync: live']} />
 
         <main>
           <div className="fbar">
@@ -152,7 +153,9 @@ export function BedOverview() {
             </select>
             <select className="sel" aria-label="Filter by area" value={filters.area} onChange={e => setFilters(f => ({ ...f, area: e.target.value }))}>
               <option value="">All areas</option>
-              {(data?.areas ?? ['Pod A', 'Pod B']).map(a => <option key={a}>{a}</option>)}
+              {/* areas from the registry read — no Pod A/B fallback:
+                  while loading the filter simply offers "All areas" */}
+              {(data?.areas ?? []).map(a => <option key={a}>{a}</option>)}
             </select>
             <button className={`fchip${filters.vent ? ' on' : ''}`} aria-pressed={filters.vent} onClick={() => toggle('vent')}>
               <IconVent size={13} />Ventilated
@@ -243,7 +246,7 @@ export function BedOverview() {
               </text>
             </svg>
             <div>
-              <div className="rv">{stats ? stats.n : '—'}<small style={{ fontSize: 11, color: 'var(--dim)' }}> / {data?.capacity ?? 16} beds</small></div>
+              <div className="rv">{stats ? stats.n : '—'}<small style={{ fontSize: 11, color: 'var(--dim)' }}> / {data ? `${data.capacity} beds` : '—'}</small></div>
               <div className="rl">Unit occupancy<br /><span style={{ color: 'var(--green)' }}>{stats ? `${stats.avail} available` : '—'}</span></div>
             </div>
           </div>

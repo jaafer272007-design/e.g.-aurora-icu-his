@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, FormularyEvent, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
@@ -1620,6 +1620,29 @@ export async function getAdtBeds(): Promise<AdtBed[]> {
   if (real != null) return real
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(mockAdtBeds(), 120)
   throw apiUnavailable('ADT beds')
+}
+
+/* ---- Bed Registry management (4th Configuration tenant, beds.manage:
+   SeniorDoctor + office Administrator — the validator's decision).
+   Add / retire / reactivate ONLY: beds are NEVER renamed (a renamed
+   occupied bed is a wrong-patient-location risk) and never deleted
+   (historical records reference FK-free bedId strings). */
+
+/** POST /api/icu/adt/beds — add a bed (permanent bedId; a retired bedId
+ *  being re-added answers 409 directing reactivate). */
+export function createBed(draft: CreateBedDraft): Promise<AdtWriteResult<AdtBed>> {
+  return usersWrite<AdtBed>('/api/icu/adt/beds', 'bed-registry create', draft)
+}
+
+/** POST /api/icu/adt/beds/:bedId/deactivate — RETIRE. Refused (409)
+ *  while the bed is OCCUPIED — the live-occupancy rule. */
+export function retireBed(bedId: string): Promise<AdtWriteResult<AdtBed>> {
+  return usersWrite<AdtBed>(`/api/icu/adt/beds/${encodeURIComponent(bedId)}/deactivate`, 'bed-registry retire')
+}
+
+/** POST /api/icu/adt/beds/:bedId/reactivate */
+export function reactivateBed(bedId: string): Promise<AdtWriteResult<AdtBed>> {
+  return usersWrite<AdtBed>(`/api/icu/adt/beds/${encodeURIComponent(bedId)}/reactivate`, 'bed-registry reactivate')
 }
 
 /** GET /api/icu/adt/encounters?patientId&status — encounter list (REAL

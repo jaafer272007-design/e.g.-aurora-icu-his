@@ -107,10 +107,13 @@ export const UNIT_SUMMARY: UnitSummaryResponse = {
    and roster with the SAME encounter-id convention the server seeds use
    (P-1001 → ENC-1001), display-only */
 export function mockAdtBeds(): AdtBed[] {
-  return BED_LAYOUT.map(({ bedId, area, patientId }) => {
+  return BED_LAYOUT.map(({ bedId, area, patientId }, i) => {
     const r = patientId ? ROSTER.find(x => x.patientId === patientId) : undefined
     return {
-      bedId, area,
+      bedId, area, seq: i + 1,
+      /* all 16 demo beds active (registry data, matching the seed);
+         empty history — seeded beds carry no invented audit */
+      active: true, history: [],
       ...(r ? { patientId: r.patientId, patientName: r.name, encounterId: `ENC-${r.patientId.slice(2)}` } : {}),
     }
   })

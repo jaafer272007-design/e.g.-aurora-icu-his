@@ -1,6 +1,42 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-19 · current through IMAGING CATALOGUE — the
+**Last updated: 2026-07-19 · current through BED REGISTRY — the FOURTH
+Configuration tenant, and the one whose retire rule is LIVE OCCUPANCY
+(the configurability audit's finding: the Beds table {BedId, Area, Seq}
+had no Active flag, a fixed 16-bed/two-pod seed, and a GET-only
+endpoint — zero CRUD, a hospital could not change its beds — while the
+client fabricated capacity with `?? 16` / `?? ['Pod A','Pod B']`
+fallbacks and a literal '· 16 beds'. Built from the owner's design doc
+on the proven catalogue pattern with the rules that set beds apart from
+inert catalogues: beds are OCCUPIED — occupancy derives from open
+encounters, never stored — so RETIRING AN OCCUPIED BED IS REFUSED
+(409, naming the patient + encounter, using the SAME live-occupancy
+computation the bed board and admit/transfer use); beds are NEVER
+RENAMED (locked decision 2 — a renamed occupied bed is a
+wrong-patient-location risk; NO edit endpoint exists, proven 405) and
+NEVER DELETED (flagged recommendation followed: historical bed
+references are FK-free BedId snapshot strings, so "never used" is
+unprovable — retire-only, proven 405); re-adding a retired BedId
+answers 409 DIRECTING REACTIVATE (old records reference that string —
+never a duplicate); admit/transfer refuse retired beds (409 as state,
+unknown stays 400); a retired bed keeps rendering on historical
+records. RBAC — the VALIDATOR'S DECISION (asked, not defaulted): a
+DISTINCT `beds.manage` atom held by BOTH the SeniorDoctor (unit
+command) AND the office Administrator (facility configuration) — beds
+are places, not patient data; the locked clinical exclusion is
+untouched; /config's any-of now spans four atoms. THE FALLBACKS ARE
+DEAD (grep-asserted): board/capacity/areas/census all COUNT from the
+ACTIVE registry (+ #135's configured unit name) — a hospital with 17
+beds in 3 pods sees exactly that (proven rendered); the Admissions
+census strip was caught rendering a retired bed as "Available" during
+verification and fixed (active-filtered). Additive migration
+(existing beds → ACTIVE with a valid empty audit — the scaffolded
+false/"" default-trap caught and fixed by hand), proven as a LIVE
+UPGRADE on the appliance's real Postgres. Single-unit boundary flagged
+not deepened (the '4B' data-layer key stays; nothing new reads it).
+Verified 34/34 headless + staging visual-unchanged 12/12 + production
+appliance 20/20 — see the record below);
+prior marker retained: current through IMAGING CATALOGUE — the
 THIRD Configuration tenant AND the production-ordering unblock (the
 live functional gap: the Order Imaging card read its study vocabulary
 from the retired `ORDER_SETS.Imaging` MOCK, which the Phase 3 PR 1
@@ -5088,6 +5124,93 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### Bed Registry (built) — fourth Configuration tenant; the retire rule is LIVE OCCUPANCY
+
+**The finding (configurability audit + this PR's verify-first sweep):**
+- `BedRow {BedId [Key], Area, Seq}` (AdtModels.cs) — no Active flag, no
+  audit; seeded from `Data/beds-seed.json` (16 beds, Pod A/B) in BOTH
+  demo and production modes; the ONLY endpoint was `GET /adt/beds` —
+  zero CRUD. A hospital could not change its beds.
+- Occupancy is a LIVE JOIN (open encounters × BedId), never stored —
+  the GET, the admit occupied-409 and the transfer occupied-409 all
+  compute it the same way. That exact computation became the retire
+  guard.
+- The client fabricated capacity: `?? 16` and `?? ['Pod A','Pod B']`
+  in BedOverview, the `· 16 beds` footer literal, and AdminHome
+  surfacing the raw `'4B'` unit key.
+
+**What was built (catalogue pattern + the bed-specific rules):**
+- **Model**: `BedRow` += `Active` + append-only `EventsJson` (the
+  shared FormularyEventDto shape). Migration `AddBedRegistry` —
+  ADDITIVE, existing beds → ACTIVE with a valid empty `[]` audit (the
+  scaffolded `false`/`""` defaults would have retired every existing
+  bed on upgrade and broken deserialization — the default-trap, caught
+  and fixed by hand; proven as a LIVE UPGRADE on the appliance's real
+  Postgres: 16 beds up ACTIVE, occupancy intact).
+- **`BedRegistryApi`** (beds.manage): POST add (permanent BedId, regex
+  `^[A-Za-z0-9][A-Za-z0-9 _-]{0,19}$`, area required ≤40, seq optional
+  → appended last; duplicate ACTIVE 409; duplicate RETIRED **409
+  DIRECTING REACTIVATE** — flagged recommendation followed, old
+  records reference that BedId string); deactivate (**🔴 REFUSED 409
+  WHILE OCCUPIED**, naming patient + encounter — "you cannot retire a
+  bed a patient is in" — via the SAME live-occupancy computation,
+  never a stored flag; replay 409); reactivate (replay 409). **NO
+  edit endpoint** (never rename — locked decision 2; PUT proven 405)
+  and **NO delete** (flagged recommendation followed: FK-free
+  historical snapshots make "never used" unprovable — retire-only;
+  DELETE proven 405).
+- **Admit/transfer respect Active**: a retired bed answers 409 (state
+  — the same request succeeds after reactivation; unknown stays 400),
+  message directing Configuration. Historical records keep rendering
+  retired BedIds (proven on a discharged encounter).
+- **RBAC — the validator's DECISION (asked via the flagged question,
+  not defaulted)**: DISTINCT `beds.manage` on **SeniorDoctor + office
+  Administrator** (unit command AND facility configuration; beds are
+  places, not patient data — the locked clinical exclusion untouched).
+  Nurse/plain doctor/pharmacist/Ancillary 403 proven. /config + nav
+  any-of now four atoms.
+- **The fallbacks are DEAD** (grep-asserted: no `?? 16`, no
+  `?? ['Pod A','Pod B']`, no `· 16 beds` literal outside mock DATA):
+  `composeBedsResponse` filters to ACTIVE beds and counts
+  capacity/areas from them; BedOverview footer + occupancy dial render
+  the counted capacity (loading = omitted, never fabricated); AdminHome
+  drops the raw `'4B'`; Admissions free-bed picker + census strip,
+  Discharges transfer picker, Settings layout panel and the Statistics
+  census denominators all active-filter. The Admissions CENSUS STRIP
+  was caught during the production pass rendering a retired bed as
+  "Available" (a raw-array render) — fixed and re-proven.
+- **Configuration tenant #4**: rows (bedId/area, live Occupied·name /
+  Free, Active/Retired, History with seeded-empty honesty, Retire with
+  confirm — the occupied 409 renders on the row — Reactivate; no
+  edit/delete controls exist) + Add Bed form (id/area/seq). Blue
+  IconBed KPI `active/total`.
+- **Single-unit boundary flagged, not deepened**: the `'4B'` data-layer
+  key stays in bedboard.ts/mocks with the boundary comment; display
+  surfaces use #135's configured unit name; nothing new reads '4B';
+  multi-unit later adds a units catalogue + UnitId scoping.
+- Seeds unchanged (both modes keep seeding the 16-bed layout as before
+  — now editable; a first-run wizard populating beds stays deferred).
+
+**Verification:** headless matrix **34/34** (RBAC five directions;
+create validation incl. Disallow; 405s for rename/delete; retire rules
+incl. 🔴 occupied-409 naming P-1001 and the guard following LIVE state
+in both directions — 409 while admitted, 200 after discharge;
+reactivate-not-duplicate; retired-bed admit/transfer 409s; audit
+add/retire/reactivate sequence; FK-free historical snapshot). Staging
+**12/12** (board byte-identical: 16 beds, Pod A/B, "/ 16 beds" all as
+registry DATA; /config tenant renders for BOTH authorities; offline
+write visibly refused; lab tech excluded). PRODUCTION APPLIANCE
+**20/20** on the LIVE-UPGRADED Postgres (add "B-20"/Pod C → the board
+derives "/ 17 beds" + the new area + footer counts 17 — a hospital
+sees exactly its own layout; the 🔴 rendered occupied-refusal naming
+Khalid/ENC-1001; retire → leaves board/census/picker and the empty
+area disappears; discharged encounter renders its retired bed;
+adm.huda holds identity AND beds; tech.rana neither). `tsc -b
+--force` + vite + dotnet green. *Recorded pre-existing finding (not
+this PR): the VITE_APP_ENV=production bundle carries demo-roster
+strings as dead code on main too (identical before/after) — a
+tree-shaking fast-follow candidate.*
+
 ### Imaging Catalogue (built) — third Configuration tenant + production imaging ordering unblocked
 
 **The finding (this PR's verify-first sweep — all three audit items):**
@@ -5240,7 +5363,10 @@ this build fills in (extended, never duplicated).
   nothing bakes single-unit deeper — the future multi-unit project
   introduces a units catalogue and moves UnitName there (flagged
   boundary; the `unitId: '4B'` data key and the `16 beds` capacity
-  figure await the beds tenant).
+  figure await the beds tenant). *[Superseded (2026-07-19): the BED
+  REGISTRY tenant landed — capacity/areas now COUNT from the active
+  registry (the `?? 16` fallbacks and the `· 16 beds` literal are
+  dead); the `'4B'` key remains data-layer only — see its record.]*
 - **Fresh-install fix (found by this verification):**
   `fetchRosterRecords` treated an EMPTY roster as API-unavailable
   (`length > 0` gate), so a zero-patient production install showed the
