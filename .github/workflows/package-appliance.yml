@@ -116,6 +116,45 @@ jobs:
           echo "encounters before=$before after=$after"
           [ "$before" = "$after" ] || { echo "restart lost data"; exit 1; }
 
+      - name: Concurrent boot serializes — the exit-139 regression guard
+        run: |
+          # Models Render's blue-green deploy: TWO server instances prepare
+          # ONE fresh database at once. Before the advisory-lock fix, the
+          # loser crashed with exit 139 (migration 42701 "column already
+          # exists" or a duplicate-key seed DbUpdateException, unhandled →
+          # SIGSEGV) — the crash that "passed on retry" and drove the
+          # recurring manual-redeploy pattern. Both must now boot healthy.
+          docker network create ccnet >/dev/null 2>&1 || true
+          docker run -d --name cc-pg --network ccnet -e POSTGRES_USER=aurora \
+            -e POSTGRES_PASSWORD=ccpw -e POSTGRES_DB=aurora postgres:16-alpine >/dev/null
+          for i in $(seq 1 30); do docker exec cc-pg pg_isready -U aurora -d aurora >/dev/null 2>&1 && break; sleep 1; done
+          JWT=$(openssl rand -hex 48)
+          run_one() { docker run -d --name "$1" --network ccnet -p "$2:8080" \
+            -e APP_ENV=staging -e CORS_ORIGINS=https://jaafer272007-design.github.io \
+            -e DATABASE_URL=postgres://aurora:ccpw@cc-pg:5432/aurora -e JWT_SECRET="$JWT" \
+            aurora-icu:package >/dev/null; }
+          # fire both at the same instant
+          run_one cc-a 18091 & run_one cc-b 18092 & wait
+          fail=0
+          for pair in cc-a:18091 cc-b:18092; do
+            c=${pair%%:*}; p=${pair##*:}
+            up=no; for i in $(seq 1 45); do curl -sf http://localhost:$p/healthz >/dev/null 2>&1 && { up=yes; break; }; sleep 1; done
+            code=$(docker inspect -f '{{.State.ExitCode}}' $c)
+            echo "$c: healthz=$up status=$(docker inspect -f '{{.State.Status}}' $c) exit=$code"
+            [ "$up" = yes ] || { echo "  ✗ $c never reached healthz"; fail=1; }
+            [ "$code" = "139" ] && { echo "  ✗ $c crashed 139 (the concurrent-boot race is back)"; fail=1; }
+          done
+          if docker logs cc-a 2>&1 | grep -qiE '42701|duplicate key|Unhandled exception' \
+             || docker logs cc-b 2>&1 | grep -qiE '42701|duplicate key|Unhandled exception'; then
+            echo "  ✗ concurrent-boot crash signature in a log:"; docker logs cc-a; docker logs cc-b; fail=1
+          fi
+          pats=$(docker exec cc-pg psql -U aurora -d aurora -tAc 'SELECT count(*) FROM "Patients"')
+          echo "patients after concurrent seed (single-seeded, not doubled): $pats"
+          docker rm -f cc-pg cc-a cc-b >/dev/null 2>&1 || true
+          docker network rm ccnet >/dev/null 2>&1 || true
+          [ "$fail" = 0 ] || exit 1
+          echo "✓ concurrent migrators/seeders serialized cleanly — no exit 139"
+
       - name: BUILD-ONLY proof of the llama runtimes (CPU + CUDA — no GPU needed to compile)
         working-directory: appliance/llama
         run: |
