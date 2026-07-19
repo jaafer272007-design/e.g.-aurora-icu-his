@@ -135,9 +135,11 @@ export async function resolveContext(patientId: string, preferredEncounterId?: s
      range precedent: historical rendering never consults the live
      vocabulary, the module's absolute rule). A recorded instruction must
      print; absent = "Not recorded" at the render site. */
+  const csEvents = target?.codeStatusCode
+    ? (target.codeStatusEvents ?? []).filter(ev => ev.code === target.codeStatusCode)
+    : []
   const encCodeStatus: string | null = target?.codeStatusCode
-    ? (target.codeStatusEvents?.filter(ev => ev.code === target.codeStatusCode).at(-1)?.label
-        ?? target.codeStatusCode)
+    ? (csEvents[csEvents.length - 1]?.label ?? target.codeStatusCode)
     : null
   const patient = roster ? toIdentity(roster)
     : identity ? recordIdentity(identity, target!, encCodeStatus)
