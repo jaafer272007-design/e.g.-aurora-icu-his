@@ -19,6 +19,7 @@
 .nw .apcode{font-size:9px;font-weight:700;letter-spacing:.7px;padding:2.5px 8px;border-radius:7px;text-transform:uppercase}
 .nw .apcode.full{background:rgba(var(--green-rgb),.13);color:var(--green)}
 .nw .apcode.dnr{background:rgba(var(--amber-rgb),.15);color:var(--amber)}
+.nw .apcode.none{background:transparent;color:var(--red);border:1px dashed var(--red)}
 .nw .apdx{font-size:11.5px;color:var(--dim);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nw .aprow2{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
 .nw .apallergy{font-size:10.5px;font-weight:600;color:var(--red);background:rgba(var(--red-rgb),.1);

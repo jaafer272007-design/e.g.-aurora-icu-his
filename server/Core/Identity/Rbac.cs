@@ -50,10 +50,18 @@ static class Rbac
            later add/correct path. NEVER on the office Administrator
            profile (the same F2/F3-style hard constraint: clinical data is
            clinically governed). */
+        /* codestatus.set (Code Status governed vocabulary — the SAFETY
+           FIX): recording a patient's resuscitation instruction is
+           PHYSICIAN authority — any doctor (the goals-of-care discussion
+           is a physician act; nurses render and act on it, never set it).
+           NEVER on the office Administrator profile (the F2/F3 hard
+           constraint). Admission-time selection rides adt.admit exactly
+           as weight/height do; this atom gates the bedside set/change
+           path. */
         ["Doctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
             "results.document", "notes.document", "ai.view", "adt.admit", "adt.discharge",
-            "observations.record", "patients.measure"],
+            "observations.record", "patients.measure", "codestatus.set"],
         /* SeniorDoctor (Stage 11 F4): Doctor's SUPERSET — everything a
            doctor may do, plus the Consultant-tier observation authorities:
            observations.correct (tier-2 retrospective correction, §8) and
@@ -87,12 +95,17 @@ static class Rbac
            ICU the CHARGE NURSE allocates nursing, and the recorded
            follow-up is a SeniorNurse profile row holding this SAME atom
            (the atom is the model — no schema change when that lands). */
+        /* codestatus.manage (Code Status governed vocabulary): maintaining
+           the vocabulary a hospital's resuscitation instructions are
+           selected from is CLINICAL GOVERNANCE — Consultant tier only,
+           the observations.configure precedent, and the same hard
+           constraint: NEVER on the office Administrator profile. */
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
             "results.document", "results.correct", "labcatalog.manage", "notes.document",
             "ai.view", "adt.admit", "adt.discharge", "observations.record",
             "observations.correct", "observations.configure", "patients.measure",
-            "assignments.manage"],
+            "assignments.manage", "codestatus.set", "codestatus.manage"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "handoff.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record", "patients.measure"],

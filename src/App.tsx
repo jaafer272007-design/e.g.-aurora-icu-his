@@ -15,6 +15,7 @@ import { AiChat } from './pages/AiChat/AiChat'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
 import { Formulary } from './pages/Formulary/Formulary'
+import { Configuration } from './pages/Configuration/Configuration'
 import { LabCatalog } from './pages/LabCatalog/LabCatalog'
 import { OrderSetsAdmin } from './pages/OrderSetsAdmin/OrderSetsAdmin'
 import { Admissions } from './pages/Admissions/Admissions'
@@ -78,6 +79,10 @@ export default function App() {
         <Route path="/formulary" element={<RequireSession permission="formulary.manage"><Formulary /></RequireSession>} />
         <Route path="/lab-catalog" element={<RequireSession permission="labcatalog.manage"><LabCatalog /></RequireSession>} />
         <Route path="/order-sets" element={<RequireSession permission="ordersets.manage"><OrderSetsAdmin /></RequireSession>} />
+        {/* Configuration area (first tenant: the Code Status vocabulary —
+            clinical governance): codestatus.manage = SeniorDoctor only,
+            unreachable by the office Administrator (the F2/F3 rule) */}
+        <Route path="/config" element={<RequireSession permission="codestatus.manage"><Configuration /></RequireSession>} />
         <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />

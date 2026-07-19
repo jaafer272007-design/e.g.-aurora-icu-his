@@ -5,6 +5,7 @@ import { SeverityDot } from '../../components/SeverityDot'
 import { VitalTile } from '../../components/VitalTile'
 import { IconUsers } from '../../components/icons'
 import type { AssignedPatient } from '../../lib/api/types'
+import { resolveCodeStatus } from '../../lib/codeStatus'
 
 /* §12 step 4: vitals are the latest charted observations — null = not
    charted → '—', threshold classes silent on a blank (same rule as the
@@ -49,7 +50,11 @@ export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[]
               <BedChip bedId={p.bedId} />
               <SeverityDot sev={p.severity} />
               <span className="apname">{p.name}<small>{p.age} · {p.sex}</small></span>
-              <span className={`apcode ${p.codeStatus.startsWith('Full') ? 'full' : 'dnr'}`}>{p.codeStatus}</span>
+              {(() => { const cs = resolveCodeStatus(p); return (
+                <span className={`apcode ${cs.kind === 'none' ? 'none' : cs.full ? 'full' : 'dnr'}`}>
+                  {cs.label}{cs.kind === 'legacy' ? ' · UNVERIFIED' : ''}
+                </span>
+              ) })()}
             </div>
             <div className="apdx">{p.diagnosis}</div>
             <div className="aprow2">

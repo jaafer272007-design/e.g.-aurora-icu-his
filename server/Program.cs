@@ -215,6 +215,7 @@ ResultsApi.Map(app);
 FormularyApi.Map(app);
 LabCatalogApi.Map(app);
 OrderSetsApi.Map(app);
+CodeStatusApi.Map(app);
 Aurora.Core.Observations.ObservationsApi.Map(app);
 Aurora.Core.Nursing.HandoffApi.Map(app);
 

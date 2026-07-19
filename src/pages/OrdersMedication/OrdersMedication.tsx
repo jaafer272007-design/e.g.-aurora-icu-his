@@ -18,6 +18,7 @@ import type {
   OrderSetDef, OrderSetItemTemplate, Patient, PatientSummary,
 } from '../../lib/api/types'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
+import { resolveCodeStatus } from '../../lib/codeStatus'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { OrderListCard } from './OrderListCard'
 import { NewOrderCard } from './NewOrderCard'
@@ -256,7 +257,11 @@ export function OrdersMedication() {
           {patient && (
             <PatientBar patient={patient} links={[{ label: 'Open Mission Control →', to: `/patients/${patient.patientId}` }]}>
               <span className="ptbarallergy">⚠ Allergies: {patient.allergies}</span>
-              <span className="ptbarcode">{patient.codeStatus}</span>
+              {(() => { const cs = resolveCodeStatus(patient); return (
+                <span className={`ptbarcode${cs.kind === 'none' ? ' none' : ''}`}>
+                  Code: {cs.label}{cs.kind === 'legacy' ? ' · UNVERIFIED' : ''}
+                </span>
+              ) })()}
               {!canPrescribe && <span className="ptbarviewonly">View only — no prescribing authority</span>}
             </PatientBar>
           )}

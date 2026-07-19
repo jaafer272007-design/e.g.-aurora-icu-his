@@ -2,6 +2,7 @@ import {
   getEncounters, getImagingStudies, getLabDraws, getObservationCatalog, getObservations,
   getPatientIdentity, getPatientOrders, getRosterRecord, getTimeline,
 } from '../../lib/api'
+import { resolveCodeStatus } from '../../lib/codeStatus'
 import type {
   Encounter, LabDraw, Observation, ObservationType, Order, PatientIdentity, RosterRecordDto,
 } from '../../lib/api/types'
@@ -39,9 +40,16 @@ export const DISCHARGE_CASCADE_REASON = 'patient discharged — auto-discontinue
 const isChartedTime = (t: string | undefined): boolean => !!t && !/^\d{4}-\d{2}-\d{2}/.test(t)
 
 function toIdentity(r: RosterRecordDto): PrintPatientIdentity {
+  /* code status prints through the ONE shared resolver (the governed-
+     vocabulary SAFETY FIX): governed label · legacy text explicitly
+     marked unverified · null = "Not recorded" at the render site —
+     never a blank, never a default */
+  const cs = resolveCodeStatus(r)
   return {
     patientId: r.patientId, name: r.name, mrn: r.mrn, age: r.age, sex: r.sex,
-    allergies: r.allergies, attending: r.attending, codeStatus: r.codeStatus,
+    allergies: r.allergies, attending: r.attending,
+    codeStatus: cs.kind === 'none' ? null
+      : cs.kind === 'legacy' ? `${cs.label} (legacy — unverified)` : cs.label,
     bedId: r.bedId, diagnosis: r.diagnosis,
     fullName: r.fullName ?? null, nationalId: r.nationalId ?? null, source: 'roster',
   }
@@ -52,10 +60,13 @@ function toIdentity(r: RosterRecordDto): PrintPatientIdentity {
  *  server-side resolver the roster serves — joined with the encounter's
  *  own display fields (bed, diagnosis, attending). Code status stays
  *  bedside state (roster-only), not identity. */
-function recordIdentity(p: PatientIdentity, e: Encounter): PrintPatientIdentity {
+function recordIdentity(p: PatientIdentity, e: Encounter, codeStatusLabel: string | null): PrintPatientIdentity {
   return {
     patientId: p.patientId, name: p.name, mrn: p.mrn, age: p.age, sex: p.sex,
-    allergies: p.allergies, attending: e.attending, codeStatus: null,
+    /* the ENCOUNTER's governed code status (a discharged episode that
+       recorded one must print it; pre-feature episodes print "Not
+       recorded") — label resolved by the caller from the vocabulary */
+    allergies: p.allergies, attending: e.attending, codeStatus: codeStatusLabel,
     bedId: e.bedId, diagnosis: e.diagnosis,
     fullName: p.fullName ?? null, nationalId: p.nationalId ?? null, source: 'patient-record',
   }
@@ -119,8 +130,17 @@ export async function resolveContext(patientId: string, preferredEncounterId?: s
      encounter snapshot (last resort, offline). One rung per await:
      the identity read is only consulted when the roster misses. */
   const identity = roster ? null : await getPatientIdentity(patientId)
+  /* off-roster (discharged) prints read the ENCOUNTER's OWN code-status
+     record — the label SNAPSHOT captured when it was set (the results-
+     range precedent: historical rendering never consults the live
+     vocabulary, the module's absolute rule). A recorded instruction must
+     print; absent = "Not recorded" at the render site. */
+  const encCodeStatus: string | null = target?.codeStatusCode
+    ? (target.codeStatusEvents?.filter(ev => ev.code === target.codeStatusCode).at(-1)?.label
+        ?? target.codeStatusCode)
+    : null
   const patient = roster ? toIdentity(roster)
-    : identity ? recordIdentity(identity, target!)
+    : identity ? recordIdentity(identity, target!, encCodeStatus)
     : snapshotIdentity(target!)
   const scoped = !!target && allOrders.some(o => o.encounterId)
   const orders = scoped ? allOrders.filter(o => o.encounterId === target!.encounterId) : allOrders

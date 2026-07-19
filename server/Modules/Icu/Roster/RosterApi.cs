@@ -57,6 +57,19 @@ static class RosterApi
                real-or-blank by construction. */
             var projected = ObservationProjection.LatestForEncounters(
                 db, open.Select(e => e.EncounterId).ToList());
+            /* CODE STATUS (the governed-vocabulary SAFETY FIX): resolved
+               from the OPEN ENCOUNTER's selected vocabulary code — the
+               label resolves ACTIVE OR INACTIVE (a retired entry keeps
+               rendering on records that carry it). No encounter code →
+               the bedside row's legacy free-text value, flagged
+               UNVERIFIED (a clinician re-confirms it — never dropped,
+               never coerced). Neither → EMPTY, which every surface
+               renders as an explicit NOT RECORDED. The old
+               `?? "Full Code"` fallback — a FABRICATED resuscitation
+               default on every fresh admission — is exactly the defect
+               this removes. */
+            var codeLabels = db.CodeStatuses.AsNoTracking()
+                .ToDictionary(c => c.Code, c => c.Label);
             var records = open.Select(e =>
                 {
                     /* identity via THE canonical resolver (Patient.ToDto —
@@ -68,9 +81,20 @@ static class RosterApi
                     var p = identity[e.PatientId].ToDto();
                     var b = bedside.GetValueOrDefault(e.PatientId);
                     var latest = projected.GetValueOrDefault(e.EncounterId);
+                    string codeStatus; string? codeStatusCode = null; bool codeStatusLegacy = false;
+                    if (e.CodeStatusCode is not null && codeLabels.TryGetValue(e.CodeStatusCode, out var label))
+                    {
+                        codeStatus = label; codeStatusCode = e.CodeStatusCode;
+                    }
+                    else if (!string.IsNullOrWhiteSpace(b?.CodeStatus))
+                    {
+                        codeStatus = b!.CodeStatus; codeStatusLegacy = true;
+                    }
+                    else codeStatus = "";
                     return PatientRow.ComposeDto(b, latest, e.PatientId, e.BedId,
                         p.Name, p.Mrn, p.Age, p.Sex, e.Diagnosis, p.Allergies,
-                        e.Attending, e.AdmittedAt, p.FullName, p.NationalId);
+                        e.Attending, e.AdmittedAt, p.FullName, p.NationalId,
+                        codeStatus, codeStatusCode, codeStatusLegacy);
                 });
             return Results.Json(records, JsonOpts.Web);
         }).RequireAuthorization();
@@ -143,7 +167,11 @@ class PatientRow
         Dictionary<string, ObservationProjection.Latest>? latest,
         string patientId, string bedId, string name, string mrn, int age, string sex,
         string diagnosis, string allergies, string attending, string admittedAt,
-        string? fullName = null, string? nationalId = null)
+        string? fullName = null, string? nationalId = null,
+        /* the RESOLVED code status (governed label · legacy free text ·
+           "" = not recorded — the caller resolves; the old fabricated
+           "Full Code" fallback is gone) */
+        string codeStatus = "", string? codeStatusCode = null, bool codeStatusLegacy = false)
     {
         var demoBedCard = ParseNumbers(b?.BedsideVitalsJson);
         var demoMonitor = ParseNumbers(b?.MonitorVitalsJson);
@@ -159,7 +187,7 @@ class PatientRow
             }, JsonOpts.Web), JsonOpts.Web);
         return new RosterRecordDto(
             patientId, bedId, name, mrn, age, sex, diagnosis, b?.Los ?? 0, allergies,
-            attending, b?.CodeStatus ?? "Full Code",
+            attending, codeStatus,
             latest.Text("cardiac_rhythm") ?? b?.Rhythm ?? "—",
             b?.Isolation ?? false, b?.Severity ?? "stable",
             b is null ? [] : JsonSerializer.Deserialize<List<string>>(b.FlagsJson, JsonOpts.Web)!,
@@ -171,7 +199,7 @@ class PatientRow
                 ? JsonSerializer.Deserialize<JsonElement>(b.OrgansJson, JsonOpts.Web)
                 : JsonSerializer.Deserialize<JsonElement>(
                     """{"Brain":"ok","Heart":"ok","Lungs":"ok","Kidneys":"ok","Liver":"ok","Circulation":"ok"}""", JsonOpts.Web),
-            fullName, nationalId);
+            fullName, nationalId, codeStatusCode, codeStatusLegacy ? true : null);
     }
 
     static Dictionary<string, double>? ParseNumbers(string? json)
@@ -217,4 +245,12 @@ record RosterRecordDto(
        name (all present parts) on structured rows; nationalId as on the
        card. Both feed the one-search-box requirement (any name part or
        number finds the patient). */
-    string? FullName = null, string? NationalId = null);
+    string? FullName = null, string? NationalId = null,
+    /* CODE STATUS (governed vocabulary, additive nullable tail —
+       WhenWritingNull): codeStatus above is the RESOLVED display value
+       ("" = NOT RECORDED, an explicit state every surface must render
+       unmistakably); codeStatusCode = the vocabulary code when governed;
+       codeStatusLegacy = true when the value is preserved pre-vocabulary
+       free text awaiting clinician re-confirmation (never dropped, never
+       guessed). */
+    string? CodeStatusCode = null, bool? CodeStatusLegacy = null);

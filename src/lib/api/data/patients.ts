@@ -34,6 +34,8 @@ const toPatient = (r: UnitPatientRecord): Patient => ({
   allergies: r.allergies,
   attending: r.attending,
   codeStatus: r.codeStatus,
+  codeStatusCode: r.codeStatusCode,
+  codeStatusLegacy: r.codeStatusLegacy,
   rhythm: r.rhythm,
   vitals: r.monitorVitals,
   organs: r.organs,

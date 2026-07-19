@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
@@ -24,6 +24,7 @@ import { ASSIGNMENTS, applyAssignmentEnd, insertAssignment } from './data/assign
 import { allConsults } from './data/consults'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
+import { CODE_STATUSES } from './data/config'
 import { LAB_CATALOG } from './data/catalog'
 import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
@@ -472,6 +473,8 @@ const rosterToPatient = (r: RosterRecordDto): Patient => ({
   allergies: r.allergies,
   attending: r.attending,
   codeStatus: r.codeStatus,
+  codeStatusCode: r.codeStatusCode,
+  codeStatusLegacy: r.codeStatusLegacy,
   rhythm: r.rhythm,
   vitals: r.monitorVitals,
   organs: r.organs,
@@ -622,6 +625,7 @@ export function deriveInfusionsFromOrders(orders: Order[]): Infusion[] {
 const toAssignedPatient = (r: RosterRecordDto): AssignedPatient => ({
   patientId: r.patientId, bedId: r.bedId, name: r.name, age: r.age, sex: r.sex,
   diagnosis: r.diagnosis, allergies: r.allergies, codeStatus: r.codeStatus,
+  codeStatusCode: r.codeStatusCode, codeStatusLegacy: r.codeStatusLegacy,
   flags: r.flags, isolation: r.isolation, severity: r.severity,
   vitals: r.bedsideVitals,
 })
@@ -943,6 +947,52 @@ export async function getFrequencyVocabulary(): Promise<string[]> {
  *  REAL-ONLY write. */
 export function createFormularyDrug(draft: CreateDrugDraft): Promise<AdtWriteResult<FormularyDrug>> {
   return usersWrite<FormularyDrug>('/api/icu/formulary', 'formulary create', draft)
+}
+
+/* ==================== Code Status governed vocabulary (SAFETY FIX) ====================
+   The per-hospital resuscitation-instruction vocabulary — Master Data on
+   the formulary/lab-catalogue pattern, managed from the Configuration
+   area (codestatus.manage, SeniorDoctor). Reads fall back to the mock
+   store offline; every WRITE is REAL-ONLY (reference data is a durable
+   system of record). Assigning a code status to a PATIENT is the
+   encounter-scoped clinical write below (codestatus.set). */
+
+/** GET /api/icu/code-statuses — all entries incl. inactive (a retired
+ *  entry must keep resolving on records that carry it). */
+export async function getCodeStatuses(): Promise<CodeStatusEntry[]> {
+  const real = await apiGet<CodeStatusEntry[]>('/api/icu/code-statuses', 'code statuses')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(CODE_STATUSES, 120)
+  throw apiUnavailable('code-status vocabulary')
+}
+
+/** POST /api/icu/code-statuses — add an entry. REAL-ONLY write. */
+export function createCodeStatus(draft: { code: string; label: string }): Promise<AdtWriteResult<CodeStatusEntry>> {
+  return usersWrite<CodeStatusEntry>('/api/icu/code-statuses', 'code-status create', draft)
+}
+
+/** PUT /api/icu/code-statuses/:code — edit the label (code immutable). */
+export function updateCodeStatus(code: string, draft: { label: string }): Promise<AdtWriteResult<CodeStatusEntry>> {
+  return usersWrite<CodeStatusEntry>(`/api/icu/code-statuses/${encodeURIComponent(code)}`, 'code-status edit', draft, 'PUT')
+}
+
+/** POST /api/icu/code-statuses/:code/deactivate — RETIRE, never delete. */
+export function deactivateCodeStatus(code: string): Promise<AdtWriteResult<CodeStatusEntry>> {
+  return usersWrite<CodeStatusEntry>(`/api/icu/code-statuses/${encodeURIComponent(code)}/deactivate`, 'code-status retire')
+}
+
+/** POST /api/icu/code-statuses/:code/reactivate */
+export function reactivateCodeStatus(code: string): Promise<AdtWriteResult<CodeStatusEntry>> {
+  return usersWrite<CodeStatusEntry>(`/api/icu/code-statuses/${encodeURIComponent(code)}/reactivate`, 'code-status reactivate')
+}
+
+/** POST /api/icu/adt/encounters/:encounterId/code-status — set/change the
+ *  OPEN encounter's code status (codestatus.set — physician authority;
+ *  audited who/when/role/prior server-side). SELECTED, never typed.
+ *  REAL-ONLY write: a resuscitation instruction is never mock-recorded. */
+export function setEncounterCodeStatus(encounterId: string, code: string): Promise<AdtWriteResult<Encounter>> {
+  return usersWrite<Encounter>(
+    `/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/code-status`, 'code-status set', { code })
 }
 
 /** PUT /api/icu/formulary/:drugId — edit reference fields (drugId is the

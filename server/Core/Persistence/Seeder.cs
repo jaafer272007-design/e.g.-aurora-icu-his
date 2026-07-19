@@ -94,6 +94,21 @@ static class Seeder
                 "Result-audit backfill: {Scoped} results scoped to their encounter, {Restructured} existing acknowledgments restructured into event history",
                 rScoped, restructured);
 
+        /* CODE-STATUS BACKFILL (one-time, idempotent — the governed-
+           vocabulary SAFETY FIX): existing free-text code statuses are
+           CLINICAL FACTS (never-destroy). An OPEN encounter whose patient
+           has a bedside-snapshot CodeStatus that CLEANLY matches a
+           vocabulary label (trim + case-insensitive + '/'-spacing
+           normalized — never fuzzy) gets that CODE, audited as a System
+           backfill; the source string itself stays untouched on the
+           bedside row (amend, never erase). A
+           NON-MATCHING string is NEVER dropped and NEVER guessed: the
+           code stays null and the original text keeps rendering as a
+           LEGACY / UNVERIFIED value a clinician re-confirms (the roster
+           resolution). Loudly logged either way. Idempotent: only fills
+           null codes; the bedside string itself is never modified. */
+        BackfillEncounterCodeStatus(app, db);
+
         /* resume the generated-id counters from the persisted data — on a
            fresh database this resolves to the historical floors, so
            first-boot behavior is unchanged (see OrderLogic notes) */
@@ -210,6 +225,7 @@ static class Seeder
         SeedLabCatalog(app, db);
         SeedOrderSets(app, db);
         SeedObservationCatalog(app, db);
+        SeedCodeStatuses(app, db);
     }
 
     /* Patient Assignment & Responsibility (§10): the DEMO assignments the
@@ -301,9 +317,82 @@ static class Seeder
         SeedLabCatalog(app, db);
         SeedOrderSets(app, db);
         SeedObservationCatalog(app, db);
+        SeedCodeStatuses(app, db);
         SeedProductionFormulary(app, db);
         SeedSystemPrincipal(app, db);
         SeedBootstrapAdmin(app, db);
+    }
+
+    /* the clean-match backfill described at the call site — exact label
+       equality after trim, case-fold and normalizing spaces around '/'
+       ("DNR/DNI" == "DNR / DNI"); anything less than exact is left for a
+       clinician (never guessed) */
+    static void BackfillEncounterCodeStatus(WebApplication app, AuroraDb db)
+    {
+        var vocab = db.CodeStatuses.AsNoTracking().ToList();
+        if (vocab.Count == 0) return;
+        static string Norm(string s) => string.Join("/",
+            s.Trim().ToLowerInvariant().Split('/').Select(p => p.Trim()));
+        var byLabel = vocab.GroupBy(c => Norm(c.Label))
+            .ToDictionary(g => g.Key, g => (g.First().Code, g.First().Label));
+        var bedside = db.Patients.AsNoTracking().AsEnumerable()
+            .Where(p => !string.IsNullOrWhiteSpace(p.CodeStatus))
+            .ToDictionary(p => p.PatientId, p => p.CodeStatus);
+        int mapped = 0, unmatched = 0;
+        foreach (var enc in db.Encounters.Where(e => e.Status == "open" && e.CodeStatusCode == null).ToList())
+        {
+            if (!bedside.TryGetValue(enc.PatientId, out var text)) continue;
+            if (byLabel.TryGetValue(Norm(text), out var match))
+            {
+                enc.CodeStatusCode = match.Code;
+                enc.CodeStatusEventsJson = JsonSerializer.Serialize(
+                    new List<Aurora.Core.Adt.CodeStatusEventDto>
+                    {
+                        new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), "System", "System",
+                            match.Code, match.Label, null),
+                    }, JsonOpts.Web);
+                mapped++;
+            }
+            else
+            {
+                unmatched++;
+                app.Logger.LogWarning(
+                    "Code-status backfill: encounter {Enc} carries the non-matching free-text value '{Text}' — PRESERVED as legacy/unverified (never dropped, never guessed); a clinician must re-confirm it into the vocabulary",
+                    enc.EncounterId, text);
+            }
+        }
+        if (mapped > 0 || unmatched > 0)
+        {
+            db.SaveChanges();
+            app.Logger.LogInformation(
+                "Code-status backfill: {Mapped} open encounter(s) mapped from cleanly-matching bedside values, {Unmatched} non-matching value(s) preserved as legacy/unverified",
+                mapped, unmatched);
+        }
+    }
+
+    /* Code Status governed vocabulary (the free-text SAFETY FIX) — BOTH
+       modes: a resuscitation instruction must be selectable from day one,
+       so the vocabulary ships with a PLACEHOLDER starting set the
+       clinical owner finalises through the Configuration manager (the
+       whole point is that the list is per-hospital policy, editable
+       data). Seed rows carry empty audit histories (historical data —
+       facts are never invented). Idempotent: seed-if-empty. */
+    static void SeedCodeStatuses(WebApplication app, AuroraDb db)
+    {
+        if (db.CodeStatuses.Any()) return;
+        var entries = new (string Code, string Label)[]
+        {
+            ("full_code", "Full Code"),
+            ("dnr", "DNR"),
+            ("dnr_dni", "DNR / DNI"),
+            ("comfort_care", "Comfort care"),
+        };
+        db.CodeStatuses.AddRange(entries.Select((e, i) => new Aurora.Core.MasterData.CodeStatusRow
+        {
+            Code = e.Code, Label = e.Label, Seq = i + 1, Active = true, EventsJson = "[]",
+        }));
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded {Count} code-status vocabulary entries", entries.Length);
     }
 
     /* Stage 11 §12 step 1: the Observation Type Catalogue — the §1

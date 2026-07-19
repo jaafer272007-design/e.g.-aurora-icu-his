@@ -400,3 +400,27 @@
 /* Phase 3 PR 2 — the REAL-orders infusion card's honest empty (a
    clinical statement: the orders domain answered and holds none) */
 .mc .mednone{margin:6px 0 0;font-size:11.5px;color:var(--faint)}
+
+/* Code Status SAFETY FIX — chip states + the physician set popover */
+.mc button.chip{font:inherit;text-align:left;cursor:default}
+.mc button.chip.cssettable{cursor:pointer}
+.mc button.chip.cssettable:hover{border-color:var(--stroke2)}
+.mc .chip.code.csnone{border-color:var(--red);border-style:dashed}
+.mc .chip.code.csnone .v{color:var(--red)}
+/* the header must stack ABOVE the scrolling main content while the
+   popover is open — the glassmorphism cards' backdrop-filter creates
+   stacking contexts that otherwise intercept the popover's clicks
+   (found by the rendered verification: #monitor swallowed the click) */
+.mc header.top{position:relative;z-index:45}
+.mc .cspop{position:absolute;top:100%;right:0;margin-top:6px;z-index:40;min-width:260px;
+ border:1px solid var(--stroke2);border-radius:13px;background:var(--bg,#0a1220);
+ box-shadow:0 12px 34px rgba(0,0,0,.38);padding:10px;display:flex;flex-direction:column;gap:6px}
+.mc .cspophead{font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);line-height:1.5}
+.mc .cspophint{font-size:11px;color:var(--faint)}
+.mc .csopt{font:inherit;font-size:12px;font-weight:600;text-align:left;padding:8px 10px;border-radius:9px;
+ border:1px solid var(--stroke);background:rgba(var(--lift-rgb),.03);cursor:pointer;min-height:40px}
+.mc .csopt:hover:not(:disabled){border-color:var(--stroke2)}
+.mc .csopt small{color:var(--faint);margin-left:6px}
+.mc .csopt.cscancel{color:var(--faint);font-weight:500}
+.mc .csperr{font-size:11px;color:var(--red)}
+.mc .cswrap{position:relative;display:inline-flex}

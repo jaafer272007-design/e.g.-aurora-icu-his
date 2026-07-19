@@ -9,6 +9,9 @@
  border:1px solid rgba(var(--red-rgb),.35);padding:4px 10px;border-radius:9px}
 .ptbarcode{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--green);
  background:rgba(var(--green-rgb),.1);border:1px solid rgba(var(--green-rgb),.35);padding:4px 10px;border-radius:9px}
+/* Code Status SAFETY FIX: NOT RECORDED is an unmistakable explicit state
+   — never a green chip, never a blank that could read as Full Code */
+.ptbarcode.none{color:var(--red);background:transparent;border:1px dashed var(--red)}
 .ptbarviewonly{font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--amber);
  background:rgba(var(--amber-rgb),.12);border:1px solid rgba(var(--amber-rgb),.4);padding:4px 10px;border-radius:9px}
 .ptbarlinks{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}

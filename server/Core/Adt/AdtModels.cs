@@ -172,12 +172,31 @@ class Encounter
     public double? HeightCm { get; set; }
     public string MeasurementsJson { get; set; } = "[]";
 
+    /* CODE STATUS (the governed-vocabulary SAFETY FIX) — ENCOUNTER-SCOPED
+       like weight/height, and for the same reason the owner decided that
+       shape: each admission records ITS OWN goals-of-care decision. A
+       re-admission STARTS FRESH — a stale DNR from a prior episode must
+       never silently carry forward; it is re-confirmed (re-set) on the
+       new encounter or it is honestly "not recorded".
+       NULL = NOT RECORDED — rendered as an unmistakable explicit state,
+       never a blank that could read as "Full Code" and never a
+       fabricated default (the roster's old `?? "Full Code"` fallback is
+       exactly the defect this fixes). The value is a CODE from the
+       CodeStatuses vocabulary — selected, never typed.
+       CodeStatusEventsJson is the append-only audit WITHIN this
+       encounter: every set records who, when (dated UTC), under which
+       ACTIVE role, and the prior code — a resuscitation instruction's
+       provenance matters as much as a lab result's. */
+    public string? CodeStatusCode { get; set; }
+    public string CodeStatusEventsJson { get; set; } = "[]";
+
     /* patientName is a denormalized DISPLAY snapshot supplied by the caller
        (same precedent as orders' name/bed snapshots) — identity is never
        redefined here */
     public EncounterDto ToDto(string patientName)
     {
         var measurements = JsonSerializer.Deserialize<List<MeasurementEventDto>>(MeasurementsJson, JsonOpts.Web)!;
+        var codeStatusEvents = JsonSerializer.Deserialize<List<CodeStatusEventDto>>(CodeStatusEventsJson, JsonOpts.Web)!;
         return new(
             EncounterId, PatientId, patientName, BedId, Diagnosis, Attending, Status,
             AdmittedAt, AdmittedBy, DischargedAt, DischargedBy,
@@ -186,7 +205,9 @@ class Encounter
             /* empty history serves as ABSENT (WhenWritingNull) — rows
                without measurements keep their pre-feature wire bytes */
             measurements.Count == 0 ? null : measurements,
-            Disposition);
+            Disposition,
+            CodeStatusCode,
+            codeStatusEvents.Count == 0 ? null : codeStatusEvents);
     }
 }
 
@@ -246,7 +267,25 @@ record EncounterDto(
     List<MeasurementEventDto>? Measurements = null,
     /* discharge disposition — additive nullable tail (WhenWritingNull:
        encounters without one keep their pre-feature wire bytes) */
-    string? Disposition = null);
+    string? Disposition = null,
+    /* code status — additive nullable tail on the same rule: the CODE
+       from the governed vocabulary (null = not recorded, an explicit
+       state, never a default) + the append-only set history */
+    string? CodeStatusCode = null,
+    List<CodeStatusEventDto>? CodeStatusEvents = null);
+
+/* one append-only code-status set event: dated time, actor + ACTIVE role
+   (the #104 convention), the code set, the LABEL SNAPSHOT the clinician
+   saw when selecting it (the results-range precedent: historical
+   rendering — prints especially — reads the snapshot and never consults
+   the live vocabulary), and the prior code (null on the first set) — a
+   resuscitation instruction is never silently changed. */
+record CodeStatusEventDto(string Time, string Actor, string Role, string Code, string Label, string? Prior);
+
+/* POST /adt/encounters/{id}/code-status — the ONLY field is the selected
+   vocabulary code (never typed text); unknown fields fail binding */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record SetCodeStatusRequest(string? Code);
 
 /* bed registry row incl. derived occupancy — feeds the admission form's
    free-bed picker, transfer target picker, and the bed board layout */
@@ -285,7 +324,11 @@ record AdmitRequest(
     string? Diagnosis, string? Attending, string? BedId,
     /* Weight & Height capture — OPTIONAL at admission by design (if
        omitted, a clinician adds them later on the patient record) */
-    double? WeightKg = null, double? HeightCm = null);
+    double? WeightKg = null, double? HeightCm = null,
+    /* Code status — OPTIONAL at admission on the same rule (selected
+       from the ACTIVE vocabulary, never typed; omitted = honestly NOT
+       RECORDED until a physician sets it — never a default) */
+    string? CodeStatusCode = null);
 
 /* PUT /adt/patients/{id}/identity — the audited identity-correction path
    (§3, REQUIRED by the unknown-patient decision): correcting the name
