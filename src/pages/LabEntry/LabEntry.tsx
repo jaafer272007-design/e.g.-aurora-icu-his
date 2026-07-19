@@ -15,6 +15,7 @@ import {
 import type {
   DocumentLabItem, ImagingStudy, LabDraw, LabPanelKey, LabTest, Order, PatientSummary, RosterRecordDto,
 } from '../../lib/api/types'
+import { IMAGING_MODALITIES } from '../../lib/api/types'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { displayStamp, useNow } from '../../lib/time'
@@ -605,7 +606,7 @@ export function LabEntry() {
                 <div className="lefield">
                   <label htmlFor="lei-mod">Modality <i className="req">required</i></label>
                   <select id="lei-mod" value={imgModality} onChange={e => setImgModality(e.target.value)} disabled={imgBusy}>
-                    {['CXR', 'X-ray', 'CT', 'MRI', 'US', 'Echo', 'Other'].map(m => <option key={m} value={m}>{m}</option>)}
+                    {IMAGING_MODALITIES.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </div>
                 {imgOrderId === '' && (

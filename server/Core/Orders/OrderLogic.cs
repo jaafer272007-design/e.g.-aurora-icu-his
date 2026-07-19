@@ -67,8 +67,10 @@ static class OrderLogic
             return $"{at}.category must be one of: {string.Join(", ", Categories)}";
         if (d.Priority is null || !Priorities.Contains(d.Priority))
             return $"{at}.priority must be one of: {string.Join(", ", Priorities)}";
-        if (d.Medication is null && string.IsNullOrWhiteSpace(d.Summary))
-            return $"{at} requires a summary (non-medication order) or a medication object";
+        /* a coded imaging draft may omit the summary — it defaults to the
+           study's catalogue name at create (snapshot-at-use) */
+        if (d.Medication is null && string.IsNullOrWhiteSpace(d.Summary) && d.StudyId is null)
+            return $"{at} requires a summary (non-medication order), a medication object, or a catalogue study (studyId)";
         /* Layer 4 (lab catalogue): a catalogue-test reference is SHAPE —
            only a Lab order can carry one, in any state (400, like
            requiresImplementation on a medication draft). SAFETY
@@ -84,6 +86,19 @@ static class OrderLogic
             if (CheckText($"{at}.testId", d.TestId, required: false) is string tid) return tid;
             if (MasterData.LabCatalogLogic.Resolve(db, d.TestId) is null)
                 return $"{at}.testId '{d.TestId}' does not match any catalogue test";
+        }
+        /* Imaging Catalogue: the studyId reference is SHAPE the same way —
+           only an Imaging order may carry one (400); the CATALOGUE IS
+           AUTHORITATIVE, an unknown studyId is a validation 400. The
+           inactive-study check is resource STATE and lives in the endpoint
+           (409, after the encounter guard) — the exact testId split. */
+        if (d.StudyId is not null)
+        {
+            if (d.Category != "Imaging")
+                return $"{at}: only an Imaging order may reference a catalogue study (studyId)";
+            if (CheckText($"{at}.studyId", d.StudyId, required: false) is string sid) return sid;
+            if (MasterData.ImagingCatalogLogic.Resolve(db, d.StudyId) is null)
+                return $"{at}.studyId '{d.StudyId}' does not match any catalogue study";
         }
         /* a provided-but-blank summary must never override the composed
            medication summary or create a contentless order */

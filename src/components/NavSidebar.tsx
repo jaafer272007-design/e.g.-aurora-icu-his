@@ -74,7 +74,7 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
        administrative) and the SeniorDoctor (codestatus.manage: the
        clinical vocabulary). Each section inside is gated to its own
        authority; the administrative/clinical split holds. */
-    { key: 'config', label: 'Configuration', icon: <IconSettings size={16} />, to: '/config', anyPerm: ['hospital.configure', 'codestatus.manage'] },
+    { key: 'config', label: 'Configuration', icon: <IconSettings size={16} />, to: '/config', anyPerm: ['hospital.configure', 'codestatus.manage', 'imagingcatalog.manage'] },
     /* Alerts — the Clinical Attention Center (was the second dead nav
        item; now a real screen). CLINICAL, patient-identifiable — gated on
        results.view, which every clinical profile carries and the office

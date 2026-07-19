@@ -105,6 +105,7 @@ export type Permission =
   | 'assignments.manage'   // Patient Assignment: assign/end nurse & doctor assignments (SeniorDoctor — the recorded interim; a future SeniorNurse profile holds the SAME atom). A clinical care decision — never on either administrator profile. Everyone with patients.view can SEE assignments; only managing is gated.
   | 'codestatus.set'       // Code Status SAFETY FIX: set/change an open encounter's code status (PHYSICIAN authority — Doctor/SeniorDoctor; never office admin)
   | 'codestatus.manage'    // Code Status SAFETY FIX: maintain the vocabulary (clinical governance — SeniorDoctor ONLY, the observations.configure precedent; never office admin)
+  | 'imagingcatalog.manage' // Imaging Catalogue: maintain the study catalogue (CLINICAL — the lab-catalogue gating: Ancillary + SeniorDoctor; a DISTINCT atom from labcatalog.manage because radiology and the lab are different producing services; never office admin)
   | 'hospital.configure'   // Config Home + Hospital Identity: manage the install's identity (name/unit/short name/letterhead address) — ADMINISTRATIVE, not clinical (the identity.correct precedent): office Administrator; the split holds (clinical vocabularies stay on clinical profiles)
 
 /* Provisional permission sets (finer-grained permissions come in a later
@@ -134,6 +135,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'adt.admit', 'adt.discharge', 'observations.record',
     'observations.correct', 'observations.configure', 'patients.measure',
     'assignments.manage', 'codestatus.set', 'codestatus.manage',
+    'imagingcatalog.manage',
   ],
   /* administer + document only — cannot originate orders (locked decision).
      results.document (Lab Result-Entry): the ICU bedside team transcribes
@@ -175,7 +177,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
      create, the usual polarity flip. The manual documentation path is a
      SEPARATE atom (results.document, on the clinical profiles) — the two
      authorities are reconciled, not merged. */
-  Ancillary: ['patients.view', 'orders.view', 'results.view', 'results.create', 'labcatalog.manage'],
+  Ancillary: ['patients.view', 'orders.view', 'results.view', 'results.create', 'labcatalog.manage', 'imagingcatalog.manage'],
   /* physio/dietitian: chart + results, view-only */
   AlliedHealth: ['patients.view', 'results.view'],
 }

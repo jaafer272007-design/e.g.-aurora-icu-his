@@ -1,4 +1,4 @@
-import type { ActionQueuesResponse, OrderSetsResponse } from '../types'
+import type { ActionQueuesResponse } from '../types'
 
 /* Sample data from reference/icu-doctor-workspace.html. ROUNDING_LIST is
    RETIRED (Patient Assignment & Responsibility): its own comment said the
@@ -15,9 +15,7 @@ export const ACTION_QUEUES: ActionQueuesResponse = {
   ],
 }
 
-export const ORDER_SETS: OrderSetsResponse = {
-  Medication: ['Sepsis Bundle', 'Insulin Sliding Scale', 'DVT Prophylaxis'],
-  Lab: ['Daily AM Labs', 'ABG q4h', 'Blood Cultures ×2'],
-  Imaging: ['Portable CXR', 'CT Abdomen/Pelvis', 'Bedside Echo'],
-  Nursing: ['Hourly Neuro Checks', 'Turn q2h', 'Strict I/O'],
-}
+/* ORDER_SETS RETIRED (Imaging Catalogue): its last consumer was imaging
+   ordering, which now reads the REAL imaging catalogue — the mock list
+   that nulled out in production (blocking production imaging ordering)
+   is gone. Real order sets are the Layer-4 OrderSetDefs. */

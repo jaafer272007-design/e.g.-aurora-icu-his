@@ -12,10 +12,13 @@ namespace Aurora.Core.LabImaging;
    OrderLogic.InitializeCounters. */
 static class ResultsLogic
 {
-    /* Imaging Result Entry: the fixed study-type set for v1 — a coded,
-       managed Imaging Catalogue (mirroring the Lab Catalogue) is recorded
-       as future work for RIS/PACS auto-matching; the entry flow does not
-       need it. */
+    /* THE ONE MODALITY VOCABULARY (Imaging Catalogue design §3, flagged
+       decision: a small FIXED set, not a managed sub-catalogue —
+       modalities are standard; a hospital adds STUDIES within them, never
+       new modalities). Read by imaging result DOCUMENTATION, imaging
+       result CREATION (producing service) and the Imaging Catalogue's
+       study definitions alike — the audit's two inconsistent arrays
+       (this 7-set vs a 5-set on the create path) are reconciled here. */
     public static readonly string[] ImagingModalities = ["CXR", "X-ray", "CT", "MRI", "US", "Echo", "Other"];
 
     static int _labSeq = 9000;   // created labs: LAB-9001… (seeds are LAB-6001…6073)
@@ -33,9 +36,11 @@ static class ResultsLogic
        panels, so validation is byte-identical) and the error text is
        built from it in seed order. A panel resolves against ANY catalogue
        test, active OR inactive: deactivation blocks ORDERING, never
-       RESULTING — a result completes care already ordered. Modalities
-       stay a closed union until the imaging-order workflow exists. */
-    static readonly string[] Modalities = ["CXR", "CT", "US", "Echo", "MRI"];
+       RESULTING — a result completes care already ordered. MODALITIES
+       RECONCILED (Imaging Catalogue): the create path's private 5-set is
+       GONE — it validates against the one ImagingModalities vocabulary
+       above (an ADDITIVE widening: the producing service may now create
+       X-ray/Other studies it previously could not — flagged in the PR). */
 
     public static string NextLabId() => $"LAB-{Interlocked.Increment(ref _labSeq)}";
     public static string NextStudyId() => $"IMG-{Interlocked.Increment(ref _studySeq)}";
@@ -253,8 +258,8 @@ static class ResultsLogic
         if (CheckText("patientId", r.PatientId, required: true) is string p) return p;
         if (!db.AdtPatients.AsNoTracking().Any(x => x.PatientId == r.PatientId))
             return $"patientId '{r.PatientId}' does not match any roster patient";
-        if (r.Modality is null || !Modalities.Contains(r.Modality))
-            return $"modality must be one of: {string.Join(", ", Modalities)}";
+        if (r.Modality is null || !ImagingModalities.Contains(r.Modality))
+            return $"modality must be one of: {string.Join(", ", ImagingModalities)}";
         if (CheckText("description", r.Description, required: true) is string d) return d;
         if (CheckText("report", r.Report, required: true) is string rp) return rp;
         if (CheckText("impression", r.Impression, required: true) is string im) return im;
