@@ -12,7 +12,7 @@ import {
    permissions are re-checked in the service layer — this is UX, not the
    security boundary; Stage 10 enforces server-side. */
 
-function AccessDenied({ session, permission }: { session: Session; permission: Permission }) {
+function AccessDenied({ session, permission }: { session: Session; permission: string }) {
   const navigate = useNavigate()
   return (
     <div className="app-frame denied">
@@ -34,11 +34,23 @@ function AccessDenied({ session, permission }: { session: Session; permission: P
   )
 }
 
-export function RequireSession({ permission, children }: { permission?: Permission; children: JSX.Element }) {
+export function RequireSession({ permission, anyPermission, children }: {
+  permission?: Permission
+  /** any-of gate for MULTI-TENANT areas (the Configuration area: each
+   *  section is gated to its own authority — office Administrator holds
+   *  hospital.configure, SeniorDoctor holds codestatus.manage — and the
+   *  route admits whoever holds at least one; the page then shows only
+   *  that session's sections) */
+  anyPermission?: Permission[]
+  children: JSX.Element
+}) {
   const session = getSession()
   if (!session) return <Navigate to="/login" replace />
   if (permission && !hasPermission(session.jobTitle, permission)) {
     return <AccessDenied session={session} permission={permission} />
+  }
+  if (anyPermission && !anyPermission.some(p => hasPermission(session.jobTitle, p))) {
+    return <AccessDenied session={session} permission={anyPermission.join(' or ')} />
   }
   return children
 }

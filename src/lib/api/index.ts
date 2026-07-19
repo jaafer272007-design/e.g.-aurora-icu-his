@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
@@ -24,7 +24,7 @@ import { ASSIGNMENTS, applyAssignmentEnd, insertAssignment } from './data/assign
 import { allConsults } from './data/consults'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
-import { CODE_STATUSES } from './data/config'
+import { CODE_STATUSES, HOSPITAL_IDENTITY } from './data/config'
 import { LAB_CATALOG } from './data/catalog'
 import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
@@ -414,7 +414,14 @@ async function fetchRosterRecords(): Promise<RosterRecordDto[] | null> {
     clearTimeout(timer)
     if (res.ok) {
       const roster = (await res.json()) as RosterRecordDto[]
-      if (Array.isArray(roster) && roster.length > 0) return roster
+      /* an EMPTY roster is a real answer in production (a fresh install
+         has zero patients — the bed board renders empty, never the
+         API-unavailable refusal). Dev/staging keep treating empty as
+         "fall back to the demo roster" so the prototype stays populated
+         against an unseeded local server. Found by the Config Home
+         fresh-install verification. */
+      if (Array.isArray(roster) &&
+        (roster.length > 0 || import.meta.env.VITE_APP_ENV === 'production')) return roster
     }
     console.info(`[aurora] roster API responded ${res.status} — using mock roster`)
   } catch {
@@ -993,6 +1000,38 @@ export function reactivateCodeStatus(code: string): Promise<AdtWriteResult<CodeS
 export function setEncounterCodeStatus(encounterId: string, code: string): Promise<AdtWriteResult<Encounter>> {
   return usersWrite<Encounter>(
     `/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/code-status`, 'code-status set', { code })
+}
+
+/* ------------- Hospital Identity (Configuration, Aurora Core) -------------
+   The install's OWN identity — one record, administratively governed
+   (hospital.configure, office Administrator). The public read is
+   ANONYMOUS server-side (the login screen renders it pre-auth) and
+   returns NULL on failure rather than throwing: identity chrome must
+   never take a screen down — the resolver renders the neutral
+   placeholder instead. Writes are REAL-ONLY. */
+
+/** GET /api/icu/hospital-identity — the public identity (no history).
+ *  null = unreachable (surfaces render the neutral placeholder). */
+export async function getHospitalIdentity(): Promise<HospitalIdentity | null> {
+  const real = await apiGet<HospitalIdentity>('/api/icu/hospital-identity', 'hospital identity')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(HOSPITAL_IDENTITY, 80)
+  return null
+}
+
+/** GET /api/icu/hospital-identity/history — identity + audit history
+ *  (hospital.configure — actors by name are never served anonymously). */
+export async function getHospitalIdentityHistory(): Promise<HospitalIdentityWithHistory> {
+  const real = await apiGet<HospitalIdentityWithHistory>('/api/icu/hospital-identity/history', 'hospital identity history')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond({ ...HOSPITAL_IDENTITY, history: [] }, 80)
+  throw apiUnavailable('hospital identity history')
+}
+
+/** PUT /api/icu/hospital-identity — amend the record (audited per-field
+ *  prior→next diff, amend-never-erase). REAL-ONLY write. */
+export function updateHospitalIdentity(draft: EditHospitalIdentityDraft): Promise<AdtWriteResult<HospitalIdentityWithHistory>> {
+  return usersWrite<HospitalIdentityWithHistory>('/api/icu/hospital-identity', 'hospital-identity edit', draft, 'PUT')
 }
 
 /** PUT /api/icu/formulary/:drugId — edit reference fields (drugId is the

@@ -226,6 +226,7 @@ static class Seeder
         SeedOrderSets(app, db);
         SeedObservationCatalog(app, db);
         SeedCodeStatuses(app, db);
+        SeedDemoHospitalIdentity(app, db);
     }
 
     /* Patient Assignment & Responsibility (§10): the DEMO assignments the
@@ -393,6 +394,30 @@ static class Seeder
         }));
         db.SaveChanges();
         app.Logger.LogInformation("Seeded {Count} code-status vocabulary entries", entries.Length);
+    }
+
+    /* Hospital Identity (Config Home + Hospital Identity design §4):
+       DEMO/STAGING ONLY — the identity every surface hardcoded until now
+       ("Aurora General Hospital" / "Unit 4B") becomes seeded DATA, so
+       staging renders visually unchanged while the strings stop being
+       code. PRODUCTION seeds NOTHING here: a fresh install's identity is
+       honestly UNSET (neutral placeholder on every surface — never
+       another hospital's demo name on a real document) until the office
+       Administrator configures it (later: the first-run wizard).
+       Address stays empty (the demo letterhead never carried one).
+       Seed row carries an empty audit history (historical data — facts
+       are never invented). Idempotent: seed-if-empty. */
+    static void SeedDemoHospitalIdentity(WebApplication app, AuroraDb db)
+    {
+        if (db.HospitalIdentity.Any()) return;
+        db.HospitalIdentity.Add(new Aurora.Core.MasterData.HospitalIdentityRow
+        {
+            Id = Aurora.Core.MasterData.HospitalIdentityApi.RowId,
+            Name = "Aurora General Hospital", UnitName = "Unit 4B",
+            ShortName = "AURORA", Address = "", EventsJson = "[]",
+        });
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded the demo hospital identity (Aurora General Hospital / Unit 4B) — data, not code");
     }
 
     /* Stage 11 §12 step 1: the Observation Type Catalogue — the §1

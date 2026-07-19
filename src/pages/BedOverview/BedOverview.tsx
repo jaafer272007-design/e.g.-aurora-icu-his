@@ -11,6 +11,7 @@ import { IconAlertTriangle, IconBed, IconSearch, IconVent } from '../../componen
 import { getBeds, getUnassignedPatients, getUnitSummary, getUnitSummaryDerived } from '../../lib/api'
 import type { Bed, BedsResponse, DerivedUnitSummary, UnassignedPatient, UnitSummaryResponse } from '../../lib/api/types'
 import { BedCard } from './BedCard'
+import { useHospitalIdentity } from '../../lib/hospitalIdentity'
 
 interface Filters {
   q: string
@@ -39,6 +40,7 @@ function visible(b: Bed, f: Filters): boolean {
 export function BedOverview() {
   /* behind RequireSession(patients.view) */
   const session = getSession()!
+  const hospIdentity = useHospitalIdentity()
   const navigate = useNavigate()
   const { toast } = useToast()
   const [data, setData] = useState<BedsResponse | null>(null)
@@ -127,7 +129,11 @@ export function BedOverview() {
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
-        <NavSidebar active="beds" footerLines={['Unit 4B · 16 beds', 'Sync: live']} />
+        {/* unit name from the CONFIGURED identity (one resolver) — the
+            '16 beds' capacity figure is the beds tenant's concern (next
+            PR); an unset unit renders the honest prompt, never a name */}
+        <NavSidebar active="beds" footerLines={[
+          `${hospIdentity?.unitName ? hospIdentity.unitName : 'Unit not configured'} · 16 beds`, 'Sync: live']} />
 
         <main>
           <div className="fbar">

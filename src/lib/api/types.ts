@@ -1613,3 +1613,31 @@ export interface NewObservationEntry {
   typeCode: string
   value: ObsEntryValue
 }
+
+/* ---------- GET/PUT /api/icu/hospital-identity (Configuration) ----------
+   The install's OWN identity (Config Home + Hospital Identity design):
+   ONE record per install — hospital name, unit name, short name, and a
+   letterhead address block. Administratively governed
+   (hospital.configure — office Administrator; the identity.correct
+   precedent), audited amend-never-erase. UNSET on a fresh install:
+   configured=false and every surface renders a neutral placeholder,
+   never a fabricated default. The public read is ANONYMOUS (the login
+   screen renders identity pre-auth); the history read is gated. */
+export interface HospitalIdentity {
+  name: string
+  unitName: string
+  shortName: string
+  address: string
+  configured: boolean
+}
+
+export interface HospitalIdentityWithHistory extends HospitalIdentity {
+  history: FormularyEvent[]
+}
+
+export interface EditHospitalIdentityDraft {
+  name: string
+  unitName: string
+  shortName: string
+  address: string
+}

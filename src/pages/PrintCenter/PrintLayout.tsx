@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PrintContext } from './types'
+import { useHospitalIdentity, HOSPITAL_NAME_UNSET } from '../../lib/hospitalIdentity'
 
 /* ==================== Shared printable layout ====================
    The common chrome every printed clinical document shares: hospital
@@ -24,13 +25,23 @@ const dash = '—'
 
 export function PrintLayout({ title, context, printedBy, printedAt, children }: PrintLayoutProps) {
   const { patient, encounter, hasChartedTimes } = context
+  /* Letterhead identity comes from the CONFIGURED hospital identity
+     through the one resolver — never a hardcoded name. This is document
+     CHROME (the install's current identity, like "Printed by"), not
+     historical clinical content — the selectors' no-master-data rule
+     governs clinical values, not the letterhead. UNSET renders the
+     neutral placeholder — never a demo hospital's name on a real
+     document. The optional address block prints only when configured. */
+  const identity = useHospitalIdentity()
+  const hospName = identity?.name ?? HOSPITAL_NAME_UNSET
   return (
     <article className="print-doc">
       <header className="pd-head">
         <div className="pd-logo" aria-hidden="true">✚</div>
         <div className="pd-hosp">
-          <div className="pd-hosp-name">AURORA GENERAL HOSPITAL</div>
+          <div className={`pd-hosp-name${identity?.configured ? '' : ' unset'}`}>{hospName}</div>
           <div className="pd-hosp-sub">Adult Intensive Care Unit · Aurora HIS</div>
+          {identity?.address ? <div className="pd-hosp-addr">{identity.address}</div> : null}
         </div>
         <div className="pd-doc-meta">
           <div className="pd-doc-title-sm">{title}</div>

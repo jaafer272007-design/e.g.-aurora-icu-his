@@ -105,6 +105,7 @@ export type Permission =
   | 'assignments.manage'   // Patient Assignment: assign/end nurse & doctor assignments (SeniorDoctor — the recorded interim; a future SeniorNurse profile holds the SAME atom). A clinical care decision — never on either administrator profile. Everyone with patients.view can SEE assignments; only managing is gated.
   | 'codestatus.set'       // Code Status SAFETY FIX: set/change an open encounter's code status (PHYSICIAN authority — Doctor/SeniorDoctor; never office admin)
   | 'codestatus.manage'    // Code Status SAFETY FIX: maintain the vocabulary (clinical governance — SeniorDoctor ONLY, the observations.configure precedent; never office admin)
+  | 'hospital.configure'   // Config Home + Hospital Identity: manage the install's identity (name/unit/short name/letterhead address) — ADMINISTRATIVE, not clinical (the identity.correct precedent): office Administrator; the split holds (clinical vocabularies stay on clinical profiles)
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -152,7 +153,13 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
      national ID / DOB is REGISTRATION work and identity is NOT clinical
      data, so it sits on the office profile (the clinical exclusion is
      untouched). */
-  Administrator: ['admin.view', 'patients.view', 'identity.correct'],
+  /* hospital.configure (Config Home + Hospital Identity): the
+     hospital's name/unit/short name/letterhead address are the
+     ADMINISTRATIVE face of the institution — no clinical data, so the
+     locked clinical exclusion is untouched (finally a config surface
+     that IS the office profile's). The System Administrator does NOT
+     hold it — accounts, not identity. */
+  Administrator: ['admin.view', 'patients.view', 'identity.correct', 'hospital.configure'],
   /* the highest-privilege authority: controls who can reach patient data
      while never reaching it (no clinical atoms, not even patients.view) */
   SystemAdministrator: ['users.manage', 'users.view'],

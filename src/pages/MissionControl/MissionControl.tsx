@@ -13,6 +13,7 @@ import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
 import { getAssignments, getCodeStatuses, getEncounters, getObservations, getPatientDetail, getPatientIdentity, getPatients, setEncounterCodeStatus } from '../../lib/api'
+import { unitSuffix, useHospitalIdentity } from '../../lib/hospitalIdentity'
 import { resolveCodeStatus } from '../../lib/codeStatus'
 import { Toast, useToast } from '../../components/Toast'
 import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
@@ -67,6 +68,7 @@ export function MissionControl() {
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
   const { time, date, shortTime } = useClock()
+  const hospIdentity = useHospitalIdentity()
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [detail, setDetail] = useState<PatientDetailResponse | null>(null)
   const [missing, setMissing] = useState(false)
@@ -229,7 +231,9 @@ export function MissionControl() {
           <BackButton />
           <div className="brand">
             <div className="logo"><IconPulse size={16} stroke="var(--ink)" strokeWidth={2.6} /></div>
-            <div>AURORA ICU<small>Mission Control · Unit 4B</small></div>
+            {/* unit segment from the CONFIGURED hospital identity (one
+                resolver) — omitted while unset, never a hardcoded name */}
+            <div>AURORA ICU<small>Mission Control{hospIdentity ? unitSuffix(hospIdentity) : ''}</small></div>
           </div>
           <div className="unitstats">
             <div className="us">Census<b>{unit?.census ?? '—'}</b></div>

@@ -11,3 +11,16 @@ export const CODE_STATUSES: CodeStatusEntry[] = [
   { code: 'dnr_dni', label: 'DNR / DNI', seq: 3, active: true, history: [] },
   { code: 'comfort_care', label: 'Comfort care', seq: 4, active: true, history: [] },
 ]
+
+/* Hospital identity — MOCK record (dev/staging read fallback only;
+   writes are REAL-ONLY). Mirrors the demo server seed exactly: the
+   identity every surface hardcoded until the Config Home work — now
+   DATA, so staging renders visually unchanged. Address is empty (the
+   demo letterhead never carried one). */
+export const HOSPITAL_IDENTITY = {
+  name: 'Aurora General Hospital',
+  unitName: 'Unit 4B',
+  shortName: 'AURORA',
+  address: '',
+  configured: true,
+} as const

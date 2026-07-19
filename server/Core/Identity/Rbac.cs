@@ -123,8 +123,19 @@ static class Rbac
            profile's locked scope exactly (the clinical exclusion is
            untouched: no clinical atom is granted). Clinical profiles do
            not hold it — a serious audited identity event belongs to the
-           role whose job is the registry. */
-        ["Administrator"] = ["admin.view", "patients.view", "identity.correct"],
+           role whose job is the registry.
+           hospital.configure (Config Home + Hospital Identity design §3
+           — the FLAGGED authority, stated): the hospital's name, unit
+           name, short name and letterhead address are the
+           ADMINISTRATIVE FACE of the institution and carry NO clinical
+           data — so managing them is legitimately the office profile's
+           (the identity.correct precedent), and the locked clinical
+           exclusion is untouched. The administrative/clinical split,
+           confirmed: administrative configuration → office
+           Administrator; clinical vocabularies (codestatus.manage) →
+           SeniorDoctor. The System Administrator does NOT hold this —
+           they govern accounts, not the hospital's public identity. */
+        ["Administrator"] = ["admin.view", "patients.view", "identity.correct", "hospital.configure"],
         /* the highest-privilege authority in the system: whoever holds it
            controls who can reach patient data — while never reaching it
            themselves (NO clinical atoms, not even patients.view; the

@@ -1,6 +1,40 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-19 · current through CODE STATUS GOVERNED
+**Last updated: 2026-07-19 · current through CONFIG HOME + HOSPITAL
+IDENTITY — the Configuration area's FOUNDATION (the configurability
+audit's second finding: the product was branded "AURORA GENERAL
+HOSPITAL" / "Unit 4B" in hardcoded strings across the print letterhead,
+app headers and the login screen — a hospital installing Aurora could
+not make the system say its own name, and no configuration table
+existed for identity to live in. Built from the owner's design doc:
+/config becomes genuinely MULTI-TENANT (the recorded per-section-gating
+flag from the code-status PR, realized) — hospital identity is ONE
+audited configuration record (name / unit name / short name /
+letterhead address block; logo image flagged as the fast-follow) on the
+proven pattern (validated writes, append-only per-field prior→next
+audit, AMEND-NEVER-ERASE), read through ONE resolver
+(src/lib/hospitalIdentity.ts) by every surface that hardcoded the
+demo identity, so setting it once propagates everywhere with zero
+per-surface edits (the #113 display-name-propagation precedent); the
+NEW hospital.configure atom sits on the OFFICE ADMINISTRATOR
+(administrative, not clinical — the identity.correct precedent; the
+locked clinical exclusion untouched; the System Administrator does NOT
+hold it), the administrative/clinical split confirmed in BOTH
+directions (identity ⇸ SeniorDoctor, code status ⇸ office admin); the
+public identity read is ANONYMOUS (flagged — the login screen renders
+it pre-auth; the audit history, which names actors, stays gated); a
+FRESH INSTALL is honestly UNSET — every surface renders a neutral
+placeholder or omits the segment, never "AURORA GENERAL HOSPITAL"
+(printing a demo hospital's name on a real document is a fabrication);
+demo/staging seed the previous strings as DATA so staging renders
+byte-identically; SINGLE-UNIT per the validator's decision — the unit
+NAME is configurable display identity, no unit picker, no per-unit
+scoping, the multi-unit boundary flagged; plus the fresh-install fix
+the verification exposed: an EMPTY production roster is a real answer
+(empty bed board), no longer escalated to API-unavailable. Verified
+28/28 headless + staging visual-unchanged 13/13 + production appliance
+22/22 on a FRESH Postgres — see the record below);
+prior marker retained: current through CODE STATUS GOVERNED
 VOCABULARY — a SAFETY FIX pulled ahead of the configurability work (the
 audit's finding: a resuscitation instruction — the single most
 consequential field in an ICU record — was an unvalidated free-text
@@ -5009,6 +5043,105 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Config Home + Hospital Identity (built) — the Configuration area's foundation
+
+**The finding (configurability audit + this PR's verify-first sweep):**
+hospital identity was compiled-in on four render surfaces —
+`PrintLayout.tsx` ("AURORA GENERAL HOSPITAL" on every printed
+document's letterhead), `Login.tsx` ("Hospital Information System ·
+Unit 4B"), `MissionControl.tsx` ("Mission Control · Unit 4B") and
+`BedOverview.tsx` (nav footer "Unit 4B · 16 beds") — with the
+data-layer `unitId: '4B'` bed key alongside (untouched here: that is
+the beds tenant's concern, and the single-unit boundary below). PR
+#134's /config was a single-tenant page gated codestatus.manage with
+the per-section flag already recorded — exactly the extension point
+this build fills in (extended, never duplicated).
+
+**What was built.**
+- **Server:** `HospitalIdentityRow` — ONE record (constant key
+  "hospital"): Name / UnitName / ShortName / Address + append-only
+  EventsJson. `GET /api/icu/hospital-identity` is ANONYMOUS (flagged:
+  the login screen renders identity pre-auth; a hospital's name is its
+  public face) and never serves the history; `GET …/history` +
+  `PUT /api/icu/hospital-identity` are gated on the NEW
+  **hospital.configure** atom — OFFICE ADMINISTRATOR only (the
+  identity.correct precedent: administrative, no clinical data; the
+  System Administrator does not hold it — accounts, not identity).
+  Validation: name required (≤120), unit ≤80, short ≤20, address ≤400,
+  unknown fields 400 (Disallow), no-change 400. Every edit appends ONE
+  event with a per-field `field: prior → next` diff ("(unset)" marks a
+  first set) — amend-never-erase. Migration `AddHospitalIdentity`
+  (new table only). Seeds: demo/staging seed "Aurora General Hospital"
+  / "Unit 4B" / "AURORA" / empty address as DATA (empty audit — no
+  invented history); **production seeds NOTHING** — a fresh install is
+  honestly unset until configured (the first-run wizard, when built,
+  populates this record).
+- **ONE resolver** (`src/lib/hospitalIdentity.ts`): module-cached
+  fetch + `useHospitalIdentity()` hook + `invalidateHospitalIdentity()`
+  (a /config save re-renders every mounted surface). Unset → the
+  design's neutral placeholder ("Configure hospital name in Settings →
+  Configuration") for the letterhead name; decorative unit segments are
+  OMITTED while unset (login/MC subtitles) or read "Unit not
+  configured" (bed-board footer) — never a demo name, never blank-as-
+  identity. All four surfaces rewired through it; the letterhead's
+  capitalization moved to CSS (`text-transform: uppercase`) so the
+  NAME is stored as data and staging renders byte-identically; the
+  configured ADDRESS BLOCK prints under the letterhead (absent while
+  empty — staging unchanged).
+- **/config multi-tenant:** route + nav gate become ANY-OF
+  {hospital.configure, codestatus.manage} (RequireSession/NavSidebar
+  gain any-of support); each section renders only for its authority —
+  the office Administrator sees Hospital Identity (form + audited
+  history + explicit NOT-CONFIGURED state), the SeniorDoctor sees the
+  Code Status vocabulary; neither sees the other's section. Writes stay
+  REAL-ONLY (offline demo refusal visible, the #134 pattern).
+- **Single-unit (validator's decision):** the unit NAME is configurable
+  display identity; NO unit picker, NO per-unit scoping was built, and
+  nothing bakes single-unit deeper — the future multi-unit project
+  introduces a units catalogue and moves UnitName there (flagged
+  boundary; the `unitId: '4B'` data key and the `16 beds` capacity
+  figure await the beds tenant).
+- **Fresh-install fix (found by this verification):**
+  `fetchRosterRecords` treated an EMPTY roster as API-unavailable
+  (`length > 0` gate), so a zero-patient production install showed the
+  full-screen refusal on /beds. An empty roster is now a real answer in
+  production (the bed board renders empty); dev/staging keep the
+  demo-fallback-on-empty so the prototype stays populated. (Adjacent
+  observation, NOT changed: other per-domain adapters keep their own
+  empty-DB behaviors — e.g. the print route for a nonexistent patient
+  on an empty install surfaces the honest orders refusal.)
+
+**Flagged decisions (stated in the PR):** hospital.configure on the
+office Administrator; the anonymous public read; the exact field set
+(name/unit/short/address — logo image the recorded fast-follow); unset
+rendering (neutral placeholder / omitted segments); formulary + lab
+catalogue managers stay where they are (linked from the sidebar — not
+moved); single-unit boundary.
+
+**Verification.** Headless matrix **28/28** (anonymous read serves the
+seeded DATA and never the history; history 401/403/403/403/200 across
+anonymous/nurse/SeniorDoctor/SystemAdmin/office-admin; PUT 403 for
+nurse + SeniorDoctor + SystemAdmin; the split's other direction —
+office admin 403 on code-status create; name-required/length/Disallow/
+no-change 400s; amend audited with per-field diff; second amend
+APPENDS and diffs only the changed field; configured values served
+anonymously; address round-trips). Staging visual-unchanged **13/13**
+(login subtitle, MC header, beds footer byte-identical; letterhead
+renders AURORA GENERAL HOSPITAL via data + CSS uppercase, no address
+line, module sub-line unchanged; /config sections split both ways in
+the demo directory; offline identity write visibly refused).
+Production appliance **22/22 on a FRESH Postgres** (a true fresh
+install: unset identity honest on login/beds/print — no demo name
+anywhere; office admin configures St. Mary's Teaching Hospital / MICU
+2 / SMTH / address in /config with the audited "(unset) →" diff; ONE
+RESOLVER propagates to the pre-auth login subtitle, MC header, beds
+footer and the printed letterhead incl. the address block with zero
+per-surface edits; SeniorDoctor sees code status only; the System
+Administrator has no Configuration at all — Access Restricted).
+Production bundle grep: "AURORA GENERAL HOSPITAL" and "Unit 4B" ABSENT
+(the mock identity record tree-shakes out); the neutral placeholder
+PRESENT. `tsc -b --force` + both builds green.
 
 ### Code Status governed vocabulary (built) — the SAFETY FIX, first Configuration-area tenant
 

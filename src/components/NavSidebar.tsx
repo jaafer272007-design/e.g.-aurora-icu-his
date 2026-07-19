@@ -17,6 +17,9 @@ interface NavItem {
   badge?: number
   /** required permission — items the session's profile lacks are hidden */
   perm?: Permission
+  /** any-of permissions for MULTI-TENANT areas (Configuration: shown to
+   *  whoever holds at least one section's authority) */
+  anyPerm?: Permission[]
 }
 
 interface NavSidebarProps {
@@ -64,12 +67,14 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     { key: 'formulary', label: 'Formulary', icon: <IconPill />, to: '/formulary', perm: 'formulary.manage' },
     { key: 'labcatalog', label: 'Lab Catalogue', icon: <IconFlask size={16} />, to: '/lab-catalog', perm: 'labcatalog.manage' },
     { key: 'ordersets', label: 'Order Sets', icon: <IconGrid />, to: '/order-sets', perm: 'ordersets.manage' },
-    /* Configuration — the per-hospital configuration area (first tenant:
-       the Code Status vocabulary, a clinical-governance surface). Gated
-       on codestatus.manage (SeniorDoctor) — CLINICAL configuration,
-       never the office Administrator (the F2/F3 hard constraint). The
-       gate widens to a shared config permission when more tenants land. */
-    { key: 'config', label: 'Configuration', icon: <IconSettings size={16} />, to: '/config', perm: 'codestatus.manage' },
+    /* Configuration — the per-hospital configuration area, now
+       MULTI-TENANT (the recorded per-section-gating flag, realized):
+       shown to whoever holds at least one section's authority — the
+       office Administrator (hospital.configure: hospital identity,
+       administrative) and the SeniorDoctor (codestatus.manage: the
+       clinical vocabulary). Each section inside is gated to its own
+       authority; the administrative/clinical split holds. */
+    { key: 'config', label: 'Configuration', icon: <IconSettings size={16} />, to: '/config', anyPerm: ['hospital.configure', 'codestatus.manage'] },
     /* Alerts — the Clinical Attention Center (was the second dead nav
        item; now a real screen). CLINICAL, patient-identifiable — gated on
        results.view, which every clinical profile carries and the office
@@ -86,7 +91,8 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
        office Administrator) reaches it. */
     { key: 'settings', label: 'Settings', icon: <IconSettings />, to: '/settings' },
   ]
-  const items = all.filter(it => allowed(it.perm))
+  const items = all.filter(it =>
+    it.anyPerm ? (!!title && it.anyPerm.some(p => hasPermission(title, p))) : allowed(it.perm))
 
   return (
     <nav className="nav-sidebar" aria-label="Primary">
