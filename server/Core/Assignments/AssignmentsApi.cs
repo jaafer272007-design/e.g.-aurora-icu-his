@@ -129,8 +129,20 @@ static class AssignmentsApi
                 return ApiError.BadRequest("kind must be one of: nurse, doctor");
             if (req.Role is not ("primary" or "secondary"))
                 return ApiError.BadRequest("role must be one of: primary, secondary");
-            if (req.Shift is not ("day" or "night"))
-                return ApiError.BadRequest("shift must be one of: day, night");
+            /* SHIFT — a MANAGED vocabulary since the Configuration
+               Vocabularies build (design §3; seeded day/night, so
+               existing behavior is data now). Unknown → 400 naming the
+               active vocabulary; RETIRED → 409 (the code-status
+               precedent). The assignment row stores the code as a
+               SNAPSHOT: retiring a shift never touches existing
+               assignments — they keep rendering through the resolver. */
+            var shiftRow = db.Shifts.AsNoTracking().FirstOrDefault(s => s.Code == req.Shift);
+            if (shiftRow is null)
+                return ApiError.BadRequest("shift must be one of: "
+                    + string.Join(", ", db.Shifts.AsNoTracking().Where(s => s.Active).OrderBy(s => s.Seq).Select(s => s.Code)));
+            if (!shiftRow.Active)
+                return ApiError.StateConflict(
+                    $"shift '{req.Shift}' ({shiftRow.Label}) is retired — it cannot be newly assigned; reactivate it or select an active entry");
             if (!db.AdtPatients.AsNoTracking().Any(p => p.PatientId == req.PatientId))
                 return ApiError.BadRequest($"patientId '{req.PatientId}' does not match any patient");
             var account = db.Users.AsNoTracking().FirstOrDefault(u => u.Username == req.UserId);

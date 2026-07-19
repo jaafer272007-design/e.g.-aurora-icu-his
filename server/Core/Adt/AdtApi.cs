@@ -413,6 +413,68 @@ static class AdtApi
             return Results.Json(enc.ToDto(name), JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* POST /api/icu/adt/encounters/{encounterId}/isolation — ISOLATION
+           PRECAUTIONS (Configuration Vocabularies design §2, the boolean's
+           upgrade). BEDSIDE CLINICIAN authority (observations.record —
+           any doctor or nurse; recording the patient's precaution state
+           is bedside documentation, exactly the codestatus.set /
+           codestatus.manage split: MANAGING the type vocabulary is the
+           separate isolation.manage governance). Body: the REPLACEMENT
+           set of vocabulary codes — multiple is clinically real (contact
+           AND droplet); [] clears. Every submitted code must be ACTIVE:
+           unknown → 400 (payload reference), retired → 409 (state).
+           Audited into the encounter's event history with the PRIOR set
+           named (labels, not codes — the print/history convention) and
+           the actor's ACTIVE role. FOUR-CODE: absent encounter → 404 ·
+           closed encounter / retired type / same-set replay → 409 ·
+           unknown type / malformed list → 400. */
+        app.MapPost("/api/icu/adt/encounters/{encounterId}/isolation",
+            (string encounterId, SetIsolationRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "observations.record") is IResult denied) return denied;
+            if (req.Types is null)
+                return ApiError.BadRequest("types is required (send [] to clear precautions)");
+            var types = req.Types.Select(t => (t ?? "").Trim()).ToList();
+            if (types.Any(t => t.Length == 0))
+                return ApiError.BadRequest("types must not contain empty entries");
+            if (types.Count > 8)
+                return ApiError.BadRequest("types exceeds 8 entries");
+            if (types.Distinct().Count() != types.Count)
+                return ApiError.BadRequest("types must not contain duplicates");
+            var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
+            if (enc is null) return ApiError.NotFound();
+            if (enc.Status != "open")
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' is discharged — isolation precautions are set on an open admission");
+            var vocab = db.IsolationTypes.AsNoTracking().ToDictionary(t => t.Code);
+            foreach (var t in types)
+            {
+                if (!vocab.TryGetValue(t, out var row))
+                    return ApiError.BadRequest($"type '{t}' does not match any isolation-type vocabulary entry");
+                if (!row.Active)
+                    return ApiError.StateConflict(
+                        $"isolation type '{t}' ({row.Label}) is retired — it cannot be newly assigned; reactivate it or select an active entry");
+            }
+            /* stable storage order = vocabulary Seq (display never depends
+               on submission order) */
+            var ordered = types.OrderBy(t => vocab[t].Seq).ToList();
+            var prior = enc.IsolationTypes();
+            if (prior.SequenceEqual(ordered))
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' already carries exactly these isolation precautions — there is nothing to change");
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var role = Rbac.ProfileOf(user.FindFirst("jobTitle")?.Value ?? "") ?? "Unknown";
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+            string Names(List<string> codes) => codes.Count == 0 ? "none"
+                : string.Join(" + ", codes.Select(c => vocab.TryGetValue(c, out var r) ? r.Label : c));
+            enc.IsolationJson = JsonSerializer.Serialize(ordered, JsonOpts.Web);
+            enc.EventsJson = AdtLogic.AppendEvent(enc.EventsJson, new(time, actor, "isolation precautions",
+                $"{Names(ordered)} (was: {Names(prior)}) · as {role}"));
+            db.SaveChanges();
+            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
+            return Results.Json(enc.ToDto(name), JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* POST /api/icu/adt/admissions — DOCTOR RBAC (adt.admit). Opens an
            Encounter, assigns the bed; creates the Patient with an
            AURORA-GENERATED MRN, or RE-ADMITS an existing patient by
@@ -572,16 +634,23 @@ static class AdtApi
                 /* DECEASED GUARD (match+overview design §3.4 — the
                    SERVER half; the dialog hides its Readmit button, but
                    a UI-only guard is not a guard): a patient whose
-                   latest encounter closed with disposition 'died' is
+                   latest encounter closed with a DEATH disposition is
                    never re-admitted. A wrong death record is corrected
-                   through the audited record, not through admission. */
+                   through the audited record, not through admission.
+                   Since the Configuration Vocabularies build the check
+                   resolves the STORED code through the vocabulary's
+                   IMMUTABLE IsDeath attribute (never the label): rows
+                   are never deleted so resolution is total, the edit
+                   contract cannot touch IsDeath, and a hospital-added
+                   death disposition arms this guard exactly like the
+                   reserved 'died' — no vocabulary edit can break it. */
                 var latestEnc = db.Encounters.AsNoTracking()
                     .Where(e => e.PatientId == patient.PatientId).AsEnumerable()
                     .OrderByDescending(e => AdtLogic.EncounterSeq(e.EncounterId)).FirstOrDefault();
-                if (latestEnc?.Disposition == "died")
+                if (latestEnc is not null && AdtLogic.IsDeathDisposition(db, latestEnc.Disposition))
                     return ApiError.StateConflict(
                         $"patient '{patient.PatientId}' ({patient.Mrn}) is recorded as deceased "
-                        + $"(disposition 'died' on encounter '{latestEnc.EncounterId}') — a deceased patient cannot be re-admitted; "
+                        + $"(disposition '{latestEnc.Disposition}' on encounter '{latestEnc.EncounterId}') — a deceased patient cannot be re-admitted; "
                         + "a wrong death record is corrected through the audited record, never through admission");
                 /* RE-ADMISSION IDENTITY RULES (adversarial-review finding
                    — never a silent no-op):
@@ -690,13 +759,26 @@ static class AdtApi
             (string encounterId, DischargeRequest? req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "adt.discharge") is IResult denied) return denied;
-            /* DISCHARGE DISPOSITION — validated WHEN PROVIDED (unknown
-               value → 400 naming the vocabulary, the four-code rule);
-               the body itself stays optional (see DischargeRequest). */
+            /* DISCHARGE DISPOSITION — validated WHEN PROVIDED against the
+               MANAGED vocabulary (Configuration Vocabularies design §1):
+               unknown code → 400 naming the active vocabulary (payload
+               reference, the bedId precedent); RETIRED code → 409
+               (resource state — reactivate it and the same request
+               succeeds; the code-status precedent). The body itself
+               stays optional (see DischargeRequest); the stored value is
+               a SNAPSHOT — retiring a disposition later never rewrites
+               this encounter's recorded outcome. */
             var disposition = req?.Disposition?.Trim();
-            if (disposition is not null && !AdtLogic.Dispositions.Contains(disposition))
-                return ApiError.BadRequest(
-                    $"disposition must be one of: {string.Join(", ", AdtLogic.Dispositions)}");
+            if (disposition is not null)
+            {
+                var dispo = db.Dispositions.AsNoTracking().FirstOrDefault(d => d.Code == disposition);
+                if (dispo is null)
+                    return ApiError.BadRequest(
+                        $"disposition must be one of: {string.Join(", ", AdtLogic.ActiveDispositionCodes(db))}");
+                if (!dispo.Active)
+                    return ApiError.StateConflict(
+                        $"disposition '{disposition}' ({dispo.Label}) is retired — it cannot be newly recorded; reactivate it or select an active entry");
+            }
             var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
             if (enc is null) return ApiError.NotFound();
             if (enc.Status == "discharged")
@@ -782,16 +864,26 @@ static class AdtLogic
     /* same free-text bound as every other mutating endpoint */
     public const int MaxTextLength = 2000;
 
-    /* DISCHARGE DISPOSITION vocabulary — the outcome of the ICU stay.
-       Stored as these codes; display labels live client-side:
-       home         → Home
-       ward         → Ward (step-down / general floor)
-       transfer_out → Another facility / transfer out
-       higher_care  → Higher care / another ICU
-       died         → Died   (the mortality numerator)
-       other        → Other */
-    public static readonly string[] Dispositions =
-        ["home", "ward", "transfer_out", "higher_care", "died", "other"];
+    /* DISCHARGE DISPOSITION vocabulary — the outcome of the ICU stay,
+       MANAGED DATA since the Configuration Vocabularies build (the
+       hardcoded array this replaces is seeded verbatim: home / ward /
+       transfer_out / higher_care / died / other — labels included).
+       Discharge stores the CODE as a snapshot; 'died' is reserved-
+       unretireable and death semantics resolve through the immutable
+       IsDeath attribute below, never the label. */
+    public static List<string> ActiveDispositionCodes(AuroraDb db) =>
+        db.Dispositions.AsNoTracking().Where(d => d.Active)
+            .OrderBy(d => d.Seq).Select(d => d.Code).ToList();
+
+    /** does this STORED disposition code count as death? Resolution is
+        total (vocabulary rows are never deleted) and stable (IsDeath is
+        immutable after creation) — the deceased guard, the patient-
+        history status, and mortality statistics all key on this, so no
+        vocabulary edit can rewrite a recorded outcome. Null (no
+        recorded disposition) is never death. */
+    public static bool IsDeathDisposition(AuroraDb db, string? code) =>
+        code is not null
+        && db.Dispositions.AsNoTracking().FirstOrDefault(d => d.Code == code)?.IsDeath == true;
 
     static int _patientSeq;
     static int _encounterSeq;
@@ -815,10 +907,10 @@ static class AdtLogic
 
     /* the match dialog's identity summary card, derived at read: status
        and location come from the ENCOUNTERS (open → admitted + bed;
-       else latest disposition 'died' → deceased; else discharged), age
-       through the canonical Patient.ToDto resolver (no fork), and the
-       national ID leaves here MASKED TO ITS LAST 4 — the full number
-       is never in this DTO at all. */
+       else latest disposition resolving IsDeath → deceased; else
+       discharged), age through the canonical Patient.ToDto resolver
+       (no fork), and the national ID leaves here MASKED TO ITS LAST 4 —
+       the full number is never in this DTO at all. */
     public static MatchCardDto ToMatchCard(Patient p, AuroraDb db)
     {
         var encs = db.Encounters.AsNoTracking()
@@ -826,7 +918,7 @@ static class AdtLogic
         var open = encs.FirstOrDefault(e => e.Status == "open");
         var latest = encs.OrderByDescending(e => EncounterSeq(e.EncounterId)).FirstOrDefault();
         var status = open is not null ? "admitted"
-            : latest?.Disposition == "died" ? "deceased" : "discharged";
+            : latest is not null && IsDeathDisposition(db, latest.Disposition) ? "deceased" : "discharged";
         var dto = p.ToDto();
         /* masking must SURVIVE short values (adversarial-review finding):
            for a stored ID of 4 characters or fewer, "the last 4" IS the

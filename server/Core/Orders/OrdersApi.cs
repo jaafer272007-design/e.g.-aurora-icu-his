@@ -126,6 +126,16 @@ static class OrdersApi
                     && FormularyLogic.Resolve(db, draft.Medication.DrugId) is { Active: false } inactive)
                     return ApiError.StateConflict(
                         $"drug '{inactive.Name}' ({inactive.DrugId}) is inactive in the formulary — it cannot be selected for a new order");
+                /* the named-frequency vocabulary's identical invariant
+                   (Configuration Vocabularies §4): a RETIRED named
+                   frequency cannot be newly ordered — validation already
+                   400'd unknown values as SHAPE; retired-but-stored is
+                   STATE (every order carrying it keeps rendering, and a
+                   structured q<n>h value can never be retired) */
+                if (draft.Medication is not null
+                    && FormularyLogic.IsRetiredFrequency(db, draft.Medication.Frequency))
+                    return ApiError.StateConflict(
+                        $"frequency '{draft.Medication.Frequency}' is retired from the named-frequency vocabulary — it cannot be selected for a new order; reactivate it or choose an active frequency");
                 /* the lab catalogue's identical invariant (Layer 4 phase 2):
                    an INACTIVE test cannot be newly ordered; an UNKNOWN
                    testId stays accepted (the recorded escape hatch, closed
@@ -279,6 +289,13 @@ static class OrdersApi
                 && FormularyLogic.Resolve(db, req.Changes.DrugId) is { Active: false } inactiveDrug)
                 return ApiError.StateConflict(
                     $"drug '{inactiveDrug.Name}' ({inactiveDrug.DrugId}) is inactive in the formulary — it cannot be selected for a new order");
+            /* changing TO a retired named frequency is the same
+               new-selection state conflict (Configuration Vocabularies
+               §4) — the order's EXISTING frequency keeps rendering */
+            if (req.Changes.Frequency is not null
+                && FormularyLogic.IsRetiredFrequency(db, req.Changes.Frequency))
+                return ApiError.StateConflict(
+                    $"frequency '{req.Changes.Frequency}' is retired from the named-frequency vocabulary — it cannot be selected for a new order; reactivate it or choose an active frequency");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var before = JsonSerializer.Deserialize<MedicationDto>(row.MedicationJson, JsonOpts.Web)!;
             /* STRUCTURED INFUSION desync guards (SHAPE, 400): on an order

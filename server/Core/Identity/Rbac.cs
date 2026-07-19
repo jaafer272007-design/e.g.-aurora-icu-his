@@ -106,13 +106,25 @@ static class Rbac
            office Administrator (facility configuration). Beds are PLACES,
            not patient data — the locked clinical exclusion is untouched
            either way. */
+        /* dispositions.manage / isolation.manage / shifts.manage
+           (Configuration Vocabularies design §5 — per-domain atoms,
+           stated): the discharge-outcome, IPC-isolation-type and working-
+           shift vocabularies are CLINICAL/OPERATIONAL governance →
+           SeniorDoctor, the codestatus.manage precedent — and the same
+           hard constraint: NEVER on the office Administrator, never on
+           the System Administrator. Setting a PATIENT's isolation is the
+           separate bedside write riding observations.record (any doctor
+           or nurse — the bedside-clinician atom), exactly as
+           codestatus.set is separate from codestatus.manage.
+           frequencies.manage sits on Pharmacist below (medication
+           scheduling is formulary governance). */
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
             "results.document", "results.correct", "labcatalog.manage", "notes.document",
             "ai.view", "adt.admit", "adt.discharge", "observations.record",
             "observations.correct", "observations.configure", "patients.measure",
             "assignments.manage", "codestatus.set", "codestatus.manage", "imagingcatalog.manage",
-            "beds.manage"],
+            "beds.manage", "dispositions.manage", "isolation.manage", "shifts.manage"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "handoff.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record", "patients.measure"],
@@ -162,7 +174,8 @@ static class Rbac
            model — a distinct permission atom so a future profile split
            costs a table edit. APPLYING a set is clinician authority
            (orders.create/orders.sign), never this. */
-        ["Pharmacist"] = ["patients.view", "orders.view", "results.view", "formulary.manage", "ordersets.manage"],
+        ["Pharmacist"] = ["patients.view", "orders.view", "results.view", "formulary.manage", "ordersets.manage",
+            "frequencies.manage"],
         ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],
         /* results.create (results audit PR): entering a result is the
            PRODUCING SERVICE's authority — lab/radiology technicians — not

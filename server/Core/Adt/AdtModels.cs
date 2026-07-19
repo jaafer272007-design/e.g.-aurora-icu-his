@@ -191,13 +191,31 @@ class Encounter
     public string? CodeStatusCode { get; set; }
     public string CodeStatusEventsJson { get; set; } = "[]";
 
+    /* ISOLATION PRECAUTIONS (Configuration Vocabularies design §2 — the
+       boolean's upgrade) — ENCOUNTER-SCOPED on the code-status rule and
+       for the same reason: precautions are ordered for THIS stay; a
+       re-admission STARTS FRESH (stale precautions never silently carry
+       forward — they are re-established or honestly absent). The value
+       is a SET of IsolationTypes vocabulary CODES (multiple is
+       clinically real: contact AND droplet), selected never typed;
+       [] = no precautions. Set changes are audited into EventsJson (the
+       transfer precedent) with the prior set named. The pre-vocabulary
+       bedside boolean migrates true → ["unspecified"] (the recorded
+       fact was "isolated", not which kind — a clinician refines it;
+       a type is NEVER guessed). */
+    public string IsolationJson { get; set; } = "[]";
+
     /* patientName is a denormalized DISPLAY snapshot supplied by the caller
        (same precedent as orders' name/bed snapshots) — identity is never
        redefined here */
+    public List<string> IsolationTypes() =>
+        JsonSerializer.Deserialize<List<string>>(IsolationJson, JsonOpts.Web)!;
+
     public EncounterDto ToDto(string patientName)
     {
         var measurements = JsonSerializer.Deserialize<List<MeasurementEventDto>>(MeasurementsJson, JsonOpts.Web)!;
         var codeStatusEvents = JsonSerializer.Deserialize<List<CodeStatusEventDto>>(CodeStatusEventsJson, JsonOpts.Web)!;
+        var isolation = IsolationTypes();
         return new(
             EncounterId, PatientId, patientName, BedId, Diagnosis, Attending, Status,
             AdmittedAt, AdmittedBy, DischargedAt, DischargedBy,
@@ -208,7 +226,10 @@ class Encounter
             measurements.Count == 0 ? null : measurements,
             Disposition,
             CodeStatusCode,
-            codeStatusEvents.Count == 0 ? null : codeStatusEvents);
+            codeStatusEvents.Count == 0 ? null : codeStatusEvents,
+            /* additive nullable tail on the same rule: encounters
+               without precautions keep their pre-feature wire bytes */
+            isolation.Count == 0 ? null : isolation);
     }
 }
 
@@ -296,7 +317,11 @@ record EncounterDto(
        from the governed vocabulary (null = not recorded, an explicit
        state, never a default) + the append-only set history */
     string? CodeStatusCode = null,
-    List<CodeStatusEventDto>? CodeStatusEvents = null);
+    List<CodeStatusEventDto>? CodeStatusEvents = null,
+    /* isolation precautions — additive nullable tail on the same rule:
+       the SET of IsolationTypes vocabulary codes for THIS stay (absent
+       = none; set changes are audited into events) */
+    List<string>? IsolationTypes = null);
 
 /* one append-only code-status set event: dated time, actor + ACTIVE role
    (the #104 convention), the code set, the LABEL SNAPSHOT the clinician
@@ -310,6 +335,13 @@ record CodeStatusEventDto(string Time, string Actor, string Role, string Code, s
    vocabulary code (never typed text); unknown fields fail binding */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record SetCodeStatusRequest(string? Code);
+
+/* POST /adt/encounters/{id}/isolation — the REPLACEMENT set of selected
+   IsolationTypes vocabulary codes ([] clears precautions); every code
+   must be an ACTIVE entry (unknown → 400, retired → 409 — the
+   code-status precedent); unknown fields fail binding */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record SetIsolationRequest(List<string>? Types);
 
 /* bed registry row incl. derived occupancy — feeds the admission form's
    free-bed picker, transfer target picker, and the bed board layout */

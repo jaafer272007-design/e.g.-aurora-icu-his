@@ -21,10 +21,17 @@ namespace Aurora.Core.Assignments;
    - UserId references a REAL Users row (Username) — never free text
      (contrast Encounter.Attending, the legacy display string this
      supersedes in meaning; that field is deliberately left alone).
-   - Shift is a LABEL ('day' | 'night' — the timeline's existing 07–19 /
-     19–07 vocabulary), CHOSEN by the assigner, not derived from the
-     clock (derivation breaks at boundaries: a nurse arriving 06:45 for
-     handover is on the DAY shift). No Shift entity exists or is created.
+   - Shift is CHOSEN by the assigner, not derived from the clock
+     (derivation breaks at boundaries: a nurse arriving 06:45 for
+     handover is on the DAY shift). *[Superseded in part by the
+     Configuration Vocabularies build (design §3, the validator's
+     decision — three-shift ICUs are real): the hardcoded 'day'|'night'
+     label is now a CODE from the managed Shifts vocabulary, seeded
+     day/night so existing rows stay valid as data. The stored code is
+     a SNAPSHOT — retiring a shift never touches existing assignments
+     (they keep rendering through the label resolver); only NEW
+     assignments are refused it. "No Shift entity exists" is thereby
+     superseded: ShiftRow is that entity.]*
    - ENDED, NEVER DELETED (never-destroy): an ended assignment is
      history, not an absence. Every create and end carries actor +
      ACTIVE role (#104) + dated time — the row IS the audit record. */
@@ -39,7 +46,7 @@ class PatientAssignment
     public string UserId { get; set; } = "";
     public string Kind { get; set; } = "";    // nurse | doctor
     public string Role { get; set; } = "";    // primary | secondary
-    public string Shift { get; set; } = "";   // day | night (label, chosen)
+    public string Shift { get; set; } = "";   // Shifts vocabulary CODE (snapshot, chosen)
     /* audit: who created it, as which ACTIVE role, when (dated UTC
        "yyyy-MM-dd HH:mm"); "" on historical seed rows — facts are never
        invented (the ADT AdmittedAt convention) */

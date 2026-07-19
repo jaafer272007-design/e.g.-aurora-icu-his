@@ -19,15 +19,39 @@ static class FormularyLogic
        The named set was OrderLogic's hardcoded array before Layer 4; the
        table is seeded from the same values (via the mock store), so
        validation behavior is byte-identical — including the error text,
-       which is BUILT from the table in seed order. */
+       which is BUILT from the table in seed order.
+       MANAGED since the Configuration Vocabularies build (design §4).
+       The split, deliberate (the four-code rule's shape/state line):
+       - IsValidFrequency = ANY named row ∪ the q<n>h pattern — SHAPE.
+         A retired value is not malformed (every stored order carrying
+         it must keep resolving), so the 400 validation path is
+         unchanged for it; the RETIRED state answers 409 at order
+         create/modify (OrdersApi, beside the inactive-drug check).
+       - NamedFrequencies/FrequencyRule list ACTIVE values — they answer
+         "what may I pick NOW" (the GET the pickers read, and the
+         guidance text in every rejection).
+       - CheckFrequencies (per-drug authoring) requires ACTIVE ∪ q<n>h:
+         a NEW list may not adopt a retired value (not newly selectable),
+         while lists already stored keep rendering.
+       The q<n>h pattern itself STAYS CODE — a safety-shaped structured
+       rule (the infusion-unit closed union), never a hospital list. */
 
     public static List<string> NamedFrequencies(AuroraDb db) =>
-        db.NamedFrequencies.AsNoTracking().OrderBy(f => f.Seq).Select(f => f.Value).ToList();
+        db.NamedFrequencies.AsNoTracking().Where(f => f.Active).OrderBy(f => f.Seq).Select(f => f.Value).ToList();
 
     public static bool IsValidFrequency(AuroraDb db, string f) =>
         db.NamedFrequencies.AsNoTracking().Any(n => n.Value == f)
-        || (System.Text.RegularExpressions.Regex.Match(f, @"^q(\d{1,2})h$") is { Success: true } m
-            && int.TryParse(m.Groups[1].Value, out var h) && h is >= 1 and <= 48);
+        || IsStructuredFrequency(f);
+
+    /** the structured q<1-48>h pattern — code, never data */
+    public static bool IsStructuredFrequency(string f) =>
+        System.Text.RegularExpressions.Regex.Match(f, @"^q(\d{1,2})h$") is { Success: true } m
+        && int.TryParse(m.Groups[1].Value, out var h) && h is >= 1 and <= 48;
+
+    /** the named row exists but is retired — the 409 state at order
+        create/modify (a structured q<n>h value can never be retired) */
+    public static bool IsRetiredFrequency(AuroraDb db, string f) =>
+        db.NamedFrequencies.AsNoTracking().FirstOrDefault(n => n.Value == f) is { Active: false };
 
     public static string FrequencyRule(AuroraDb db) =>
         $"must be one of: {string.Join(", ", NamedFrequencies(db))}, or q<1-48>h";
@@ -72,15 +96,18 @@ static class FormularyLogic
         return null;
     }
 
-    /** every per-drug frequency must itself be orderable (named ∪ qNh) —
-        otherwise Pharmacy could author a frequency the order endpoint
-        rejects, rendering a button that always 400s */
+    /** every per-drug frequency must itself be orderable NOW (ACTIVE
+        named ∪ qNh) — otherwise Pharmacy could author a frequency the
+        order endpoint rejects, rendering a button that always fails.
+        Retired values in lists ALREADY STORED keep rendering (reads
+        never consult this); they just cannot be newly authored. */
     public static string? CheckFrequencies(AuroraDb db, string field, List<string>? list)
     {
         if (list is null) return null;
+        var active = NamedFrequencies(db).ToHashSet();
         for (var i = 0; i < list.Count; i++)
         {
-            if (!IsValidFrequency(db, list[i]))
+            if (!active.Contains(list[i]) && !IsStructuredFrequency(list[i]))
                 return $"{field}[{i}] '{list[i]}' is not a valid frequency — {FrequencyRule(db)}";
         }
         return null;
