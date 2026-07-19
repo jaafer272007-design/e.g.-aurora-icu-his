@@ -53,21 +53,52 @@ static class Seeder
         var db = scope.ServiceProvider.GetRequiredService<AuroraDb>();
         if (db.Database.IsNpgsql())
         {
-            db.Database.Migrate();
+            /* Serialize the ENTIRE boot-time DB preparation (migrate +
+               seed + backfills) under ONE advisory lock — see
+               MigrationAdvisoryLockKey for the full rationale. The lock
+               must cover more than Migrate(): the seed's
+               `if (!Any()) Insert` is equally a concurrent-boot race
+               (two empty-DB seeders both insert → the loser's
+               SaveChanges hits a duplicate-key DbUpdateException →
+               unhandled → exit 139). Held on a dedicated connection for
+               the whole critical section; the loser blocks, then finds
+               the DB already migrated AND seeded and no-ops. */
+            using var lockConn = new Npgsql.NpgsqlConnection(db.Database.GetConnectionString());
+            lockConn.Open();
+            AdvisoryLock(lockConn, acquire: true);
+            try
+            {
+                db.Database.Migrate();
+                PrepareDatabase(app, db, demoPassword, dbLabel);
+            }
+            finally
+            {
+                AdvisoryLock(lockConn, acquire: false);
+            }
         }
         else
         {
             /* EPHEMERAL demo mode — every write is lost on restart. The DB
                is a startup-built cache rebuilt every boot so the demo never
                needs migrations against a stale file. (Unreachable in
-               production: T2 refuses to boot without DATABASE_URL.) */
+               production: T2 refuses to boot without DATABASE_URL.) A
+               single-process SQLite file needs no cross-process lock. */
             app.Logger.LogWarning(
                 "DATABASE_URL is not set — running the EPHEMERAL SQLite demo mode ({Db}): all writes are lost on restart. Set DATABASE_URL (Postgres) for durable persistence.",
                 dbLabel);
             db.Database.EnsureDeleted();
             db.Database.EnsureCreated();
+            PrepareDatabase(app, db, demoPassword, dbLabel);
         }
+    }
 
+    /* Seed + one-time backfills + id-counter resume — the boot-time DB
+       preparation that follows migration. Idempotent throughout (seeds
+       guard on emptiness; backfills only fill nulls), so a second boot —
+       or the loser of the advisory lock — re-runs it as a clean no-op.
+       Runs UNDER the migration advisory lock on Postgres (see SeedAll). */
+    static void PrepareDatabase(WebApplication app, AuroraDb db, string demoPassword, string dbLabel)
+    {
         if (BootGuards.Production) SeedProduction(app, db);
         else SeedDemo(app, db, demoPassword, dbLabel);
 
@@ -119,6 +150,45 @@ static class Seeder
         Aurora.Core.Observations.ObservationCatalog.InitializeCounters(db);
         AiLogic.InitializeCounters(db);
         Aurora.Core.Nursing.HandoffLogic.InitializeCounters(db);
+    }
+
+    /* An arbitrary but STABLE 64-bit key every Aurora instance contends
+       on — the value is meaningless; only its constancy matters (all
+       instances must pick the SAME number). The DB is dedicated to
+       Aurora, so collision with another app's advisory lock is not a
+       concern. Positive (high byte 0x41), so it fits a signed bigint. */
+    const long MigrationAdvisoryLockKey = 0x4155524F_5F4D4947; // "AURO_MIG"
+
+    /* CONCURRENT-BOOT LOCK — the Render blue-green "exited 139" fix.
+       Neither EF Core's Migrate() NOR the seed's `if (!Any()) Insert`
+       holds a cross-process lock. When two server instances prepare the
+       SAME database at once (Render's zero-downtime deploy transiently
+       overlaps the retiring and the new instance; any replica/rolling
+       topology would too), they collide two ways: the loser re-runs a
+       migration the winner already applied (Postgres 42701 "column
+       already exists"), OR two empty-DB seeders both insert (duplicate
+       key). Either way the exception goes unhandled and the process dies
+       with exit 139 (the managed crash path raises SIGSEGV — it LOOKS
+       like a native segfault but is not). The retry then boots cleanly
+       because it is the ONLY preparer, which is exactly why the crash
+       "passed on retry" and masqueraded as a flaky deploy (the recurring
+       manual-redeploy pattern on server merges).
+
+       ONE session-level Postgres advisory lock, held across migrate +
+       seed + backfills (see SeedAll), serializes preparers: the loser
+       BLOCKS on pg_advisory_lock until the winner finishes, then finds
+       everything migrated AND seeded and no-ops. It is held on a
+       DEDICATED connection (EF uses its own underneath — the KEY, not
+       the connection, is what serializes cluster-wide). Session advisory
+       locks auto-release when their connection closes, so a preparer that
+       crashes mid-run never wedges the lock — the next boot proceeds. A
+       SINGLE-instance topology (the appliance) takes an uncontended lock
+       instantly: behavior is unchanged. */
+    static void AdvisoryLock(Npgsql.NpgsqlConnection conn, bool acquire)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT {(acquire ? "pg_advisory_lock" : "pg_advisory_unlock")}({MigrationAdvisoryLockKey})";
+        cmd.ExecuteNonQuery();
     }
 
     /* ---- development / staging: the full demo set, unchanged ---- */

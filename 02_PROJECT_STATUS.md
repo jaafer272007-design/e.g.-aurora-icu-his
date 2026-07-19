@@ -1,6 +1,38 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-19 · current through BED REGISTRY — the FOURTH
+**Last updated: 2026-07-19 · current through the CONCURRENT-BOOT
+ADVISORY LOCK — the root-cause fix for the recurring Render "exited
+139" on server merges (the validator pushed back on "recovered on
+retry" — correctly: a segfault that passes on retry is unexplained,
+not resolved). Diagnosed empirically: EF Core's `Migrate()` AND the
+seed's `if (!Any()) Insert` hold no cross-process lock, so when
+Render's zero-downtime deploy transiently overlaps the retiring and
+the new instance, the two collide — the loser re-runs an applied
+migration (Postgres 42701 "column already exists") or two empty-DB
+seeders both insert (duplicate key); the exception goes unhandled and
+the process dies with exit 139 (the managed crash path raises SIGSEGV,
+so it LOOKS native but is not). The retry boots clean because it is
+the only preparer — which is exactly why it "passed on retry" and
+masqueraded as flaky, and it explains the #134/#135/#137
+manual-redeploy pattern (all the same race). Reproduced locally: two
+instances against one fresh Postgres → the loser exits 139 (42701,
+then a seed DbUpdateException once the migration was locked); single
+instance boots clean 15×, incl. down to a 160 MB cap; an interrupted
+boot leaves a clean migration PREFIX (transactional DDL) and recovers.
+FIX: one SESSION-level Postgres advisory lock held across the WHOLE
+boot-time preparation (migrate + seed + backfills) serializes
+preparers — the loser blocks, then finds everything migrated AND
+seeded and no-ops; session locks auto-release if a holder crashes, so
+the lock never wedges. Single-instance topologies (the appliance) take
+an uncontended lock — behavior byte-unchanged (staging + production
+single-boot re-verified). NOT an appliance blocker (the compose runs
+ONE instance — no overlap), but a real latent robustness bug now
+closed for Render blue-green and any future replica/rolling topology.
+Package CI gains a regression guard (two concurrent boots vs one fresh
+Postgres → both healthy, no 139). Verified: concurrent-boot before =
+139 / after = both healthy single-seeded; `tsc -b --force` + dotnet
+green — see the record below);
+prior marker retained: current through BED REGISTRY — the FOURTH
 Configuration tenant, and the one whose retire rule is LIVE OCCUPANCY
 (the configurability audit's finding: the Beds table {BedId, Area, Seq}
 had no Active flag, a fixed 16-bed/two-pod seed, and a GET-only
@@ -5123,6 +5155,69 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Concurrent-boot advisory lock (built) — the Render "exited 139" root-cause fix
+
+**The finding (the validator refused "recovered on retry"):** every
+recent server merge that carried a migration intermittently crashed
+the new Render instance with **exit 139** at boot ("segfault"),
+attributed to `Program.cs:54`/`CreateBuilder` — a code path that runs
+BEFORE any DB access and before the merged feature's code. A retry
+always fixed it, so it read as flaky deploy and drove the recurring
+"owner does a manual redeploy" pattern on #134/#135/#137.
+
+**The cause (reproduced, not theorized):**
+- `Program.cs:54` is `WebApplication.CreateBuilder` — a red herring.
+  The real crash frame is `Seeder.cs` `db.Database.Migrate()` and the
+  seed that follows.
+- EF Core's `Migrate()` holds **no cross-process lock**. Render's
+  `autoDeploy` blue-green rollout transiently overlaps the retiring and
+  the new instance; a health-check timeout can also make Render start a
+  replacement while the first is still preparing → **two preparers at
+  once**. The loser re-applies a migration the winner already ran →
+  Postgres **42701 "column already exists"**; once migrations are
+  locked, the **seed** collides the same way (`if (!Any()) Insert` ×2 →
+  duplicate key → `DbUpdateException`). Unhandled → the runtime crashes
+  the process with **exit 139** (managed failfast raises SIGSEGV — it
+  LOOKS native but is not). The retry has ONE preparer against an
+  already-prepared DB → clean boot. That is precisely why it "passed on
+  retry."
+- **Empirical proof:** two instances vs one fresh Postgres → the loser
+  exits 139 (first 42701, then a seed `DbUpdateException` once the
+  migration was locked). A SINGLE instance boots clean 15× incl. down
+  to a **160 MB** memory cap (ruling out OOM). An interrupted boot
+  (kill at 1/2/4 s) always leaves a clean migration PREFIX
+  (transactional DDL — never half-applied) and the restart recovers to
+  fully-migrated/seeded/healthy.
+
+**The fix:** ONE session-level Postgres advisory lock
+(`pg_advisory_lock` on a constant key), held on a dedicated connection
+across the **entire** boot-time preparation — `Migrate()` + seed +
+backfills, extracted into `PrepareDatabase()` — not just the migration
+(the seed is equally a race). The loser blocks until the winner
+finishes, then finds everything migrated AND seeded and no-ops. Session
+advisory locks auto-release when their connection closes, so a preparer
+that crashes mid-run never wedges the lock — the next boot proceeds.
+The SQLite ephemeral demo path (single process) is unlocked and
+unchanged.
+
+**Appliance impact — none (and proven):** the appliance compose runs
+exactly ONE `aurora` instance (no blue-green, `restart: unless-stopped`
+restarts sequentially, gated on `postgres: service_healthy`), so it has
+one preparer and the race is structurally impossible. Single-instance
+staging and production boots were re-verified byte-unchanged (staging
+login + 16 beds; production 8 imaging studies + 16 beds + 0 demo
+patients). The only way to hit the race on the appliance is to
+deliberately run two instances against one DB — which the compose never
+does, and which the lock now makes safe anyway.
+
+**Verification:** concurrent-boot BEFORE = the loser exits 139; AFTER =
+both instances healthy, exit 0, DB single-seeded (14 patients, 16 beds,
+26 migrations, zero 42701/duplicate/unhandled). Package CI gains a
+regression guard (two concurrent boots vs one fresh Postgres → both
+reach healthz, neither 139, single-seeded) — validated locally.
+`tsc -b --force` + dotnet build green. Ends the manual-redeploy
+pattern.
 
 ### Bed Registry (built) — fourth Configuration tenant; the retire rule is LIVE OCCUPANCY
 
