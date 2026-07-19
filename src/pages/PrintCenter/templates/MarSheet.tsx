@@ -1,5 +1,6 @@
 import { Section, SignatureBlock } from '../primitives'
 import type { MarCell, MarSheetData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /* Contract #11 — Medication Administration Record (Stage 11).
    The record of doses ADMINISTERED — distinct from what was ordered.
@@ -22,7 +23,7 @@ function Cell({ c }: { c: MarCell }) {
     <div className={`pd-mar-cell pd-mar-${c.status}`}>
       <div className="pd-mar-slot">{c.scheduledTime || 'PRN'}</div>
       <div className="pd-mar-status">{STATUS_LABEL[c.status]}</div>
-      {c.documentedTime && <div className="pd-mar-meta">at {c.documentedTime}</div>}
+      {c.documentedTime && <div className="pd-mar-meta">at {displayFullStamp(c.documentedTime)}</div>}
       {c.documentedBy && <div className="pd-mar-meta">{c.documentedBy}</div>}
       {c.reason && <div className="pd-mar-reason">“{c.reason}”</div>}
     </div>

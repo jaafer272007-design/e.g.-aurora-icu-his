@@ -57,6 +57,15 @@ services:
       - "${AURORA_PORT:-8080}:8080"
     environment:
       APP_ENV: ${APPLIANCE_ENV:-staging}
+      # THE HOSPITAL'S TIMEZONE (Locale/Timezone design §1.3): the app
+      # STORES UTC and DISPLAYS the server's local time — and in a
+      # container "the server" is this container, whose default zone is
+      # UTC regardless of the host. The run scripts detect the HOST's
+      # IANA zone into appliance/.env on first run (run.sh from the OS;
+      # run.ps1 converts the Windows zone id, warning with instructions
+      # when it cannot — NEVER guessing a hospital's zone). Unset = UTC,
+      # honestly reported to clients via the hospital-identity read.
+      TZ: ${TZ:-UTC}
       DATABASE_URL: postgres://aurora:${POSTGRES_PASSWORD}@postgres:5432/aurora
       JWT_SECRET: ${JWT_SECRET}
       # /healthz + /build.txt stamp — the run script passes the packaged

@@ -440,6 +440,52 @@ jobs:
           [ "$N1" = "$N2" ] || { echo "MATCH MUTATED STATE: $N1 -> $N2"; exit 1; }
           echo "match creates nothing — no auto-merge, no side effects"
 
+      - name: PATIENT FILE NUMBER — its own field, never the MRN box (Locale/File-Number §2) — audited set, duplicate 409 naming the holder, confirmed-tier search UNMASKED, clearing refused; typed MRN STILL 400 (the #116 hole stays closed)
+        run: |
+          FN="FN-$GITHUB_RUN_ID"
+          I="$API/api/icu/adt/patients/$PID/identity"
+          # the run patient admitted WITHOUT one — optional by design; the
+          # office Administrator records it through the audited path
+          curl -sf -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"fileNumber":"'$FN'","reason":"chart number recorded from the paper file (e2e)"}' "$I" -o /tmp/fn1.json
+          FN="$FN" python3 -c '
+          import json,os; p=json.load(open("/tmp/fn1.json")); fn=os.environ["FN"]
+          assert p["fileNumber"]==fn, p
+          assert any("fileNumber" in ev["detail"] and fn in ev["detail"] for ev in p["identity"]), p["identity"]
+          print("file number recorded + audited (prior — preserved in the diff)")'
+          # served by the canonical identity read (the no-fork rule)
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$PID" | \
+            FN="$FN" python3 -c 'import json,sys,os; p=json.load(sys.stdin); assert p["fileNumber"]==os.environ["FN"], p; print("identity read serves it")'
+          # UNIQUE WHEN PRESENT: a NEW admission carrying the same number
+          # is refused NAMING the holder (nothing created — B2 stays free)
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"nameFirst":"Dup","nameSecond":"File","nameFamily":"Probe","sex":"M","allergies":"None","age":40,"diagnosis":"e2e probe","attending":"Dr. E2E","bedId":"'$B2'","fileNumber":"'$FN'"}' \
+            "$API/api/icu/adt/admissions")
+          rc=$(echo "$out" | tail -1); echo "duplicate file number admit -> HTTP $rc"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | PID="$PID" python3 -c 'import json,sys,os; e=json.load(sys.stdin)["error"]; assert "file number" in e and os.environ["PID"] in e, e; print("precise 409:", e)'
+          # SEARCHABLE: the match CONFIRMS by file number; the card carries
+          # it UNMASKED (the hospital chart label, not state PII — its job
+          # is verifying "same chart?" against the paper record)
+          curl -sf -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"fileNumber":"'$FN'"}' "$API/api/icu/adt/patients/match" -o /tmp/fnm.json
+          FN="$FN" PID="$PID" python3 -c '
+          import json,os; d=json.load(open("/tmp/fnm.json"))
+          assert d["tier"]=="confirmed" and len(d["matches"])==1, d
+          m=d["matches"][0]; assert m["patientId"]==os.environ["PID"] and m["fileNumber"]==os.environ["FN"], m
+          print("match by file number -> CONFIRMED, unmasked on the card")'
+          # clearing a recorded number is NOT a correction (amend never erase)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"fileNumber":"","reason":"e2e clearing probe"}' "$I")
+          echo "clearing probe -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # THE #116 HOLE STAYS CLOSED: a typed MRN on admission is STILL
+          # rejected at binding — the new field did NOT reopen it
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"nameFirst":"A","nameSecond":"B","nameFamily":"C","sex":"M","allergies":"None","age":30,"diagnosis":"x","attending":"y","bedId":"'$B2'","mrn":"MRN-123456"}' \
+            "$API/api/icu/adt/admissions")
+          echo "typed mrn admit -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          echo "three identifiers, each one job: MRN generated · national ID typed · file number typed-optional"
+
       - name: Transfer — DOCTOR → 403; NURSE → 200 (bed moves on Bed Overview); bad targets → 400
         run: |
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"bedId":"'$B2'"}' "$API/api/icu/adt/encounters/$EID/transfer")

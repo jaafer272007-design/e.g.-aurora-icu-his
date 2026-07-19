@@ -61,6 +61,9 @@ export function Admissions() {
   /* national identity number — EXACTLY as on the card, optional (the
      unidentified have none), unique when present (server-enforced) */
   const [nationalId, setNationalId] = useState('')
+  /* the hospital's own chart number (Locale/File-Number §2) — optional,
+     typed as recorded; NOT the MRN (which Aurora generates) */
+  const [fileNumber, setFileNumber] = useState('')
   /* IDENTITY REDESIGN: date of birth is the correct capture (age computes
      at read — the clock-computed-state rule); the estimated-age path
      stays for patients whose DOB is genuinely unknown at the bedside.
@@ -148,7 +151,7 @@ export function Admissions() {
        one, so this is where they learn the record number */
     showToast(kind,
       `${data.patient.name} (${data.patient.patientId} · ${data.patient.mrn}) admitted to ${data.encounter.bedId} — encounter ${data.encounter.encounterId}`)
-    setNameFirst(''); setNameSecond(''); setNameThird(''); setNameFourth(''); setNameFamily(''); setNationalId('')
+    setNameFirst(''); setNameSecond(''); setNameThird(''); setNameFourth(''); setNameFamily(''); setNationalId(''); setFileNumber('')
     setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
     setWeight(''); setHeight(''); setCodeStatusCode('')
     setAllergies('None documented')
@@ -172,6 +175,7 @@ export function Admissions() {
       ...(nameFourth.trim() ? { nameFourth: nameFourth.trim() } : {}),
       nameFamily: nameFamily.trim(),
       ...(nationalId.trim() ? { nationalId: nationalId.trim() } : {}),
+      ...(fileNumber.trim() ? { fileNumber: fileNumber.trim() } : {}),
       sex, allergies: allergies.trim(),
       ...identity, ...episode,
     })
@@ -230,11 +234,12 @@ export function Admissions() {
        lookups). Skipped only when nothing is matchable: an unidentified
        patient (no ID, estimated age) has no unique identifier and no
        real DOB — Tier C excludes them by construction. */
-    const matchable = nationalId.trim() !== '' || !dobUnknown
+    const matchable = nationalId.trim() !== '' || fileNumber.trim() !== '' || !dobUnknown
     if (matchable) {
       setBusy(true)
       const check = await matchPatient({
         ...(nationalId.trim() ? { nationalId: nationalId.trim() } : {}),
+        ...(fileNumber.trim() ? { fileNumber: fileNumber.trim() } : {}),
         nameFirst: nameFirst.trim(), nameSecond: nameSecond.trim(), nameFamily: nameFamily.trim(),
         ...(!dobUnknown && dob ? { dateOfBirth: dob } : {}),
       })
@@ -295,6 +300,11 @@ export function Admissions() {
                   {!readmitting && <>
                   <label>National identity number <i className="admopt">optional — as on the card; the unidentified have none</i>
                     <input value={nationalId} onChange={e => setNationalId(e.target.value)} placeholder="as printed on the identity card" disabled={!canAdmit} aria-label="National identity number, optional, exactly as on the identity card" />
+                  </label>
+                  {/* the hospital's own chart number — its own field, never
+                      the MRN box (the رضا lesson, applied a third time) */}
+                  <label>Patient file number <i className="admopt">optional — the hospital&apos;s own chart number, as recorded</i>
+                    <input className="num" value={fileNumber} onChange={e => setFileNumber(e.target.value)} placeholder="as on the hospital chart" disabled={!canAdmit} aria-label="Patient file number, optional, the hospital's own chart number as recorded" />
                   </label>
                   {/* the legal name in five parts (locked decision 1) — an
                       unidentified patient is admitted through these SAME

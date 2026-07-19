@@ -101,13 +101,15 @@ static class AdtApi
         {
             if (Rbac.Deny(user, "patients.view") is IResult denied) return denied;
             foreach (var (field, value) in new[] {
-                ("mrn", req.Mrn), ("nationalId", req.NationalId), ("nameFirst", req.NameFirst),
+                ("mrn", req.Mrn), ("nationalId", req.NationalId), ("fileNumber", req.FileNumber),
+                ("nameFirst", req.NameFirst),
                 ("nameSecond", req.NameSecond), ("nameFamily", req.NameFamily) })
                 if (value is not null && value.Length > AdtLogic.MaxTextLength)
                     return ApiError.BadRequest($"{field} exceeds {AdtLogic.MaxTextLength} characters");
             string? Clean(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
-            var (mrn, nid, nf, ns, nl) =
-                (Clean(req.Mrn), Clean(req.NationalId), Clean(req.NameFirst), Clean(req.NameSecond), Clean(req.NameFamily));
+            var (mrn, nid, fileNo, nf, ns, nl) =
+                (Clean(req.Mrn), Clean(req.NationalId), Clean(req.FileNumber),
+                 Clean(req.NameFirst), Clean(req.NameSecond), Clean(req.NameFamily));
             string? dob = null;
             if (Clean(req.DateOfBirth) is string rawDob)
             {
@@ -117,15 +119,18 @@ static class AdtApi
                 dob = rawDob;
             }
             var nameDobComplete = nf is not null && ns is not null && nl is not null && dob is not null;
-            if (mrn is null && nid is null && !nameDobComplete)
+            if (mrn is null && nid is null && fileNo is null && !nameDobComplete)
                 return ApiError.BadRequest(
-                    "nothing to match on — provide mrn, nationalId, or the complete required name (nameFirst, nameSecond, nameFamily) with dateOfBirth");
+                    "nothing to match on — provide mrn, nationalId, fileNumber, or the complete required name (nameFirst, nameSecond, nameFamily) with dateOfBirth");
 
             /* Tier A — unique identifiers, checked in the order the
-               registration form supplies them (nationalId first) */
+               registration form supplies them (nationalId first; the
+               file number is unique-when-present, so it confirms
+               exactly like the other two) */
             var rows = db.AdtPatients.AsNoTracking().AsEnumerable().ToList();
             Patient? confirmed = null;
             if (nid is not null) confirmed = rows.FirstOrDefault(p => p.NationalId == nid);
+            if (confirmed is null && fileNo is not null) confirmed = rows.FirstOrDefault(p => p.PatientFileNumber == fileNo);
             if (confirmed is null && mrn is not null) confirmed = rows.FirstOrDefault(p => p.Mrn == mrn);
 
             List<Patient> matches;
@@ -205,7 +210,8 @@ static class AdtApi
             foreach (var (field, value) in new[] {
                 ("reason", req.Reason), ("nameFirst", req.NameFirst), ("nameSecond", req.NameSecond),
                 ("nameThird", req.NameThird), ("nameFourth", req.NameFourth),
-                ("nameFamily", req.NameFamily), ("nationalId", req.NationalId), ("mrn", req.Mrn) })
+                ("nameFamily", req.NameFamily), ("nationalId", req.NationalId), ("mrn", req.Mrn),
+                ("fileNumber", req.FileNumber) })
                 if (value is not null && value.Length > AdtLogic.MaxTextLength)
                     return ApiError.BadRequest($"{field} exceeds {AdtLogic.MaxTextLength} characters");
 
@@ -232,6 +238,11 @@ static class AdtApi
                     : req.NationalId.Trim();
             if (nationalId == "")
                 return ApiError.BadRequest("nationalId must be the number as it appears on the identity card — clearing a recorded national ID is not an identity correction");
+            /* the file number corrects on the same amend-never-erase rule */
+            var fileNumber = req.FileNumber is null ? null
+                : string.IsNullOrWhiteSpace(req.FileNumber) ? "" : req.FileNumber.Trim();
+            if (fileNumber == "")
+                return ApiError.BadRequest("fileNumber must be the number as the hospital records it — clearing a recorded file number is not an identity correction");
 
             /* MRN correction (the #116 flag resolved): typed value XOR
                regenerate; a typed value must be canonical MRN-###### —
@@ -248,8 +259,8 @@ static class AdtApi
                 if (!System.Text.RegularExpressions.Regex.IsMatch(mrn, @"^MRN-\d{6}$"))
                     return ApiError.BadRequest("a corrected MRN must use the canonical MRN-###### format — free-form record numbers are the class of error this path removes; use regenerateMrn to have Aurora assign one");
             }
-            if (!anyName && nationalId is null && dob is null && mrn is null && !regenerateMrn)
-                return ApiError.BadRequest("nothing to correct — provide the structured name, nationalId, dateOfBirth, mrn, and/or regenerateMrn");
+            if (!anyName && nationalId is null && fileNumber is null && dob is null && mrn is null && !regenerateMrn)
+                return ApiError.BadRequest("nothing to correct — provide the structured name, nationalId, fileNumber, dateOfBirth, mrn, and/or regenerateMrn");
 
             var row = db.AdtPatients.FirstOrDefault(p => p.PatientId == patientId);
             if (row is null) return ApiError.NotFound();
@@ -270,6 +281,15 @@ static class AdtApi
                     return ApiError.StateConflict(
                         $"MRN '{mrn}' is already assigned to patient '{mrnHolder.PatientId}' "
                         + $"({mrnHolder.DisplayName}) — MRNs are unique");
+            }
+            if (fileNumber is not null)
+            {
+                var fnHolder = db.AdtPatients.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(p => p.PatientFileNumber == fileNumber && p.PatientId != patientId);
+                if (fnHolder is not null)
+                    return ApiError.StateConflict(
+                        $"file number '{fileNumber}' is already recorded for patient '{fnHolder.PatientId}' "
+                        + $"({fnHolder.DisplayName}, {fnHolder.Mrn}) — file numbers are unique");
             }
 
             /* build the previous→new diff — the previous identity is the
@@ -293,6 +313,11 @@ static class AdtApi
             {
                 parts.Add($"nationalId: {row.NationalId ?? "—"} → {nationalId}");
                 row.NationalId = nationalId;
+            }
+            if (fileNumber is not null && fileNumber != row.PatientFileNumber)
+            {
+                parts.Add($"fileNumber: {row.PatientFileNumber ?? "—"} → {fileNumber}");
+                row.PatientFileNumber = fileNumber;
             }
             if (dob is not null && dob != row.DateOfBirth)
             {
@@ -520,11 +545,13 @@ static class AdtApi
                 ("patientId", req.PatientId), ("nameFirst", req.NameFirst), ("nameSecond", req.NameSecond),
                 ("nameThird", req.NameThird), ("nameFourth", req.NameFourth),
                 ("nameFamily", req.NameFamily), ("nationalId", req.NationalId),
+                ("fileNumber", req.FileNumber),
                 ("allergies", req.Allergies), ("diagnosis", req.Diagnosis),
                 ("attending", req.Attending), ("bedId", req.BedId) })
                 if (value is not null && value.Length > AdtLogic.MaxTextLength)
                     return ApiError.BadRequest($"{name} exceeds {AdtLogic.MaxTextLength} characters");
             var nationalId = string.IsNullOrWhiteSpace(req.NationalId) ? null : req.NationalId.Trim();
+            var fileNumber = string.IsNullOrWhiteSpace(req.FileNumber) ? null : req.FileNumber.Trim();
             /* IDENTITY REDESIGN: exactly ONE of dateOfBirth / age on a NEW
                patient. dateOfBirth ("yyyy-MM-dd") is the correct capture —
                age then COMPUTES at read, never stored. age stays accepted
@@ -624,6 +651,20 @@ static class AdtApi
                         + $"'{holder.PatientId}' ({holder.DisplayName}, {holder.Mrn}) — national identity numbers are unique; "
                         + "if this is the same person returning, re-admit them as the existing patient (patientId)");
             }
+            /* PATIENT FILE NUMBER — the same unique-when-present rule
+               (Locale/File-Number §2.3): one hospital, no two patients
+               share a chart number; a duplicate is refused NAMING the
+               conflict (it catches a mistyped number at entry). */
+            if (fileNumber is not null)
+            {
+                var fnHolder = db.AdtPatients.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(p => p.PatientFileNumber == fileNumber && p.PatientId != patient?.PatientId);
+                if (fnHolder is not null)
+                    return ApiError.StateConflict(
+                        $"file number '{fileNumber}' is already recorded for patient "
+                        + $"'{fnHolder.PatientId}' ({fnHolder.DisplayName}, {fnHolder.Mrn}) — file numbers are unique; "
+                        + "if this is the same person returning, re-admit them as the existing patient (patientId)");
+            }
             if (patient is not null)
             {
                 var openEnc = db.Encounters.AsNoTracking()
@@ -692,6 +733,17 @@ static class AdtApi
                             $"patient '{patient.PatientId}' ({patient.Mrn}) has recorded national identity number {patient.NationalId} — "
                             + $"the submitted {nationalId} differs; identity corrections are not part of admission");
                 }
+                /* and for the file number — completes an absent value,
+                   409s on contradiction (never an admission side effect) */
+                if (fileNumber is not null)
+                {
+                    if (patient.PatientFileNumber is null)
+                        patient.PatientFileNumber = fileNumber;
+                    else if (patient.PatientFileNumber != fileNumber)
+                        return ApiError.StateConflict(
+                            $"patient '{patient.PatientId}' ({patient.Mrn}) has recorded file number {patient.PatientFileNumber} — "
+                            + $"the submitted {fileNumber} differs; identity corrections are not part of admission");
+                }
             }
             else
             {
@@ -709,6 +761,9 @@ static class AdtApi
                     NameFourth = string.IsNullOrWhiteSpace(req.NameFourth) ? null : req.NameFourth.Trim(),
                     NameFamily = req.NameFamily!.Trim(),
                     NationalId = nationalId,
+                    /* the hospital's own chart number — typed as recorded,
+                       optional (absent is honest), unique-checked above */
+                    PatientFileNumber = fileNumber,
                     Age = req.Age, DateOfBirth = dob,
                     Sex = req.Sex!, Allergies = req.Allergies!.Trim(),
                 };
@@ -931,7 +986,8 @@ static class AdtLogic
             p.PatientId, dto.FullName ?? dto.Name, p.Mrn, last4,
             dto.Age, dto.AgeSource, p.Sex,
             latest?.AdmittedAt ?? "", encs.Count, status,
-            open?.BedId, open?.EncounterId);
+            open?.BedId, open?.EncounterId,
+            p.PatientFileNumber);
     }
 
     public static string NextMrn(AuroraDb db)

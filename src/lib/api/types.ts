@@ -113,9 +113,9 @@ export interface UnitSummaryResponse {
    fabricated (owner's decision (b)). */
 
 export interface DerivedUnitSummary {
-  /** encounters whose server-stamped admittedAt falls on today's UTC day */
+  /** encounters whose server-stamped admittedAt falls on today's server-local day */
   admissionsToday: number
-  /** discharged encounters whose dischargedAt falls on today's UTC day */
+  /** discharged encounters whose dischargedAt falls on today's server-local day */
   dischargesToday: number
   /** unacknowledged results carrying the clinician-marked critical flag.
    *  NULL = the signed-in role holds no results.view authority (the RBAC
@@ -172,6 +172,9 @@ export interface RosterRecordDto {
    *  (any name part or number finds the patient) */
   fullName?: string
   nationalId?: string
+  /** the hospital's own chart number (Locale/File-Number §2) — the
+   *  third search key (staff look patients up by the number they know) */
+  fileNumber?: string
 }
 
 export interface PatientSummary {
@@ -190,6 +193,9 @@ export interface PatientSummary {
   /** structured-identity tail (absent on legacy rows) — search fields */
   fullName?: string
   nationalId?: string
+  /** the hospital's own chart number (Locale/File-Number §2) — the
+   *  third search key (staff look patients up by the number they know) */
+  fileNumber?: string
 }
 
 /* ---------- GET /api/icu/patients/:patientId ---------- */
@@ -1443,6 +1449,10 @@ export interface PatientIdentity {
   fullName?: string
   nationalId?: string
   identity?: IdentityEvent[]
+  /** PATIENT FILE NUMBER — the hospital's own chart number, stored as
+   *  recorded (Locale/File-Number §2): optional, typed, unique when
+   *  present. NOT a linking key — the MRN/patientId stay the keys. */
+  fileNumber?: string
 }
 
 /** one append-only identity-correction event — actor + ACTIVE role
@@ -1474,6 +1484,9 @@ export interface CorrectIdentityDraft {
   nameFamily?: string
   nationalId?: string
   dateOfBirth?: string
+  /** the file number corrects independently like the national ID —
+   *  unique against every other patient; clearing is refused */
+  fileNumber?: string
   mrn?: string
   regenerateMrn?: boolean
   reason: string
@@ -1519,6 +1532,10 @@ export interface AdmitDraft {
    *  format invention), unique when present, OPTIONAL (the unidentified
    *  have none). Distinct from the MRN. */
   nationalId?: string
+  /** PATIENT FILE NUMBER — the hospital's own chart number (typed as
+   *  recorded, OPTIONAL, unique when present). A separate field from
+   *  the MRN, which stays Aurora-generated (#116 never reopened). */
+  fileNumber?: string
   /** EXACTLY ONE of dateOfBirth / age on a new patient. dateOfBirth
    *  ("yyyy-MM-dd") is the correct capture — age then computes at read;
    *  age remains for estimated-age admissions (DOB genuinely unknown at
@@ -1556,6 +1573,8 @@ export interface AdmitResponse {
 export interface MatchPatientDraft {
   mrn?: string
   nationalId?: string
+  /** the hospital's chart number — unique when present, a confirmed-tier key */
+  fileNumber?: string
   nameFirst?: string
   nameSecond?: string
   nameFamily?: string
@@ -1580,6 +1599,10 @@ export interface MatchCard {
   status: 'admitted' | 'discharged' | 'deceased'
   currentBedId?: string | null
   currentEncounterId?: string | null
+  /** UNMASKED, deliberately: the hospital's own chart label (not state
+   *  PII) — verifying "same chart?" against the paper record is this
+   *  card's whole job */
+  fileNumber?: string | null
 }
 
 export interface MatchPatientResponse {
@@ -1776,6 +1799,11 @@ export interface HospitalIdentity {
   shortName: string
   address: string
   configured: boolean
+  /** the server's MACHINE CLOCK (Locale/Timezone §1.3) — only the PUBLIC
+   *  read carries these; the client primes its display clock from them
+   *  (storage stays UTC; display converts to the hospital's own zone) */
+  serverTimeZone?: string
+  serverUtcOffsetMinutes?: number
 }
 
 export interface HospitalIdentityWithHistory extends HospitalIdentity {

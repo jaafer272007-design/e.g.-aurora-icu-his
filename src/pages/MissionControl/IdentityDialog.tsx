@@ -22,6 +22,7 @@ export function IdentityDialog(
   const [fourth, setFourth] = useState(patient.nameFourth ?? '')
   const [family, setFamily] = useState(patient.nameFamily ?? '')
   const [nationalId, setNationalId] = useState(patient.nationalId ?? '')
+  const [fileNumber, setFileNumber] = useState(patient.fileNumber ?? '')
   const [dob, setDob] = useState(patient.dateOfBirth ?? '')
   /* MRN correction (the #116 flag resolved): typed canonical value XOR
      "regenerate" (Aurora assigns a fresh unique MRN-######) — the fix a
@@ -64,6 +65,7 @@ export function IdentityDialog(
         nameFamily: family.trim(),
       } : {}),
       ...(nationalId.trim() && nationalId.trim() !== patient.nationalId ? { nationalId: nationalId.trim() } : {}),
+      ...(fileNumber.trim() && fileNumber.trim() !== patient.fileNumber ? { fileNumber: fileNumber.trim() } : {}),
       ...(dob && dob !== patient.dateOfBirth ? { dateOfBirth: dob } : {}),
       ...(regenMrn ? { regenerateMrn: true }
         : mrnTouched ? { mrn: mrn.trim() } : {}),
@@ -84,6 +86,7 @@ export function IdentityDialog(
           in the history below (amend, never erase). Current record: <b>{patient.fullName ?? patient.name}</b>
           {patient.nationalId ? <> · ID <span className="num">{patient.nationalId}</span></> : ' · no national ID recorded'}
           {' '}· MRN <span className="num">{patient.mrn}</span>
+          {patient.fileNumber ? <> · File <span className="num">{patient.fileNumber}</span></> : ' · no file number recorded'}
         </p>
         <form onSubmit={submit}>
           <div className="idgrid">
@@ -104,6 +107,9 @@ export function IdentityDialog(
             </label>
             <label>National identity number <i>as on the card</i>
               <input value={nationalId} onChange={e => setNationalId(e.target.value)} />
+            </label>
+            <label>Patient file number <i>the hospital&apos;s own chart number — audited</i>
+              <input className="num" value={fileNumber} onChange={e => setFileNumber(e.target.value)} />
             </label>
             <label>Date of birth <i>correctable once known — audited</i>
               <input type="date" value={dob} onChange={e => setDob(e.target.value)} />

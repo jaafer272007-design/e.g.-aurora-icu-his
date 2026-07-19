@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
-import { displayStamp, agoLabel, useNow } from '../../lib/time'
+import { agoLabel, clockZone, displayFullStamp, displayStamp, useNow, wireStampOfLocal } from '../../lib/time'
 import type { CorrectImagingDraft, ImagingStatus, ImagingStudy, Order, ResultFlag } from '../../lib/api/types'
 
 const STATUS_STEPS: ImagingStatus[] = ['ordered', 'in-progress', 'preliminary', 'final']
@@ -55,7 +55,8 @@ const currentValueOf = (s: ImagingStudy, target: Target): string => {
   switch (target) {
     case 'findings': return s.report ?? ''
     case 'impression': return s.impression ?? ''
-    case 'performedAt': return s.performedAt ?? ''
+    /* prefill as WALL TIME (display clock) — converts back to the UTC wire on submit */
+    case 'performedAt': return s.performedAt ? displayFullStamp(s.performedAt) : ''
     case 'reportingRadiologist': return s.reportingRadiologist ?? ''
     case 'note': return s.note ?? ''
     case 'critical': return s.flag === 'critical' ? 'critical' : ''
@@ -192,7 +193,13 @@ export function ImagingCard({
     } else {
       const raw = editValue.trim()
       if (raw === '') { setEditError(`enter the corrected ${editTarget}`); return }
-      draft[editTarget] = raw
+      if (editTarget === 'performedAt')
+        /* typed as WALL TIME on the display clock; the wire stays UTC
+           (the one conversion path's write side) — a malformed shape
+           passes through raw so the server's validation message stays
+           the messenger */
+        draft.performedAt = wireStampOfLocal(raw) ?? raw
+      else draft[editTarget] = raw
     }
     if (!selfTier && !editReason.trim()) { setEditError('a reason is required for a Consultant-tier correction'); return }
     /* tier-1 sends no reason; if the window expired between render and
@@ -328,7 +335,7 @@ export function ImagingCard({
                   <input
                     className={editTarget === 'performedAt' ? 'num' : undefined}
                     aria-label={`Corrected ${editTarget}`}
-                    placeholder={editTarget === 'performedAt' ? 'yyyy-MM-dd HH:mm (UTC)' : `corrected ${editTarget}`}
+                    placeholder={editTarget === 'performedAt' ? `yyyy-MM-dd HH:mm (${clockZone() ?? 'local time'})` : `corrected ${editTarget}`}
                     value={editValue}
                     onChange={e => { setEditValue(e.target.value); setEditError(null) }}
                   />

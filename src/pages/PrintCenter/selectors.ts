@@ -6,7 +6,7 @@ import { resolveCodeStatus } from '../../lib/codeStatus'
 import type {
   Encounter, LabDraw, Observation, ObservationType, Order, PatientIdentity, RosterRecordDto,
 } from '../../lib/api/types'
-import { dayOffsetOf } from '../../lib/time'
+import { dayOffsetOf, localStamp } from '../../lib/time'
 import { computeNews2, computeSofa } from '../../lib/scoring'
 import type {
   ActiveOrdersData, AdmissionNoteData, ConsultReportData, DailyProgressData, DischargeSummaryData,
@@ -51,7 +51,8 @@ function toIdentity(r: RosterRecordDto): PrintPatientIdentity {
     codeStatus: cs.kind === 'none' ? null
       : cs.kind === 'legacy' ? `${cs.label} (legacy — unverified)` : cs.label,
     bedId: r.bedId, diagnosis: r.diagnosis,
-    fullName: r.fullName ?? null, nationalId: r.nationalId ?? null, source: 'roster',
+    fullName: r.fullName ?? null, nationalId: r.nationalId ?? null,
+    fileNumber: r.fileNumber ?? null, source: 'roster',
   }
 }
 
@@ -68,7 +69,8 @@ function recordIdentity(p: PatientIdentity, e: Encounter, codeStatusLabel: strin
        recorded") — label resolved by the caller from the vocabulary */
     allergies: p.allergies, attending: e.attending, codeStatus: codeStatusLabel,
     bedId: e.bedId, diagnosis: e.diagnosis,
-    fullName: p.fullName ?? null, nationalId: p.nationalId ?? null, source: 'patient-record',
+    fullName: p.fullName ?? null, nationalId: p.nationalId ?? null,
+    fileNumber: p.fileNumber ?? null, source: 'patient-record',
   }
 }
 
@@ -80,7 +82,7 @@ function snapshotIdentity(e: Encounter): PrintPatientIdentity {
     patientId: e.patientId, name: e.patientName, mrn: null, age: null, sex: null,
     allergies: null, attending: e.attending, codeStatus: null,
     bedId: e.bedId, diagnosis: e.diagnosis,
-    fullName: null, nationalId: null, source: 'encounter-snapshot',
+    fullName: null, nationalId: null, fileNumber: null, source: 'encounter-snapshot',
   }
 }
 
@@ -482,8 +484,11 @@ export async function buildVitalsFlowsheet(patientId: string, encounterId?: stri
   const endMs = (Math.floor(latestMs / HOUR) + 1) * HOUR
   const startMs = endMs - WINDOW_HOURS * HOUR
   const columns: FlowsheetColumn[] = Array.from({ length: WINDOW_HOURS }, (_, i) => {
-    const d = new Date(startMs + i * HOUR)
-    return { hourLabel: `${String(d.getUTCHours()).padStart(2, '0')}:00`, date: d.toISOString().slice(0, 10) }
+    /* column labels on the DISPLAY CLOCK (Locale/Timezone §1) — the
+       bucketing below stays pure epoch math, so cells land in the hour
+       the staff actually charted them on the wall clock */
+    const stamp = localStamp(startMs + i * HOUR)
+    return { hourLabel: stamp.slice(11), date: stamp.slice(0, 10) }
   })
   const colOf = (o: Observation) => Math.floor((obsMs(o.clinicalTime) - startMs) / HOUR)
 
@@ -548,8 +553,8 @@ export async function buildVitalsFlowsheet(patientId: string, encounterId?: stri
     grid: {
       columns,
       sections,
-      windowStart: new Date(startMs).toISOString().slice(0, 16).replace('T', ' '),
-      windowEnd: new Date(endMs).toISOString().slice(0, 16).replace('T', ' '),
+      windowStart: localStamp(startMs),
+      windowEnd: localStamp(endMs),
       amendedCount: windowObs.filter(o => o.amendments.length > 0).length,
     },
     unavailable: false,

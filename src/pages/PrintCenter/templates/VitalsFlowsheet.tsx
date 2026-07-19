@@ -1,5 +1,6 @@
 import { Section, SignatureBlock } from '../primitives'
 import type { FlowsheetData } from '../types'
+import { clockZone } from '../../../lib/time'
 
 /* Contract #12 — Vital Signs / Observation Flowsheet (Stage 11).
    Rows = observation types (the validator's TRADITIONAL SPLIT: Vital
@@ -33,8 +34,9 @@ export function VitalsFlowsheet({ data }: { data: FlowsheetData }) {
     )
   }
 
-  /* one header cell per day boundary (charted clinical times are real
-     UTC datetimes — the flowsheet prints their dates) */
+  /* one header cell per day boundary (charted clinical times are
+     stored UTC and CONVERTED to the display clock in the selector —
+     the flowsheet prints the hospital's own dates) */
   const dateSpans: { date: string; span: number }[] = []
   for (const c of grid.columns) {
     const last = dateSpans[dateSpans.length - 1]
@@ -44,7 +46,7 @@ export function VitalsFlowsheet({ data }: { data: FlowsheetData }) {
 
   return (
     <>
-      <Section title={`Observation flowsheet — ${grid.windowStart} → ${grid.windowEnd} UTC (hourly)`}>
+      <Section title={`Observation flowsheet — ${grid.windowStart} → ${grid.windowEnd} (${clockZone() ?? 'local time'} · hourly)`}>
         <table className="pd-table pd-flow">
           <thead>
             <tr>

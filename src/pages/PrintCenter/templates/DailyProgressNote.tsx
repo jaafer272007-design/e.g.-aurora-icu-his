@@ -1,5 +1,6 @@
 import { FactGrid, MedTable, pv, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { DailyProgressData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Template 2 — Daily Progress Note. Current-state document for an open
  *  encounter: bedside snapshot, active problems, ventilation flag (from
@@ -22,7 +23,7 @@ export function DailyProgressNote({ data }: { data: DailyProgressData }) {
             <tbody>
               {recentEvents.map(e => (
                 <tr key={e.id}>
-                  <td>{e.time}</td>
+                  <td>{displayFullStamp(e.time)}</td>
                   <td>{e.categoryLabel}: {e.title}{e.detail ? ` — ${e.detail}` : ''}</td>
                   <td>{e.actor ?? '—'}</td>
                 </tr>
@@ -87,7 +88,7 @@ export function DailyProgressNote({ data }: { data: DailyProgressData }) {
               {latestLabs.map(d => (
                 <tr key={d.labId}>
                   <td>{d.panel}<span className="pd-sub"> {d.labId}</span></td>
-                  <td>{d.resultedAt}</td>
+                  <td>{displayFullStamp(d.resultedAt)}</td>
                   <td className={d.flag !== 'normal' ? 'pd-flag' : undefined}>{d.flag}</td>
                   <td>
                     {(d.items.filter(i => i.flag !== 'normal').length ? d.items.filter(i => i.flag !== 'normal') : d.items)

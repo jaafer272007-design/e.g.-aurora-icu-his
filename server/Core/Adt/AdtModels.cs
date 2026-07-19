@@ -55,6 +55,18 @@ class Patient
        and multiple ID-less patients never collide. Distinct from the
        MRN (the hospital's own record number). */
     public string? NationalId { get; set; }
+    /* PATIENT FILE NUMBER (the Locale/File-Number design §2 — the
+       contracted hospital's own chart number, the identifier they have
+       always filed by): stored EXACTLY as the hospital records it — no
+       format invention (the national ID's as-on-card rule). OPTIONAL (a
+       walk-in has none); UNIQUE WHEN PRESENT (one hospital — a duplicate
+       is refused naming the conflict, like the national ID); TYPED by
+       the registrar, which is SAFE because it is NOT a linking key — the
+       MRN and patientId remain the keys (#116), so a typo here is a
+       correctable data error, never a wrong-patient linkage. Three
+       identifiers, each one job: MRN (Aurora's, generated) · national ID
+       (the state's, typed) · file number (the hospital's, typed). */
+    public string? PatientFileNumber { get; set; }
     /* IDENTITY CORRECTION history (§3 — append-only, amend never erase):
        every name/national-ID/DOB/MRN correction records actor + ACTIVE
        role (#104) + dated time + reason + the previous→new diff. A record
@@ -112,7 +124,8 @@ class Patient
             NameFirst, NameSecond, NameThird, NameFourth, NameFamily,
             HasStructuredName ? FullLegalName : null,
             NationalId,
-            history.Count == 0 ? null : history);
+            history.Count == 0 ? null : history,
+            PatientFileNumber);
     }
 
     (int Age, string Source) ResolveAge()
@@ -281,7 +294,11 @@ record PatientDto(
     string? NameFirst = null, string? NameSecond = null, string? NameThird = null,
     string? NameFourth = null, string? NameFamily = null,
     string? FullName = null, string? NationalId = null,
-    List<IdentityEventDto>? Identity = null);
+    List<IdentityEventDto>? Identity = null,
+    /* the hospital's own chart number (Locale/File-Number §2) — an
+       additive nullable tail like the rest: absent is honest (existing
+       patients predate the field), WhenWritingNull keeps their bytes */
+    string? FileNumber = null);
 
 /* one append-only identity-correction event (§3): dated time, actor +
    ACTIVE role (#104), the required reason, and the previous→new diff —
@@ -391,7 +408,15 @@ record AdmitRequest(
     /* Code status — OPTIONAL at admission on the same rule (selected
        from the ACTIVE vocabulary, never typed; omitted = honestly NOT
        RECORDED until a physician sets it — never a default) */
-    string? CodeStatusCode = null);
+    string? CodeStatusCode = null,
+    /* Patient file number (Locale/File-Number §2) — the hospital's own
+       chart number, OPTIONAL and typed as recorded. NOT the MRN and not
+       a replacement for it: the MRN member stays retired from this
+       request (Disallow → a typed `mrn` still fails binding, the #116
+       hole stays closed). Unique when present; a re-admission may
+       complete an absent value but never silently contradict a recorded
+       one (the nationalId rule). */
+    string? FileNumber = null);
 
 /* PUT /adt/patients/{id}/identity — the audited identity-correction path
    (§3, REQUIRED by the unknown-patient decision): correcting the name
@@ -416,7 +441,11 @@ record AdmitRequest(
 record CorrectIdentityRequest(
     string? NameFirst, string? NameSecond, string? NameThird, string? NameFourth,
     string? NameFamily, string? NationalId, string? DateOfBirth, string? Reason,
-    string? Mrn = null, bool? RegenerateMrn = null);
+    string? Mrn = null, bool? RegenerateMrn = null,
+    /* the file number corrects independently like the national ID —
+       unique against every other patient, clearing refused (amend never
+       erase), previous value preserved in the history diff */
+    string? FileNumber = null);
 
 /* POST /adt/patients/match — PATIENT IDENTITY MATCH (the match+overview
    design §1-2): the on-submit duplicate check that runs BEFORE anything
@@ -439,7 +468,11 @@ record CorrectIdentityRequest(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record MatchPatientRequest(
     string? Mrn, string? NationalId,
-    string? NameFirst, string? NameSecond, string? NameFamily, string? DateOfBirth);
+    string? NameFirst, string? NameSecond, string? NameFamily, string? DateOfBirth,
+    /* the hospital's file number — unique when present, so it is a
+       CONFIRMED-tier key like the national ID and the MRN (staff look
+       patients up by the number they know — §2.3 searchable) */
+    string? FileNumber = null);
 
 /* the match dialog's identity summary card — IDENTITY ONLY (the office
    Administrator sees exactly this; no clinical fields exist here to
@@ -450,7 +483,12 @@ record MatchCardDto(
     string PatientId, string FullName, string Mrn, string? NationalIdLast4,
     int Age, string AgeSource, string Sex,
     string LastAdmission, int AdmissionCount, string Status,
-    string? CurrentBedId = null, string? CurrentEncounterId = null);
+    string? CurrentBedId = null, string? CurrentEncounterId = null,
+    /* UNMASKED, deliberately (stated choice): the file number is the
+       hospital's own chart label, not state PII like the national ID —
+       verifying "same chart?" against the paper record is this card's
+       whole job, and a masked chart number cannot do it */
+    string? FileNumber = null);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record TransferRequest(string? BedId);

@@ -1,6 +1,74 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-19 · current through the CONFIGURATION
+**Last updated: 2026-07-19 · current through LOCALE/TIMEZONE + PATIENT
+FILE NUMBER — the last two per-hospital hardcodings of the editable
+arc, from the validator's design (driven by a REAL HOSPITAL UNDER
+CONTRACT). PART 1 — store UTC, display local (machine clock): STORAGE
+IS UNTOUCHED — every stamp stays `yyyy-MM-dd HH:mm` UTC (#95's dated
+record and #111's dose derivation depend on the one time base; both
+re-verified). DISPLAY converts to the SERVER's own zone through ONE
+conversion path (src/lib/time.ts localParts): hmOf/dayOffsetOf/
+displayStamp/agoLabel absolute forms now render the hospital's wall
+clock (day grouping crosses midnight on the LOCAL day), the audited
+`nowHm()` browser-local leak is dead (same path), and the stragglers
+were swept — print templates' raw stamps (displayFullStamp), the
+flowsheet's column labels/window, PrintDocument's printed-at, the
+Statistics calendar periods (server-local midnight/Monday/1st, stated
+on the page with the zone), Admin Home's today buckets, and the
+"(UTC)" labels; ImagingCard's performedAt correction now takes WALL
+TIME and converts to the UTC wire (the write side of the same path).
+MECHANISM (flagged, stated): the anonymous hospital-identity boot read
+carries `serverTimeZone` (IANA, from TimeZoneInfo.Local — the
+container's TZ) + `serverUtcOffsetMinutes` (Intl-fallback); the client
+primes once per session (sessionStorage; all data reads gate on it) —
+runtime-config.js was NOT viable (the production bundle ignores it by
+construction). The APPLIANCE (flagged): compose gains `TZ:
+${TZ:-UTC}`; run.sh detects the HOST's IANA zone into appliance/.env
+(timedatectl → /etc/timezone → /etc/localtime), run.ps1 converts the
+Windows id via TryConvertWindowsIdToIanaId (PowerShell 7) and on 5.1
+WARNS with the exact TZ= line to add — NEVER guessing a hospital's
+zone; unset = honest UTC. Render staging sets no TZ → reports Etc/UTC
+offset 0 → staging display is UNCHANGED BY CONSTRUCTION (the frontend
+suite now asserts the clock fields on the boot read). Mock demo: no
+server → the device's own clock, honestly. Out of scope, recorded:
+per-user zones (single site), number/locale formatting. PART 2 —
+PATIENT FILE NUMBER (the hospital's own chart number, previously
+crammed into the MRN box — رضا's national-ID situation a third time,
+same fix): `PatientFileNumber` on the patient record MIRRORS THE
+NATIONAL ID EXACTLY — stored as the hospital records it (no format
+invention), OPTIONAL (a walk-in has none; absent is honest and
+WhenWritingNull keeps legacy wire bytes), TYPED by the registrar
+(safe: NOT a linking key — MRN/patientId remain the keys, a typo is a
+correctable data error never a wrong-patient linkage),
+UNIQUE-WHEN-PRESENT (admission duplicate → 409 NAMING the holder;
+re-admission completes-or-409s like the national ID), SEARCHABLE (a
+CONFIRMED-tier match key; the MC rail's one search box), CORRECTABLE
+via the audited #113/#119 identity path (clearing refused, prior
+preserved in the diff, collision 409). THE MRN STAYS AURORA-GENERATED
+— the #116 hole is NOT reopened (a typed `mrn` still fails binding →
+400, re-asserted in the adt suite's new PATIENT FILE NUMBER step).
+Three identifiers, each one job: MRN (Aurora's, generated) · national
+ID (the state's, typed) · file number (the hospital's, typed
+optional). Migration: one additive nullable column — existing patients
+render unchanged with an honestly-absent number; NOTHING moved out of
+the MRN (never-fabricate; a file number sitting in an old MRN is a
+manual audited per-patient correction, not an automated migration).
+Flags taken, stated: file number ON print documents (the identity band
+— it is the number the hospital files by); RBAC mirrors #113 (entered
+at admission by the admitting clinician, corrected by the office
+Administrator's identity.correct — no new atom); the match card shows
+it UNMASKED (the hospital's chart label, not state PII — verifying
+"same chart?" is the card's whole job). Verified: 31/31 headless ×2
+providers (Postgres + SQLite) incl. storage-stays-UTC and
+legacy-bytes; live-upgrade replica (old image seeds Postgres → new
+image on the SAME db: chain tops at AddPatientFileNumber, 14 patients
+0 file numbers, double-boot idempotent, admission with a number works
+upgraded); 19/19 rendered vs a TZ=Asia/Baghdad container with the
+BROWSER PINNED TO UTC — a 22:31-UTC admission renders 01:31 NEXT
+LOCAL DAY on the printed discharge summary, no raw-UTC leak, and the
+file number flows form → header → search → match card → audited
+correction → history → print — see the record below);
+prior marker retained: current through the CONFIGURATION
 VOCABULARIES — the LAST FOUR vocabularies of the configurability arc
 (dispositions, isolation types, shifts, named frequencies), each a
 Configuration tenant on the proven catalogue pattern, closing the
@@ -5210,6 +5278,100 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Locale/Timezone + Patient File Number (built) — the last of the editable arc
+
+From the validator's design (LOCALE_FILENUMBER_DESIGN.md — driven by a
+real hospital under contract). The three things verified against the
+real code FIRST, and what they determined:
+
+1. **Timestamps** — stored `DateTime.UtcNow.ToString("yyyy-MM-dd
+   HH:mm")` server-side, end-to-end UTC; the client's ONE absolute-
+   display module is `src/lib/time.ts`, whose `hmOf`/`dayOffsetOf`/
+   `displayStamp` rendered the UTC hour directly and whose `nowHm()`
+   was the audited BROWSER-LOCAL leak (`toLocaleTimeString` — a mixed
+   clock on the same screen). Outside the module: four raw
+   `toISOString` display sites (PrintDocument printed-at, flowsheet
+   window/columns) plus the "(UTC)" labels (Statistics, Admin Home
+   chips, two print templates) and ~18 print-template raw-stamp
+   renders. ALL display now converts through `localParts()` (Intl with
+   the server's IANA zone; reported-offset fallback); parsers
+   (`datedEpoch`, marSchedule, LOS math) are UNTOUCHED — #111's MAR
+   derivation re-verified live. The ImagingCard `performedAt`
+   correction input flips to wall-time-in / UTC-on-wire
+   (`epochOfLocalStamp`/`wireStampOfLocal` — the write side of the
+   same path; the API contract is unchanged).
+2. **The TZ mechanism** — runtime-config.js is NOT viable (the
+   production bundle ignores it BY CONSTRUCTION, the #131 contract),
+   so the machine clock rides the install's one ANONYMOUS boot read:
+   `GET /api/icu/hospital-identity` gains computed
+   `serverTimeZone`/`serverUtcOffsetMinutes` (TimeZoneInfo.Local —
+   works under InvariantGlobalization because zone data is OS tzdata,
+   not ICU culture data; the Debian aspnet base ships tzdata). The
+   client primes once per session and gates data reads on it, so no
+   timestamp-bearing screen paints on the wrong clock; sessionStorage
+   makes reloads synchronous. The appliance container: compose `TZ:
+   ${TZ:-UTC}`; run.sh writes the HOST's zone into appliance/.env
+   (timedatectl → /etc/timezone → /etc/localtime readlink); run.ps1
+   uses TryConvertWindowsIdToIanaId under PowerShell 7 and WARNS with
+   the exact `TZ=Asia/Baghdad`-style line under 5.1 — never guessing.
+   Render sets no TZ → staging honestly reports Etc/UTC and its
+   display is unchanged by construction; the deployed-frontend suite
+   gains a MACHINE CLOCK step asserting the fields on the boot read.
+3. **The identity surfaces** — AdmitRequest is a Disallow record with
+   NO mrn member (typed MRN → automatic 400, structural); the national
+   ID is the exact template: optional + as-recorded + unique-when-
+   present 409 naming the holder + completes-or-409s on re-admission +
+   audited correction with clearing refused. `PatientFileNumber`
+   mirrors every clause; the match endpoint confirms by it (tier order
+   nationalId → fileNumber → mrn); the roster/PatientDto/match-card
+   tails are additive-nullable (WhenWritingNull — legacy wire bytes
+   preserved, proven). Card shows it UNMASKED (stated: the hospital's
+   chart label, not state PII — unlike the server-masked national-ID
+   last-4). Renders: admission form (its own optional field), MC
+   header + the one search box, Patient History header, the match
+   dialog card, and the print identity band ("File No." — flag taken:
+   YES, it is the number the hospital files by). RBAC (flag confirmed):
+   the #113 shape exactly — entered at admission by the admitting
+   clinician, seen/corrected by the office Administrator through
+   identity.correct; no new atom.
+
+Migration `AddPatientFileNumber`: one additive nullable TEXT column —
+no live-upgrade defaults drama (nullable IS the design: existing
+patients honestly absent); NOTHING parsed or moved out of the MRN.
+
+**Verification.** 31/31 headless ×2 providers (Postgres — staging's,
+and SQLite) covering: clock fields on the boot read (and NOT on the
+history read); admittedAt stamped UTC not +03:00 (storage unchanged);
+file number end-to-end (optional, served by the canonical resolver +
+roster, duplicate 409 naming holder, Disallow unknown-field, typed-MRN
+400, 2000-char bound, match confirmed + unmasked, doctor-403 /
+office-Administrator-200 correction with prior-preserving diffs,
+clearing 400, collision 409, readmit same-200 / contradiction-409 /
+completion-200, seeded legacy rows byte-identical). Live-upgrade
+replica: the previous main image seeded Postgres → THIS build booted
+on the same volume → migration chain tops at AddPatientFileNumber, 14
+patients / 0 file numbers, double-boot idempotent, and a file-number
+admission works on the upgraded db. 19/19 rendered against a
+TZ=Asia/Baghdad container with the BROWSER PINNED TO UTC (any
+remaining browser-local or raw-UTC surface would fail by
+construction): a 2026-07-19 22:31 UTC admission prints **2026-07-20
+01:31** — the +03:00 wall clock, crossing the local day boundary — on
+the discharge summary, whose printed-at line is Baghdad-now and names
+the zone; the file number flows form → header → rail search → match
+card (the typo-catch: a second patient with the same number surfaces
+the RIGHT existing chart before anything is created) → audited
+correction dialog → history header. `tsc -b --force`, vite build,
+dotnet build, YAML parses all green. One in-verification finding was
+a PROBE defect, not a product one (a 300-char "oversized" probe was
+legal under the 2000-char bound and legitimately admitted — the probe
+now uses 2100).
+
+Recorded (not built here): per-user timezones (single-site — out of
+scope by design), number/locale formatting beyond the timezone (§1.4,
+recommend not now), and the mock layer's mixed-clock stamp in
+`data/orders.ts` (`toISOString` date + local HH:mm — mock-only,
+pre-existing, midnight-adjacent only).
 
 ### Configuration Vocabularies (built) — dispositions, isolation types, shifts, named frequencies (the arc's last four)
 

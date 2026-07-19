@@ -1,5 +1,6 @@
 import { Section, SignatureBlock } from '../primitives'
 import type { ActiveOrdersData, PrintOrderLine } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 function OrderTable({ orders, mark }: { orders: PrintOrderLine[]; mark: string }) {
   if (orders.length === 0) return <p className="pd-empty">None recorded.</p>
@@ -14,7 +15,7 @@ function OrderTable({ orders, mark }: { orders: PrintOrderLine[]; mark: string }
             <td>{o.summary}<span className="pd-sub"> {o.orderId}</span></td>
             <td>{o.category}</td>
             <td>{o.priority}</td>
-            <td>{o.orderedTime} · {o.orderedBy}</td>
+            <td>{displayFullStamp(o.orderedTime)} · {o.orderedBy}</td>
             <td>{o.requiresImplementation ? 'required' : '—'}</td>
           </tr>
         ))}

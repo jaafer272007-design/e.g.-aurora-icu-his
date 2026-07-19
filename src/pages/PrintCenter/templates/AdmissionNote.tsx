@@ -1,5 +1,6 @@
 import { FactGrid, MedTable, pv, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { AdmissionNoteData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Template 1 — ICU Admission Note. Structured fields render from the
  *  stores; narrative sections the system has no canonical store for
@@ -62,7 +63,7 @@ export function AdmissionNote({ data }: { data: AdmissionNoteData }) {
                   <td>{o.summary}<span className="pd-sub"> {o.orderId}</span></td>
                   <td>{o.category}</td>
                   <td>{o.priority}</td>
-                  <td>{o.orderedTime} · {o.orderedBy}</td>
+                  <td>{displayFullStamp(o.orderedTime)} · {o.orderedBy}</td>
                   <td>{o.status}</td>
                 </tr>
               ))}

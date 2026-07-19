@@ -125,6 +125,22 @@ jobs:
           grep -q "apiBaseUrl: ''" /tmp/rc.js || { echo "the image bundle's runtime config is not the same-origin default"; exit 1; }
           echo "image bundle carries the same-origin runtime default"
 
+      - name: MACHINE CLOCK on the boot read — hospital-identity reports the server's zone (Locale/Timezone §1.3)
+        run: |
+          # the anonymous read every session primes its display clock from
+          # must carry the server's IANA zone + current offset. Render sets
+          # no TZ, so staging HONESTLY reports UTC (offset 0) — the display
+          # there is unchanged by construction; a hospital's appliance
+          # reports its own zone through the same two fields.
+          curl -s --max-time 30 "$API/api/icu/hospital-identity" -o /tmp/hid.json
+          cat /tmp/hid.json
+          tz=$(python3 -c "import json;print(json.load(open('/tmp/hid.json')).get('serverTimeZone',''))")
+          off=$(python3 -c "import json;print(json.load(open('/tmp/hid.json')).get('serverUtcOffsetMinutes','missing'))")
+          [ -n "$tz" ] || { echo "serverTimeZone missing from the boot read"; exit 1; }
+          [ "$off" != "missing" ] || { echo "serverUtcOffsetMinutes missing from the boot read"; exit 1; }
+          case "$tz" in UTC|Etc/UTC) [ "$off" = "0" ] || { echo "staging reports $tz but offset $off"; exit 1; };; esac
+          echo "server clock on the wire: $tz (offset $off min)"
+
       - name: PAGES ORIGIN — cross-origin config + build identity intact
         run: |
           rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$PAGES/")

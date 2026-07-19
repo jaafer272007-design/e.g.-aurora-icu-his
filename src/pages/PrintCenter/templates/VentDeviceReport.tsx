@@ -1,5 +1,6 @@
 import { Section, SignatureBlock } from '../primitives'
 import type { VentDeviceData, VentSnapshotLine } from '../types'
+import { clockZone, displayFullStamp } from '../../../lib/time'
 
 /* Contract #13 — Ventilator & Device Report (Stage 11).
    The ventilator section is a SNAPSHOT (validator's decision): the
@@ -16,7 +17,7 @@ function SnapshotTable({ lines }: { lines: VentSnapshotLine[] }) {
   return (
     <table className="pd-table">
       <thead>
-        <tr><th>Parameter</th><th>Value</th><th>Charted at (UTC)</th></tr>
+        <tr><th>Parameter</th><th>Value</th><th>Charted at ({clockZone() ?? 'local time'})</th></tr>
       </thead>
       <tbody>
         {lines.map(l => (
@@ -27,7 +28,7 @@ function SnapshotTable({ lines }: { lines: VentSnapshotLine[] }) {
               {l.provenance === 'derived' && <span className="pd-sub"> · derived (Pplat − PEEP)</span>}
               {l.provenance === 'computed' && <span className="pd-sub"> · computed (VT × RR)</span>}
             </td>
-            <td>{l.clinicalTime ?? '—'}</td>
+            <td>{l.clinicalTime ? displayFullStamp(l.clinicalTime) : '—'}</td>
           </tr>
         ))}
       </tbody>

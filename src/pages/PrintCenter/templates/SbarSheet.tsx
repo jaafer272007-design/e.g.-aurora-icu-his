@@ -1,5 +1,6 @@
 import { MedTable, Section, SignatureBlock, WriteIn } from '../primitives'
 import type { SbarData } from '../types'
+import { displayFullStamp } from '../../../lib/time'
 
 /** Contract #7 — Nursing Notes / SBAR. Handoff/receive sheet: real
  *  identity + encounter + active-medication context, the nursing events
@@ -41,7 +42,7 @@ export function SbarSheet({ data }: { data: SbarData }) {
             <tbody>
               {nursingEvents.map(e => (
                 <tr key={e.id}>
-                  <td>{e.time}</td>
+                  <td>{displayFullStamp(e.time)}</td>
                   <td>{e.categoryLabel}: {e.title}{e.detail ? ` — ${e.detail}` : ''}</td>
                   <td>{e.actor ?? '—'}</td>
                 </tr>
