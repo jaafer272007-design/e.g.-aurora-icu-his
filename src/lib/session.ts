@@ -108,6 +108,10 @@ export type Permission =
   | 'imagingcatalog.manage' // Imaging Catalogue: maintain the study catalogue (CLINICAL — the lab-catalogue gating: Ancillary + SeniorDoctor; a DISTINCT atom from labcatalog.manage because radiology and the lab are different producing services; never office admin)
   | 'hospital.configure'   // Config Home + Hospital Identity: manage the install's identity (name/unit/short name/letterhead address) — ADMINISTRATIVE, not clinical (the identity.correct precedent): office Administrator; the split holds (clinical vocabularies stay on clinical profiles)
   | 'beds.manage'          // Bed Registry: add/retire/reactivate the unit's beds (VALIDATOR'S DECISION: SeniorDoctor — unit command — AND office Administrator — facility config; beds are places, not patient data, so the clinical exclusion is untouched). Never rename, never delete; retire refused while occupied.
+  | 'dispositions.manage'  // Configuration Vocabularies: maintain the discharge-disposition vocabulary (CLINICAL governance — SeniorDoctor ONLY, the codestatus.manage precedent; never office admin). 'died' is reserved-unretireable; isDeath is immutable at creation.
+  | 'isolation.manage'     // Configuration Vocabularies: maintain the IPC isolation-type vocabulary (CLINICAL governance — SeniorDoctor ONLY; never office admin). Setting a PATIENT's isolation rides observations.record, exactly the codestatus.set split.
+  | 'shifts.manage'        // Configuration Vocabularies: maintain the working-shift vocabulary the #114 assignments reference (OPERATIONAL/clinical governance — SeniorDoctor ONLY; never office admin). Snapshot semantics: retiring never touches existing assignments.
+  | 'frequencies.manage'   // Configuration Vocabularies: maintain the NAMED medication-frequency vocabulary (PHARMACY governance — Pharmacist ONLY, the formulary.manage precedent). The structured q<n>h pattern stays code, never a hospital list.
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -137,6 +141,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'observations.correct', 'observations.configure', 'patients.measure',
     'assignments.manage', 'codestatus.set', 'codestatus.manage',
     'imagingcatalog.manage', 'beds.manage',
+    'dispositions.manage', 'isolation.manage', 'shifts.manage',
   ],
   /* administer + document only — cannot originate orders (locked decision).
      results.document (Lab Result-Entry): the ICU bedside team transcribes
@@ -169,7 +174,8 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   /* medication-chart review + Layer 4: maintaining the formulary is
      PHARMACY's authority (the same polarity flip as results.create on
      Ancillary — doctors/nurses/administrators are 403'd on mutations) */
-  Pharmacist: ['patients.view', 'orders.view', 'results.view', 'formulary.manage', 'ordersets.manage'],
+  Pharmacist: ['patients.view', 'orders.view', 'results.view', 'formulary.manage', 'ordersets.manage',
+    'frequencies.manage'],
   /* vent-focused: orders, ABGs, and risk trajectories, view-only */
   RespiratoryTherapist: ['patients.view', 'orders.view', 'results.view', 'ai.view'],
   /* lab/radiology technicians: pending order worklist + results; entering

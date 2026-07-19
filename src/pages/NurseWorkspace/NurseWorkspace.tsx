@@ -7,7 +7,7 @@ import { displayStamp, dueStateFor, nowHm, useNow } from '../../lib/time'
 import { IconCheck, IconPencil, IconUsers } from '../../components/icons'
 import {
   completeImplementation, documentAdministration, getImplementationQueue, getIoEntries,
-  getHandoffEntries, getMarRows, getNurseWorklist, getNursingTasks, getUnassignedPatients, recordIoEntry, toggleNursingTask, writeHandoff,
+  getHandoffEntries, getMarRows, getNurseWorklist, getNursingTasks, getShifts, getUnassignedPatients, recordIoEntry, shiftLabel, toggleNursingTask, writeHandoff,
 } from '../../lib/api'
 import type {
   AdministrationAction, AssignedPatient, Assignment, IoEntry, IoKind, MarRow, NursingTask, Order,
@@ -69,14 +69,16 @@ export function NurseWorkspace() {
     /* the Unassigned panel (unit-level safety view): open encounters with
        no active NURSE — so no patient silently falls through */
     getUnassignedPatients().then(u => setUnassigned(u.nurse)).catch(() => setUnassigned([]))
+    getShifts().catch(() => {}) /* primes shiftLabel for the header */
     getNursingTasks().then(setTasks)
     getIoEntries().then(setIo)
   }, [session.name, session.jobTitle])
 
   const patients = worklist?.patients ?? []
-  /* the shift LABEL(s) on my active assignments — chosen by the assigner,
-     shown as-is (no fabricated hours) */
-  const shifts = [...new Set((worklist?.assignments ?? []).map(a => a.shift))]
+  /* the shift(s) on my active assignments — chosen by the assigner,
+     resolved through the managed vocabulary (a retired shift keeps
+     resolving on rows that carry it; unknown codes render verbatim) */
+  const shifts = [...new Set((worklist?.assignments ?? []).map(a => shiftLabel(a.shift)))]
   const patientName = (patientId: string) => patients.find(p => p.patientId === patientId)?.name ?? patientId
 
   /* MAR: documentation APPENDS an administration fact on the canonical

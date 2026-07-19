@@ -1,0 +1,47 @@
+/* Configuration area — the grouped section rail + tenant frame
+   (Configuration Vocabularies design §6: one coherent family, one
+   tenant on screen at a time, calm and orderly). Tokens only — the
+   rows/panels/forms themselves are the shared ua* family. */
+
+.cfg .cfglayout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:14px;align-items:start}
+
+/* the section rail */
+.cfg .cfgnav{position:sticky;top:14px;display:flex;flex-direction:column;gap:14px}
+.cfg .cfggroup{display:flex;flex-direction:column;gap:4px}
+.cfg .cfggrouptitle{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+ color:var(--faint);padding:0 10px 2px}
+.cfg .cfgitem{font:inherit;font-size:12.5px;font-weight:600;color:var(--dim);text-align:left;
+ display:flex;align-items:center;justify-content:space-between;gap:8px;
+ min-height:44px;padding:0 12px;border-radius:11px;cursor:pointer;
+ border:1px solid transparent;background:transparent}
+.cfg .cfgitem small{font-size:10.5px;color:var(--faint);font-weight:600}
+.cfg .cfgitem:hover{background:rgba(var(--lift-rgb),.05);color:var(--ink)}
+.cfg .cfgitem.on{background:rgba(var(--blue-rgb),.10);border-color:rgba(var(--blue-rgb),.28);
+ color:var(--ink)}
+.cfg .cfgitem.on small{color:var(--blue)}
+.cfg .cfgitem:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* the tenant frame */
+.cfg .cfgbody{display:flex;flex-direction:column;gap:12px;min-width:0}
+.cfg .cfgblurb{font-size:12px;line-height:1.55;color:var(--dim);
+ border:1px solid var(--stroke);border-radius:13px;padding:10px 14px;
+ background:rgba(var(--lift-rgb),.03)}
+.cfg .cfgblurb b{color:var(--ink)}
+
+/* shared-manager extras: the reserved marker (a rule in code — no
+   action to take) and the create-time attribute checkbox */
+.cfg .uareserved{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+ color:var(--amber);border:1px solid rgba(var(--amber-rgb),.35);border-radius:8px;
+ padding:4px 8px;cursor:help;align-self:center}
+.cfg .uacheck{display:flex;gap:9px;align-items:flex-start;font-size:11.5px;color:var(--dim);
+ line-height:1.5;cursor:pointer}
+.cfg .uacheck input{width:15px;height:15px;margin-top:2px;accent-color:var(--amber);cursor:pointer;flex:none}
+.cfg .uacheck b{color:var(--ink)}
+
+/* the rail collapses above the body on narrow viewports */
+@media (max-width: 900px){
+  .cfg .cfglayout{grid-template-columns:minmax(0,1fr)}
+  .cfg .cfgnav{position:static;flex-direction:row;flex-wrap:wrap;gap:10px}
+  .cfg .cfggroup{flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px}
+  .cfg .cfggrouptitle{width:100%;padding:0 2px 2px}
+}

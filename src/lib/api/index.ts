@@ -10,6 +10,7 @@ import type {
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
+  DispositionEntry, FrequencyEntry, IsolationTypeEntry, ShiftEntry,
 } from './types'
 import { runtimeApiBase } from '../runtimeConfig'
 import { composeBedsResponse } from './bedboard'
@@ -24,7 +25,7 @@ import { ASSIGNMENTS, applyAssignmentEnd, insertAssignment } from './data/assign
 import { allConsults } from './data/consults'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
-import { CODE_STATUSES, HOSPITAL_IDENTITY, IMAGING_CATALOG } from './data/config'
+import { CODE_STATUSES, DISPOSITION_ENTRIES, FREQUENCY_ENTRIES, HOSPITAL_IDENTITY, IMAGING_CATALOG, ISOLATION_TYPE_ENTRIES, SHIFT_ENTRIES } from './data/config'
 import { LAB_CATALOG } from './data/catalog'
 import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
@@ -391,6 +392,7 @@ const toSummary = (r: RosterRecordDto): PatientSummary => ({
   diagnosis: r.diagnosis,
   flags: r.flags,
   isolation: r.isolation,
+  isolationTypes: r.isolationTypes,
   fullName: r.fullName,
   nationalId: r.nationalId,
   /* alertCount stays client-derived — see the wire-contract note in
@@ -975,13 +977,38 @@ export async function getInteractionRules(): Promise<InteractionRule[]> {
   throw apiUnavailable('interaction rules')
 }
 
-/** GET /api/icu/formulary/frequencies — the named frequency vocabulary
- *  (order frequencies validate against these ∪ q<1-48>h server-side). */
+/** GET /api/icu/formulary/frequencies — the ACTIVE named frequency
+ *  vocabulary (order frequencies validate against these ∪ q<1-48>h
+ *  server-side; retired values are excluded — they keep rendering on
+ *  stored orders but are not newly selectable). */
 export async function getFrequencyVocabulary(): Promise<string[]> {
   const real = await apiGet<string[]>('/api/icu/formulary/frequencies', 'frequency vocabulary')
   if (real) return real
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(NAMED_FREQUENCIES, 120)
   throw apiUnavailable('frequency vocabulary')
+}
+
+/** GET /api/icu/formulary/frequencies/entries — the MANAGEMENT view:
+ *  every named frequency incl. retired, with the formulary drugs whose
+ *  per-drug list carries it (the allowed-but-surfaced retirement). */
+export async function getFrequencyEntries(): Promise<FrequencyEntry[]> {
+  const real = await apiGet<FrequencyEntry[]>('/api/icu/formulary/frequencies/entries', 'frequency entries')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(FREQUENCY_ENTRIES, 120)
+  throw apiUnavailable('frequency vocabulary')
+}
+
+/** POST /api/icu/formulary/frequencies — add a NAMED frequency
+ *  (frequencies.manage, Pharmacy). The structured q<n>h pattern is
+ *  built in and refused here. REAL-ONLY write. */
+export function createFrequency(value: string): Promise<AdtWriteResult<FrequencyEntry>> {
+  return usersWrite<FrequencyEntry>('/api/icu/formulary/frequencies', 'frequency create', { value })
+}
+export function deactivateFrequency(value: string): Promise<AdtWriteResult<FrequencyEntry>> {
+  return usersWrite<FrequencyEntry>(`/api/icu/formulary/frequencies/${encodeURIComponent(value)}/deactivate`, 'frequency retire')
+}
+export function reactivateFrequency(value: string): Promise<AdtWriteResult<FrequencyEntry>> {
+  return usersWrite<FrequencyEntry>(`/api/icu/formulary/frequencies/${encodeURIComponent(value)}/reactivate`, 'frequency reactivate')
 }
 
 /** POST /api/icu/formulary — add a drug (Pharmacy RBAC, formulary.manage).
@@ -1735,23 +1762,141 @@ export function correctPatientIdentity(patientId: string, draft: CorrectIdentity
     'identity correction', draft, 'PUT')
 }
 
-/** Discharge-disposition vocabulary (matches the server's AdtLogic.Dispositions)
- *  with display labels — the OUTCOME of the ICU stay, captured at discharge.
- *  "died" over dispositioned discharges = ICU mortality (computable going
- *  forward; discharges without a recorded disposition are excluded from the
- *  denominator, never fabricated). */
-export const DISPOSITIONS: { code: DispositionCode; label: string }[] = [
-  { code: 'home', label: 'Home' },
-  { code: 'ward', label: 'Ward (step-down / general floor)' },
-  { code: 'transfer_out', label: 'Another facility / transfer out' },
-  { code: 'higher_care', label: 'Higher care / another ICU' },
-  { code: 'died', label: 'Died' },
-  { code: 'other', label: 'Other' },
-]
+/* ------------- Configuration Vocabularies (Aurora Core Master Data) -------------
+   The LAST FOUR of the configurability arc: dispositions, isolation
+   types, shifts (+ the named-frequency management under the formulary
+   section below). Reads fall back to the mock stores offline; every
+   WRITE is REAL-ONLY. Each successful read PRIMES the label caches the
+   sync resolvers below serve — pages that render stored codes call the
+   getter in their load effect, and print selectors await it before
+   building view models. */
 
-/** display label for a stored disposition code ('' for absent/unknown) */
-export const dispositionLabel = (code: string | undefined): string =>
-  DISPOSITIONS.find(d => d.code === code)?.label ?? ''
+let dispositionCache: DispositionEntry[] | null = null
+let isolationTypeCache: IsolationTypeEntry[] | null = null
+let shiftCache: ShiftEntry[] | null = null
+
+/** GET /api/icu/dispositions — all entries incl. inactive (a retired
+ *  entry must keep resolving on the historical records that carry it). */
+export async function getDispositions(): Promise<DispositionEntry[]> {
+  const real = await apiGet<DispositionEntry[]>('/api/icu/dispositions', 'dispositions')
+  if (real) { dispositionCache = real; return real }
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    dispositionCache = DISPOSITION_ENTRIES
+    return respond(DISPOSITION_ENTRIES, 120)
+  }
+  throw apiUnavailable('disposition vocabulary')
+}
+
+export function createDisposition(draft: { code: string; label: string; isDeath?: boolean }): Promise<AdtWriteResult<DispositionEntry>> {
+  return usersWrite<DispositionEntry>('/api/icu/dispositions', 'disposition create', draft)
+}
+export function updateDisposition(code: string, draft: { label: string }): Promise<AdtWriteResult<DispositionEntry>> {
+  return usersWrite<DispositionEntry>(`/api/icu/dispositions/${encodeURIComponent(code)}`, 'disposition edit', draft, 'PUT')
+}
+export function deactivateDisposition(code: string): Promise<AdtWriteResult<DispositionEntry>> {
+  return usersWrite<DispositionEntry>(`/api/icu/dispositions/${encodeURIComponent(code)}/deactivate`, 'disposition retire')
+}
+export function reactivateDisposition(code: string): Promise<AdtWriteResult<DispositionEntry>> {
+  return usersWrite<DispositionEntry>(`/api/icu/dispositions/${encodeURIComponent(code)}/reactivate`, 'disposition reactivate')
+}
+
+/** GET /api/icu/isolation-types — all entries incl. inactive. */
+export async function getIsolationTypes(): Promise<IsolationTypeEntry[]> {
+  const real = await apiGet<IsolationTypeEntry[]>('/api/icu/isolation-types', 'isolation types')
+  if (real) { isolationTypeCache = real; return real }
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    isolationTypeCache = ISOLATION_TYPE_ENTRIES
+    return respond(ISOLATION_TYPE_ENTRIES, 120)
+  }
+  throw apiUnavailable('isolation-type vocabulary')
+}
+
+export function createIsolationType(draft: { code: string; label: string }): Promise<AdtWriteResult<IsolationTypeEntry>> {
+  return usersWrite<IsolationTypeEntry>('/api/icu/isolation-types', 'isolation-type create', draft)
+}
+export function updateIsolationType(code: string, draft: { label: string }): Promise<AdtWriteResult<IsolationTypeEntry>> {
+  return usersWrite<IsolationTypeEntry>(`/api/icu/isolation-types/${encodeURIComponent(code)}`, 'isolation-type edit', draft, 'PUT')
+}
+export function deactivateIsolationType(code: string): Promise<AdtWriteResult<IsolationTypeEntry>> {
+  return usersWrite<IsolationTypeEntry>(`/api/icu/isolation-types/${encodeURIComponent(code)}/deactivate`, 'isolation-type retire')
+}
+export function reactivateIsolationType(code: string): Promise<AdtWriteResult<IsolationTypeEntry>> {
+  return usersWrite<IsolationTypeEntry>(`/api/icu/isolation-types/${encodeURIComponent(code)}/reactivate`, 'isolation-type reactivate')
+}
+
+/** GET /api/icu/shifts — all entries incl. inactive. */
+export async function getShifts(): Promise<ShiftEntry[]> {
+  const real = await apiGet<ShiftEntry[]>('/api/icu/shifts', 'shifts')
+  if (real) { shiftCache = real; return real }
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    shiftCache = SHIFT_ENTRIES
+    return respond(SHIFT_ENTRIES, 120)
+  }
+  throw apiUnavailable('shift vocabulary')
+}
+
+export function createShift(draft: { code: string; label: string }): Promise<AdtWriteResult<ShiftEntry>> {
+  return usersWrite<ShiftEntry>('/api/icu/shifts', 'shift create', draft)
+}
+export function updateShift(code: string, draft: { label: string }): Promise<AdtWriteResult<ShiftEntry>> {
+  return usersWrite<ShiftEntry>(`/api/icu/shifts/${encodeURIComponent(code)}`, 'shift edit', draft, 'PUT')
+}
+export function deactivateShift(code: string): Promise<AdtWriteResult<ShiftEntry>> {
+  return usersWrite<ShiftEntry>(`/api/icu/shifts/${encodeURIComponent(code)}/deactivate`, 'shift retire')
+}
+export function reactivateShift(code: string): Promise<AdtWriteResult<ShiftEntry>> {
+  return usersWrite<ShiftEntry>(`/api/icu/shifts/${encodeURIComponent(code)}/reactivate`, 'shift reactivate')
+}
+
+/** POST /api/icu/adt/encounters/:id/isolation — set the OPEN encounter's
+ *  isolation precautions (observations.record — any doctor or nurse;
+ *  audited with the prior set server-side). The REPLACEMENT set of
+ *  active vocabulary codes; [] clears. REAL-ONLY write. */
+export function setEncounterIsolation(encounterId: string, types: string[]): Promise<AdtWriteResult<Encounter>> {
+  return usersWrite<Encounter>(
+    `/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/isolation`, 'isolation set', { types })
+}
+
+/** MOCK-fallback disposition rows (kept for the no-API demo and as the
+ *  last-resort label source before any fetch primes the cache) */
+export const DISPOSITIONS: { code: DispositionCode; label: string }[] =
+  DISPOSITION_ENTRIES.map(d => ({ code: d.code, label: d.label }))
+
+/** display label for a stored disposition code ('' for absent/unknown).
+ *  Resolves through the vocabulary cache (retired entries resolve too —
+ *  historical rendering never breaks), falling back to the seeded mock
+ *  labels, then to the raw code (shown verbatim, never fabricated). */
+export const dispositionLabel = (code: string | undefined): string => {
+  if (!code) return ''
+  return dispositionCache?.find(d => d.code === code)?.label
+    ?? DISPOSITIONS.find(d => d.code === code)?.label
+    ?? code
+}
+
+/** does a stored disposition code count as DEATH? Resolves the
+ *  vocabulary's immutable isDeath attribute (mortality + the deceased
+ *  banner key on this, never the label); before any fetch primes the
+ *  cache, only the seeded 'died' counts (the mock mirror). */
+export const isDeathDisposition = (code: string | undefined): boolean => {
+  if (!code) return false
+  const row = dispositionCache?.find(d => d.code === code) ?? DISPOSITION_ENTRIES.find(d => d.code === code)
+  return row?.isDeath ?? false
+}
+
+/** display label for a stored shift code (falls back to the raw code —
+ *  a retired or hospital-added shift keeps rendering on old rows) */
+export const shiftLabel = (code: string | undefined): string => {
+  if (!code) return ''
+  return shiftCache?.find(s => s.code === code)?.label
+    ?? SHIFT_ENTRIES.find(s => s.code === code)?.label
+    ?? code
+}
+
+/** display label for a stored isolation-type code (raw-code fallback) */
+export const isolationTypeLabel = (code: string): string =>
+  isolationTypeCache?.find(t => t.code === code)?.label
+  ?? ISOLATION_TYPE_ENTRIES.find(t => t.code === code)?.label
+  ?? code
 
 /** POST /api/icu/adt/encounters/:id/discharge — doctor RBAC (adt.discharge).
  *  REAL-ONLY write. The disposition (the stay's outcome) is REQUIRED by the

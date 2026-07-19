@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card } from '../../components/Card'
 import { IconSearch } from '../../components/icons'
 import { checkMedicationSafety } from '../../lib/api/safety'
+import { getFrequencyVocabulary } from '../../lib/api'
 import { absoluteRate, formatInfusionDose, formatNormalised, parseInfusionPreset } from '../../lib/infusion'
 import type {
   FormularyDrug, InfusionDose, InteractionRule, MedicationDetails, Order, OrderPriority,
@@ -16,6 +17,9 @@ import type {
    at frequency 'continuous' uses the structured form instead of free
    text (the stated resolution of the design's open item 3). */
 const UNIT_DOSED_INFUSIONS = ['vasopressin', 'insulin-actrapid', 'heparin']
+
+/** the structured q<n>h pattern is code, not vocabulary (1-48h) */
+const isStructuredFreq = (f: string) => /^q\d{1,2}h$/.test(f)
 
 interface NewOrderCardProps {
   patient: { patientId: string; name: string; allergies: string }
@@ -34,6 +38,14 @@ interface NewOrderCardProps {
  *  contraindication; warnings require an acknowledged clinical justification.
  *  Doctor RBAC only. */
 export function NewOrderCard({ patient, formulary, rules, orders, weightKg, onCreate }: NewOrderCardProps) {
+  /* the ACTIVE named-frequency vocabulary (Configuration Vocabularies):
+     a RETIRED value in a drug's per-drug list is filtered from the
+     picker (not newly orderable — the server 409s it regardless); the
+     stored frequency on existing orders keeps rendering elsewhere.
+     null until loaded = no filtering (the server still guards). */
+  const [activeFreqs, setActiveFreqs] = useState<string[] | null>(null)
+  useEffect(() => { getFrequencyVocabulary().then(setActiveFreqs).catch(() => setActiveFreqs(null)) }, [])
+  const selectableFreq = (f: string) => activeFreqs === null || activeFreqs.includes(f) || isStructuredFreq(f)
   const [query, setQuery] = useState('')
   const [drug, setDrug] = useState<FormularyDrug | null>(null)
   const [dose, setDose] = useState('')
@@ -74,7 +86,7 @@ export function NewOrderCard({ patient, formulary, rules, orders, weightKg, onCr
     setDrug(d)
     setDose(d.doses[0] ?? '')
     setRoute(d.routes[0] ?? '')
-    setFrequency(d.frequencies[0] ?? '')
+    setFrequency(d.frequencies.filter(selectableFreq)[0] ?? '')
     setDuration('')
     setPrn(false)
     setPrnIndication('')
@@ -262,7 +274,7 @@ export function NewOrderCard({ patient, formulary, rules, orders, weightKg, onCr
             <div className="field">
               <label htmlFor="noFreq">Frequency</label>
               <select id="noFreq" value={frequency} disabled={prn} onChange={e => setFrequency(e.target.value)}>
-                {drug.frequencies.map(f => <option key={f}>{f}</option>)}
+                {drug.frequencies.filter(selectableFreq).map(f => <option key={f}>{f}</option>)}
               </select>
             </div>
             <div className="field">

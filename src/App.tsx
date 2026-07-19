@@ -87,7 +87,7 @@ export default function App() {
             identity → hospital.configure; code status →
             codestatus.manage; imaging catalogue →
             imagingcatalog.manage) */}
-        <Route path="/config" element={<RequireSession anyPermission={['hospital.configure', 'codestatus.manage', 'imagingcatalog.manage', 'beds.manage']}><Configuration /></RequireSession>} />
+        <Route path="/config" element={<RequireSession anyPermission={['hospital.configure', 'codestatus.manage', 'imagingcatalog.manage', 'beds.manage', 'dispositions.manage', 'isolation.manage', 'shifts.manage', 'frequencies.manage']}><Configuration /></RequireSession>} />
         <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />

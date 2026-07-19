@@ -292,8 +292,12 @@ static class VocabApi
         }).RequireAuthorization();
     }
 
+    /* the outer rows MATERIALIZE before the per-row drug projection —
+       ToEntryDto issues its own query, and Npgsql (unlike SQLite)
+       refuses a new command while a reader is open on the connection
+       (found by the Postgres verification run, not the SQLite one) */
     static List<FrequencyEntryDto> FrequencyEntries(AuroraDb db) =>
-        db.NamedFrequencies.AsNoTracking().OrderBy(f => f.Seq).AsEnumerable()
+        db.NamedFrequencies.AsNoTracking().OrderBy(f => f.Seq).ToList()
             .Select(f => ToEntryDto(db, f)).ToList();
 
     static FrequencyEntryDto ToEntryDto(AuroraDb db, NamedFrequencyRow f) => new(

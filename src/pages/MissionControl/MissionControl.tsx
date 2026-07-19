@@ -12,14 +12,14 @@ import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
-import { getAssignments, getCodeStatuses, getEncounters, getObservations, getPatientDetail, getPatientIdentity, getPatients, setEncounterCodeStatus } from '../../lib/api'
+import { getAssignments, getCodeStatuses, getEncounters, getIsolationTypes, getObservations, getPatientDetail, getPatientIdentity, getPatients, isolationTypeLabel, setEncounterCodeStatus, setEncounterIsolation } from '../../lib/api'
 import { unitSuffix, useHospitalIdentity } from '../../lib/hospitalIdentity'
 import { resolveCodeStatus } from '../../lib/codeStatus'
 import { Toast, useToast } from '../../components/Toast'
 import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
 import { useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, signOut } from '../../lib/session'
-import type { Assignment, CodeStatusEntry, PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
+import type { Assignment, CodeStatusEntry, IsolationTypeEntry, PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
 import { IdentityDialog } from './IdentityDialog'
 import { AssignmentDialog } from './AssignmentDialog'
 import { LatestObservationsCard } from './LatestObservationsCard'
@@ -123,6 +123,48 @@ export function MissionControl() {
     if (csOpen && csVocab === null) getCodeStatuses().then(setCsVocab).catch(() => setCsVocab([]))
   }, [csOpen, csVocab])
   useEffect(() => { setCsOpen(false); setCsError(null) }, [patientId])
+
+  /* ISOLATION PRECAUTIONS (Configuration Vocabularies — the boolean's
+     upgrade): BEDSIDE CLINICIAN authority (observations.record — any
+     doctor or nurse; the vocabulary itself is managed separately under
+     isolation.manage). The popover offers the ACTIVE types as a
+     MULTI-SELECT (contact AND droplet is clinically real); the write
+     REPLACES the open encounter's set ([] clears) and the server audits
+     the change with the prior set. */
+  const canSetIsolation = session ? hasPermission(session.jobTitle, 'observations.record') : false
+  const [isoOpen, setIsoOpen] = useState(false)
+  const [isoVocab, setIsoVocab] = useState<IsolationTypeEntry[] | null>(null)
+  const [isoSel, setIsoSel] = useState<string[]>([])
+  const [isoBusy, setIsoBusy] = useState(false)
+  const [isoError, setIsoError] = useState<string | null>(null)
+  const railRec = patients?.find(x => x.patientId === patientId)
+  const isoCurrent = useMemo(() => railRec?.isolationTypes ?? [], [railRec])
+  useEffect(() => {
+    if (isoOpen && isoVocab === null) getIsolationTypes().then(setIsoVocab).catch(() => setIsoVocab([]))
+  }, [isoOpen, isoVocab])
+  useEffect(() => { setIsoOpen(false); setIsoError(null) }, [patientId])
+  useEffect(() => { if (isoOpen) setIsoSel(isoCurrent) }, [isoOpen, isoCurrent])
+  async function doSetIsolation() {
+    setIsoBusy(true); setIsoError(null)
+    const open = await getEncounters({ patientId, status: 'open' }).catch(() => [])
+    if (open.length === 0) {
+      setIsoBusy(false)
+      setIsoError('No open encounter — isolation precautions are set on an active admission')
+      return
+    }
+    const res = await setEncounterIsolation(open[0].encounterId, isoSel)
+    setIsoBusy(false)
+    if (res.kind === 'ok') {
+      setIsoOpen(false)
+      const names = isoSel.length === 0 ? 'cleared' : isoSel.map(isolationTypeLabel).join(' + ')
+      showToast('Isolation precautions', `${names} — recorded on ${open[0].encounterId} (audited)`)
+      getPatients().then(setPatients)
+      getPatientDetail(patientId).then(r => { if (r) setDetail(r) })
+      return
+    }
+    setIsoError(res.kind === 'rejected' ? res.error
+      : 'Setting isolation requires the live server — NOT recorded')
+  }
   async function doSetCodeStatus(code: string, label: string) {
     setCsBusy(true); setCsError(null)
     const open = await getEncounters({ patientId, status: 'open' }).catch(() => [])
@@ -325,6 +367,43 @@ export function MissionControl() {
                 ))}
                 {csError && <div className="csperr" role="alert">{csError}</div>}
                 <button className="csopt cscancel" onClick={() => { setCsOpen(false); setCsError(null) }}>Cancel</button>
+              </div>
+            )}
+            </span>
+            {/* ISOLATION (typed IPC precautions — the boolean's upgrade):
+                labels resolve through the vocabulary; None is an explicit
+                state. Bedside clinicians click to select the ACTIVE
+                types (multiple is clinically real). */}
+            <span className="cswrap">
+            <button
+              className={`chip iso${canSetIsolation ? ' cssettable' : ''}`}
+              disabled={!canSetIsolation || !p}
+              onClick={() => setIsoOpen(o => !o)}
+              aria-label={canSetIsolation ? 'Isolation precautions — set from the vocabulary' : 'Isolation precautions'}
+            >
+              <span className="k">Isolation</span>
+              <span className="v">{!p ? '—'
+                : isoCurrent.length === 0 ? 'None'
+                : isoCurrent.map(isolationTypeLabel).join(' + ')}</span>
+            </button>
+            {isoOpen && p && canSetIsolation && (
+              <div className="cspop" role="dialog" aria-label="Set isolation precautions">
+                <div className="cspophead">Isolation precautions — the replacement set for THIS stay; multiple types are clinically real; audited with the prior set</div>
+                {isoVocab === null && <div className="cspophint">Loading vocabulary…</div>}
+                {isoVocab?.filter(t => t.active).map(t => (
+                  <label key={t.code} className="csopt isochk">
+                    <input type="checkbox" disabled={isoBusy}
+                      checked={isoSel.includes(t.code)}
+                      onChange={e => setIsoSel(sel =>
+                        e.target.checked ? [...sel, t.code] : sel.filter(c => c !== t.code))} />
+                    {' '}{t.label} <small className="num">{t.code}</small>
+                  </label>
+                ))}
+                {isoError && <div className="csperr" role="alert">{isoError}</div>}
+                <button className="csopt" disabled={isoBusy} onClick={() => void doSetIsolation()}>
+                  {isoBusy ? 'Saving…' : (isoSel.length === 0 ? 'Save (no precautions)' : `Save ${isoSel.length} type${isoSel.length === 1 ? '' : 's'}`)}
+                </button>
+                <button className="csopt cscancel" onClick={() => { setIsoOpen(false); setIsoError(null) }}>Cancel</button>
               </div>
             )}
             </span>

@@ -7,8 +7,8 @@ import { NotFoundCard } from '../../components/NotFoundCard'
 import { Card } from '../../components/Card'
 import { IconClock } from '../../components/icons'
 import {
-  DISPOSITIONS, getEncounters, getImagingStudies, getLabDraws,
-  getPatientIdentity, getPatientOrders,
+  dispositionLabel as vocabDispositionLabel, getDispositions, getEncounters,
+  getImagingStudies, getLabDraws, getPatientIdentity, getPatientOrders, isDeathDisposition,
 } from '../../lib/api'
 import { getSession, hasPermission, initialsOf } from '../../lib/session'
 import type { Encounter, ImagingStudy, LabDraw, Order, PatientIdentity } from '../../lib/api/types'
@@ -33,8 +33,10 @@ import { displayStamp } from '../../lib/time'
  * office Administrator never sees clinical data). The medications
  * section additionally renders only for orders.view holders. */
 
+/* labels resolve through the MANAGED vocabulary (retired entries keep
+   resolving on historical stays; unknown codes render verbatim) */
 const dispositionLabel = (code: string | null | undefined) =>
-  code ? (DISPOSITIONS.find(d => d.code === code)?.label ?? code) : null
+  code ? vocabDispositionLabel(code) : null
 
 const encSeq = (id: string) => {
   const n = Number(id.startsWith('ENC-') ? id.slice(4) : NaN)
@@ -75,6 +77,8 @@ export function PatientHistory() {
     let stale = false
     setPid(null); setMissing(false); setEncounters(null); setOrders(null); setDraws(null); setStudies(null)
     if (!patientId) return
+    /* primes dispositionLabel/isDeathDisposition for the stays list */
+    getDispositions().catch(() => {})
     /* identity is the anchor — REAL-ONLY read; an unknown id is an
        explicit not-found, never another patient's data */
     getPatientIdentity(patientId).then(r => {
@@ -94,7 +98,9 @@ export function PatientHistory() {
     [encounters])
   const openEnc = encRows.find(e => e.status === 'open')
   const latestEnc = encRows[0]
-  const deceased = !openEnc && latestEnc?.disposition === 'died'
+  /* DECEASED keys on the vocabulary's immutable isDeath attribute —
+     never the label; a hospital-added death disposition counts */
+  const deceased = !openEnc && isDeathDisposition(latestEnc?.disposition)
 
   /* previous medications — most recent order per drug (derived, capped) */
   const meds = useMemo(() =>

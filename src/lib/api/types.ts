@@ -43,6 +43,11 @@ export interface BedPatient {
   los: number
   flags: SupportFlag[]
   isolation: boolean
+  /** ISOLATION PRECAUTIONS (Configuration Vocabularies): the OPEN
+   *  encounter's selected type CODES (absent = none). The boolean above
+   *  stays DERIVED from this set (non-empty = isolated) so every
+   *  pill/filter/count renders unchanged. */
+  isolationTypes?: string[]
   codeStatus: string
   /** CODE STATUS (governed vocabulary — the SAFETY FIX): codeStatus is
    *  the RESOLVED display value ('' = NOT RECORDED, an explicit state
@@ -153,6 +158,8 @@ export interface RosterRecordDto {
   codeStatusLegacy?: boolean
   rhythm: string
   isolation: boolean
+  /** isolation type codes of the OPEN encounter (see the bed-board note) */
+  isolationTypes?: string[]
   severity: Severity
   flags: SupportFlag[]
   bedsideVitals: BedCardVitals
@@ -177,6 +184,8 @@ export interface PatientSummary {
   diagnosis: string
   flags: SupportFlag[]
   isolation: boolean
+  /** isolation type codes of the OPEN encounter (bool above derives) */
+  isolationTypes?: string[]
   alertCount: number
   /** structured-identity tail (absent on legacy rows) — search fields */
   fullName?: string
@@ -377,7 +386,11 @@ export type AssignmentKind = 'nurse' | 'doctor'
 export type AssignmentRole = 'primary' | 'secondary'
 /** a LABEL chosen by the assigner (no Shift entity exists) — matches the
  *  timeline's Day 07–19 / Night 19–07 vocabulary */
-export type AssignmentShift = 'day' | 'night'
+/** a Shifts vocabulary CODE (managed since the Configuration
+ *  Vocabularies build — seeded day/night; hospitals edit the list live,
+ *  so the type is an open string; the server validates against the
+ *  active vocabulary and the stored value is a snapshot) */
+export type AssignmentShift = string
 
 export interface Assignment {
   assignmentId: string
@@ -1271,6 +1284,11 @@ export interface Encounter {
    *  when / active role / prior). */
   codeStatusCode?: string
   codeStatusEvents?: CodeStatusEvent[]
+  /** ISOLATION PRECAUTIONS (Configuration Vocabularies): the selected
+   *  type CODES for THIS stay, encounter-scoped on the code-status rule
+   *  (a re-admission starts fresh; stale precautions never silently
+   *  carry). Absent = none. Set changes are audited into events. */
+  isolationTypes?: string[]
 }
 
 /** one append-only code-status set event (prior null on the first set);
@@ -1286,7 +1304,11 @@ export interface CodeStatusEvent {
 }
 
 /** discharge-disposition vocabulary (server-validated) */
-export type DispositionCode = 'home' | 'ward' | 'transfer_out' | 'higher_care' | 'died' | 'other'
+/** a Dispositions vocabulary CODE (managed since the Configuration
+ *  Vocabularies build — the seeded six plus whatever a hospital adds;
+ *  the server validates against the active vocabulary; 'died' is
+ *  reserved and death semantics ride the entry's isDeath attribute) */
+export type DispositionCode = string
 
 /* ---------- Code Status governed vocabulary (Master Data) ----------
    The per-hospital resuscitation-instruction vocabulary — the free-text
@@ -1300,6 +1322,51 @@ export interface CodeStatusEntry {
   label: string
   seq: number
   active: boolean
+  history: FormularyEvent[]
+}
+
+/* ---------- Configuration Vocabularies (the last four of the arc) ----------
+   Dispositions / isolation types / shifts on the same shape as
+   CodeStatusEntry; named frequencies are value-keyed (the value IS what
+   orders store, so there is no label to edit). */
+
+export interface DispositionEntry {
+  code: string
+  label: string
+  seq: number
+  active: boolean
+  /** IMMUTABLE at creation: the deceased re-admission guard, patient
+   *  status, and mortality statistics key on this — never the label.
+   *  The seeded 'died' row carries it and is reserved-unretireable. */
+  isDeath: boolean
+  history: FormularyEvent[]
+}
+
+export interface IsolationTypeEntry {
+  code: string
+  label: string
+  seq: number
+  active: boolean
+  history: FormularyEvent[]
+}
+
+export interface ShiftEntry {
+  code: string
+  label: string
+  seq: number
+  active: boolean
+  history: FormularyEvent[]
+}
+
+export interface FrequencyEntry {
+  /** the value itself is the permanent identity AND the display (it is
+   *  what orders store) — managers add/retire/reactivate, never edit */
+  value: string
+  seq: number
+  active: boolean
+  /** formulary drugs whose per-drug frequency list carries the value
+   *  (the allowed-but-surfaced retirement warning) */
+  referencedBy: string[]
   history: FormularyEvent[]
 }
 

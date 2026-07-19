@@ -1,4 +1,5 @@
 import type { AdtBed, Encounter, FormularyDrug, LabDraw, Observation, Order } from './api/types'
+import { isDeathDisposition } from './api'
 import { datedEpoch } from './time'
 import { computeNews2, computeSofa } from './scoring'
 import { NEWS2_V1, NEWS2_WINDOW_MINUTES, buildNews2Context } from './scoring/news2'
@@ -79,6 +80,8 @@ export interface StatisticsModel {
   occupancyPct: number
   ventilated: { count: number; withObs: number; total: number }
   vasopressor: { count: number; withOrders: number; total: number }
+  /** OPEN encounters carrying isolation precautions (the typed IPC set) */
+  isolation: { count: number }
   avgSofa: AveragedMetric
   avgNews2: AveragedMetric
   /** mean LOS days over CURRENT patients with dated admissions */
@@ -210,8 +213,16 @@ export function computeStatistics(inputs: StatisticsInputs): StatisticsModel {
     .map(e => datedEpoch(e.dischargedAt ?? ''))
     .filter((ms): ms is number => ms !== null)
   const withDispo = discharged.filter(e => e.disposition)
-  const deaths = withDispo.filter(e => e.disposition === 'died').length
-  const outcomeCodes = ['home', 'ward', 'transfer_out', 'higher_care', 'died', 'other']
+  /* DEATH resolves through the vocabulary's immutable isDeath attribute
+     (Configuration Vocabularies) — a hospital-added death disposition
+     counts; a label edit never changes a recorded outcome */
+  const deaths = withDispo.filter(e => isDeathDisposition(e.disposition)).length
+  /* breakdown over the codes ACTUALLY RECORDED (hospital-added
+     dispositions appear; codes never recorded don't) in first-seen
+     order of the seeded set then any custom ones */
+  const seeded = ['home', 'ward', 'transfer_out', 'higher_care', 'died', 'other']
+  const recorded = [...new Set(withDispo.map(e => e.disposition!))]
+  const outcomeCodes = [...seeded.filter(c => recorded.includes(c)), ...recorded.filter(c => !seeded.includes(c))]
   const outcomeBreakdown = outcomeCodes.map(code => ({
     code, count: withDispo.filter(e => e.disposition === code).length,
   }))
@@ -308,6 +319,7 @@ export function computeStatistics(inputs: StatisticsInputs): StatisticsModel {
     bedsTotal, bedsOccupied, bedsAvailable: bedsTotal - bedsOccupied,
     occupancyPct: bedsTotal === 0 ? 0 : Math.round((bedsOccupied / bedsTotal) * 100),
     ventilated: { count: ventilated, withObs: withObs.length, total: patients.length },
+    isolation: { count: encounters.filter(e => e.status === 'open' && (e.isolationTypes?.length ?? 0) > 0).length },
     vasopressor: { count: vasopressor, withOrders: withOrders.length, total: patients.length },
     avgSofa: { value: avg(sofaComplete), computable: sofaComplete.length, total: patients.length },
     avgNews2: { value: avg(news2Complete), computable: news2Complete.length, total: patients.length },

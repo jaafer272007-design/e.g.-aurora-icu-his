@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { createAssignment, endAssignment, getAssignableStaff } from '../../lib/api'
+import { createAssignment, endAssignment, getAssignableStaff, getShifts, shiftLabel } from '../../lib/api'
 import type {
-  AssignableStaff, Assignment, AssignmentKind, AssignmentRole, AssignmentShift,
+  AssignableStaff, Assignment, AssignmentKind, AssignmentRole, AssignmentShift, ShiftEntry,
 } from '../../lib/api/types'
 import { displayStamp } from '../../lib/time'
 
@@ -32,13 +32,23 @@ export function AssignmentDialog(
   const [kind, setKind] = useState<AssignmentKind>('nurse')
   const [userId, setUserId] = useState('')
   const [role, setRole] = useState<AssignmentRole>('primary')
+  /* SHIFT — the MANAGED vocabulary (Configuration Vocabularies): the
+     picker offers ACTIVE entries (three-shift hospitals edit the list
+     live); existing rows keep their stored code and render through the
+     label resolver even after a retire (snapshot semantics). */
   const [shift, setShift] = useState<AssignmentShift>('day')
+  const [shifts, setShifts] = useState<ShiftEntry[] | null>(null)
   const [endingId, setEndingId] = useState<string | null>(null)
   const [endReason, setEndReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    getShifts().then(list => {
+      setShifts(list)
+      const act = list.filter(x => x.active)
+      if (act.length > 0 && !act.some(x => x.code === 'day')) setShift(act[0].code)
+    }).catch(() => setShifts(null))
     if (canManage) getAssignableStaff().then(setStaff).catch(() => setStaff([]))
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', esc)
@@ -104,7 +114,7 @@ export function AssignmentDialog(
                 <span className={`ctkind ${a.kind}`}>{kindTag(a.kind)}</span>
                 <span className="ctwho">{a.userName}<small>{a.userTitle}</small></span>
                 <span className={`ctrole ${a.role}`}>{a.role}</span>
-                <span className="ctshift">{a.shift} shift</span>
+                <span className="ctshift">{shiftLabel(a.shift)}</span>
                 <span className="ctsince num">
                   {a.assignedAt ? `since ${displayStamp(a.assignedAt)}` : 'seeded'}
                   {a.assignedBy ? ` · by ${a.assignedBy}` : ''}
@@ -159,8 +169,8 @@ export function AssignmentDialog(
               </label>
               <label>Shift <i>label, chosen by you</i>
                 <select value={shift} onChange={e => setShift(e.target.value as AssignmentShift)}>
-                  <option value="day">Day (07–19)</option>
-                  <option value="night">Night (19–07)</option>
+                  {(shifts?.filter(x => x.active) ?? []).map(x =>
+                    <option key={x.code} value={x.code}>{x.label}</option>)}
                 </select>
               </label>
             </div>
@@ -186,7 +196,7 @@ export function AssignmentDialog(
             {ended.map(a => (
               <div className="idhrow" key={a.assignmentId}>
                 <span className="num">{a.assignedAt ? displayStamp(a.assignedAt) : '—'} → {displayStamp(a.endedAt!)}</span>
-                <span className="idha">{a.userName} · {a.role} {a.kind} · {a.shift}</span>
+                <span className="idha">{a.userName} · {a.role} {a.kind} · {shiftLabel(a.shift)}</span>
                 <span className="idhd">
                   ended by {a.endedBy}{a.endedByRole ? ` (${a.endedByRole})` : ''}
                   {a.endReason ? ` — ${a.endReason}` : ''}
