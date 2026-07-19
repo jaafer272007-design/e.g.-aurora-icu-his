@@ -1,6 +1,46 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-19 · current through CONFIG HOME + HOSPITAL
+**Last updated: 2026-07-19 · current through IMAGING CATALOGUE — the
+THIRD Configuration tenant AND the production-ordering unblock (the
+live functional gap: the Order Imaging card read its study vocabulary
+from the retired `ORDER_SETS.Imaging` MOCK, which the Phase 3 PR 1
+degradation deliberately nulls in production — a production install
+could not order imaging at all; no coded study identity existed
+(orders carried only a free-text summary) and TWO inconsistent
+modality vocabularies lived in ResultsLogic. Built from the owner's
+design doc by MIRRORING THE LAB CATALOGUE EXACTLY: an ImagingCatalog
+table (natural `studyId` key; name / modality / region / contrast /
+portable; Active; append-only audit; deactivate-never-delete; TRUE
+delete only for never-referenced studies, else 409 directing retire)
++ manager endpoints gated on the NEW `imagingcatalog.manage` atom
+(Ancillary + SeniorDoctor — the lab-catalogue roles: imaging is
+CLINICAL, the office Administrator asserted unreachable; a DISTINCT
+atom from labcatalog.manage per the flagged recommendation — radiology
+and the lab are different producing services, a later split is a row
+edit, never a migration); /config gains its third section (the
+any-of nav/route now spans three atoms); ORDERS ARE NOW CODED —
+`OrderRow.StudyId` is the ORDER half of the #105 order→report linkage
+(completed, not duplicated: #105 built the report half), validated
+Imaging-only against the live catalogue (unknown 400, retired 409),
+with the summary SNAPSHOTTING the study name at order time so
+retirement never rewrites history; the ordering card reads the REAL
+catalogue (`getImagingCatalog` — mock fallback outside production,
+honest null in production on failure); MODALITY RECONCILED to the ONE
+fixed 7-entry vocabulary (`ResultsLogic.ImagingModalities`; the
+private 5-set deleted — flagged additive widening: the
+producing-service create path now accepts X-ray/Other); the
+`ORDER_SETS` mock + `getOrderSets`/`OrderType` RETIRED entirely
+(imaging was the last consumer); production seeds an 8-study ACTIVE
+starter set (catalogue only — never patients/orders/reports; the
+hospital finalises the list in Configuration), demo seeds the previous
+3 studies as DATA so staging renders byte-identically; derived order
+completion (#110) now runs end-to-end for coded imaging orders.
+Verified 33/33 headless + staging visual-unchanged 11/11 + production
+appliance 19/19 on a FRESH Postgres — the headline assert: a doctor
+places an imaging order from the real catalogue chips in the
+PRODUCTION build, the exact thing broken before — see the record
+below);
+prior marker retained: current through CONFIG HOME + HOSPITAL
 IDENTITY — the Configuration area's FOUNDATION (the configurability
 audit's second finding: the product was branded "AURORA GENERAL
 HOSPITAL" / "Unit 4B" in hardcoded strings across the print letterhead,
@@ -3792,7 +3832,11 @@ use (Imaging was already a first-class category in the server's Order
 model: full pending→sign→active→discontinue lifecycle, audit history,
 encounter scoping — all verified live). The study vocabulary is read from
 the SAME `getOrderSets()` list the drawer renders, so the two entry
-points cannot drift. RBAC matches med/lab ordering exactly: the card
+points cannot drift. *[Superseded (2026-07-19, imaging-catalogue PR):
+the card now reads the REAL Imaging Catalogue (`getImagingCatalog`)
+and orders carry a coded `studyId`; `getOrderSets` and the
+`ORDER_SETS` mock are retired entirely (the drawer itself was removed
+earlier — see the fake-drawer record).]* RBAC matches med/lab ordering exactly: the card
 renders only with `orders.create` and the server re-enforces (nurse 403
 verified). `requiresImplementation: true` follows the Lab/Nursing
 convention (a bedside study needs nursing coordination — lands on the
@@ -5044,6 +5088,101 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### Imaging Catalogue (built) — third Configuration tenant + production imaging ordering unblocked
+
+**The finding (this PR's verify-first sweep — all three audit items):**
+- The Order Imaging card on the canonical ordering screen
+  (`OrdersMedication.tsx`) read its study chips from `getOrderSets()` —
+  the `ORDER_SETS.Imaging` MOCK, which Phase 3 PR 1's degradation
+  deliberately nulls in production. A production install COULD NOT
+  ORDER IMAGING (the card honestly said so, but the capability was
+  absent). The Phase 3 flag ("it belongs in Layer-4 master data, which
+  would restore production imaging ordering") is resolved by this
+  build.
+- TWO modality vocabularies in `ResultsLogic.cs`:
+  `ImagingModalities` (the 7-set the document path validates) vs a
+  private 5-set `Modalities` (the producing-service create path) —
+  inconsistent by two entries (X-ray, Other).
+- PR #105 already built the REPORT half of the order→report linkage
+  (`ImagingStudyRow.OrderId`, order-belongs/category/active
+  validation, one-report-per-order 409, create-path auto-link) and
+  #110 the derived completion. The missing half was CODED STUDY
+  IDENTITY ON THE ORDER — orders carried only a free-text summary, so
+  nothing connected an order to a catalogue study.
+
+**What was built (a MIRROR of the lab catalogue — no new mechanism):**
+- **Server**: `ImagingStudyDefRow` → DbSet `ImagingCatalog` (named to
+  not clash with `ImagingStudies`, the REPORTS table);
+  `ImagingCatalogApi` — GET any-auth incl. inactive (managers see
+  retired rows); POST (id regex `^[a-z0-9_]{2,40}$`, name ≤80,
+  modality ∈ the ONE vocabulary, duplicate 409); PUT (HasAnyField,
+  audited per-field prior→next diffs, no-change 400);
+  deactivate/reactivate (replay 409); DELETE only when ZERO orders
+  reference the study (reports reference orders, so 0 orders ⇒ 0
+  linked reports — the lab rule), else 409 directing retire.
+  Migration `AddImagingCatalog` (new table + `Orders.StudyId`
+  nullable — no default traps).
+- **RBAC**: NEW `imagingcatalog.manage` on **Ancillary +
+  SeniorDoctor** (server `Rbac.cs` + client `session.ts`) — the
+  lab-catalogue gating; a DISTINCT atom from `labcatalog.manage`
+  (flagged rationale: radiology and the lab are different producing
+  services; splitting them later is a row edit). Office
+  Administrator / nurse / plain doctor / pharmacist 403 verified in
+  both headless and rendered passes. `/config` route + nav any-of now
+  `['hospital.configure','codestatus.manage','imagingcatalog.manage']`.
+- **Coded ordering**: `OrderRow`/`OrderDto`/`NewOrderDraftDto` gain
+  `StudyId`; validation — studyId on a non-Imaging category 400,
+  unknown study 400, retired study 409 at create; the summary may be
+  OMITTED on a coded draft → it SNAPSHOTS the study name at order
+  time (retiring or renaming a study never rewrites order history —
+  proven: the retired study's existing order kept rendering).
+- **Modality reconciliation**: the private 5-set DELETED;
+  `ValidateImagingCreate` now validates against `ImagingModalities`
+  (FLAGGED additive widening: the producing-service create path now
+  accepts X-ray/Other); client `IMAGING_MODALITIES` const mirrors it;
+  LabEntry's inline array replaced with the shared const.
+- **Mock retirement**: `getOrderSets` / `ORDER_SETS` /
+  `OrderSetsResponse` / `OrderType` all removed — imaging was the last
+  consumer (real order sets live in OrderSetDefs).
+- **Configuration tenant #3**: full manager UI on `/config` — rows
+  (name/id, modality·region, contrast/portable, Active/Retired,
+  History with seeded-empty honesty, Edit, Retire-with-confirm,
+  Reactivate, true Delete) + Add Imaging Study form (fixed-vocabulary
+  modality select, contrast/portable checkboxes), violet KPI
+  `active/total`, per-row and per-form visible refusals.
+- **Seeds** (`SeedImagingCatalog`, seed-if-empty): demo = the SAME 3
+  studies the mock carried, as DATA (staging renders byte-identically);
+  production = 8-study starter set (portable_cxr, cxr_pa_lat,
+  ct_head_plain, ct_chest, ct_abdomen_pelvis, us_abdomen,
+  bedside_echo, us_venous_doppler), ALL ACTIVE per the resolved flag
+  (the hospital finalises the list in Configuration) — catalogue only,
+  never patients/orders/reports.
+
+**Verification (all three passes):** headless matrix **33/33** (RBAC
+six directions incl. Ancillary-200; create/edit/retire/reactivate/
+delete rules incl. referenced-delete-409; coded ordering incl.
+unknown-400, Lab-category-400, no-summary snapshot, retired-409,
+snapshot-persists; report linked to the coded order → OrderId join +
+DERIVED COMPLETION via `?status=completed`; modality reconciliation
+incl. the 400 naming the 7-set). Staging **11/11** (ordering chips
+BYTE-IDENTICAL "Portable CXR | CT Abdomen/Pelvis | Bedside Echo" from
+the mock read; /config three-way split incl. a lab tech's
+imaging-only view; offline write visibly refused). PRODUCTION
+APPLIANCE **19/19** on a FRESH Postgres (migration applied, 8 starter
+studies seeded, no demo patients, per-user credentials via the
+bootstrap flow): **THE HEADLINE — dr.omar places a Portable CXR order
+from the real catalogue chips in the PRODUCTION build** (the exact
+thing broken before), the order carrying `studyId=portable_cxr` +
+snapshot summary on the wire; add→orderable immediately;
+retire→leaves the chips (starter set intact); /config splits three
+ways (dr.omar: code status + imaging; adm.huda: identity only;
+tech.rana, Radiology Technician → Ancillary: imaging only, nav
+visible); a report documented against the coded order → the order
+renders **Completed** (#110 end-to-end). Production bundle grep: mock
+study names + `ORDER_SETS` ABSENT, the honest catalogue-unavailable
+string PRESENT, no demo password. `tsc -b --force` + vite + dotnet
+builds green.
+
 ### Config Home + Hospital Identity (built) — the Configuration area's foundation
 
 **The finding (configurability audit + this PR's verify-first sweep):**
@@ -5476,7 +5615,10 @@ never render a blank that reads as clinical absence.
 - **NULL-resolving degradation** in the API layer (never
   `apiUnavailable()`): getConsults, getActionQueues, getOrderSets (the
   imaging study vocabulary — flagged follow-up: it belongs in Layer-4
-  master data, which would restore production imaging ordering),
+  master data, which would restore production imaging ordering
+  *[Superseded (2026-07-19): BUILT — the Imaging Catalogue PR made the
+  study vocabulary Layer-4 master data and retired `getOrderSets`
+  entirely; production imaging ordering restored — see its record]*),
   getNursingTasks, getIoEntries, getUnitSummary. `null` = "not a domain
   in this version"; `undefined` stays "loading"; demo data still serves
   outside production.

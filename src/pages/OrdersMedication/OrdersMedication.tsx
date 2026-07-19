@@ -10,11 +10,11 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconPencil, IconPill } from '../../components/icons'
 import {
   completeImplementation, createOrders, discontinueOrder, getEncounters, getFormulary,
-  getInteractionRules, getLabCatalog, getOrderSetDefs, getOrderSets, getRosterPatient,
+  getImagingCatalog, getInteractionRules, getLabCatalog, getOrderSetDefs, getRosterPatient,
   getPatientOrders, getPatients, getPendingOrders, modifyOrder, signOrder,
 } from '../../lib/api'
 import type {
-  FormularyDrug, InteractionRule, LabTest, MedicationDetails, NewOrderDraft, Order, OrderPriority,
+  FormularyDrug, ImagingStudyDef, InteractionRule, LabTest, MedicationDetails, NewOrderDraft, Order, OrderPriority,
   OrderSetDef, OrderSetItemTemplate, Patient, PatientSummary,
 } from '../../lib/api/types'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
@@ -54,13 +54,12 @@ export function OrdersMedication() {
   const [labCatalog, setLabCatalog] = useState<LabTest[] | null>(null)
   const [rules, setRules] = useState<InteractionRule[]>([])
   const [setDefs, setSetDefs] = useState<OrderSetDef[]>([])
-  /* the imaging STUDY VOCABULARY — the getOrderSets() Order Sets master
-     data (Portable CXR / CT Abdomen-Pelvis / Bedside Echo). The Doctor
-     Workspace demo drawer that once rendered the same list is retired;
-     this canonical screen is the imaging entry point. */
-  /* null = the vocabulary is NOT master data yet (production honest-empty,
-     Phase 3 PR 1) — the card says so instead of a fabricated study list */
-  const [imagingStudies, setImagingStudies] = useState<string[] | null>([])
+  /* the imaging STUDY VOCABULARY — the REAL Imaging Catalogue (third
+     Configuration tenant; the mock ORDER_SETS.Imaging that nulled out in
+     production is retired — PRODUCTION IMAGING ORDERING UNBLOCKS here).
+     Only ACTIVE studies are orderable; null = the catalogue service is
+     unreachable (the card says so — never a fabricated list). */
+  const [imagingStudies, setImagingStudies] = useState<ImagingStudyDef[] | null>([])
   /* the OPEN encounter's recorded weight (PR #83, encounter-scoped) —
      drives the structured-infusion absolute-rate preview; undefined =
      not recorded, handled honestly (no fabricated rate) */
@@ -74,7 +73,7 @@ export function OrdersMedication() {
     getLabCatalog().then(setLabCatalog)
     getInteractionRules().then(setRules)
     getOrderSetDefs().then(setSetDefs)
-    getOrderSets().then(s => setImagingStudies(s ? (s.Imaging ?? []) : null))
+    getImagingCatalog().then(list => setImagingStudies(list ? list.filter(st => st.active) : null))
   }, [])
 
   /* no patient in the URL → the remembered cross-section patient when
@@ -182,10 +181,14 @@ export function OrdersMedication() {
      Entry, an imaging order IS fulfilled by the report documented against
      it (the picked-order linkage) — so like labs it completes via its
      result and carries no implement flag. */
-  const handleImagingOrder = (study: string, detail: string, priority: OrderPriority, sign: boolean) => {
+  const handleImagingOrder = (study: ImagingStudyDef, detail: string, priority: OrderPriority, sign: boolean) => {
+    /* CODED order (the linkage key): studyId joins the order to the
+       catalogue; the summary snapshots the study NAME at order time
+       (+ the free-text indication) — never re-resolved later */
     const draft: NewOrderDraft = {
       patientId, category: 'Imaging',
-      summary: detail ? `${study} — ${detail}` : study,
+      studyId: study.studyId,
+      summary: detail ? `${study.name} — ${detail}` : study.name,
       priority,
     }
     createOrders([draft], session.name, sign, session.jobTitle).then(([o]) => {

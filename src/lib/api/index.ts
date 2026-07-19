@@ -5,10 +5,10 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateDrugDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
-  DocumentImagingDraft, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  DocumentImagingDraft, FormularyEvent, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
-  OrderSetsResponse, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
+  ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
 } from './types'
 import { runtimeApiBase } from '../runtimeConfig'
@@ -18,13 +18,13 @@ import { allPatients, derivedAlertCount } from './data/patients'
 import { ROSTER, rosterFor } from './data/roster'
 import { GOALS, INFUSIONS, PATIENT_ALERTS } from './data/panels'
 import { latestObservations, projectHemodynamics, projectVentilator } from './bedside'
-import { ACTION_QUEUES, ORDER_SETS } from './data/workspace'
+import { ACTION_QUEUES } from './data/workspace'
 import { IO_ENTRIES, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
 import { ASSIGNMENTS, applyAssignmentEnd, insertAssignment } from './data/assignments'
 import { allConsults } from './data/consults'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
-import { CODE_STATUSES, HOSPITAL_IDENTITY } from './data/config'
+import { CODE_STATUSES, HOSPITAL_IDENTITY, IMAGING_CATALOG } from './data/config'
 import { LAB_CATALOG } from './data/catalog'
 import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
@@ -803,16 +803,50 @@ export function getConsults(): Promise<Consult[] | null> {
   return Promise.resolve(null)
 }
 
-/** GET /api/icu/order-sets — quick order sets by order type (the imaging
- *  STUDY VOCABULARY consumed by the imaging order card — distinct from
- *  the real Layer-4 order-set definitions). NULL in production: the
- *  vocabulary has no master-data home yet — the imaging card says so
- *  rather than offering a fabricated study list (flagged follow-up:
- *  this vocabulary belongs in Layer-4 master data, which would restore
- *  production imaging ordering). */
-export function getOrderSets(): Promise<OrderSetsResponse | null> {
-  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(ORDER_SETS, 120)
-  return Promise.resolve(null)
+/* ------------- Imaging Catalogue (Master Data, Aurora Core) -------------
+   The Imaging Catalogue design: the study vocabulary the imaging order
+   card consumes is REAL master data now (the mock ORDER_SETS.Imaging —
+   which nulled out in production and BLOCKED production imaging ordering
+   — is retired). Managed from the Configuration area
+   (imagingcatalog.manage — Ancillary + SeniorDoctor, the lab-catalogue
+   gating). Reads fall back to the mock store offline; writes REAL-ONLY. */
+
+/** GET /api/icu/imaging-catalog — all studies incl. inactive (a retired
+ *  study must keep resolving on orders that carry it; ordering excludes
+ *  inactive). NULL in production = service unreachable (the card renders
+ *  the honest unavailable state, never a fabricated list). */
+export async function getImagingCatalog(): Promise<ImagingStudyDef[] | null> {
+  const real = await apiGet<ImagingStudyDef[]>('/api/icu/imaging-catalog', 'imaging catalogue')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production')
+    return respond(IMAGING_CATALOG.map(s => ({ ...s, history: [] as FormularyEvent[] })), 120)
+  return null
+}
+
+/** POST /api/icu/imaging-catalog — add a study. REAL-ONLY write. */
+export function createImagingStudy(draft: CreateImagingStudyDraft): Promise<AdtWriteResult<ImagingStudyDef>> {
+  return usersWrite<ImagingStudyDef>('/api/icu/imaging-catalog', 'imaging-catalogue create', draft)
+}
+
+/** PUT /api/icu/imaging-catalog/:studyId — edit fields (id immutable). */
+export function updateImagingStudy(studyId: string, draft: EditImagingStudyDraft): Promise<AdtWriteResult<ImagingStudyDef>> {
+  return usersWrite<ImagingStudyDef>(`/api/icu/imaging-catalog/${encodeURIComponent(studyId)}`, 'imaging-catalogue edit', draft, 'PUT')
+}
+
+/** POST /api/icu/imaging-catalog/:studyId/deactivate — RETIRE. */
+export function deactivateImagingStudy(studyId: string): Promise<AdtWriteResult<ImagingStudyDef>> {
+  return usersWrite<ImagingStudyDef>(`/api/icu/imaging-catalog/${encodeURIComponent(studyId)}/deactivate`, 'imaging-catalogue retire')
+}
+
+/** POST /api/icu/imaging-catalog/:studyId/reactivate */
+export function reactivateImagingStudy(studyId: string): Promise<AdtWriteResult<ImagingStudyDef>> {
+  return usersWrite<ImagingStudyDef>(`/api/icu/imaging-catalog/${encodeURIComponent(studyId)}/reactivate`, 'imaging-catalogue reactivate')
+}
+
+/** DELETE /api/icu/imaging-catalog/:studyId — TRUE delete, never-used
+ *  studies only (the lab rule; a referenced study 409s directing retire). */
+export function deleteImagingStudy(studyId: string): Promise<AdtWriteResult<ImagingStudyDef>> {
+  return usersWrite<ImagingStudyDef>(`/api/icu/imaging-catalog/${encodeURIComponent(studyId)}`, 'imaging-catalogue delete', undefined, 'DELETE')
 }
 
 /* ---------------- Nursing domain (Screen 4) ----------------

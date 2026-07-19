@@ -4,13 +4,16 @@ import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Card } from '../../components/Card'
 import { Toast, useToast } from '../../components/Toast'
-import { IconCheck, IconClock, IconGrid, IconPulse, IconSettings } from '../../components/icons'
+import { IconCheck, IconClock, IconFlask, IconGrid, IconPulse, IconSettings } from '../../components/icons'
 import {
-  createCodeStatus, deactivateCodeStatus, getCodeStatuses, getHospitalIdentityHistory,
-  reactivateCodeStatus, updateCodeStatus, updateHospitalIdentity,
+  createCodeStatus, createImagingStudy, deactivateCodeStatus, deactivateImagingStudy,
+  deleteImagingStudy, getCodeStatuses, getHospitalIdentityHistory, getImagingCatalog,
+  reactivateCodeStatus, reactivateImagingStudy, updateCodeStatus, updateHospitalIdentity,
+  updateImagingStudy,
 } from '../../lib/api'
 import type { AdtWriteResult } from '../../lib/api'
-import type { CodeStatusEntry, HospitalIdentityWithHistory } from '../../lib/api/types'
+import type { CodeStatusEntry, HospitalIdentityWithHistory, ImagingStudyDef } from '../../lib/api/types'
+import { IMAGING_MODALITIES } from '../../lib/api/types'
 import { invalidateHospitalIdentity } from '../../lib/hospitalIdentity'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 
@@ -31,8 +34,13 @@ import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/sess
    - CODE STATUS VOCABULARY (codestatus.manage — SeniorDoctor): clinical
      governance, the observations.configure precedent; never the office
      Administrator.
-   Future tenants (beds, imaging catalogue, dispositions, …) add
-   sections here on the same pattern — extend, never duplicate.
+   - IMAGING CATALOGUE (imagingcatalog.manage — Ancillary +
+     SeniorDoctor, the lab-catalogue gating; a DISTINCT atom because
+     radiology and the lab are different producing services): the coded
+     study definitions imaging ordering reads — the third tenant, and
+     the one that UNBLOCKED production imaging ordering.
+   Future tenants (beds, dispositions, …) add sections here on the same
+   pattern — extend, never duplicate.
 
    Every manager uses the formulary/lab-catalogue pattern: validated
    REAL-ONLY writes, append-only audit, deactivate-never-delete (where a
@@ -42,6 +50,7 @@ export function Configuration() {
   const session = getSession()!
   const canIdentity = hasPermission(session.jobTitle, 'hospital.configure')
   const canCodeStatus = hasPermission(session.jobTitle, 'codestatus.manage')
+  const canImaging = hasPermission(session.jobTitle, 'imagingcatalog.manage')
 
   /* ---- code status vocabulary (clinical section) ---- */
   const [entries, setEntries] = useState<CodeStatusEntry[] | null>(null)
@@ -53,6 +62,24 @@ export function Configuration() {
   const [cCode, setCCode] = useState('')
   const [cLabel, setCLabel] = useState('')
   const [eLabel, setELabel] = useState('')
+
+  /* ---- imaging catalogue (clinical section — lab-catalogue gating) ---- */
+  const [imgStudies, setImgStudies] = useState<ImagingStudyDef[] | null>(null)
+  const [imgBusy, setImgBusy] = useState(false)
+  const [imgPanel, setImgPanel] = useState<{ kind: 'edit' | 'retire' | 'history'; id: string } | null>(null)
+  const [imgRowError, setImgRowError] = useState<{ id: string; error: string } | null>(null)
+  const [imgFormError, setImgFormError] = useState<string | null>(null)
+  const [iId, setIId] = useState('')
+  const [iName, setIName] = useState('')
+  const [iModality, setIModality] = useState('CXR')
+  const [iRegion, setIRegion] = useState('')
+  const [iContrast, setIContrast] = useState(false)
+  const [iPortable, setIPortable] = useState(false)
+  const [eiName, setEiName] = useState('')
+  const [eiModality, setEiModality] = useState('CXR')
+  const [eiRegion, setEiRegion] = useState('')
+  const [eiContrast, setEiContrast] = useState(false)
+  const [eiPortable, setEiPortable] = useState(false)
 
   /* ---- hospital identity (administrative section) ---- */
   const [ident, setIdent] = useState<HospitalIdentityWithHistory | null>(null)
@@ -67,13 +94,14 @@ export function Configuration() {
 
   const reload = useCallback(() => {
     if (canCodeStatus) getCodeStatuses().then(setEntries)
+    if (canImaging) getImagingCatalog().then(setImgStudies)
     if (canIdentity) {
       getHospitalIdentityHistory().then(r => {
         setIdent(r); setIdentLoaded(true)
         setHName(r.name); setHUnit(r.unitName); setHShort(r.shortName); setHAddr(r.address)
       }).catch(() => setIdentLoaded(true))
     }
-  }, [canCodeStatus, canIdentity])
+  }, [canCodeStatus, canIdentity, canImaging])
   useEffect(() => { reload() }, [reload])
 
   const stats = useMemo(() => {
@@ -85,6 +113,10 @@ export function Configuration() {
     ...(canIdentity ? [{
       icon: <IconGrid size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)',
       value: identLoaded ? (ident?.configured ? ident.name : 'Not configured') : '—', label: 'Hospital Identity',
+    } satisfies KpiSpec] : []),
+    ...(canImaging ? [{
+      icon: <IconFlask size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.13)',
+      value: imgStudies ? `${imgStudies.filter(s => s.active).length}/${imgStudies.length}` : '—', label: 'Imaging Studies (active)',
     } satisfies KpiSpec] : []),
     ...(canCodeStatus ? [
       { icon: <IconPulse size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.13)', value: entries ? stats.total : '—', label: 'Code Statuses' },
@@ -138,6 +170,68 @@ export function Configuration() {
     if (panel?.kind === kind && panel.code === e.code) { setPanel(null); return }
     if (kind === 'edit') setELabel(e.label)
     setPanel({ kind, code: e.code })
+  }
+
+  /* ---- imaging catalogue writes (REAL-ONLY, the shared refusal) ---- */
+  async function applyImgWrite(id: string | null, what: string,
+    run: () => Promise<AdtWriteResult<ImagingStudyDef>>, onOk: (st: ImagingStudyDef) => void) {
+    setImgBusy(true); setImgRowError(null); setImgFormError(null)
+    const res = await run()
+    setImgBusy(false)
+    if (res.kind === 'ok') { onOk(res.data); reload(); return }
+    const error = res.kind === 'rejected' ? res.error : offlineMsg(what)
+    if (id) setImgRowError({ id, error })
+    else setImgFormError(error)
+  }
+
+  async function doImgCreate() {
+    await applyImgWrite(null, 'the study', () => createImagingStudy({
+      studyId: iId.trim(), name: iName.trim(), modality: iModality,
+      ...(iRegion.trim() ? { region: iRegion.trim() } : {}),
+      contrast: iContrast, portable: iPortable,
+    }), st => {
+      showToast('Imaging study added', `${st.name} (${st.studyId}) is orderable immediately`)
+      setIId(''); setIName(''); setIRegion(''); setIContrast(false); setIPortable(false)
+    })
+  }
+
+  async function doImgEdit(st: ImagingStudyDef) {
+    await applyImgWrite(st.studyId, 'the change', () => updateImagingStudy(st.studyId, {
+      name: eiName.trim(), modality: eiModality, region: eiRegion.trim(),
+      contrast: eiContrast, portable: eiPortable,
+    }), upd => {
+      showToast('Imaging study updated', `${upd.name} — the change is on the study's audit history`)
+      setImgPanel(null)
+    })
+  }
+
+  async function doImgRetire(st: ImagingStudyDef) {
+    await applyImgWrite(st.studyId, 'the retirement', () => deactivateImagingStudy(st.studyId), upd => {
+      showToast('Imaging study retired', `${upd.name} is off the ordering menu (historical orders keep rendering)`)
+      setImgPanel(null)
+    })
+  }
+
+  async function doImgReactivate(st: ImagingStudyDef) {
+    await applyImgWrite(st.studyId, 'the reactivation', () => reactivateImagingStudy(st.studyId), upd => {
+      showToast('Imaging study reactivated', `${upd.name} is orderable again`)
+    })
+  }
+
+  async function doImgDelete(st: ImagingStudyDef) {
+    await applyImgWrite(st.studyId, 'the deletion', () => deleteImagingStudy(st.studyId), del => {
+      showToast('Imaging study deleted', `${del.name} was never used (0 orders) — removed outright`)
+    })
+  }
+
+  function openImgPanel(kind: 'edit' | 'retire' | 'history', st: ImagingStudyDef) {
+    setImgRowError(null)
+    if (imgPanel?.kind === kind && imgPanel.id === st.studyId) { setImgPanel(null); return }
+    if (kind === 'edit') {
+      setEiName(st.name); setEiModality(st.modality); setEiRegion(st.region)
+      setEiContrast(st.contrast); setEiPortable(st.portable)
+    }
+    setImgPanel({ kind, id: st.studyId })
   }
 
   async function doSaveIdentity() {
@@ -358,6 +452,149 @@ export function Configuration() {
                 <button className="uasubmit" type="submit"
                   disabled={busy || !cCode.trim() || !cLabel.trim()}>
                   {busy ? 'Adding…' : 'Add to vocabulary'}
+                </button>
+              </form>
+            </Card>
+          </div>
+          )}
+
+          {canImaging && (
+          <div className="uacols">
+            <Card icon={<IconFlask size={15} stroke="var(--violet)" />} title="Imaging Catalogue"
+              aside={imgStudies ? `${imgStudies.filter(s => s.active).length} active · ${imgStudies.filter(s => !s.active).length} retired` : '—'}>
+              <div className="uarows">
+                {(imgStudies ?? []).map(st => {
+                  const open = imgPanel?.id === st.studyId ? imgPanel.kind : null
+                  return (
+                    <div className={`uarow${st.active ? '' : ' off'}`} key={st.studyId}>
+                      <div className="uamain">
+                        <span className="uawho">
+                          <b>{st.name}</b>
+                          <small className="num">{st.studyId}</small>
+                        </span>
+                        <span className="uarole">
+                          <span>{st.modality}{st.region ? ` · ${st.region}` : ''}</span>
+                          <small className="uaprofile">{st.contrast ? 'contrast' : 'no contrast'} · {st.portable ? 'portable' : 'department'}</small>
+                        </span>
+                        <span className={`uastatus ${st.active ? 'on' : 'offed'}`}>{st.active ? 'Active' : 'Retired'}</span>
+                        <span className="uaacts">
+                          <button className="uaact" onClick={() => openImgPanel('history', st)} aria-expanded={open === 'history'}>
+                            History ({st.history.length})
+                          </button>
+                          <button className="uaact" onClick={() => openImgPanel('edit', st)} aria-expanded={open === 'edit'}>Edit</button>
+                          {st.active && (
+                            <button className="uaact warn" onClick={() => openImgPanel('retire', st)} aria-expanded={open === 'retire'}>Retire</button>
+                          )}
+                          {!st.active && (
+                            <button className="uaact" disabled={imgBusy} onClick={() => doImgReactivate(st)}>Reactivate</button>
+                          )}
+                          <button className="uaact" disabled={imgBusy} onClick={() => doImgDelete(st)}
+                            title="TRUE delete — never-used studies only; a referenced study answers 409 directing retire">
+                            Delete
+                          </button>
+                        </span>
+                      </div>
+
+                      {open === 'history' && (
+                        <div className="uapanel" role="region" aria-label={`History: ${st.studyId}`}>
+                          {st.history.length === 0 && (
+                            <span className="uaconfirm">No recorded events — a seeded study (historical data carries no invented audit).</span>
+                          )}
+                          {st.history.map((ev, i) => (
+                            <div className="uaevent" key={i}>
+                              <span className="num">{ev.time}</span> · {ev.actor} · {ev.action}{ev.detail ? ` — ${ev.detail}` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {open === 'edit' && (
+                        <div className="uapanel" role="region" aria-label={`Edit imaging study: ${st.studyId}`}>
+                          <div className="uafields">
+                            <label>Name (the id <span className="num">{st.studyId}</span> is permanent)
+                              <input value={eiName} onChange={ev => setEiName(ev.target.value)} disabled={imgBusy} maxLength={80} />
+                            </label>
+                            <label>Modality (fixed vocabulary — one source with result entry)
+                              <select value={eiModality} onChange={ev => setEiModality(ev.target.value)} disabled={imgBusy}>
+                                {IMAGING_MODALITIES.map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </label>
+                            <label>Body region (optional)
+                              <input value={eiRegion} onChange={ev => setEiRegion(ev.target.value)} disabled={imgBusy} maxLength={40} />
+                            </label>
+                            <label>Attributes
+                              <span className="uaconfirm">
+                                <label><input type="checkbox" checked={eiContrast} onChange={ev => setEiContrast(ev.target.checked)} disabled={imgBusy} /> contrast</label>
+                                {' '}
+                                <label><input type="checkbox" checked={eiPortable} onChange={ev => setEiPortable(ev.target.checked)} disabled={imgBusy} /> portable</label>
+                              </span>
+                            </label>
+                          </div>
+                          <div className="uapanelacts">
+                            <button className="uaact go" disabled={imgBusy || eiName.trim().length === 0} onClick={() => doImgEdit(st)}>
+                              {imgBusy ? 'Saving…' : 'Save change'}
+                            </button>
+                            <button className="uaact" onClick={() => setImgPanel(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {open === 'retire' && (
+                        <div className="uapanel" role="alertdialog" aria-label={`Confirm retirement: ${st.studyId}`}>
+                          <span className="uaconfirm">
+                            Retire <b>{st.name}</b>? It leaves the ordering menu and the server refuses
+                            new orders for it. Historical orders carrying it keep rendering (never
+                            deleted). Reversible via Reactivate.
+                          </span>
+                          <div className="uapanelacts">
+                            <button className="uaact warn" disabled={imgBusy} onClick={() => doImgRetire(st)}>
+                              {imgBusy ? 'Retiring…' : 'Confirm retirement'}
+                            </button>
+                            <button className="uaact" onClick={() => setImgPanel(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {imgRowError?.id === st.studyId && <div className="uaerr" role="alert">{imgRowError.error}</div>}
+                    </div>
+                  )
+                })}
+                {imgStudies?.length === 0 && <div className="uaempty">No imaging studies — add the studies this hospital performs.</div>}
+              </div>
+            </Card>
+
+            <Card icon={<IconSettings size={15} stroke="var(--violet)" />} title="Add Imaging Study" aside="orderable immediately (hospital finalises the list)">
+              <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doImgCreate() }}>
+                <div className="uafields">
+                  <label>Study id (permanent — lowercase, digits, underscore)
+                    <input value={iId} onChange={e => setIId(e.target.value)} disabled={imgBusy}
+                      placeholder="ct_head_plain" autoComplete="off" maxLength={40} />
+                  </label>
+                  <label>Name (shown on ordering chips and order summaries)
+                    <input value={iName} onChange={e => setIName(e.target.value)} disabled={imgBusy}
+                      placeholder="CT Head without contrast" maxLength={80} />
+                  </label>
+                  <label>Modality (fixed vocabulary)
+                    <select value={iModality} onChange={e => setIModality(e.target.value)} disabled={imgBusy}>
+                      {IMAGING_MODALITIES.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                  </label>
+                  <label>Body region (optional)
+                    <input value={iRegion} onChange={e => setIRegion(e.target.value)} disabled={imgBusy}
+                      placeholder="Head" maxLength={40} />
+                  </label>
+                  <label>Attributes
+                    <span className="uaconfirm">
+                      <label><input type="checkbox" checked={iContrast} onChange={e => setIContrast(e.target.checked)} disabled={imgBusy} /> contrast</label>
+                      {' '}
+                      <label><input type="checkbox" checked={iPortable} onChange={e => setIPortable(e.target.checked)} disabled={imgBusy} /> portable</label>
+                    </span>
+                  </label>
+                </div>
+                {imgFormError && <div className="uaerr" role="alert">{imgFormError}</div>}
+                <button className="uasubmit" type="submit"
+                  disabled={imgBusy || !iId.trim() || !iName.trim()}>
+                  {imgBusy ? 'Adding…' : 'Add to catalogue'}
                 </button>
               </form>
             </Card>

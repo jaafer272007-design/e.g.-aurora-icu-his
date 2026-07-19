@@ -105,7 +105,7 @@ static class Rbac
             "results.document", "results.correct", "labcatalog.manage", "notes.document",
             "ai.view", "adt.admit", "adt.discharge", "observations.record",
             "observations.correct", "observations.configure", "patients.measure",
-            "assignments.manage", "codestatus.set", "codestatus.manage"],
+            "assignments.manage", "codestatus.set", "codestatus.manage", "imagingcatalog.manage"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "handoff.document", "results.view", "results.document", "ai.view", "adt.transfer",
             "observations.record", "patients.measure"],
@@ -172,7 +172,15 @@ static class Rbac
            principle behind results.create, kept as its OWN atom: entering
            a transactional result and redefining reference data are
            different authorities even while both sit on this profile */
-        ["Ancillary"] = ["patients.view", "orders.view", "results.view", "results.create", "labcatalog.manage"],
+        /* imagingcatalog.manage (Imaging Catalogue design §2 — the FLAGGED
+           decision, stated): maintaining the imaging study catalogue is
+           CLINICAL, on the lab-catalogue gating — Ancillary + SeniorDoctor
+           — and NEVER the office Administrator. A DISTINCT atom rather
+           than reusing labcatalog.manage (recommendation followed):
+           radiology and the laboratory are different producing services,
+           and a hospital may govern them separately later — that split is
+           then a row edit here, no schema change. */
+        ["Ancillary"] = ["patients.view", "orders.view", "results.view", "results.create", "labcatalog.manage", "imagingcatalog.manage"],
         ["AlliedHealth"] = ["patients.view", "results.view"],
     };
 

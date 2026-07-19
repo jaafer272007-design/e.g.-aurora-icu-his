@@ -227,6 +227,7 @@ static class Seeder
         SeedObservationCatalog(app, db);
         SeedCodeStatuses(app, db);
         SeedDemoHospitalIdentity(app, db);
+        SeedImagingCatalog(app, db, demo: true);
     }
 
     /* Patient Assignment & Responsibility (§10): the DEMO assignments the
@@ -319,6 +320,7 @@ static class Seeder
         SeedOrderSets(app, db);
         SeedObservationCatalog(app, db);
         SeedCodeStatuses(app, db);
+        SeedImagingCatalog(app, db, demo: false);
         SeedProductionFormulary(app, db);
         SeedSystemPrincipal(app, db);
         SeedBootstrapAdmin(app, db);
@@ -418,6 +420,49 @@ static class Seeder
         });
         db.SaveChanges();
         app.Logger.LogInformation("Seeded the demo hospital identity (Aurora General Hospital / Unit 4B) — data, not code");
+    }
+
+    /* Imaging Catalogue (design §6, flagged decisions resolved): the
+       STARTER sets are PLACEHOLDERS the clinical owner finalises live on
+       the Configuration screen, and they ship ACTIVE (the drug-content
+       decision: usable immediately, hospital manages; imaging carries
+       less risk than drug content).
+       - DEMO/STAGING: exactly the three studies the retired client mock
+         offered (Portable CXR, CT Abdomen/Pelvis, Bedside Echo) —
+         as DATA, names byte-identical, so staging renders unchanged.
+       - PRODUCTION: a sensible common-ICU starter set (catalogue ONLY —
+         never patients/orders/reports, the formulary/labs seed policy).
+       Seed rows carry empty audit histories (no invented audit).
+       Idempotent: seed-if-empty. */
+    static void SeedImagingCatalog(WebApplication app, AuroraDb db, bool demo)
+    {
+        if (db.ImagingCatalog.Any()) return;
+        var studies = demo
+            ? new (string Id, string Name, string Modality, string Region, bool Contrast, bool Portable)[]
+            {
+                ("portable_cxr", "Portable CXR", "CXR", "Chest", false, true),
+                ("ct_abdomen_pelvis", "CT Abdomen/Pelvis", "CT", "Abdomen/Pelvis", true, false),
+                ("bedside_echo", "Bedside Echo", "Echo", "Cardiac", false, true),
+            }
+            : new (string Id, string Name, string Modality, string Region, bool Contrast, bool Portable)[]
+            {
+                ("portable_cxr", "Portable CXR", "CXR", "Chest", false, true),
+                ("cxr_pa_lat", "CXR PA/Lateral (department)", "CXR", "Chest", false, false),
+                ("ct_head_plain", "CT Head without contrast", "CT", "Head", false, false),
+                ("ct_chest", "CT Chest", "CT", "Chest", true, false),
+                ("ct_abdomen_pelvis", "CT Abdomen/Pelvis with contrast", "CT", "Abdomen/Pelvis", true, false),
+                ("us_abdomen", "US Abdomen", "US", "Abdomen", false, true),
+                ("bedside_echo", "Bedside Echocardiogram", "Echo", "Cardiac", false, true),
+                ("us_venous_doppler", "US Venous Doppler — lower limbs", "US", "Vascular", false, true),
+            };
+        db.ImagingCatalog.AddRange(studies.Select((x, i) => new Aurora.Core.MasterData.ImagingStudyDefRow
+        {
+            StudyId = x.Id, Seq = i + 1, Name = x.Name, Modality = x.Modality, Region = x.Region,
+            Contrast = x.Contrast, Portable = x.Portable, Active = true, EventsJson = "[]",
+        }));
+        db.SaveChanges();
+        app.Logger.LogInformation("Seeded {Count} imaging-catalogue studies ({Mode} starter set — the hospital finalises the list in Configuration)",
+            studies.Length, demo ? "demo" : "production");
     }
 
     /* Stage 11 §12 step 1: the Observation Type Catalogue — the §1

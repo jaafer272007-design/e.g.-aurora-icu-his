@@ -134,6 +134,14 @@ static class OrdersApi
                     && LabCatalogLogic.Resolve(db, draft.TestId) is { Active: false } inactiveTest)
                     return ApiError.StateConflict(
                         $"test '{inactiveTest.Name}' ({inactiveTest.TestId}) is inactive in the lab catalogue — it cannot be selected for a new order");
+                /* the imaging catalogue's identical invariant: a RETIRED
+                   study cannot be newly ordered (validation already 400'd
+                   unknown studyIds — the imaging catalogue is authoritative,
+                   no free-text escape hatch existed to preserve) */
+                if (draft.StudyId is not null
+                    && ImagingCatalogLogic.Resolve(db, draft.StudyId) is { Active: false } inactiveStudy)
+                    return ApiError.StateConflict(
+                        $"study '{inactiveStudy.Name}' ({inactiveStudy.StudyId}) is inactive in the imaging catalogue — it cannot be selected for a new order");
             }
 
             /* SERVER-SIDE MEDICATION SAFETY (the safety.ts move — see
@@ -184,12 +192,19 @@ static class OrdersApi
                    stored — administrations begin EMPTY and accumulate only
                    documented FACTS. Expected instances derive at MAR read
                    from frequency + the signed time (therapy start). */
+                /* Imaging Catalogue (snapshot-at-use): a coded imaging
+                   order's Summary defaults to the study's CURRENT name —
+                   captured here, never re-resolved (a client-provided
+                   summary, e.g. "name — indication", stays authoritative) */
+                var summary = draft.Summary;
+                if (summary is null && draft.StudyId is not null)
+                    summary = ImagingCatalogLogic.Resolve(db, draft.StudyId)!.Name;
                 var dto = new OrderDto(
                     OrderLogic.NextOrderId(), draft.PatientId!, enc.EncounterId, enc.BedId, pt.DisplayName,
-                    draft.Category!, draft.Summary ?? OrderLogic.MedSummary(medication!),
+                    draft.Category!, summary ?? OrderLogic.MedSummary(medication!),
                     medication, draft.Priority!, req.Sign ? "active" : "pending",
                     actor, time, draft.RequiresImplementation, null, history, null,
-                    draft.TestId);
+                    draft.TestId, draft.StudyId);
                 db.Orders.Add(OrderRow.FromDto(dto, OrderLogic.NextSeq()));
                 created.Add(dto);
             }

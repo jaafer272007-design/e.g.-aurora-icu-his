@@ -461,9 +461,10 @@ export interface Consult {
   time: string
 }
 
-export type OrderType = 'Medication' | 'Lab' | 'Imaging' | 'Nursing'
-
-export type OrderSetsResponse = Record<OrderType, string[]>
+/* OrderType / OrderSetsResponse RETIRED (Imaging Catalogue): the mock
+   Order Sets lists' last consumer was imaging ordering, which now reads
+   the REAL imaging catalogue (getImagingCatalog). Real order sets are
+   OrderSetDef (getOrderSetDefs). */
 
 /* ==================== Nursing domain (Screen 4) ====================
    Independent domain models per docs/architecture.md rule 2 — each block
@@ -640,6 +641,12 @@ export interface Order {
    *  the order half of the order→result linkage. Optional; absent on the
    *  mock store and on free-text lab orders. */
   testId?: string
+  /** Imaging Catalogue: the catalogue study an Imaging order references —
+   *  the ORDER half of the order→report linkage (#105 built the report
+   *  half via orderId). Summary carries the study name at order time
+   *  (snapshot-at-use). Optional; absent on free-text imaging orders and
+   *  pre-catalogue rows. */
+  studyId?: string
   priority: OrderPriority
   status: OrderStatus
   orderedBy: string
@@ -660,6 +667,12 @@ export interface NewOrderDraft {
   medication?: MedicationDetails
   /** Lab orders only: the catalogue test being ordered (Layer 4) */
   testId?: string
+  /** Imaging Catalogue: the catalogue study an Imaging order references —
+   *  the ORDER half of the order→report linkage (#105 built the report
+   *  half via orderId). Summary carries the study name at order time
+   *  (snapshot-at-use). Optional; absent on free-text imaging orders and
+   *  pre-catalogue rows. */
+  studyId?: string
   priority: OrderPriority
   requiresImplementation?: boolean
 }
@@ -804,6 +817,12 @@ export interface OrderSetItemTemplate {
   medication?: MedicationDetails
   /** Lab items: the catalogue test the item orders (Layer 4) */
   testId?: string
+  /** Imaging Catalogue: the catalogue study an Imaging order references —
+   *  the ORDER half of the order→report linkage (#105 built the report
+   *  half via orderId). Summary carries the study name at order time
+   *  (snapshot-at-use). Optional; absent on free-text imaging orders and
+   *  pre-catalogue rows. */
+  studyId?: string
   priority: OrderPriority
   requiresImplementation?: boolean
 }
@@ -1025,6 +1044,14 @@ export interface DocumentCustomLabDraft {
 /* ---------- GET /api/icu/results/imaging?patientId ---------- */
 
 export type ImagingModality = 'CXR' | 'X-ray' | 'CT' | 'US' | 'Echo' | 'MRI' | 'Other'
+
+/** THE ONE MODALITY VOCABULARY (Imaging Catalogue design §3 — a small
+ *  FIXED set, mirroring the server's ResultsLogic.ImagingModalities;
+ *  modalities are standard — hospitals add STUDIES within them, never
+ *  new modalities). Read by result-entry and the catalogue manager
+ *  alike — the client's inline duplicates are retired. */
+export const IMAGING_MODALITIES: readonly ImagingModality[] =
+  ['CXR', 'X-ray', 'CT', 'MRI', 'US', 'Echo', 'Other']
 /** status progression: ordered → in-progress → preliminary → final */
 export type ImagingStatus = 'ordered' | 'in-progress' | 'preliminary' | 'final'
 
@@ -1258,6 +1285,43 @@ export interface CodeStatusEntry {
   seq: number
   active: boolean
   history: FormularyEvent[]
+}
+
+/* ---------- GET/POST /api/icu/imaging-catalog (Configuration) ----------
+   The Imaging Catalogue (third Configuration tenant): coded study
+   DEFINITIONS on the lab-catalogue pattern — the ordering vocabulary
+   (replacing the retired production-blocked mock) and the join key for
+   order→report linkage. Deactivate-never-delete: a retired study keeps
+   rendering on orders that carry it but isn't newly orderable. */
+export interface ImagingStudyDef {
+  /** permanent natural key (lowercase snake, e.g. 'ct_head_plain') */
+  studyId: string
+  name: string
+  /** one of IMAGING_MODALITIES — the fixed reconciled vocabulary */
+  modality: string
+  region: string
+  /** structured ICU-relevant attributes (design §1 — small set only) */
+  contrast: boolean
+  portable: boolean
+  active: boolean
+  history: FormularyEvent[]
+}
+
+export interface CreateImagingStudyDraft {
+  studyId: string
+  name: string
+  modality: string
+  region?: string
+  contrast?: boolean
+  portable?: boolean
+}
+
+export interface EditImagingStudyDraft {
+  name?: string
+  modality?: string
+  region?: string
+  contrast?: boolean
+  portable?: boolean
 }
 
 /* ---------- GET /api/icu/adt/patients/:patientId ---------- */
