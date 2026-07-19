@@ -44,6 +44,14 @@ export interface BedPatient {
   flags: SupportFlag[]
   isolation: boolean
   codeStatus: string
+  /** CODE STATUS (governed vocabulary — the SAFETY FIX): codeStatus is
+   *  the RESOLVED display value ('' = NOT RECORDED, an explicit state
+   *  every surface renders unmistakably); codeStatusCode = the selected
+   *  vocabulary code when governed; codeStatusLegacy = true when the
+   *  value is preserved pre-vocabulary free text awaiting clinician
+   *  re-confirmation (never dropped, never guessed). */
+  codeStatusCode?: string | null
+  codeStatusLegacy?: boolean
   vitals: BedCardVitals
   alert: BedAlert
   attending: string
@@ -135,6 +143,14 @@ export interface RosterRecordDto {
   allergies: string
   attending: string
   codeStatus: string
+  /** CODE STATUS (governed vocabulary — the SAFETY FIX): codeStatus is
+   *  the RESOLVED display value ('' = NOT RECORDED, an explicit state
+   *  every surface renders unmistakably); codeStatusCode = the selected
+   *  vocabulary code when governed; codeStatusLegacy = true when the
+   *  value is preserved pre-vocabulary free text awaiting clinician
+   *  re-confirmation (never dropped, never guessed). */
+  codeStatusCode?: string | null
+  codeStatusLegacy?: boolean
   rhythm: string
   isolation: boolean
   severity: Severity
@@ -197,6 +213,14 @@ export interface Patient extends PatientSummary {
   allergies: string
   attending: string
   codeStatus: string
+  /** CODE STATUS (governed vocabulary — the SAFETY FIX): codeStatus is
+   *  the RESOLVED display value ('' = NOT RECORDED, an explicit state
+   *  every surface renders unmistakably); codeStatusCode = the selected
+   *  vocabulary code when governed; codeStatusLegacy = true when the
+   *  value is preserved pre-vocabulary free text awaiting clinician
+   *  re-confirmation (never dropped, never guessed). */
+  codeStatusCode?: string | null
+  codeStatusLegacy?: boolean
   rhythm: string
   vitals: MonitorVitals
   organs: Record<OrganName, OrganStatus>
@@ -457,6 +481,14 @@ export interface AssignedPatient {
   diagnosis: string
   allergies: string
   codeStatus: string
+  /** CODE STATUS (governed vocabulary — the SAFETY FIX): codeStatus is
+   *  the RESOLVED display value ('' = NOT RECORDED, an explicit state
+   *  every surface renders unmistakably); codeStatusCode = the selected
+   *  vocabulary code when governed; codeStatusLegacy = true when the
+   *  value is preserved pre-vocabulary free text awaiting clinician
+   *  re-confirmation (never dropped, never guessed). */
+  codeStatusCode?: string | null
+  codeStatusLegacy?: boolean
   flags: SupportFlag[]
   isolation: boolean
   severity: Severity
@@ -1188,10 +1220,45 @@ export interface Encounter {
    *  (every pre-feature discharge): shown as "not recorded", NEVER
    *  fabricated, and excluded from any mortality denominator. */
   disposition?: DispositionCode
+  /** CODE STATUS (governed vocabulary — the SAFETY FIX): the selected
+   *  vocabulary CODE, encounter-scoped like weight/height (a
+   *  re-admission STARTS FRESH — a stale DNR never silently carries
+   *  forward). Absent = NOT RECORDED — an explicit state, never a
+   *  default. codeStatusEvents is the append-only set history (who /
+   *  when / active role / prior). */
+  codeStatusCode?: string
+  codeStatusEvents?: CodeStatusEvent[]
+}
+
+/** one append-only code-status set event (prior null on the first set);
+ *  label = the vocabulary label SNAPSHOT the clinician selected —
+ *  historical rendering reads it and never consults the live vocabulary */
+export interface CodeStatusEvent {
+  time: string
+  actor: string
+  role: string
+  code: string
+  label: string
+  prior?: string | null
 }
 
 /** discharge-disposition vocabulary (server-validated) */
 export type DispositionCode = 'home' | 'ward' | 'transfer_out' | 'higher_care' | 'died' | 'other'
+
+/* ---------- Code Status governed vocabulary (Master Data) ----------
+   The per-hospital resuscitation-instruction vocabulary — the free-text
+   SAFETY FIX. Managed in the Configuration area (SeniorDoctor); a
+   patient's code status is SELECTED from the active entries, never
+   typed. Deactivate-never-delete: a retired entry keeps rendering on
+   records that carry it but cannot be newly assigned. */
+export interface CodeStatusEntry {
+  /** permanent natural key (lowercase snake, e.g. 'dnr_dni') */
+  code: string
+  label: string
+  seq: number
+  active: boolean
+  history: FormularyEvent[]
+}
 
 /* ---------- GET /api/icu/adt/patients/:patientId ---------- */
 
@@ -1321,6 +1388,10 @@ export interface AdmitDraft {
    *  omitted, a clinician adds them later on the patient record */
   weightKg?: number
   heightCm?: number
+  /** Code status — OPTIONAL at admission: a code SELECTED from the
+   *  ACTIVE vocabulary (never typed). Omitted = honestly NOT RECORDED
+   *  until a physician sets it — never a default. */
+  codeStatusCode?: string
 }
 
 export interface AdmitResponse {

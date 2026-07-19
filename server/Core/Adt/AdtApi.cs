@@ -364,6 +364,55 @@ static class AdtApi
             return Results.Json(enc.ToDto(name), JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* POST /api/icu/adt/encounters/{encounterId}/code-status — set /
+           change THIS encounter's code status (the governed-vocabulary
+           SAFETY FIX). SELECTED from the ACTIVE vocabulary, never typed.
+           RBAC codestatus.set — PHYSICIAN authority (Doctor/SeniorDoctor;
+           the goals-of-care decision is a physician act — nurses render
+           and act on the value, never set it; the office Administrator
+           profile never holds it). RBAC answers BEFORE the lookup.
+           CLOSED-ENCOUNTER 409, deliberately (unlike weight/height):
+           recording a resuscitation instruction on a closed episode is
+           INITIATING a new instruction, not repairing the record of care
+           given — there is nothing for it to govern. A correction within
+           the open episode is the next set (append-only history, prior
+           preserved — never silently changed, never erased).
+           FOUR-CODE: absent encounter → 404 · closed encounter / retired
+           code / same-code replay → 409 · unknown code → 400 (payload
+           reference, the bedId precedent). */
+        app.MapPost("/api/icu/adt/encounters/{encounterId}/code-status",
+            (string encounterId, SetCodeStatusRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "codestatus.set") is IResult denied) return denied;
+            var code = (req.Code ?? "").Trim();
+            if (code.Length == 0) return ApiError.BadRequest("code is required");
+            var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
+            if (enc is null) return ApiError.NotFound();
+            if (enc.Status != "open")
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' is discharged — a code status is set on an open admission"
+                    + " (a closed episode's record is not re-instructed)");
+            var cs = db.CodeStatuses.AsNoTracking().FirstOrDefault(c => c.Code == code);
+            if (cs is null)
+                return ApiError.BadRequest($"code '{code}' does not match any code-status vocabulary entry");
+            if (!cs.Active)
+                return ApiError.StateConflict(
+                    $"code status '{code}' ({cs.Label}) is retired — it cannot be newly assigned; reactivate it or select an active entry");
+            if (enc.CodeStatusCode == code)
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' already carries code status '{code}' — there is nothing to change");
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var role = Rbac.ProfileOf(user.FindFirst("jobTitle")?.Value ?? "") ?? "Unknown";
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+            var events = JsonSerializer.Deserialize<List<CodeStatusEventDto>>(enc.CodeStatusEventsJson, JsonOpts.Web)!;
+            events.Add(new(time, actor, role, code, cs.Label, enc.CodeStatusCode));
+            enc.CodeStatusEventsJson = JsonSerializer.Serialize(events, JsonOpts.Web);
+            enc.CodeStatusCode = code;
+            db.SaveChanges();
+            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
+            return Results.Json(enc.ToDto(name), JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* POST /api/icu/adt/admissions — DOCTOR RBAC (adt.admit). Opens an
            Encounter, assigns the bed; creates the Patient with an
            AURORA-GENERATED MRN, or RE-ADMITS an existing patient by
@@ -452,6 +501,24 @@ static class AdtApi
                bounds-validated when provided, addable later when omitted */
             if (AdtLogic.MeasurementError(req.WeightKg, req.HeightCm) is string mErr)
                 return ApiError.BadRequest(mErr);
+            /* Code status — OPTIONAL at admission, SELECTED from the
+               vocabulary, never typed: an unknown code is a payload
+               reference resolving to nothing → 400 (the bedId precedent);
+               a RETIRED code is resource state → 409 (reactivate it and
+               the same request succeeds). Omitted = honestly NOT
+               RECORDED — never a default. */
+            (string Code, string Label)? admitCodeStatus = null;
+            if (!string.IsNullOrWhiteSpace(req.CodeStatusCode))
+            {
+                var csCode = req.CodeStatusCode.Trim();
+                var cs = db.CodeStatuses.AsNoTracking().FirstOrDefault(c => c.Code == csCode);
+                if (cs is null)
+                    return ApiError.BadRequest($"codeStatusCode '{csCode}' does not match any code-status vocabulary entry");
+                if (!cs.Active)
+                    return ApiError.StateConflict(
+                        $"code status '{csCode}' ({cs.Label}) is retired — it cannot be newly assigned; reactivate it or select an active entry");
+                admitCodeStatus = (cs.Code, cs.Label);
+            }
             /* resolve the patient: RE-ADMISSION by patientId — an unknown
                id is a payload reference that resolves to nothing → 400
                (the bedId precedent); otherwise a NEW patient whose MRN
@@ -594,6 +661,18 @@ static class AdtApi
                DateOfBirth above stays person-level identity — age already
                computes at read, correctly per-time. */
             AdtLogic.ApplyMeasurements(enc, req.WeightKg, req.HeightCm, actor, atAdmission: true);
+            /* Code status at admission — ENCOUNTER-SCOPED on the same rule
+               as weight/height: this admission's goals-of-care decision,
+               never inherited by a future episode. Audited with actor +
+               ACTIVE role (prior null — the first set). */
+            if (admitCodeStatus is not null)
+            {
+                enc.CodeStatusCode = admitCodeStatus.Value.Code;
+                enc.CodeStatusEventsJson = JsonSerializer.Serialize(
+                    new List<CodeStatusEventDto> { new(time, actor,
+                        Rbac.ProfileOf(user.FindFirst("jobTitle")?.Value ?? "") ?? "Unknown",
+                        admitCodeStatus.Value.Code, admitCodeStatus.Value.Label, null) }, JsonOpts.Web);
+            }
             db.Encounters.Add(enc);
             db.SaveChanges();
             return Results.Json(new { patient = patient.ToDto(), encounter = enc.ToDto(patient.DisplayName) }, JsonOpts.Web);

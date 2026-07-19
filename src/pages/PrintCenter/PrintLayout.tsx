@@ -53,7 +53,7 @@ export function PrintLayout({ title, context, printedBy, printedAt, children }: 
         <div><span className="pd-k">Age / Sex</span><span className="pd-v">{patient.age ?? dash} / {patient.sex ?? dash}</span></div>
         <div><span className="pd-k">Bed</span><span className="pd-v">{patient.bedId}</span></div>
         <div><span className="pd-k">Attending</span><span className="pd-v">{patient.attending}</span></div>
-        <div><span className="pd-k">Code status</span><span className="pd-v">{patient.codeStatus ?? dash}</span></div>
+        <div><span className="pd-k">Code status</span><span className="pd-v">{patient.codeStatus ?? 'Not recorded'}</span></div>
         <div className="pd-band-wide"><span className="pd-k">Allergies</span><span className="pd-v pd-allergy">{patient.allergies ?? dash}</span></div>
         <div className="pd-band-wide"><span className="pd-k">Diagnosis</span><span className="pd-v">{patient.diagnosis}</span></div>
       </section>

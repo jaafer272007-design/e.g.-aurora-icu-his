@@ -1,6 +1,40 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-18 · current through PHASE 3 PR 3 — UNIT
+**Last updated: 2026-07-19 · current through CODE STATUS GOVERNED
+VOCABULARY — a SAFETY FIX pulled ahead of the configurability work (the
+audit's finding: a resuscitation instruction — the single most
+consequential field in an ICU record — was an unvalidated free-text
+string whose values existed only in demo data, AND the roster read
+FABRICATED "Full Code" for any patient without a bedside row
+(`b?.CodeStatus ?? "Full Code"` — every real production admission wore
+a fabricated full-resuscitation chip). Built from the owner's design
+doc on the proven catalogue pattern: a CodeStatuses vocabulary table
+(natural key, Active, append-only audit, deactivate-never-delete) +
+manager endpoints gated on the NEW codestatus.manage atom (SeniorDoctor
+only — the observations.configure precedent; never the office
+Administrator) in the NEW minimal CONFIGURATION AREA (/config — the
+config home's first tenant, structured to be extended, not duplicated,
+by the later config-home work); code status is ENCOUNTER-SCOPED like
+weight/height (the owner's own precedent — a re-admission starts fresh,
+a stale DNR never silently carries forward), SELECTED never typed
+(admission select + the Mission Control physician popover, both listing
+ACTIVE entries only), set via POST /adt/encounters/{id}/code-status
+under the NEW codestatus.set atom (Doctor/SeniorDoctor — physician
+authority; nurses render, never set) with an append-only audited event
+(who/when/ACTIVE role/prior + the LABEL SNAPSHOT — the results-range
+precedent, so historical rendering never consults the live vocabulary);
+closed encounters 409 (re-instructing a closed episode is initiating
+care); the MIGRATION erases and guesses NOTHING — cleanly-matching
+bedside values map to codes with a System backfill event
+(trim/case/'/'-spacing exact, never fuzzy), non-matching values are
+PRESERVED and render as LEGACY · UNVERIFIED awaiting clinician
+re-confirmation, and unset renders an unmistakable dashed-red NOT
+RECORDED on every surface (bed card, MC chip, nurse worklist, orders
+bar, print) through ONE shared resolver — never a blank that could
+read as Full Code, never a default. Verified 30/30 headless + legacy
+preservation + rendered on the production appliance (real Postgres
+live-upgrade migration) and the demo preview — see the record below);
+prior marker retained: current through PHASE 3 PR 3 — UNIT
 SUMMARY DERIVED (the last honest-degraded dashboard regions render REAL
 figures, client-only: no unit-summary domain was built — Bed Overview's
 KPI strip/right panel and Admin Home compose a DERIVED summary at load
@@ -4975,6 +5009,109 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Code Status governed vocabulary (built) — the SAFETY FIX, first Configuration-area tenant
+
+**The finding (configurability audit + this PR's verify-first sweep):**
+`PatientRow.CodeStatus` was an unvalidated free-text string with NO
+write path anywhere (values existed only in demo seed data), and the
+roster read carried `b?.CodeStatus ?? "Full Code"` — a FABRICATED
+resuscitation default: every real ADT admission (no bedside row)
+rendered a full-code chip nobody ever recorded. Render surfaces styled
+by string prefix (`startsWith('Full')`). Nothing validated anything.
+
+**What was built (from the owner's design doc — the proven catalogue
+pattern, no new mechanism):**
+- **Vocabulary**: `CodeStatuses` table (Code natural key, Label, Seq,
+  Active, append-only EventsJson; migration `AddCodeStatusVocabulary`);
+  seeded BOTH modes with the PLACEHOLDER set full_code / dnr / dnr_dni /
+  comfort_care — the clinical owner finalises the list through the
+  manager (the whole point: per-hospital policy as editable data).
+  Entries are LABEL + CODE only (design recommendation accepted — no
+  structured meaning encoded; "DNR / DNI" is one entry, as charted).
+- **Manager** (`server/Core/MasterData/CodeStatusApi.cs` +
+  the `/config` screen): add / edit-label / retire / reactivate, audited
+  per entry, four-code semantics (duplicate code 409, replay 409, absent
+  404, no-change 400, code-format 400), NO delete. RBAC: the NEW
+  **codestatus.manage** atom on SENIORDOCTOR ONLY (the
+  observations.configure precedent; the office Administrator and every
+  other profile 403 — verified both directions).
+- **The Configuration area** (`/config`, nav "Configuration"): the
+  MINIMAL config home this tenant needs — a section-structured page the
+  later config-home work EXTENDS (recorded flag: gating becomes
+  per-section when non-clinical tenants land; today the route gate is
+  codestatus.manage, so the area itself is clinical-governance-only).
+- **Encounter-scoped assignment** (the owner's weight/height precedent,
+  applied for the same clinical reason — a re-admission STARTS FRESH; a
+  stale DNR from a prior episode never silently carries forward):
+  `Encounter.CodeStatusCode` (null = NOT RECORDED — an explicit state,
+  never a default) + `CodeStatusEventsJson`, the append-only set
+  history: who, when (dated UTC), ACTIVE role, prior code, and the
+  **LABEL SNAPSHOT** the clinician selected (the results-range
+  precedent — historical rendering, prints especially, reads the
+  snapshot and never consults the live vocabulary).
+- **Selected, never typed**: the admission form gains an optional
+  code-status SELECT (active entries only; omitted = honestly not
+  recorded) riding adt.admit; the bedside set/change is
+  `POST /api/icu/adt/encounters/{id}/code-status` under the NEW
+  **codestatus.set** atom — PHYSICIAN authority (Doctor + SeniorDoctor;
+  nurse and both administrator profiles 403). Unknown code → 400
+  (payload reference); RETIRED code → 409 (reactivate and the same
+  request succeeds); same-code replay → 409; CLOSED encounter → 409
+  (deliberately unlike weight/height: re-instructing a closed episode
+  is initiating care, not repairing the record). Mission Control's
+  code-status chip becomes the set control for permission holders — a
+  popover listing ACTIVE entries only.
+- **Resolution — ONE shared resolver** (`src/lib/codeStatus.ts`),
+  consumed by every surface (bed card, MC chip, nurse worklist chip,
+  Orders patient bar, print FaceSheet/TransferSummary/identity band):
+  three honest states — GOVERNED label (styled by CODE, the
+  string-prefix styling hazard removed) · LEGACY free text explicitly
+  marked UNVERIFIED (preserved, awaiting clinician re-confirmation) ·
+  **NOT RECORDED as an unmistakable dashed-red chip** — never a blank
+  that could read as Full Code, never a fabricated default. The
+  `?? "Full Code"` fallback is DELETED.
+- **The migration erases and guesses NOTHING**: the idempotent boot
+  backfill maps an OPEN encounter's bedside CodeStatus to a vocabulary
+  code only on a CLEAN match (trim + case-fold + '/'-spacing
+  normalization — never fuzzy), audited as a System event; a
+  NON-MATCHING value is left uncoded and LOUDLY logged — the original
+  string stays untouched on the bedside row and renders as
+  legacy/unverified. Demo environments therefore come up governed
+  (verified: P-1001 "Full Code" → full_code with the backfill event);
+  production (no bedside rows) simply starts honest.
+
+**Open items from the design, resolved as recommended and FLAGGED for
+the owner:** (1) label+code only — accepted; (2) RBAC codestatus.manage
+on SeniorDoctor — built as recommended; (3) non-matching legacy →
+preserve-as-unverified — built; (4) setting audited — built (yes).
+ADDITIONAL choices made and flagged: encounter-scoping (the
+weight/height precedent), codestatus.set as physician-only, the
+closed-encounter 409, the label snapshot on events, and the /config
+route gate = codestatus.manage until more tenants land.
+
+**Verification.** HEADLESS 30/30 (local dev server): manager RBAC all
+four directions, four-code branches, admission-with-code (+ retired 409
+/ unknown 400), set path (nurse/admin 403, plain-doctor 200, prior
+recorded, replay/retired/closed 409s, unknown 400, Disallow binding),
+roster resolution (governed label; demo backfill mapped; **an admission
+WITHOUT a code serves codeStatus "" — the fabricated default is
+gone**), discharged encounter keeps code + label snapshot on the wire;
+plus the crafted non-matching legacy value served
+preserved-and-flagged. RENDERED (production appliance — the durable
+Postgres took the migration as a real live-upgrade, vocabulary seeded
+4): bed board NOT RECORDED chips replace the fabricated FULL CODE ones;
+MC popover set flow end-to-end with the audited event (actor/role/label
+snapshot asserted via the API); governed value consistent across
+beds/MC/orders/print; /config manager add + retire (retired stays
+listed); office Administrator: no nav item + Access Restricted on
+direct load; unset patient prints "Not recorded". Staging preview:
+demo chips byte-identical labels (governed via mock codes — no
+UNVERIFIED, no NOT RECORDED on seeded patients), offline config write
+VISIBLY refused. ONE UI defect found by the rendered pass and fixed:
+the MC popover was click-shielded by the glassmorphism cards'
+backdrop-filter stacking contexts — the header now stacks above main
+while open. Screenshots delivered in session.
 
 ### Phase 3 PR 3 — unit summary derived (the honest not-yet dashboards become real; client-only)
 

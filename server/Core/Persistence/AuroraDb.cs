@@ -46,6 +46,10 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
        layer) and order sets (clinical bundles referencing both) */
     public DbSet<LabTestRow> LabTests => Set<LabTestRow>();
     public DbSet<OrderSetRow> OrderSets => Set<OrderSetRow>();
+    /* Code Status governed vocabulary (the free-text SAFETY FIX): the
+       per-hospital resuscitation-instruction vocabulary — clinically
+       governed (SeniorDoctor), selected never typed */
+    public DbSet<CodeStatusRow> CodeStatuses => Set<CodeStatusRow>();
     /* Patient Assignment & Responsibility (Aurora Core): who is
        responsible for a patient right now — encounter-scoped,
        many-to-many, ended-never-deleted; a WORKLIST, never an authority */

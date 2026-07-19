@@ -7,8 +7,8 @@ import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAdmit, IconBed, IconUsers } from '../../components/icons'
-import { admitPatient, getAdtBeds, getEncounters, getPatientIdentity, matchPatient } from '../../lib/api'
-import type { AdmitDraft, AdtBed, Encounter, MatchPatientResponse, Sex } from '../../lib/api/types'
+import { admitPatient, getAdtBeds, getCodeStatuses, getEncounters, getPatientIdentity, matchPatient } from '../../lib/api'
+import type { AdmitDraft, CodeStatusEntry, AdtBed, Encounter, MatchPatientResponse, Sex } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { MatchDialog } from './MatchDialog'
 
@@ -80,11 +80,17 @@ export function Admissions() {
      THIS admission's encounter — a re-admission starts fresh, never
      inheriting or overwriting a prior episode's. Not observations. */
   const [weight, setWeight] = useState('')
+  /* CODE STATUS (governed vocabulary — the SAFETY FIX): optional at
+     admission, SELECTED from the ACTIVE vocabulary, never typed;
+     '' = honestly NOT RECORDED until a physician sets it */
+  const [codeStatusCode, setCodeStatusCode] = useState('')
+  const [codeStatuses, setCodeStatuses] = useState<CodeStatusEntry[] | null>(null)
   const [height, setHeight] = useState('')
 
   const reload = useCallback(() => {
     getAdtBeds().then(setBeds)
     getEncounters({ status: 'open' }).then(setOpenEncounters)
+    getCodeStatuses().then(setCodeStatuses).catch(() => setCodeStatuses([]))
   }, [])
   useEffect(() => { reload() }, [reload])
 
@@ -113,7 +119,7 @@ export function Admissions() {
   ]
 
   /** episode fields shared by every admission shape (validated by submit) */
-  function episodeFields(): Pick<AdmitDraft, 'diagnosis' | 'attending' | 'bedId' | 'weightKg' | 'heightCm'> | null {
+  function episodeFields(): Pick<AdmitDraft, 'diagnosis' | 'attending' | 'bedId' | 'weightKg' | 'heightCm' | 'codeStatusCode'> | null {
     const measurements: { weightKg?: number; heightCm?: number } = {}
     if (weight.trim()) {
       const w = Number(weight)
@@ -131,7 +137,8 @@ export function Admissions() {
       }
       measurements.heightCm = h
     }
-    return { diagnosis: diagnosis.trim(), attending: attending.trim(), bedId, ...measurements }
+    return { diagnosis: diagnosis.trim(), attending: attending.trim(), bedId, ...measurements,
+      ...(codeStatusCode ? { codeStatusCode } : {}) }
   }
 
   function afterAdmit(kind: 'Admitted' | 'Re-admitted', data: { patient: { name: string; patientId: string; mrn: string }; encounter: { bedId: string; encounterId: string } }) {
@@ -141,7 +148,7 @@ export function Admissions() {
       `${data.patient.name} (${data.patient.patientId} · ${data.patient.mrn}) admitted to ${data.encounter.bedId} — encounter ${data.encounter.encounterId}`)
     setNameFirst(''); setNameSecond(''); setNameThird(''); setNameFourth(''); setNameFamily(''); setNationalId('')
     setDob(''); setDobUnknown(false); setAge(''); setDiagnosis(''); setAttending(''); setBedId('')
-    setWeight(''); setHeight('')
+    setWeight(''); setHeight(''); setCodeStatusCode('')
     setAllergies('None documented')
     setMatch(null); setMatchError(null)
     if (readmitting) clearReadmit()
@@ -330,6 +337,18 @@ export function Admissions() {
                   </label>
                   <label>Height (cm) <i className="admopt">optional — addable later</i>
                     <input value={height} onChange={e => setHeight(e.target.value)} inputMode="decimal" placeholder="e.g. 172" disabled={!canAdmit} aria-label="Height in centimetres, optional" />
+                  </label>
+                  {/* CODE STATUS — SELECTED from the governed vocabulary,
+                      never typed (the SAFETY FIX); omitted = the record
+                      honestly reads NOT RECORDED until a physician sets it */}
+                  <label>Code status <i className="admopt">optional — settable at the bedside</i>
+                    <select value={codeStatusCode} onChange={e => setCodeStatusCode(e.target.value)} disabled={!canAdmit}
+                      aria-label="Code status, selected from the governed vocabulary, optional">
+                      <option value="">Not recorded</option>
+                      {(codeStatuses ?? []).filter(c => c.active).map(c => (
+                        <option key={c.code} value={c.code}>{c.label}</option>
+                      ))}
+                    </select>
                   </label>
                   {!readmitting && (
                     <label className="admwide">Allergies

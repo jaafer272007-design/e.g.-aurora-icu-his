@@ -103,6 +103,8 @@ export type Permission =
   | 'observations.configure' // Stage 11 §3 (F3): group enablement (same Consultant-tier home)
   | 'patients.measure'     // Weight & Height capture: record/correct the reference weight & height (any doctor or nurse — never office admin)
   | 'assignments.manage'   // Patient Assignment: assign/end nurse & doctor assignments (SeniorDoctor — the recorded interim; a future SeniorNurse profile holds the SAME atom). A clinical care decision — never on either administrator profile. Everyone with patients.view can SEE assignments; only managing is gated.
+  | 'codestatus.set'       // Code Status SAFETY FIX: set/change an open encounter's code status (PHYSICIAN authority — Doctor/SeniorDoctor; never office admin)
+  | 'codestatus.manage'    // Code Status SAFETY FIX: maintain the vocabulary (clinical governance — SeniorDoctor ONLY, the observations.configure precedent; never office admin)
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -114,6 +116,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'results.document', 'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record', 'patients.measure',
+    'codestatus.set',
   ],
   /* Stage 11 F4: Doctor's SUPERSET + the Consultant-tier observation
      authorities (correct/configure). HARD CONSTRAINT: these never sit
@@ -129,7 +132,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'labcatalog.manage', 'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record',
     'observations.correct', 'observations.configure', 'patients.measure',
-    'assignments.manage',
+    'assignments.manage', 'codestatus.set', 'codestatus.manage',
   ],
   /* administer + document only — cannot originate orders (locked decision).
      results.document (Lab Result-Entry): the ICU bedside team transcribes

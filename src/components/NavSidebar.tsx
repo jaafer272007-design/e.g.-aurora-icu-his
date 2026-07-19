@@ -7,7 +7,7 @@ import { lastPatientId } from '../lib/patientContext'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 import { APP_VERSION } from '../lib/version'
 
-export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'formulary' | 'labcatalog' | 'ordersets' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
 
 interface NavItem {
   key: NavKey
@@ -64,6 +64,12 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     { key: 'formulary', label: 'Formulary', icon: <IconPill />, to: '/formulary', perm: 'formulary.manage' },
     { key: 'labcatalog', label: 'Lab Catalogue', icon: <IconFlask size={16} />, to: '/lab-catalog', perm: 'labcatalog.manage' },
     { key: 'ordersets', label: 'Order Sets', icon: <IconGrid />, to: '/order-sets', perm: 'ordersets.manage' },
+    /* Configuration — the per-hospital configuration area (first tenant:
+       the Code Status vocabulary, a clinical-governance surface). Gated
+       on codestatus.manage (SeniorDoctor) — CLINICAL configuration,
+       never the office Administrator (the F2/F3 hard constraint). The
+       gate widens to a shared config permission when more tenants land. */
+    { key: 'config', label: 'Configuration', icon: <IconSettings size={16} />, to: '/config', perm: 'codestatus.manage' },
     /* Alerts — the Clinical Attention Center (was the second dead nav
        item; now a real screen). CLINICAL, patient-identifiable — gated on
        results.view, which every clinical profile carries and the office

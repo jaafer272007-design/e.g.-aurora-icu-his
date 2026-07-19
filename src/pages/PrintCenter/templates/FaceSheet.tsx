@@ -20,7 +20,7 @@ export function FaceSheet({ data }: { data: FaceSheetData }) {
           ['MRN', p.mrn ?? '—'],
           ['Age / Sex', `${p.age ?? '—'} / ${p.sex ?? '—'}`],
           ['Allergies', p.allergies ?? '—'],
-          ['Code status', p.codeStatus ?? '—'],
+          ['Code status', p.codeStatus ?? 'Not recorded'],
         ]} />
       </Section>
 

@@ -12,11 +12,13 @@ import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
-import { getAssignments, getObservations, getPatientDetail, getPatientIdentity, getPatients } from '../../lib/api'
+import { getAssignments, getCodeStatuses, getEncounters, getObservations, getPatientDetail, getPatientIdentity, getPatients, setEncounterCodeStatus } from '../../lib/api'
+import { resolveCodeStatus } from '../../lib/codeStatus'
+import { Toast, useToast } from '../../components/Toast'
 import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
 import { useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, signOut } from '../../lib/session'
-import type { Assignment, PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
+import type { Assignment, CodeStatusEntry, PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
 import { IdentityDialog } from './IdentityDialog'
 import { AssignmentDialog } from './AssignmentDialog'
 import { LatestObservationsCard } from './LatestObservationsCard'
@@ -90,6 +92,7 @@ export function MissionControl() {
   const [pid, setPid] = useState<PatientIdentity | null>(null)
   const [correcting, setCorrecting] = useState(false)
   const session = getSession()
+  const { toast, showToast } = useToast()
   const canCorrectIdentity = session ? hasPermission(session.jobTitle, 'identity.correct') : false
   /* the Patient History Overview (match+overview design §5.4 — reachable
      from the chart too): clinical history, so results.view — held by
@@ -104,6 +107,39 @@ export function MissionControl() {
   const [teamOpen, setTeamOpen] = useState(false)
   const canManageAssignments = session ? hasPermission(session.jobTitle, 'assignments.manage') : false
   const loadCareTeam = (id: string) => getAssignments(id).then(setCareTeam).catch(() => setCareTeam([]))
+
+  /* CODE STATUS set control (the governed-vocabulary SAFETY FIX):
+     physician-only (codestatus.set); the popover lists ONLY the ACTIVE
+     vocabulary entries — selected, never typed; the write targets the
+     patient's OPEN encounter and the server audits who/when/role/prior. */
+  const canSetCodeStatus = session ? hasPermission(session.jobTitle, 'codestatus.set') : false
+  const [csOpen, setCsOpen] = useState(false)
+  const [csVocab, setCsVocab] = useState<CodeStatusEntry[] | null>(null)
+  const [csBusy, setCsBusy] = useState(false)
+  const [csError, setCsError] = useState<string | null>(null)
+  useEffect(() => {
+    if (csOpen && csVocab === null) getCodeStatuses().then(setCsVocab).catch(() => setCsVocab([]))
+  }, [csOpen, csVocab])
+  useEffect(() => { setCsOpen(false); setCsError(null) }, [patientId])
+  async function doSetCodeStatus(code: string, label: string) {
+    setCsBusy(true); setCsError(null)
+    const open = await getEncounters({ patientId, status: 'open' }).catch(() => [])
+    if (open.length === 0) {
+      setCsBusy(false)
+      setCsError('No open encounter — a code status is set on an active admission')
+      return
+    }
+    const res = await setEncounterCodeStatus(open[0].encounterId, code)
+    setCsBusy(false)
+    if (res.kind === 'ok') {
+      setCsOpen(false)
+      showToast('Code status set', `${label} — recorded on ${open[0].encounterId} (audited)`)
+      getPatientDetail(patientId).then(r => { if (r) setDetail(r) })
+      return
+    }
+    setCsError(res.kind === 'rejected' ? res.error
+      : 'Setting a code status requires the live server — NOT recorded')
+  }
   useEffect(() => {
     let stale = false
     setCareTeam(null)
@@ -256,7 +292,38 @@ export function MissionControl() {
                 return shown.slice(0, 2).join(' · ') + (rest > 0 ? ` +${rest}` : '')
               })()}</span>
             </button>
-            <div className="chip code"><span className="k">Code Status</span><span className="v">{p?.codeStatus ?? '—'}</span></div>
+            {/* CODE STATUS (governed vocabulary — the SAFETY FIX): the one
+                shared resolver; NOT RECORDED is an unmistakable explicit
+                state, never a blank. Physicians (codestatus.set) click to
+                SELECT from the active vocabulary — never type. */}
+            <span className="cswrap">
+            <button
+              className={`chip code${p && resolveCodeStatus(p).kind === 'none' ? ' csnone' : ''}${canSetCodeStatus ? ' cssettable' : ''}`}
+              disabled={!canSetCodeStatus || !p}
+              onClick={() => setCsOpen(o => !o)}
+              aria-label={canSetCodeStatus ? 'Code status — set from the vocabulary' : 'Code status'}
+            >
+              <span className="k">Code Status</span>
+              <span className="v">{p ? (() => {
+                const cs = resolveCodeStatus(p)
+                return cs.kind === 'legacy' ? `${cs.label} · UNVERIFIED` : cs.label
+              })() : '—'}</span>
+            </button>
+            {csOpen && p && canSetCodeStatus && (
+              <div className="cspop" role="dialog" aria-label="Set code status">
+                <div className="cspophead">Set code status — selected from the governed vocabulary; audited (who / when / role)</div>
+                {csVocab === null && <div className="cspophint">Loading vocabulary…</div>}
+                {csVocab?.filter(c => c.active).map(c => (
+                  <button key={c.code} className="csopt" disabled={csBusy}
+                    onClick={() => void doSetCodeStatus(c.code, c.label)}>
+                    {c.label} <small className="num">{c.code}</small>
+                  </button>
+                ))}
+                {csError && <div className="csperr" role="alert">{csError}</div>}
+                <button className="csopt cscancel" onClick={() => { setCsOpen(false); setCsError(null) }}>Cancel</button>
+              </div>
+            )}
+            </span>
             <div className="chip upd"><span className="k">Last Updated</span><span className="v">{shortTime} · auto</span></div>
           </div>
         </div>
@@ -487,6 +554,7 @@ export function MissionControl() {
           {!detail && !missing && <div style={{ gridColumn: '1/-1' }} aria-busy="true" />}
         </main>
       </div>
+      <Toast state={toast} accent="cyan" />
     </div>
   )
 }

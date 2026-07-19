@@ -1,4 +1,5 @@
 import type { Bed } from '../../lib/api/types'
+import { resolveCodeStatus } from '../../lib/codeStatus'
 import { BedChip, TagList } from '../../components/Tag'
 import { SeverityDot } from '../../components/SeverityDot'
 import { Sparkline } from '../../components/Sparkline'
@@ -50,7 +51,11 @@ export function BedCard({ bed, index, onOpen }: BedCardProps) {
         <BedChip bedId={bed.bedId} />
         <SeverityDot sev={p.severity} />
         <span className="los">ICU D{p.los} · {bed.area}</span>
-        <span className={`codechip ${p.codeStatus.startsWith('Full') ? 'full' : 'dnr'}`}>{p.codeStatus}</span>
+        {(() => { const cs = resolveCodeStatus(p); return (
+          <span className={`codechip ${cs.kind === 'none' ? 'none' : cs.full ? 'full' : 'dnr'}`}>
+            {cs.label}{cs.kind === 'legacy' ? ' · UNVERIFIED' : ''}
+          </span>
+        ) })()}
       </div>
       <div className="bname">{p.name}<small>{p.age} · {p.sex}</small></div>
       <div className="bdx">{p.diagnosis}</div>
