@@ -1723,6 +1723,21 @@ export interface ObservationType {
   isDerived: boolean
   derivationInputs?: string[]
   optional: boolean
+  /* ---- Observations Catalogue management (the tenant) ---- */
+  /** normal range — outside → abnormal flag (null = no range set; never fabricated) */
+  refLow?: number
+  refHigh?: number
+  /** critical thresholds — at-or-beyond → critical (precedence over abnormal) */
+  critLow?: number
+  critHigh?: number
+  /** retired types keep rendering on history but are not newly chartable */
+  active: boolean
+  /** 🔴 system-set: feeds NEWS2/SOFA — the whole definition is LOCKED */
+  scoreInput: boolean
+  /** hospital-added (vs the seeded taxonomy) */
+  custom: boolean
+  /** append-only management audit */
+  history: FormularyEvent[]
 }
 
 /** GET /api/icu/observations/catalog — groups in clinical order, each

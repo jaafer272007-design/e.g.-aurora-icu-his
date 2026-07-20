@@ -16,6 +16,7 @@ import type {
   NewObservationEntry, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType,
   PatientSummary, RosterRecordDto,
 } from '../../lib/api/types'
+import { obsRangeFlag } from '../../lib/obsRange'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { useNow } from '../../lib/time'
@@ -471,7 +472,8 @@ export function Observations() {
               </div>
 
               <div className="obsfields">
-                {activeGroupDef.types.map(t => (
+                {/* retired types leave NEW charting only — history keeps them */}
+                {activeGroupDef.types.filter(t => t.active).map(t => (
                   t.isDerived ? (
                     <div className="obsfield derived" key={t.typeCode}>
                       <label>{t.displayName}</label>
@@ -605,12 +607,23 @@ export function Observations() {
                         const amended = o.amendments.length > 0
                         const selfTier = canRecord && withinSelfWindow(o, session.name, now)
                         const correctable = selfTier || canCorrect
+                        /* display flagging from the hospital-set ranges
+                           (Observations Catalogue) — derived at render,
+                           never stored; scores never read these ranges */
+                        const eff = effectiveValue(o)
+                        const flag = t?.valueType === 'numeric' ? obsRangeFlag(t, Number(eff)) : null
                         return (
                           <article className={`obsrow${amended ? ' amended' : ''}`} key={o.observationId}>
                             <span className="obsname">{t?.displayName ?? o.typeCode}</span>
-                            <span className="obsval num">
-                              {displayValue(t, effectiveValue(o))}{o.unit && <i className="obsu"> {o.unit}</i>}
+                            <span className={`obsval num${flag ? ` ${flag}` : ''}`}>
+                              {displayValue(t, eff)}{o.unit && <i className="obsu"> {o.unit}</i>}
                             </span>
+                            {flag && (
+                              <span className={`obsrangeflag ${flag}`}
+                                title="flag from this hospital's set range (Observations Catalogue) — display only, NEWS2/SOFA never read it">
+                                {flag === 'critical' ? 'CRITICAL' : 'abnormal'}
+                              </span>
+                            )}
                             {amended && (
                               <span className="obsamendtag" title="amended — original preserved below">
                                 amended ×{o.amendments.length}

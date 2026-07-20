@@ -23,7 +23,15 @@
 # CLOSED encounter 409 while a tier-2 correction stays 200. The 5-min
 # WINDOW-EXPIRY path is deliberately NOT live-tested (it needs clock
 # manipulation) — it is covered by the local matrix via direct SQLite
-# aging, recorded in 02. Dispatch manually after merging /server
+# aging, recorded in 02. CATALOGUE MANAGEMENT (the Observations
+# Catalogue tenant): the 🔴 score-input LOCK (exactly the verified 12
+# flagged scoreInput; edit AND retire 409 LOCKED on every one; derived
+# 409; seeded non-scoring definition 400 ranges-only), mutation RBAC in
+# every direction incl. the office Administrator, and the custom
+# lifecycle (free-text add with hidden obs_ key -> surfaces on the
+# catalogue-driven charting -> plausibility 400 -> audited range edit ->
+# retire = new charting 409 while charted history and the catalogue row
+# keep rendering -> reactivate). Dispatch manually after merging /server
 # changes to main — SEQUENTIALLY with the other suites.
 name: Deployed Observations E2E
 on: workflow_dispatch
@@ -166,6 +174,56 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observations/groups/devices/$UNDO" >/dev/null
           echo "restored devices to enabled=$CUR"
 
+      - name: "🔴 CATALOGUE MANAGEMENT — the score-input LOCK: catalog flags EXACTLY the 12; every one refuses edit AND retire (409 LOCKED); derived 409; mutation RBAC every direction incl. the office Administrator"
+        run: |
+          # the catalog read must flag EXACTLY the exhaustively-verified 12
+          # NEWS2/SOFA inputs as scoreInput — a 13th would silently widen
+          # the lock, a missing one would silently UNLOCK a score input
+          python3 - <<'PY'
+          import json
+          types = {t["typeCode"]: t for g in json.load(open("/tmp/cat.json")) for t in g["types"]}
+          locked = {c for c, t in types.items() if t.get("scoreInput")}
+          assert locked == {"rr","spo2","fio2","sbp","hr","temp","acvpu","resp_support","gcs","gcs_total","map","urine_output"}, locked
+          assert all(types[c]["active"] for c in locked)
+          print("scoreInput flags EXACTLY the verified 12:", ", ".join(sorted(locked)))
+          PY
+          for code in rr spo2 fio2 sbp hr temp acvpu resp_support gcs gcs_total map urine_output; do
+            out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+              -d '{"refLow":1}' "$API/api/icu/observation-catalog/$code")
+            rc=$(echo "$out" | tail -1); [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+            echo "$out" | head -1 | grep -q "LOCKED" || { echo "expected LOCKED verdict:"; echo "$out"; exit 1; }
+            rc2=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observation-catalog/$code/deactivate")
+            echo "score input $code: range edit -> 409 LOCKED · retire -> HTTP $rc2"
+            [ "$rc2" = "409" ] || exit 1
+          done
+          # a RENAME attempt on a score input is the same LOCKED 409
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{"name":"Pulse"}' "$API/api/icu/observation-catalog/hr")
+          echo "rename hr -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          # DERIVED (non-score) types are computed, never edited/retired
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{"refLow":1}' "$API/api/icu/observation-catalog/net_balance")
+          rc=$(echo "$out" | tail -1); echo "derived net_balance edit -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "DERIVED" || exit 1
+          # seeded NON-scoring types: definition stays taxonomy (400 names
+          # the ranges-only rule) — the range PATH itself is proven on the
+          # custom type below and in the local matrix (nothing durable
+          # mutates the staging taxonomy here)
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{"name":"CVP renamed"}' "$API/api/icu/observation-catalog/cvp")
+          rc=$(echo "$out" | tail -1); echo "seeded cvp rename -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "only the flagging ranges" || exit 1
+          # mutation RBAC: nurse, Specialist, Hospital Administrator, office
+          # Administrator (the F2/F3 HARD CONSTRAINT) and pharmacist -> 403
+          for tok_name in NUR SPEC ADMIN RECEP PHARM; do
+            tok=$(eval echo "\$$tok_name")
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' \
+              -d '{"name":"rbac probe","group":"vitals","min":0,"max":1}' "$API/api/icu/observation-catalog")
+            rc2=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' \
+              -d '{"refLow":1}' "$API/api/icu/observation-catalog/cvp")
+            echo "$tok_name create -> HTTP $rc · edit -> HTTP $rc2"
+            [ "$rc" = "403" ] && [ "$rc2" = "403" ] || { echo "$tok_name must NOT hold observations.configure"; exit 1; }
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"name":"x","group":"vitals","min":0,"max":1}' "$API/api/icu/observation-catalog")
+          echo "unauth create -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+
       - name: "Step 2 — admit THIS RUN's patient; nurse charts a timed ROUND (compound GCS, server-stamped time, manual provenance); consultant ad-hoc"
         run: |
           curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/adt/beds" -o /tmp/beds.json
@@ -199,6 +257,75 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
             -d '{"patientId":"'$PID'","entries":[{"typeCode":"cvp","value":12}]}' "$API/api/icu/observations" -o /tmp/adhoc.json
           python3 -c 'import json; d=json.load(open("/tmp/adhoc.json"))[0]; assert d["recordedBy"]=="Dr. Sara Rahman"; print("ad-hoc CVP by the consultant (superset charts)")'
+
+      - name: "CATALOGUE MANAGEMENT — custom lifecycle: free-text add (hidden obs_ key) surfaces on charting; plausibility enforced; range edit audited; dup-name 409; retire -> new charting 409 while HISTORY keeps the record; reactivate guard"
+        run: |
+          # in VITALS (a custom type must NEVER land in poc_lab — the §1
+          # POC-vs-LIS boundary is asserted by set-equality above); the
+          # name is run-unique so re-runs never collide with retired rows
+          CNAME="E2E Custom Obs $GITHUB_RUN_ID"
+          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"$CNAME\",\"group\":\"vitals\",\"unit\":\"cm\",\"min\":0,\"max\":300,\"refLow\":20,\"refHigh\":60}" \
+            "$API/api/icu/observation-catalog" -o /tmp/cust.json
+          python3 - <<'PY'
+          import json
+          d = json.load(open("/tmp/cust.json"))
+          assert d["typeCode"].startswith("obs_") and len(d["typeCode"]) == 16, d["typeCode"]   # hidden system key, never typed
+          assert d["custom"] is True and d["scoreInput"] is False and d["active"] is True
+          assert d["valueType"] == "numeric" and d["refLow"] == 20 and d["refHigh"] == 60
+          h = d["history"]; assert h[0]["actor"] == "Dr. Sara Rahman" and h[0]["action"] == "added to catalogue", h
+          print("custom type", d["typeCode"], "— obs_ identity, Custom, NOT a score input, audited add")
+          PY
+          CODE=$(python3 -c 'import json; print(json.load(open("/tmp/cust.json"))["typeCode"])')
+          echo "CODE=$CODE" >> "$GITHUB_ENV"
+          # duplicate ACTIVE free-text name -> 409 naming the holder
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"$CNAME\",\"group\":\"vitals\",\"min\":0,\"max\":10}" "$API/api/icu/observation-catalog")
+          rc=$(echo "$out" | tail -1); echo "duplicate active name -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "already exists" || exit 1
+          # the new type surfaces on the CATALOGUE READ immediately
+          # (charting is catalogue-driven — no code change per hospital)
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/observations/catalog" -o /tmp/cat2.json
+          CODE="$CODE" python3 -c 'import json,os; ts=[t for g in json.load(open("/tmp/cat2.json")) if g["groupCode"]=="vitals" for t in g["types"] if t["typeCode"]==os.environ["CODE"]]; assert ts and ts[0]["active"], ts; print("custom type live in the vitals group of the catalogue read")'
+          # nurse charts it (plausibility holds: 75 in [0,300]; 400 beyond)
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","entries":[{"typeCode":"'$CODE'","value":75}]}' "$API/api/icu/observations" -o /tmp/custobs.json
+          python3 -c 'import json; d=json.load(open("/tmp/custobs.json"))[0]; assert d["value"]=="75" and d["unit"]=="cm"; print("charted the custom observation: 75 cm by", d["recordedBy"])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","entries":[{"typeCode":"'$CODE'","value":400}]}' "$API/api/icu/observations")
+          echo "beyond plausibility (400 > max 300) -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # range edit -> 200 with the audited diff; invalid range -> 400
+          curl -sf -X PUT -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"critHigh":90}' "$API/api/icu/observation-catalog/$CODE" -o /tmp/custedit.json
+          python3 -c 'import json; d=json.load(open("/tmp/custedit.json")); assert d["critHigh"]==90; e=d["history"][-1]; assert e["action"]=="changed" and "critHigh" in e["detail"], e; print("range edit audited:", e["detail"])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"refLow":100}' "$API/api/icu/observation-catalog/$CODE")
+          echo "refLow 100 > refHigh 60 -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # RETIRE: off new charting (409) — while the charted HISTORY and
+          # the catalogue row (active=false) both keep rendering
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observation-catalog/$CODE/deactivate" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["active"] is False and d["history"][-1]["action"]=="retired"; print("retired — audited")'
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","entries":[{"typeCode":"'$CODE'","value":80}]}' "$API/api/icu/observations")
+          rc=$(echo "$out" | tail -1); echo "charting the RETIRED type -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "retired from this hospital's catalogue" || exit 1
+          CODE="$CODE" python3 -c '
+          import json, os, urllib.request
+          req = urllib.request.Request(os.environ["API"] + "/api/icu/observations?patientId=" + os.environ["PID"])
+          req.add_header("Authorization", "Bearer " + os.environ["NUR"])
+          rows = json.load(urllib.request.urlopen(req))
+          mine = [o for o in rows if o["typeCode"] == os.environ["CODE"]]
+          assert mine and mine[0]["value"] == "75", mine
+          print("the charted record SURVIVES retirement (history keeps rendering)")'
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/observations/catalog" -o /tmp/cat3.json
+          CODE="$CODE" python3 -c 'import json,os; ts=[t for g in json.load(open("/tmp/cat3.json")) for t in g["types"] if t["typeCode"]==os.environ["CODE"]]; assert ts and ts[0]["active"] is False; print("retired type still ON the catalogue read (active=false) — names resolve on history")'
+          # replay 409; reactivate 200 (+ audited); final state: retired
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observation-catalog/$CODE/deactivate")
+          echo "retire replay -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observation-catalog/$CODE/reactivate" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["active"] is True; print("reactivated — chartable again")'
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observation-catalog/$CODE/deactivate" >/dev/null
+          echo "left retired (run-unique name — staging accumulates only retired e2e rows, like the formulary runs)"
 
       - name: "Step 2 — NO BACK-DATING + catalogue validation + ROUND ATOMICITY + state-aware disabled-group probe"
         run: |
@@ -356,6 +483,16 @@ jobs:
             fi
           else
             echo "no toggle was attempted — nothing to restore"
+          fi
+          if [ -n "${CODE:-}" ] && [ -n "${SEN:-}" ]; then
+            act=$(curl -s -H "Authorization: Bearer $SEN" "$API/api/icu/observations/catalog" | CODE="$CODE" python3 -c 'import json,sys,os; ts=[t for g in json.load(sys.stdin) for t in g["types"] if t["typeCode"]==os.environ["CODE"]]; print(ts[0]["active"] if ts else "")')
+            if [ "$act" = "True" ]; then
+              curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/observation-catalog/$CODE/deactivate" >/dev/null \
+                && echo "cleanup retired the run's custom observation $CODE" \
+                || { echo "CLEANUP FAILED: custom observation $CODE left ACTIVE on the charting form"; exit 1; }
+            else
+              echo "run custom observation already retired"
+            fi
           fi
           if [ -n "${PID:-}" ] && [ -n "${SEN:-}" ]; then
             open=$(curl -s -H "Authorization: Bearer $SEN" "$API/api/icu/adt/encounters?patientId=$PID&status=open" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["encounterId"] if d else "")')

@@ -68,13 +68,40 @@ class ObservationTypeRow
     public bool Optional { get; set; }
     public int Seq { get; set; }
 
+    /* ---- Observations Catalogue management (the F3 v2 — the tenant) ----
+       FLAGGING ranges (the lab-analyte shape reused): [refLow, refHigh] is
+       the normal range (outside → abnormal); critLow/critHigh are the
+       critical thresholds (at-or-beyond → critical, precedence over
+       abnormal). All NULL unless a hospital sets them — ranges are NEVER
+       fabricated; flags derive at read, nothing is stored on records. */
+    public double? RefLow { get; set; }
+    public double? RefHigh { get; set; }
+    public double? CritLow { get; set; }
+    public double? CritHigh { get; set; }
+    /* per-type lifecycle: a RETIRED type keeps rendering on historical
+       records but is not newly chartable (deactivate-never-delete) */
+    public bool Active { get; set; } = true;
+    /* 🔴 SYSTEM-SET, never user-set: this observation FEEDS NEWS2/SOFA —
+       its whole definition (name/unit/kind/bounds/value set) and its
+       lifecycle are LOCKED: editing a validated score's input silently
+       turns the validated score into an unvalidated one. The list lives
+       in ObservationCatalog.ScoreInputTypes and is enforced at seed. */
+    public bool ScoreInput { get; set; }
+    /* hospital-added entry (vs the seeded §1 taxonomy) — custom entries
+       are fully editable; seeded ones expose only their flagging ranges */
+    public bool Custom { get; set; }
+    /* append-only management audit (created/changed/retired/reactivated) */
+    public string EventsJson { get; set; } = "[]";
+
     public ObservationTypeDto ToDto() => new(
         TypeCode, GroupCode, DisplayName, Unit, ValueType, Min, Max,
         AllowedValuesJson is null ? null : JsonSerializer.Deserialize<List<string>>(AllowedValuesJson, JsonOpts.Web),
         ComponentsJson is null ? null : JsonSerializer.Deserialize<List<ComponentDto>>(ComponentsJson, JsonOpts.Web),
         IsDerived,
         DerivationInputsJson is null ? null : JsonSerializer.Deserialize<List<string>>(DerivationInputsJson, JsonOpts.Web),
-        Optional);
+        Optional,
+        RefLow, RefHigh, CritLow, CritHigh, Active, ScoreInput, Custom,
+        JsonSerializer.Deserialize<List<Aurora.Core.MasterData.FormularyEventDto>>(EventsJson, JsonOpts.Web)!);
 }
 
 /* ---- the GENERIC Observation record (design §3, plus §2's verifiedBy) ---- */
@@ -130,7 +157,32 @@ record ObservationTypeDto(
     string TypeCode, string GroupCode, string DisplayName, string Unit,
     string ValueType, double? Min, double? Max, List<string>? AllowedValues,
     List<ComponentDto>? Components, bool IsDerived, List<string>? DerivationInputs,
-    bool Optional);
+    bool Optional,
+    double? RefLow, double? RefHigh, double? CritLow, double? CritHigh,
+    bool Active, bool ScoreInput, bool Custom,
+    List<Aurora.Core.MasterData.FormularyEventDto> History);
+
+/* ---------- Observations Catalogue management requests ----------
+   Free-text NAME (the #145 correction — no format rules, only the
+   platform bound); the internal typeCode is SYSTEM-GENERATED (obs_…,
+   never typed, never displayed). v1 creates NUMERIC types only (the
+   design's recommended first shape; enum/compound shapes recorded as
+   deferred). Ranges are the lab-analyte shape. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record CreateObservationTypeRequest(
+    string? Name, string? Group, string? Unit, double? Min, double? Max,
+    double? RefLow, double? RefHigh, double? CritLow, double? CritHigh);
+
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record EditObservationTypeRequest(
+    string? Name, string? Unit, double? Min, double? Max,
+    double? RefLow, double? RefHigh, double? CritLow, double? CritHigh)
+{
+    public bool HasAnyField =>
+        Name is not null || Unit is not null || Min is not null || Max is not null
+        || RefLow is not null || RefHigh is not null || CritLow is not null || CritHigh is not null;
+    public bool HasNonRangeField => Name is not null || Unit is not null || Min is not null || Max is not null;
+}
 
 /* the catalogue read: groups in clinical order, each carrying its types —
    disabled groups are INCLUDED (config visibility); charting UIs filter

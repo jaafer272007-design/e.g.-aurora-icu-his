@@ -253,6 +253,7 @@ HospitalIdentityApi.Map(app);
 ImagingCatalogApi.Map(app);
 VocabApi.Map(app);
 Aurora.Core.Observations.ObservationsApi.Map(app);
+Aurora.Core.Observations.ObservationCatalogApi.Map(app);
 Aurora.Core.Nursing.HandoffApi.Map(app);
 
 /* SPA fallback (only when this service carries the frontend): unmatched

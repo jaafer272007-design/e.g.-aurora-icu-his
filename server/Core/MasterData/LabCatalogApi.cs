@@ -88,6 +88,23 @@ static class LabCatalogApi
             }
             if (req.Analytes is not null && LabCatalogLogic.ValidateAnalytes(req.Analytes) is string aErr)
                 return ApiError.BadRequest(aErr);
+            /* 🔴 THE SOFA SCORE-INPUT LOCK (Observations Catalogue design
+               §2, extended to the lab side by the validator's decision):
+               the four analytes SOFA reads must keep their exact identity
+               AND unit — renaming/removing one silently drops a validated
+               score input; changing its UNIT silently MIS-SCALES the score
+               (the bands assume the seeded unit). Reference ranges on
+               them stay editable (the scores read raw values, never the
+               display ranges). */
+            if (req.Analytes is not null && LabCatalogLogic.ScoreInputAnalytes.TryGetValue(testId, out var lockedAnalytes))
+            {
+                var incoming = LabCatalogLogic.ToAnalytes(req.Analytes);
+                foreach (var (la, lu) in lockedAnalytes)
+                    if (!incoming.Any(a => a.Analyte == la && a.Unit == lu))
+                        return ApiError.StateConflict(
+                            $"LOCKED — '{la}' ({lu}) on panel '{testId}' is a validated SOFA score input: it cannot be renamed, re-united or removed "
+                            + "(a changed unit would silently mis-scale the score; its reference range stays editable)");
+            }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var events = new List<FormularyEventDto>();
@@ -174,6 +191,10 @@ static class LabCatalogApi
             if (Rbac.Deny(user, "labcatalog.manage") is IResult denied) return denied;
             var row = db.LabTests.FirstOrDefault(t => t.TestId == testId);
             if (row is null) return ApiError.NotFound();
+            /* the SOFA score-input panels can never be deleted, used or not */
+            if (LabCatalogLogic.ScoreInputAnalytes.ContainsKey(testId))
+                return ApiError.StateConflict(
+                    $"LOCKED — panel '{testId}' carries a validated SOFA score input and can never be deleted (deactivation is the only lifecycle act)");
             var results = db.LabDraws.AsNoTracking().Count(d => d.Panel == testId);
             var orders = db.Orders.AsNoTracking().Count(o => o.TestId == testId);
             if (results > 0 || orders > 0)
@@ -192,6 +213,22 @@ static class LabCatalogApi
 
 static class LabCatalogLogic
 {
+    /* 🔴 THE SOFA SCORE-INPUT ANALYTES (Observations Catalogue design §2,
+       the lab-side lock — the validator's recorded decision): the exact
+       (analyte, unit) pairs SOFA reads, keyed by their seeded panel
+       (src/lib/scoring/sources.ts ANALYTE/PANEL — verified exhaustively).
+       Their name+unit are locked on the panel (the reference range stays
+       editable — scores read raw values); the panels can never be
+       deleted. Changing this table is a code change reviewed like a
+       score change — never data. */
+    public static readonly Dictionary<string, (string Analyte, string Unit)[]> ScoreInputAnalytes = new()
+    {
+        ["ABG"] = [("PaO₂", "mmHg")],
+        ["CBC"] = [("Platelets", "×10⁹/L")],
+        ["Liver"] = [("T.Bili", "mg/dL")],
+        ["Renal"] = [("Creatinine", "mg/dL")],
+    };
+
     /** the catalogue row a testId resolves to, or null — order create uses
         this for the inactive-test 409; result creation for panel
         resolution (active OR inactive — resulting is never blocked by a

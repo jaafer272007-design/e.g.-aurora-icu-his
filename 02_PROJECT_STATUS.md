@@ -1,6 +1,87 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-20 · current through the FREE-TEXT FIELDS +
+**Last updated: 2026-07-20 · current through the OBSERVATIONS
+CATALOGUE — the fifth Configuration tenant and the most
+safety-sensitive editable surface yet (design 7ad5a8f8; every shape
+decision owner-confirmed before the build). Hospitals now ADD custom
+numeric observations — free-text name per #145 with a hidden
+system-generated `obs_` key never typed or displayed, free-text unit,
+required min/max PLAUSIBILITY bounds (typo-catching, not flagging),
+optional refLow/refHigh/critLow/critHigh flagging ranges on the
+lab-analyte range model — and SET/EDIT the flagging ranges of any
+NON-SCORING numeric observation; deactivate-never-delete with the
+append-only audit; a retired type leaves NEW charting (409 naming
+reactivation) while every historical record keeps rendering it. Flags
+derive AT RENDER (src/lib/obsRange.ts: at-or-beyond a critical bound →
+CRITICAL with precedence, outside the normal range → abnormal, no
+bound → nothing — ranges are never fabricated and never stored on the
+record) and are DISPLAY ONLY — scores never read them. 🔴 THE
+SCORE-INPUT LOCK (the safety split the validator approved): the
+exhaustively-verified 12 NEWS2/SOFA observation inputs — rr, spo2,
+fio2, sbp, hr, temp, acvpu, resp_support, gcs, gcs_total, map,
+urine_output (`ObservationCatalog.ScoreInputTypes`, mapped against the
+published NEWS2 and SOFA input lists and confirmed complete by the
+owner) — are LOCKED whole: EVERY edit (even a range) and EVERY
+lifecycle act answers 409 LOCKED, because an editable score input
+silently turns a validated score into an unvalidated one; the
+ScoreInput flag is re-asserted at every boot (drift-proof), and
+changing the list is a code change reviewed like a score change.
+Derived types answer 409 too (computed, never edited). Seeded
+non-scoring types: flagging ranges ONLY — the §1 taxonomy definition
+answers 400. THE LAB-SIDE GAP the enumeration surfaced, closed the
+same way: the 4 SOFA lab analytes (PaO₂/mmHg on ABG, Platelets/×10⁹/L
+on CBC, T.Bili/mg/dL on Liver, Creatinine/mg/dL on Renal —
+`LabCatalogLogic.ScoreInputAnalytes`) can never be renamed, RE-UNITED
+(the silent mis-scale case — the bands assume the seeded unit) or
+removed, and the four carrier panels can never be DELETEd; their
+REFERENCE ranges stay editable (scores read raw values) and panel
+DEACTIVATION stays allowed (governance, the vasopressor precedent).
+RBAC: observations.configure — the existing SeniorDoctor
+group-enablement atom REUSED (no matrix change; office Administrator
+403 asserted at every tier). Migration
+AddObservationsCatalogueManagement is ADDITIVE and honest: every
+pre-existing type stays ACTIVE (the scaffold defaulted Active to
+FALSE — that would have silently retired the entire catalogue on
+upgrade; hand-fixed and recorded in the migration comment), all
+ranges NULL (never fabricated), ScoreInput backfilled for exactly the
+12. NEWS2/SOFA PROVEN BYTE-IDENTICAL before/after: no scoring file is
+touched (tree-hash equal against main) AND a fixed-dataset fixture
+(all inputs resolving: NEWS2 17/high/ventilated-caveat, SOFA 13
+complete) run at origin/main and at the branch produced byte-identical
+output. UI: Configuration gains the 'Observations' tenant (Catalogues
+& registry; LOCKED/Derived/Custom/Retired chips, ranges-only seeded
+edit panel, full custom edit, add form — the obs_ key never rendered);
+the charting page filters retired types from ENTRY ONLY and renders
+the abnormal/CRITICAL flag chips on the chart. Verified: 55/55
+headless (SQLite) + 57/57 (Postgres, same script + LIVE-UPGRADE legs
+on a database populated by the PRE-upgrade server) + the
+production-appliance live-upgrade replica (old image provisions users
++ charts a full round on fresh Postgres → NEW image on the SAME
+database: migration runs, all 8 pre-upgrade values intact, catalog
+honest) + 22/22 rendered (production appliance, Asia/Baghdad: locked
+rows actionless, custom add → surfaces on charting → 75 cm ABNORMAL
+then 95 cm CRITICAL → retire → gone from entry while history keeps
+rendering flagged; adm profile has no tenant; staging bundle pass).
+Suites: deployed-observations gains the 🔴 score-input-LOCK step
+(catalog scoreInput set-equality == exactly the 12; all 12 edit AND
+retire 409 LOCKED; derived 409; seeded rename 400; mutation RBAC incl.
+the office Administrator) and the custom-lifecycle step (run-unique
+free-text name in VITALS — never poc_lab, whose set-equality assert
+stands; chart → plausibility 400 → audited range edit → retire → 409 +
+history preserved → reactivate guard; failure-path cleanup retires the
+run row); deployed-labcatalog gains the SOFA lab-input LOCK step
+(payloads built FROM the live catalogue: unit-change 409 naming
+mis-scale on ALL FOUR analytes, rename/removal 409, the 4 panels
+undeletable, the locked analyte's refRange edited 200 then
+EXACT-reverted so the seeded taxonomy stays byte-stable across runs).
+v1 DEFERRALS recorded: custom enum/compound shapes; a range-CLEARING
+path (a set bound can be moved, not blanked); attention-page
+integration of the obs flags; the seeded-type range-edit 200 leg runs
+in the local tiers only (nothing durable may mutate the staging
+taxonomy — the staging suite proves the same code path on the custom
+type).**
+
+prior marker retained: current through the FREE-TEXT FIELDS +
 AUTO-FILLED TIMESTAMPS CORRECTION (cross-cutting — the #142 principle
 applied SYSTEM-WIDE, from the owner's hands-on testing). FIX 1: every
 STYLE rule on a human-typed name/label field is REMOVED — the
@@ -3166,7 +3247,14 @@ owner: mechanism 1, Consultant alone for v1.]*
   derivation inputs and are rejected by the charting path (step 2).
   Seeded in ALL environments (non-hospital-specific clinical reference,
   the lab-catalogue precedent), idempotent. v1 catalogue is READ-ONLY
-  (F3) — no management endpoints exist. FLAGGED for the validator: the
+  (F3) — no management endpoints exist. *[Superseded by the
+  OBSERVATIONS CATALOGUE build (2026-07-20, the top marker): management
+  endpoints now exist under observations.configure — custom
+  numeric-with-range types (hidden obs_ identity), non-scoring range
+  edits, deactivate-never-delete — while the 12 NEWS2/SOFA score inputs
+  and all derived types stay locked (409). The F3 read-only stance is
+  retired; the group-enablement half of F3 is unchanged.]* FLAGGED for
+  the validator: the
   numeric plausibility ranges and enum member lists (rhythms, pupil
   reactions, vent modes, I:E ratios, nursing scales) are build-authored
   from standard practice — the design names the types, not these lists;

@@ -23,10 +23,21 @@
 # the escape hatch is closed; unknown panel on a result is 400; absent
 # management ids are 404).
 #
+# 🔴 THE SOFA LAB-INPUT LOCK (Observations Catalogue build): PaO₂/mmHg
+# (ABG), Platelets/×10⁹/L (CBC), T.Bili/mg/dL (Liver) and
+# Creatinine/mg/dL (Renal) are validated SOFA score inputs — renaming,
+# RE-UNITING (the silent mis-scale case) or removing any of them is 409
+# LOCKED, and the four carrier panels can never be DELETEd; the locked
+# analyte's REFERENCE RANGE stays editable (scores read raw values) —
+# proven live with an exact revert so the seeded taxonomy stays
+# byte-stable across runs.
+#
 # SELF-SUFFICIENT AND IDEMPOTENT: the run CREATES every test, set and
-# drug it mutates (run-id-unique ids — seeded rows are never mutated),
-# admits its own patient, and discharges it. Inactive run rows accumulate
-# across runs by design (never a delete — live durability evidence).
+# drug it mutates (run-id-unique ids — seeded rows are never mutated;
+# the SOFA-lock leg's two range edits on ABG revert exactly, leaving
+# only audit events), admits its own patient, and discharges it.
+# Inactive run rows accumulate across runs by design (never a delete —
+# live durability evidence).
 name: Deployed LabCatalog E2E
 on: workflow_dispatch
 
@@ -208,6 +219,70 @@ jobs:
           done
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' -d '{"name":"X"}' "$API/api/icu/lab-catalog/ghost-$GITHUB_RUN_ID")
           echo "edit absent -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+
+      - name: "🔴 THE SOFA LAB-INPUT LOCK — unit change / rename / removal on a locked analyte 409; the four carrier panels never DELETEd; the locked analyte's reference range EDITABLE (exact revert)"
+        run: |
+          # payloads are built FROM the live catalogue (unicode-exact:
+          # PaO₂, ×10⁹/L) — never hand-typed
+          curl -sf -H "Authorization: Bearer $LAB" "$API/api/icu/lab-catalog" -o /tmp/lc.json
+          python3 - <<'PY'
+          import copy, json
+          cat = json.load(open("/tmp/lc.json"))
+          abg = [t for t in cat if t["testId"] == "ABG"][0]
+          orig = abg["analytes"]
+          idx = [i for i, a in enumerate(orig) if "PaO" in a["analyte"]][0]
+          assert orig[idx]["unit"] == "mmHg", orig[idx]
+          open("/tmp/abg_orig.json", "w").write(json.dumps({"analytes": orig}))
+          unitchg = copy.deepcopy(orig); unitchg[idx]["unit"] = "kPa"          # THE silent-mis-scale case
+          open("/tmp/abg_unit.json", "w").write(json.dumps({"analytes": unitchg}))
+          renamed = copy.deepcopy(orig); renamed[idx]["analyte"] = "Oxygen tension"
+          open("/tmp/abg_rename.json", "w").write(json.dumps({"analytes": renamed}))
+          removed = [a for i, a in enumerate(orig) if i != idx]
+          open("/tmp/abg_removed.json", "w").write(json.dumps({"analytes": removed}))
+          refed = copy.deepcopy(orig); refed[idx]["refLow"] = refed[idx]["refLow"] + 1
+          open("/tmp/abg_ref.json", "w").write(json.dumps({"analytes": refed}))
+          print("locked analyte on ABG:", orig[idx]["analyte"], f'({orig[idx]["unit"]}) — refLow probe {orig[idx]["refLow"]} -> {refed[idx]["refLow"]}')
+          PY
+          for f in abg_unit abg_rename abg_removed; do
+            out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
+              --data-binary @/tmp/$f.json "$API/api/icu/lab-catalog/ABG")
+            rc=$(echo "$out" | tail -1); echo "$f -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+            echo "$out" | head -1 | grep -q "LOCKED" || { echo "expected LOCKED verdict:"; echo "$out"; exit 1; }
+          done
+          # the unit-change verdict names the hazard SPECIFICALLY
+          curl -s -X PUT -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
+            --data-binary @/tmp/abg_unit.json "$API/api/icu/lab-catalog/ABG" | grep -q "mis-scale" \
+            || { echo "the unit-change 409 must name the silent mis-scale hazard"; exit 1; }
+          echo "unit change kPa refused — the verdict names the mis-scale hazard"
+          # ALL FOUR carrier panels are permanently undeletable (Consultant
+          # tier probes too — the lock is state, not permission)
+          for tid in ABG CBC Liver Renal; do
+            out=$(curl -s -w '\n%{http_code}' -X DELETE -H "Authorization: Bearer $DOC" "$API/api/icu/lab-catalog/$tid")
+            rc=$(echo "$out" | tail -1); echo "DELETE $tid -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+            echo "$out" | head -1 | grep -q "LOCKED" || exit 1
+          done
+          # the locked analyte's REFERENCE RANGE stays editable (SOFA reads
+          # raw values, never display ranges) — 200, then EXACT revert so
+          # the seeded taxonomy stays byte-stable for every other consumer
+          curl -sf -X PUT -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
+            --data-binary @/tmp/abg_ref.json "$API/api/icu/lab-catalog/ABG" -o /tmp/abg_after.json
+          python3 -c '
+          import json
+          after = json.load(open("/tmp/abg_after.json"))
+          want = json.load(open("/tmp/abg_ref.json"))["analytes"]
+          assert after["analytes"] == want, "the range edit must land verbatim"
+          ev = after["history"][-1]
+          assert ev["action"] == "changed" and ev["detail"].startswith("analytes:"), ev   # full prior defs on the audit
+          print("locked-analyte refLow edited (200) — audited with the prior definitions preserved")'
+          curl -sf -X PUT -H "Authorization: Bearer $LAB" -H 'Content-Type: application/json' \
+            --data-binary @/tmp/abg_orig.json "$API/api/icu/lab-catalog/ABG" >/dev/null
+          curl -sf -H "Authorization: Bearer $LAB" "$API/api/icu/lab-catalog" | python3 -c '
+          import json, sys
+          cat = json.load(sys.stdin)
+          now = [t for t in cat if t["testId"] == "ABG"][0]["analytes"]
+          orig = json.load(open("/tmp/abg_orig.json"))["analytes"]
+          assert now == orig, "REVERT FAILED — the seeded ABG analytes drifted"
+          print("ABG analytes byte-identical to pre-run (revert verified)")'
 
       - name: Admit THIS RUN's patient
         run: |
