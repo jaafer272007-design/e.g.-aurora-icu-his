@@ -13,7 +13,8 @@ import {
   createIsolationType, createShift, deactivateCodeStatus, deactivateDisposition,
   deactivateFrequency, deactivateImagingStudy, deactivateIsolationType, deactivateShift,
   deleteImagingStudy, getAdtBeds, getCodeStatuses, getDispositions, getFrequencyEntries,
-  getHospitalIdentityHistory, getImagingCatalog, getIsolationTypes, getShifts, reactivateBed,
+  getHospitalIdentityHistory, getImagingCatalog, getIsolationTypes, getObservationCatalog,
+  getShifts, reactivateBed,
   reactivateCodeStatus, reactivateDisposition, reactivateFrequency, reactivateImagingStudy,
   reactivateIsolationType, reactivateShift, retireBed, updateCodeStatus, updateDisposition,
   updateHospitalIdentity, updateImagingStudy, updateIsolationType, updateShift,
@@ -21,11 +22,12 @@ import {
 import type { AdtWriteResult } from '../../lib/api'
 import type {
   AdtBed, CodeStatusEntry, DispositionEntry, FrequencyEntry, HospitalIdentityWithHistory,
-  ImagingStudyDef, IsolationTypeEntry, ShiftEntry,
+  ImagingStudyDef, IsolationTypeEntry, ObsCatalogGroup, ShiftEntry,
 } from '../../lib/api/types'
 import { IMAGING_MODALITIES } from '../../lib/api/types'
 import { invalidateHospitalIdentity } from '../../lib/hospitalIdentity'
 import { getSession, hasPermission, initialsOf, profileOf, type Permission } from '../../lib/session'
+import { ObservationCatalogManager } from './ObservationCatalogManager'
 import { VocabManager, type VocabRow } from './VocabManager'
 
 /* ==================== Configuration (/config) ====================
@@ -55,7 +57,7 @@ import { VocabManager, type VocabRow } from './VocabManager'
 
 type SectionId =
   | 'identity' | 'codestatus' | 'dispositions' | 'isolation' | 'shifts' | 'frequencies'
-  | 'imaging' | 'beds'
+  | 'imaging' | 'beds' | 'obscatalog'
 
 export function Configuration() {
   const { toast, showToast } = useToast()
@@ -82,6 +84,7 @@ export function Configuration() {
       title: 'Catalogues & registry',
       items: [
         { id: 'imaging', title: 'Imaging Catalogue', allowed: can('imagingcatalog.manage') },
+        { id: 'obscatalog', title: 'Observations', allowed: can('observations.configure') },
         { id: 'beds', title: 'Bed Registry', allowed: can('beds.manage') },
       ],
     },
@@ -99,6 +102,7 @@ export function Configuration() {
   const [shifts, setShifts] = useState<ShiftEntry[] | null>(null)
   const [frequencies, setFrequencies] = useState<FrequencyEntry[] | null>(null)
   const [imgStudies, setImgStudies] = useState<ImagingStudyDef[] | null>(null)
+  const [obsGroups, setObsGroups] = useState<ObsCatalogGroup[] | null>(null)
   const [bedRows, setBedRows] = useState<AdtBed[] | null>(null)
   const [ident, setIdent] = useState<HospitalIdentityWithHistory | null>(null)
   const [identLoaded, setIdentLoaded] = useState(false)
@@ -110,6 +114,7 @@ export function Configuration() {
     if (can('shifts.manage')) getShifts().then(setShifts).catch(() => setShifts(null))
     if (can('frequencies.manage')) getFrequencyEntries().then(setFrequencies).catch(() => setFrequencies(null))
     if (can('imagingcatalog.manage')) getImagingCatalog().then(setImgStudies).catch(() => setImgStudies(null))
+    if (can('observations.configure')) getObservationCatalog().then(setObsGroups).catch(() => setObsGroups(null))
     if (can('beds.manage')) getAdtBeds().then(setBedRows).catch(() => setBedRows(null))
     if (can('hospital.configure')) {
       getHospitalIdentityHistory().then(r => {
@@ -129,6 +134,9 @@ export function Configuration() {
     shifts: shifts ? `${shifts.filter(e => e.active).length}/${shifts.length}` : undefined,
     frequencies: frequencies ? `${frequencies.filter(e => e.active).length}/${frequencies.length}` : undefined,
     imaging: imgStudies ? `${imgStudies.filter(s => s.active).length}/${imgStudies.length}` : undefined,
+    obscatalog: obsGroups
+      ? `${obsGroups.flatMap(g => g.types).filter(t => t.active).length}/${obsGroups.flatMap(g => g.types).length}`
+      : undefined,
     beds: bedRows ? `${bedRows.filter(b => b.active).length}/${bedRows.length}` : undefined,
     identity: identLoaded ? (ident?.configured ? 'set' : 'unset') : undefined,
   }
@@ -317,6 +325,7 @@ export function Configuration() {
     frequencies: { blurb: <>The NAMED medication frequencies (&ldquo;daily&rdquo;, &ldquo;with meals&rdquo;…) orders and per-drug lists validate against — pharmacy governance. The structured <b className="num">q1h–q48h</b> pattern is a safety rule in code, never a hospital list.</> },
     imaging: { blurb: <>The coded imaging study definitions ordering reads — clinical, on the lab-catalogue gating (radiology + Senior Doctor). Retired studies leave the menu; historical orders keep rendering.</> },
     beds: { blurb: <>The unit&apos;s physical beds. Retiring an <b>occupied</b> bed is refused by live occupancy, and beds are <b>never renamed</b> (a renamed occupied bed is a wrong-patient-location risk) — add, retire, reactivate only.</> },
+    obscatalog: { blurb: <>What this hospital can <b>observe</b> at the bedside. Add custom numeric observations and set the flagging ranges that drive abnormal/critical display. <b>🔒 NEWS2/SOFA score inputs are locked</b> — every part of their definition — because an editable score input silently turns a validated score into an unvalidated one. Ranges here are display flagging only; the score bands live in validated code.</> },
   }
 
   return (
@@ -621,6 +630,10 @@ export function Configuration() {
                     </form>
                   </Card>
                 </div>
+              )}
+
+              {active === 'obscatalog' && (
+                <ObservationCatalogManager groups={obsGroups} onChanged={reload} showToast={showToast} />
               )}
 
               {active === 'beds' && (

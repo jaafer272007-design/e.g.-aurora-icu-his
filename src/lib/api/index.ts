@@ -7,7 +7,7 @@
 import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, FormularyEvent, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
-  NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, Order, OrderSetDef,
+  NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType, Order, OrderSetDef,
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
   DispositionEntry, FrequencyEntry, IsolationTypeEntry, ShiftEntry,
@@ -2055,6 +2055,29 @@ export async function getObservationCatalog(): Promise<ObsCatalogGroup[] | null>
   if (real) return real
   if (import.meta.env.VITE_APP_ENV !== 'production') return null
   throw apiUnavailable('observation catalogue')
+}
+
+/* ---- Observations Catalogue management (observations.configure — the
+   SeniorDoctor tenant; REAL-ONLY writes). The typeCode is a hidden
+   internal key (obs_…, server-generated); the user types only a
+   free-text name. Score-input types answer 409 LOCKED on every write. */
+export function createObservationType(draft: {
+  name: string; group: string; unit?: string; min: number; max: number
+  refLow?: number; refHigh?: number; critLow?: number; critHigh?: number
+}): Promise<AdtWriteResult<ObservationType>> {
+  return usersWrite<ObservationType>('/api/icu/observation-catalog', 'observation create', draft)
+}
+export function updateObservationType(typeCode: string, draft: {
+  name?: string; unit?: string; min?: number; max?: number
+  refLow?: number; refHigh?: number; critLow?: number; critHigh?: number
+}): Promise<AdtWriteResult<ObservationType>> {
+  return usersWrite<ObservationType>(`/api/icu/observation-catalog/${encodeURIComponent(typeCode)}`, 'observation edit', draft, 'PUT')
+}
+export function deactivateObservationType(typeCode: string): Promise<AdtWriteResult<ObservationType>> {
+  return usersWrite<ObservationType>(`/api/icu/observation-catalog/${encodeURIComponent(typeCode)}/deactivate`, 'observation retire')
+}
+export function reactivateObservationType(typeCode: string): Promise<AdtWriteResult<ObservationType>> {
+  return usersWrite<ObservationType>(`/api/icu/observation-catalog/${encodeURIComponent(typeCode)}/reactivate`, 'observation reactivate')
 }
 
 /** GET /api/icu/observations?patientId(&encounterId) — the patient's

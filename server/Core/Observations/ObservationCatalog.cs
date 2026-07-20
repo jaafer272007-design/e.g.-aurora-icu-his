@@ -26,6 +26,29 @@ namespace Aurora.Core.Observations;
    schema: the validator can amend any of them as catalogue edits. */
 static class ObservationCatalog
 {
+    /* 🔴 THE SCORE-INPUT LOCK LIST (Observations Catalogue design §2) —
+       every observation the validated scores READ, verified exhaustively
+       against the scoring engine (src/lib/scoring/news2.ts + sofa.ts +
+       sources.ts) and approved by the clinical validator:
+       - NEWS2: rr, spo2, fio2 (supplemental-O₂ is derived from FiO₂),
+         sbp, hr, temp, acvpu; resp_support is read for the ventilation
+         caveat display.
+       - SOFA: fio2 (P/F), map, gcs (+ the derived gcs_total),
+         urine_output, resp_support (the respiratory 3–4 condition).
+       SOFA's PaO₂/Platelets/Bilirubin/Creatinine are LAB analytes —
+       locked in LabCatalogLogic.ScoreInputAnalytes; vasopressors are
+       protected by immutable formulary drug ids + the locked infusion-
+       unit union. Editing any of these types' definitions would silently
+       turn a validated score into an unvalidated one, so their WHOLE
+       definition and lifecycle are locked (enforced at the management
+       endpoints AND re-asserted at every boot below). Changing this list
+       is a code change reviewed like a score change — never data. */
+    public static readonly string[] ScoreInputTypes =
+    [
+        "rr", "spo2", "fio2", "sbp", "hr", "temp", "acvpu", "resp_support",
+        "gcs", "gcs_total", "map", "urine_output",
+    ];
+
     sealed record G(string Code, string Name, bool EnabledByDefault);
     sealed record T(
         string Code, string Group, string Name, string Unit, string Kind,
@@ -207,8 +230,26 @@ static class ObservationCatalog
                 IsDerived = x.t.DerivedFrom is not null,
                 DerivationInputsJson = x.t.DerivedFrom is null ? null : JsonSerializer.Serialize(x.t.DerivedFrom, JsonOpts.Web),
                 Optional = x.t.Optional, Seq = x.i + 1,
+                /* management fields: seeded types start ACTIVE with NO
+                   flagging ranges (never fabricated) and the score-input
+                   lock flag from the list above */
+                Active = true, Custom = false, EventsJson = "[]",
+                ScoreInput = ScoreInputTypes.Contains(x.t.Code),
             }));
             db.SaveChanges();
+        }
+        /* 🔴 BOOT-TIME LOCK ENFORCEMENT (defense in depth): the ScoreInput
+           flag must equal list membership EXACTLY, every boot — a row that
+           somehow lost the flag would be a silently-breakable score, and a
+           custom row could never legitimately carry it (no write path sets
+           it). Idempotent; touches nothing else. */
+        var drift = db.ObservationTypes.AsEnumerable()
+            .Where(t => t.ScoreInput != ScoreInputTypes.Contains(t.TypeCode)).ToList();
+        if (drift.Count > 0)
+        {
+            foreach (var t in drift) t.ScoreInput = ScoreInputTypes.Contains(t.TypeCode);
+            db.SaveChanges();
+            Console.WriteLine($"[AURORA] observation score-input lock re-asserted on {drift.Count} row(s) at boot");
         }
     }
 

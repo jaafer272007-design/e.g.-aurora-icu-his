@@ -102,6 +102,9 @@ static class ObservationsApi
                     return ApiError.BadRequest($"typeCode '{code}' is not in the Observation Type Catalogue");
                 if (t.IsDerived)
                     return ApiError.BadRequest($"'{t.TypeCode}' is a DERIVED value — it is computed from its inputs at read time, never charted");
+                if (!t.Active)
+                    return ApiError.StateConflict(
+                        $"observation '{t.DisplayName}' is retired from this hospital's catalogue — historical records keep rendering it, but it is not newly chartable (a Consultant-tier user can reactivate it)");
                 if (!seen.Add(t.TypeCode))
                     return ApiError.BadRequest($"duplicate typeCode '{t.TypeCode}' in one round — repeat measurements are separate rounds");
                 if (!groups[t.GroupCode].Enabled)
