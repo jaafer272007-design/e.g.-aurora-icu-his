@@ -36,12 +36,17 @@ static class LabCatalogApi
                 .AsEnumerable().Select(t => t.ToDto()), JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* POST /api/icu/lab-catalog — add a test (Laboratory). */
+        /* POST /api/icu/lab-catalog — add a test (Laboratory). The
+           free-text correction (Imaging Catalogue Correction §3): the UI
+           sends only a NAME — the testId (the panel key results render
+           under) DEFAULTS to it, so the user types one friendly value
+           with no format rules at all. An explicitly provided testId
+           stays accepted (wire compatibility; suites and API callers). */
         app.MapPost("/api/icu/lab-catalog", (CreateLabTestRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "labcatalog.manage") is IResult denied) return denied;
 
-            var testId = (req.TestId ?? "").Trim();
+            var testId = (req.TestId ?? req.Name ?? "").Trim();
             if (LabCatalogLogic.ValidateTestId(testId) is string idErr) return ApiError.BadRequest(idErr);
             foreach (var (field, value) in new[] {
                 ("name", req.Name), ("category", req.Category), ("specimen", req.Specimen) })
@@ -200,12 +205,17 @@ static class LabCatalogLogic
     public static List<string> TestIds(AuroraDb db) =>
         db.LabTests.AsNoTracking().OrderBy(t => t.Seq).Select(t => t.TestId).ToList();
 
+    /* the free-text correction: the old 2-64 letters/digits/hyphen rule
+       rejected legitimate clinical names ("Blood Gas" — a space) and
+       forced the user to fight a code. The panel key is USER-FACING (it
+       renders as the result's panel label), so it stays exactly what the
+       user typed — the only remaining bound is the platform-wide
+       oversized-input guard, which is abuse protection, not a format. */
     public static string? ValidateTestId(string testId)
     {
-        if (testId.Length == 0) return "testId is required";
-        if (testId.Length is < 2 or > 64) return "testId must be 2-64 characters";
-        if (!testId.All(c => char.IsAsciiLetterOrDigit(c) || c is '-'))
-            return "testId may contain only letters, digits and '-'";
+        if (testId.Length == 0) return "name is required";
+        if (testId.Length > FormularyLogic.MaxTextLength)
+            return $"name exceeds {FormularyLogic.MaxTextLength} characters";
         return null;
     }
 

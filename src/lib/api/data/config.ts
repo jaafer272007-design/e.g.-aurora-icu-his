@@ -30,9 +30,9 @@ export const HOSPITAL_IDENTITY = {
    studies the retired ORDER_SETS.Imaging mock offered, now coded — so
    staging ordering renders byte-identical chips. */
 export const IMAGING_CATALOG = [
-  { studyId: 'portable_cxr', name: 'Portable CXR', modality: 'CXR', region: 'Chest', contrast: false, portable: true, active: true, history: [] },
-  { studyId: 'ct_abdomen_pelvis', name: 'CT Abdomen/Pelvis', modality: 'CT', region: 'Abdomen/Pelvis', contrast: true, portable: false, active: true, history: [] },
-  { studyId: 'bedside_echo', name: 'Bedside Echo', modality: 'Echo', region: 'Cardiac', contrast: false, portable: true, active: true, history: [] },
+  { studyId: 'portable_cxr', name: 'Portable CXR', modality: 'CXR', active: true, history: [] },
+  { studyId: 'ct_abdomen_pelvis', name: 'CT Abdomen/Pelvis', modality: 'CT', active: true, history: [] },
+  { studyId: 'bedside_echo', name: 'Bedside Echo', modality: 'Echo', active: true, history: [] },
 ] as const
 
 /* ---- Configuration Vocabularies — MOCK stores (dev/staging read

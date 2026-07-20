@@ -178,6 +178,11 @@
  border:1px solid var(--stroke);transition:.15s;min-height:36px}
 .om .omimgchip:hover{color:var(--text);border-color:var(--stroke2)}
 .om .omimgchip.on{color:var(--text);border-color:rgba(var(--violet-rgb),.6);background:rgba(var(--violet-rgb),.12)}
+/* the order-time contrast tick (corrected model): one checkbox, sized to
+   sit beside the free-text region input */
+.om .omimgcontrast{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);
+ border:1px solid var(--stroke);border-radius:11px;padding:0 13px;min-height:44px;cursor:pointer;white-space:nowrap}
+.om .omimgcontrast input{width:15px;height:15px;accent-color:var(--violet);flex:none;min-height:0}
 
 /* structured infusion ordering — the µg|mg / kg / min|hour entry that
    replaces the free-text dose for continuous mass-dosed infusions */

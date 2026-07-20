@@ -526,28 +526,34 @@ static class Seeder
     static void SeedImagingCatalog(WebApplication app, AuroraDb db, bool demo)
     {
         if (db.ImagingCatalog.Any()) return;
+        /* CORRECTED MODEL (Imaging Catalogue Correction): an entry is
+           modality + free-text name only — region/contrast are ORDER-TIME,
+           portable is gone. Demo keeps the same 3 names (staging renders
+           byte-identically); the production starter is now MODALITY-LEVEL
+           (the corrected clinical shape — "CT", specified at order time),
+           replacing the old region-baked 8-study set. Seed StudyIds stay
+           readable snake (internal keys; new UI-created entries get
+           generated ids). */
         var studies = demo
-            ? new (string Id, string Name, string Modality, string Region, bool Contrast, bool Portable)[]
+            ? new (string Id, string Name, string Modality)[]
             {
-                ("portable_cxr", "Portable CXR", "CXR", "Chest", false, true),
-                ("ct_abdomen_pelvis", "CT Abdomen/Pelvis", "CT", "Abdomen/Pelvis", true, false),
-                ("bedside_echo", "Bedside Echo", "Echo", "Cardiac", false, true),
+                ("portable_cxr", "Portable CXR", "CXR"),
+                ("ct_abdomen_pelvis", "CT Abdomen/Pelvis", "CT"),
+                ("bedside_echo", "Bedside Echo", "Echo"),
             }
-            : new (string Id, string Name, string Modality, string Region, bool Contrast, bool Portable)[]
+            : new (string Id, string Name, string Modality)[]
             {
-                ("portable_cxr", "Portable CXR", "CXR", "Chest", false, true),
-                ("cxr_pa_lat", "CXR PA/Lateral (department)", "CXR", "Chest", false, false),
-                ("ct_head_plain", "CT Head without contrast", "CT", "Head", false, false),
-                ("ct_chest", "CT Chest", "CT", "Chest", true, false),
-                ("ct_abdomen_pelvis", "CT Abdomen/Pelvis with contrast", "CT", "Abdomen/Pelvis", true, false),
-                ("us_abdomen", "US Abdomen", "US", "Abdomen", false, true),
-                ("bedside_echo", "Bedside Echocardiogram", "Echo", "Cardiac", false, true),
-                ("us_venous_doppler", "US Venous Doppler — lower limbs", "US", "Vascular", false, true),
+                ("cxr", "Chest X-ray", "CXR"),
+                ("xray", "X-ray", "X-ray"),
+                ("ct", "CT", "CT"),
+                ("mri", "MRI", "MRI"),
+                ("us", "Ultrasound", "US"),
+                ("echo", "Echocardiogram", "Echo"),
             };
         db.ImagingCatalog.AddRange(studies.Select((x, i) => new Aurora.Core.MasterData.ImagingStudyDefRow
         {
-            StudyId = x.Id, Seq = i + 1, Name = x.Name, Modality = x.Modality, Region = x.Region,
-            Contrast = x.Contrast, Portable = x.Portable, Active = true, EventsJson = "[]",
+            StudyId = x.Id, Seq = i + 1, Name = x.Name, Modality = x.Modality,
+            Active = true, EventsJson = "[]",
         }));
         db.SaveChanges();
         app.Logger.LogInformation("Seeded {Count} imaging-catalogue studies ({Mode} starter set — the hospital finalises the list in Configuration)",

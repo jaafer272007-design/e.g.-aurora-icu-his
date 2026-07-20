@@ -37,6 +37,15 @@ class OrderRow
        re-resolve the live catalogue). Null on non-Imaging orders,
        free-text imaging orders, and every pre-catalogue row. */
     public string? StudyId { get; set; }
+    /* CORRECTED IMAGING MODEL (the validator's finding): body region and
+       contrast are ORDER-TIME clinical decisions, not study-definition
+       properties — the doctor types the region free-text ("head",
+       "left knee") and ticks ONE contrast checkbox (ticked = with
+       contrast; absence IS "without"). Imaging orders only; the
+       migration backfilled both from the old baked-in definitions so no
+       historical order lost its region. */
+    public string? Region { get; set; }
+    public bool? Contrast { get; set; }
     public string Priority { get; set; } = "";
     public string Status { get; set; } = "";
     public string OrderedBy { get; set; } = "";
@@ -52,7 +61,7 @@ class OrderRow
         EncounterId = d.EncounterId ?? "", BedId = d.BedId,
         PatientName = d.PatientName, Category = d.Category, Summary = d.Summary,
         MedicationJson = d.Medication is null ? null : JsonSerializer.Serialize(d.Medication, JsonOpts.Web),
-        TestId = d.TestId, StudyId = d.StudyId,
+        TestId = d.TestId, StudyId = d.StudyId, Region = d.Region, Contrast = d.Contrast,
         Priority = d.Priority, Status = d.Status, OrderedBy = d.OrderedBy, OrderedTime = d.OrderedTime,
         RequiresImplementation = d.RequiresImplementation,
         AdministrationsJson = d.Administrations is null ? null : JsonSerializer.Serialize(d.Administrations, JsonOpts.Web),
@@ -66,7 +75,7 @@ class OrderRow
         Priority, Status, OrderedBy, OrderedTime, RequiresImplementation,
         AdministrationsJson is null ? null : JsonSerializer.Deserialize<List<AdminDto>>(AdministrationsJson, JsonOpts.Web),
         JsonSerializer.Deserialize<List<OrderEventDto>>(HistoryJson, JsonOpts.Web)!,
-        StatusReason, TestId, StudyId);
+        StatusReason, TestId, StudyId, Region, Contrast);
 }
 
 /* wire contracts — mirror Order / MedicationDetails / MedAdministration /
@@ -76,7 +85,7 @@ record OrderDto(
     string Summary, MedicationDto? Medication, string Priority, string Status,
     string OrderedBy, string OrderedTime, bool? RequiresImplementation,
     List<AdminDto>? Administrations, List<OrderEventDto> History, string? StatusReason,
-    string? TestId = null, string? StudyId = null);
+    string? TestId = null, string? StudyId = null, string? Region = null, bool? Contrast = null);
 
 /* nested in create requests as well as responses/seeds — Disallow makes a
    typo'd medication field (e.g. "dosage") a 400 at binding time; the seed
@@ -124,7 +133,10 @@ record OrderEventDto(string Time, string Actor, string Action, string? Detail);
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record NewOrderDraftDto(
     string? PatientId, string? Category, string? Summary, MedicationDto? Medication,
-    string? Priority, bool? RequiresImplementation, string? TestId = null, string? StudyId = null);
+    string? Priority, bool? RequiresImplementation, string? TestId = null, string? StudyId = null,
+    /* order-time imaging specifics (the corrected model): free-text body
+       region + the single contrast checkbox — Imaging drafts only */
+    string? Region = null, bool? Contrast = null);
 
 /* overrideJustification (safety enforcement): the audited acknowledgment
    that lets WARN-level safety findings (cross-reactivity, warn-severity
