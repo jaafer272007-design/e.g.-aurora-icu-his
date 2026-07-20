@@ -323,7 +323,23 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $DOC" "$API/api/icu/imaging-catalog/$SID")
           echo "delete referenced study -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
           curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/imaging-catalog/$SID/deactivate" >/dev/null && echo "run study retired (off the menu; the order keeps rendering)"
-          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging/$RID/acknowledge" >/dev/null && echo "run report acknowledged"
+          # A DOCUMENTED report obeys the #107 SELF-CORRECTION WINDOW: an
+          # immediate acknowledge is REFUSED (409) for 5 minutes while the
+          # narrative stabilises — asserted here (the rule holds on the
+          # corrected model's inherited-description report), then WAITED OUT
+          # with a bounded poll so the run leaves no inbox residue. This
+          # deliberately adds ~5 min to the labs run — the first live run of
+          # this step failed exactly here by acknowledging inside the window.
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging/$RID/acknowledge")
+          rc=$(echo "$out" | tail -1); echo "acknowledge INSIDE the window -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "self-correction window" in e, e'
+          rc=""
+          for i in $(seq 1 14); do
+            sleep 30
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging/$RID/acknowledge")
+            [ "$rc" = "200" ] && { echo "window closed after ~$((i*30))s — run report acknowledged"; break; }
+          done
+          [ "$rc" = "200" ] || { echo "report never became acknowledgeable -> last HTTP $rc"; exit 1; }
 
       - name: LAB FREE-TEXT ADD → order → result — the same loop holds for labs (name with a SPACE, no id typed)
         run: |
@@ -401,8 +417,18 @@ jobs:
           print(" ".join(items))'); do
             kind="${entry%%:*}"; rid="${entry##*:}"
             path=$([ "$kind" = "lab" ] && echo labs || echo imaging)
-            curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/$path/$rid/acknowledge" >/dev/null \
-              && echo "cleanup acknowledged $rid" || { echo "CLEANUP FAILED on $rid"; exit 1; }
+            # WINDOW-AWARE (the #107 rule): a freshly DOCUMENTED report
+            # refuses acknowledgment for 5 minutes — on a failure path this
+            # run's report may still be inside it, so retry until the window
+            # closes rather than leaking inbox residue.
+            done_rc=""
+            for i in $(seq 1 14); do
+              done_rc=$(curl -s -o /tmp/ackerr -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/$path/$rid/acknowledge")
+              [ "$done_rc" = "200" ] && { echo "cleanup acknowledged $rid"; break; }
+              grep -q "self-correction window" /tmp/ackerr || break
+              echo "  $rid still inside its self-correction window — waiting"; sleep 30
+            done
+            [ "$done_rc" = "200" ] || { echo "CLEANUP FAILED on $rid (HTTP $done_rc)"; cat /tmp/ackerr; exit 1; }
           done
           curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/results/inbox" | PID="$PID" python3 -c '
           import json,sys,os
