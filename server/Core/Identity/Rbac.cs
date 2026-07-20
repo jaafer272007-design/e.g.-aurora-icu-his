@@ -121,8 +121,8 @@ static class Rbac
            scheduling is formulary governance). */
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "results.document", "results.correct", "labcatalog.manage", "notes.document",
-            "ai.view", "adt.admit", "adt.discharge", "observations.record",
+            "results.document", "results.correct", "labcatalog.manage", "ordersets.manage",
+            "notes.document", "ai.view", "adt.admit", "adt.discharge", "observations.record",
             "observations.correct", "observations.configure", "patients.measure",
             "assignments.manage", "codestatus.set", "codestatus.manage", "imagingcatalog.manage",
             "beds.manage", "dispositions.manage", "isolation.manage", "shifts.manage"],
@@ -170,12 +170,17 @@ static class Rbac
            PHARMACY's authority — the same polarity flip as results.create
            on Ancillary (doctor/nurse/administrator tokens are 403'd on
            every formulary mutation; every profile may read).
-           ordersets.manage (Layer 4 phase 2): order sets are protocol
-           authorship, stewarded with the formulary in this provisional
-           model — a distinct permission atom so a future profile split
-           costs a table edit. APPLYING a set is clinician authority
-           (orders.create/orders.sign), never this. */
-        ["Pharmacist"] = ["patients.view", "orders.view", "results.view", "formulary.manage", "ordersets.manage",
+           ordersets.manage moved to SENIORDOCTOR (owner decision,
+           2026-07-20): an order set is a CLINICAL PROTOCOL (a sepsis
+           bundle, a DKA protocol) — authoring one is a senior medical
+           decision, not a pharmacy one. The Layer 4 phase 2 record had
+           placed it here provisionally ("a future profile split costs a
+           table edit") — this was that table edit. Pharmacy governance
+           still applies where it belongs: every drug a set references
+           must exist in the formulary Pharmacy maintains. APPLYING a set
+           stays clinician authority (orders.create/orders.sign) — any
+           ordering clinician, unchanged. */
+        ["Pharmacist"] = ["patients.view", "orders.view", "results.view", "formulary.manage",
             "frequencies.manage"],
         ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],
         /* results.create (results audit PR): entering a result is the

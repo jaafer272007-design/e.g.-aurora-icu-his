@@ -1,6 +1,92 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-20 · current through PRINT CENTER BRANDING +
+**Last updated: 2026-07-20 · current through ORDER-SET AUTHORING —
+GOVERNANCE + INTERFACE (owner directive; the clinical model and the
+safety behaviour are UNCHANGED — apply still composes drafts through
+the ONE shared OrdersApi.Create path, so every generated order is an
+INDIVIDUAL, separately-editable order carrying the full server-side
+safety screen; re-proven at every tier, below). THE GOVERNANCE MOVE:
+`ordersets.manage` moved PHARMACIST → SENIORDOCTOR (only) — an order
+set is a CLINICAL PROTOCOL (a sepsis bundle, a DKA protocol) and
+authoring one is a senior medical decision, not a pharmacy one;
+pharmacy governance still applies at the FORMULARY level (every drug a
+set references must exist in the formulary Pharmacy maintains); the
+Layer 4 phase 2 record's "a future profile split costs a table edit"
+was exercised — this was that table edit (Rbac.cs + session.ts + the
+01 matrix rows + route-guard line). The PHARMACIST can no longer
+author (403 on create/edit/deactivate/reactivate); APPLYING is
+UNTOUCHED — orders.create/orders.sign, any ordering clinician: the
+SPECIALIST (plain Doctor profile) applies a set it cannot author, and
+the Pharmacist can neither author NOR apply (it never held
+orders.create) — authorship and application are fully separate
+authorities, now visibly so. 🔴 THE INTERFACE FIX: the raw-JSON items
+textarea is GONE — authoring a set required hand-writing
+[{"category":"Lab",...}], which no consultant will do; the
+/order-sets editor now builds items with a FORM modeled on the
+single-order form (the NewOrderCard/LabOrderCard interaction
+pattern): per item a CATEGORY (Medication/Lab/Imaging/Nursing), a
+DRUG PICKER searching the formulary (dose/route/frequency selects
+seeded from the drug's own lists, retired named frequencies filtered
+from selection, duration blank = ongoing, PRN + required indication
+when the drug is PRN-capable), a TEST PICKER searching the lab
+catalogue (summary prefilled from the test name, editable), free
+ORDER TEXT for Imaging/Nursing items, a PRIORITY per item, a
+nurse-implements toggle on non-medication items, and
+ADD/REMOVE/REORDER rows; the create card and the edit panel share
+the same builder (existing sets — seeded included — load into it);
+NO JSON anywhere in authoring. The server validates every item
+exactly as before (shape, frequency vocabulary, drug/test
+references); the client composes the same wire shapes — NO
+migration, NO wire change, NO new endpoint (the Layer 4 phase 2
+"structured set-item editor" display debt is CLOSED). SET IDENTITY:
+the "PERMANENT — LOWERCASE, DIGITS, HYPHEN" rule the directive
+targeted was ALREADY REMOVED BY #145 (server NewKey oset_ hidden key
++ ValidateExplicitId = length-only "never a format"; the client
+create was name-only since #145) — verified rather than rebuilt, and
+re-proven live (an explicit id with SPACES + CAPS + punctuation is
+accepted); the directive's AUDIT for other format-rule fields #145
+missed found NONE remaining — the only surviving format rule on a
+user-typed field is the USERNAME rule (UsersApi 3-64
+lowercase/digit/./-), which #145 explicitly KEPT and flagged;
+everything else that pattern-matches is semantic, not style (the
+q<n>h safety pattern is code, modality is a governed vocabulary,
+logo magic-bytes are content integrity, analyte bounds are
+plausibility, password strength is security). Stale comments fixed
+in passing: OrderSetsApi's header still claimed set-apply lacked the
+server-side safety screen (superseded by the safety-enforcement PR —
+apply inherits allergy/interaction/duplicate through the shared
+Create; the header now says so). Verified: 17/17 headless (fresh
+SQLite — the governance flip in both directions incl. every
+Pharmacist mutation 403; name-only oset_ create with token actor;
+dup-active-name 409; unknown drug/test 400s; 🔴 the SPECIALIST
+applies a 3-item set → 3 DISTINCT signed orders with NO
+bundle/group field, then MODIFIES one order's dose and DISCONTINUES
+another while the THIRD STANDS UNTOUCHED; 🔴 sepsis-bundle on a
+penicillin-allergic admission → the allergy-block 409 through the
+shared path; seeded sets intact; inactive-set apply 409) + 7/7
+(Postgres LIVE-UPGRADE: the OLD server let the Pharmacist author —
+and 403'd the Consultant, the mirror — then the NEW server on the
+SAME database 403s the Pharmacist editing ITS OWN set while the
+Consultant edits that same row with the Samir-Qassem authorship
+history intact, the Specialist applies it, all four seeded sets
+survive) + 14/14 rendered (staging appliance: the Consultant
+authors ENTIRELY through the form — ZERO textareas and no JSON
+fragment on the page — formulary picker, catalogue picker with
+prefilled summary, free nursing text, reorder + remove, created set
+listed and re-opened in the edit builder, the SEEDED Sepsis Bundle
+opens in the builder too; the Pharmacist loses the nav item, gets
+the Access Restricted state on the direct route AND a server-side
+403 on the API; the Specialist sees the form-built set on the
+Orders screen and expands it into INDIVIDUAL pending orders).
+Suites: deployed-labcatalog-e2e order-set legs rewritten — a sixth
+login (liam.osei, Specialist), authoring by the Consultant with the
+actor assert, the DENIED direction now PHA+SPC+NUR+ADM+LAB, a
+Pharmacist-apply 403 and a Specialist-apply 200 (authoring ≠
+applying, both directions), cleanup tokens moved to the new holder.
+Seeded sets untouched (their Pharmacist-era audit histories stand
+as history).**
+
+prior marker retained: current through PRINT CENTER BRANDING +
 THE DOCUMENT-LEVEL FORMAT ENGINE (Option A — the owner's directive is
 the design, scoped to the verify-first report). PIECE 1 — HOSPITAL
 BRANDING on the #135 identity record: the recorded logo fast-follow
@@ -73,7 +159,7 @@ AND the prior logo state-aware — set back or cleared);
 deployed-print-e2e is unaffected by design (it asserts clinical
 fields only). DEFERRALS recorded: per-word/per-line rich formatting;
 saved per-hospital print defaults; the flowsheet columns/time-window
-+ QR engine knobs.**
++ QR engine knobs.
 
 prior marker retained: current through ASSIGNMENT
 SIMPLIFICATION — the opt-out coverage model (design 7f9f474b, the
@@ -2347,6 +2433,16 @@ Completes Layer 4's planned domains (`server/Core/MasterData/`).
   picker (active tests only, orders carry the testId) and its order-set
   card reads the REAL definitions (inactive sets excluded); adapters
   follow the proven read-fallback/REAL-ONLY-write pattern.
+  *[Amended 2026-07-20 — the order-set authoring fix (owner directive):
+  `ordersets.manage` MOVED Pharmacist → SeniorDoctor — an order set is
+  a clinical protocol and authoring it is senior medical governance;
+  the provisional Pharmacy stewardship recorded above ended with
+  exactly the "table edit" it reserved for. The items-as-JSON display
+  debt is CLOSED: /order-sets now authors items with a form-based
+  builder (drug/test pickers, priority, add/remove/reorder — no JSON).
+  Apply (clinician authority via the shared create path) and every
+  integrity/validation rule above are unchanged. Full record: the top
+  marker.]*
 - **Recorded, deliberately not done here**: (a)
   CATALOGUE-AUTHORITATIVE ORDERING — SUPERSEDED: shipped with the
   safety-enforcement PR (unknown testId → 400, inactive stays 409);

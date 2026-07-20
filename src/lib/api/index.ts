@@ -1180,8 +1180,10 @@ export async function getOrderSetDefs(): Promise<OrderSetDef[]> {
 
 /* ---------------- Layer 4 phase 2 — Lab Test Catalogue + Order Sets ----------------
    Reference data the LABORATORY (labcatalog.manage, Ancillary profile)
-   and PHARMACY (ordersets.manage) maintain — REAL-ONLY writes like every
-   master-data domain; reads fall back to the mock stores offline.
+   and the CONSULTANT tier (ordersets.manage — clinical protocol
+   authorship, moved from Pharmacy 2026-07-20) maintain — REAL-ONLY
+   writes like every master-data domain; reads fall back to the mock
+   stores offline.
    Deactivation is a status change, never a delete: an inactive test
    cannot be newly ORDERED (server 409) but every existing result
    referencing it still renders; an inactive set cannot be applied. */

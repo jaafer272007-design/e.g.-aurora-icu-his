@@ -268,10 +268,10 @@ PermissionProfile → Permissions (and Dashboard landing view):
 | Profile | Permissions | Landing |
 |---|---|---|
 | Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge, observations.record (Stage 11 §4 F1) | /workspace |
-| SeniorDoctor         | everything Doctor has + observations.correct (Stage 11 §8 F2 — tier-2 retrospective correction) + observations.configure (Stage 11 §3 F3 — group enablement). HARD CONSTRAINT (§4): these two NEVER sit on the office Administrator profile | /workspace |
+| SeniorDoctor         | everything Doctor has + observations.correct (Stage 11 §8 F2 — tier-2 retrospective correction) + observations.configure (Stage 11 §3 F3 — group enablement) + ordersets.manage *(moved from Pharmacist 2026-07-20, per the project owner: an order set is a clinical protocol — sepsis bundle, DKA protocol — and authoring one is a senior medical decision; the drugs a set references still come from the Pharmacy-governed formulary, so pharmacy governance applies at the formulary level; APPLYING a set stays orders.create/orders.sign — any ordering clinician)*. HARD CONSTRAINT (§4): the observation authorities NEVER sit on the office Administrator profile | /workspace |
 | Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer, observations.record (Stage 11 §4 F1), handoff.document *(added 2026-07-18, per the project owner: SBAR handoff entries are nurse-only for now — the doctor handoff is a separate record, not yet designed, and the two must NOT be merged; the write additionally requires an ACTIVE nurse assignment on the open encounter, checked server-side — see the scoped exception under Locked Decisions)* | /nurse |
 | Administrator        | admin.view, patients.view, users.manage | /admin |
-| Pharmacist           | patients.view, orders.view, results.view, formulary.manage, ordersets.manage (Layer 4 — maintain the formulary + author order sets) | /beds |
+| Pharmacist           | patients.view, orders.view, results.view, formulary.manage (Layer 4 — maintain the formulary; ordersets.manage moved to SeniorDoctor 2026-07-20) | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
 | Ancillary            | patients.view, orders.view, results.view, results.create, labcatalog.manage (Layer 4 — maintain the lab test catalogue) | /beds |
 | AlliedHealth         | patients.view, results.view (view-only) | /beds |
@@ -280,7 +280,7 @@ Route guards: /workspace = orders.sign · /nurse = meds.administer ·
 /admin = admin.view · /admin/users = users.manage (Layer 3) ·
 /formulary = formulary.manage (Layer 4 — Pharmacy) ·
 /lab-catalog = labcatalog.manage (Layer 4 — Laboratory) ·
-/order-sets = ordersets.manage (Layer 4 — Pharmacy) ·
+/order-sets = ordersets.manage (SeniorDoctor — protocol authorship) ·
 /beds & /patients & /timeline = patients.view ·
 /orders = orders.view (mutating UI additionally needs the prescriber
 permissions) · /labs = results.view · /ai = ai.view · /admissions &
