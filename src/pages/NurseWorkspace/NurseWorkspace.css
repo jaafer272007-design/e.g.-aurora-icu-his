@@ -147,7 +147,7 @@
 .mardialog textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
 .mardfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}
 
-/* honest zero-assignment state (Patient Assignment & Responsibility) */
+/* honest empty-worklist state (opt-out coverage — every patient removed, or an empty unit) */
 .apempty{color:var(--dim);font-size:12.5px;line-height:1.5;padding:8px 2px}
 
 /* the SBAR series — the append-only record below the entry form */

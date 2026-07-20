@@ -12,14 +12,14 @@ import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
-import { getAssignments, getCodeStatuses, getEncounters, getIsolationTypes, getObservations, getPatientDetail, getPatientIdentity, getPatients, isolationTypeLabel, setEncounterCodeStatus, setEncounterIsolation } from '../../lib/api'
+import { getCoverage, getCodeStatuses, getEncounters, getIsolationTypes, getObservations, getPatientDetail, getPatientIdentity, getPatients, isolationTypeLabel, setEncounterCodeStatus, setEncounterIsolation } from '../../lib/api'
 import { unitSuffix, useHospitalIdentity } from '../../lib/hospitalIdentity'
 import { resolveCodeStatus } from '../../lib/codeStatus'
 import { Toast, useToast } from '../../components/Toast'
 import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
 import { useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, signOut } from '../../lib/session'
-import type { Assignment, CodeStatusEntry, IsolationTypeEntry, PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
+import type { CoverageRow, CodeStatusEntry, IsolationTypeEntry, PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
 import { IdentityDialog } from './IdentityDialog'
 import { AssignmentDialog } from './AssignmentDialog'
 import { LatestObservationsCard } from './LatestObservationsCard'
@@ -104,13 +104,14 @@ export function MissionControl() {
      rule: the office Administrator never sees clinical data) */
   const canHistory = session ? hasPermission(session.jobTitle, 'results.view') : false
 
-  /* CARE TEAM (Patient Assignment & Responsibility): everyone with
-     patients.view SEES who is responsible; managing is gated on
-     assignments.manage (SeniorDoctor — the recorded interim). */
-  const [careTeam, setCareTeam] = useState<Assignment[] | null>(null)
+  /* NURSE COVERAGE (Assignment Simplification — the opt-out model):
+     everyone with patients.view SEES who is covering; carving/restoring
+     exceptions is gated on assignments.manage (SeniorDoctor — the
+     recorded interim). Doctors have no assignment concept. */
+  const [careTeam, setCareTeam] = useState<CoverageRow | null>(null)
   const [teamOpen, setTeamOpen] = useState(false)
   const canManageAssignments = session ? hasPermission(session.jobTitle, 'assignments.manage') : false
-  const loadCareTeam = (id: string) => getAssignments(id).then(setCareTeam).catch(() => setCareTeam([]))
+  const loadCareTeam = (id: string) => getCoverage(id).then(rows => setCareTeam(rows[0] ?? null)).catch(() => setCareTeam(null))
 
   /* CODE STATUS set control (the governed-vocabulary SAFETY FIX):
      physician-only (codestatus.set); the popover lists ONLY the ACTIVE
@@ -190,7 +191,7 @@ export function MissionControl() {
     let stale = false
     setCareTeam(null)
     setTeamOpen(false)
-    if (patientId) getAssignments(patientId).then(r => { if (!stale) setCareTeam(r) }).catch(() => { if (!stale) setCareTeam([]) })
+    if (patientId) getCoverage(patientId).then(rows => { if (!stale) setCareTeam(rows[0] ?? null) }).catch(() => { if (!stale) setCareTeam(null) })
     return () => { stale = true }
   }, [patientId])
   useEffect(() => {
@@ -322,23 +323,23 @@ export function MissionControl() {
             <div className="chip"><span className="k">ICU Day</span><span className="v num">{p ? `Day ${p.los}` : '—'}</span></div>
             <div className="chip alert"><span className="k">Allergies</span><span className="v">{p?.allergies ?? '—'}</span></div>
             <div className="chip"><span className="k">Attending</span><span className="v">{p?.attending ?? '—'}</span></div>
-            {/* CARE TEAM — real assignments (never the free-text Attending,
-                which is a legacy display string deliberately left alone).
-                Click to view (everyone) or manage (Senior Doctor). */}
+            {/* NURSE COVERAGE — derived (never the free-text Attending,
+                a legacy display string deliberately left alone). Everyone
+                covers by default; click to view (everyone) or carve
+                exceptions (Senior Doctor). A discharged patient has no
+                open encounter → no coverage row → the chip stays em-dash. */}
             <button
-              className={`chip ctchip${careTeam && careTeam.filter(a => !a.endedAt).length === 0 ? ' unassigned' : ''}`}
+              className="chip ctchip"
               onClick={() => careTeam && setTeamOpen(true)}
-              aria-label="Care team — view assignments"
+              aria-label="Nurse coverage — view and manage exceptions"
             >
-              <span className="k">Care Team</span>
+              <span className="k">Coverage</span>
               <span className="v">{(() => {
                 if (!careTeam) return '—'
-                const active = careTeam.filter(a => !a.endedAt)
-                if (active.length === 0) return '⚠ Unassigned'
-                const primaries = active.filter(a => a.role === 'primary').map(a => a.userName)
-                const shown = primaries.length > 0 ? primaries : active.map(a => a.userName)
-                const rest = active.length - shown.slice(0, 2).length
-                return shown.slice(0, 2).join(' · ') + (rest > 0 ? ` +${rest}` : '')
+                const names = careTeam.nurses.map(n => n.name)
+                const rest = names.length - names.slice(0, 2).length
+                return names.length === 0 ? '—'
+                  : names.slice(0, 2).join(' · ') + (rest > 0 ? ` +${rest}` : '')
               })()}</span>
             </button>
             {/* CODE STATUS (governed vocabulary — the SAFETY FIX): the one
@@ -417,9 +418,7 @@ export function MissionControl() {
 
       {teamOpen && careTeam && session && (
         <AssignmentDialog
-          patientId={patientId}
-          patientName={pid?.fullName ?? p?.name ?? patientId}
-          assignments={careTeam}
+          coverage={careTeam}
           canManage={canManageAssignments}
           actor={session.name}
           jobTitle={session.jobTitle}

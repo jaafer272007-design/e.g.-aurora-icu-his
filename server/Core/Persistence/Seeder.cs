@@ -160,6 +160,11 @@ static class Seeder
         AdtLogic.InitializeCounters(db);
         ResultsLogic.InitializeCounters(db);
         Aurora.Core.Assignments.AssignmentLogic.InitializeCounters(db);
+        /* Assignment Simplification (migration honesty, idempotent): any
+           #114 opt-in row still active is ended with the supersede
+           reason — the opt-out default covers everyone; the audit trail
+           stays readable forever via /assignments/history. */
+        Aurora.Core.Assignments.AssignmentLogic.SupersedeLegacyAssignments(db);
         Aurora.Core.Observations.ObservationCatalog.InitializeCounters(db);
         AiLogic.InitializeCounters(db);
         Aurora.Core.Nursing.HandoffLogic.InitializeCounters(db);
@@ -286,7 +291,6 @@ static class Seeder
             app.Logger.LogInformation("Seeded {Count} ADT patients + open encounters", records.Count);
         }
         SeedBeds(app, db);
-        SeedDemoAssignments(app, db);
         SeedDemoHandoffs(app, db);
 
         /* Layer 4 Master Data (Aurora Core): the formulary, the named
@@ -316,51 +320,18 @@ static class Seeder
         SeedImagingCatalog(app, db, demo: true);
     }
 
-    /* Patient Assignment & Responsibility (§10): the DEMO assignments the
-       retired client fixtures claimed — RN Maya Chen on P-1001/P-1004,
-       Dr. Rahman's six-patient panel (incl. cross-cover) — so the demo
-       workspaces stay populated and the suites stay meaningful. STAGING/
-       DEV ONLY (production seeds none: existing open encounters start
-       honestly UNASSIGNED and appear in the Unassigned panel until a real
-       person assigns them). Guarded per encounter: a seed assignment is
-       only created where the encounter is still OPEN at seed time (on a
-       long-lived staging database some seed encounters may have closed —
-       an active assignment on a closed episode would violate the
-       lifecycle rule). Seed rows carry empty audit stamps (historical
-       data — the ADT AdmittedAt convention: facts are never invented). */
-    static void SeedDemoAssignments(WebApplication app, AuroraDb db)
-    {
-        if (db.Assignments.Any()) return;
-        var demo = new (string EncounterId, string UserId, string Kind)[]
-        {
-            ("ENC-1001", "maya.chen", "nurse"), ("ENC-1004", "maya.chen", "nurse"),
-            ("ENC-1001", "sara.rahman", "doctor"), ("ENC-1004", "sara.rahman", "doctor"),
-            ("ENC-1007", "sara.rahman", "doctor"), ("ENC-1008", "sara.rahman", "doctor"),
-            ("ENC-1012", "sara.rahman", "doctor"), ("ENC-1013", "sara.rahman", "doctor"),
-        };
-        var open = db.Encounters.AsNoTracking()
-            .Where(e => e.Status == "open").Select(e => e.EncounterId).ToHashSet();
-        var seq = 0;
-        var rows = demo.Where(d => open.Contains(d.EncounterId))
-            .Select(d => new Aurora.Core.Assignments.PatientAssignment
-            {
-                AssignmentId = $"ASG-{1001 + seq}",
-                Seq = ++seq,
-                EncounterId = d.EncounterId, UserId = d.UserId, Kind = d.Kind,
-                Role = "primary", Shift = "day",
-                AssignedAt = "", AssignedBy = "", AssignedByRole = "",
-            }).ToList();
-        if (rows.Count == 0) return;
-        db.Assignments.AddRange(rows);
-        db.SaveChanges();
-        app.Logger.LogInformation("Seeded {Count} demo patient assignments (open encounters only)", rows.Count);
-    }
+    /* SeedDemoAssignments is RETIRED (Assignment Simplification): the
+       opt-out coverage model needs NO seed at all — every nurse covers
+       every patient by default, and doctors have no assignment concept.
+       Pre-existing #114 rows on a long-lived database are preserved as
+       history (SupersedeLegacyAssignments ends the active ones at boot,
+       audited with the supersede reason). */
 
     /* demo SBAR handoff series — ONE encounter gets a two-entry series
        (the append-only shape visible on staging/appliance), authored by
-       the nurse the demo assignments already place on that patient.
-       Timestamps "" on seed rows — facts are never invented (the
-       assignment-seed convention). Production seeds NONE. */
+       the nurse who historically covered that patient in the demo data.
+       Timestamps "" on seed rows — facts are never invented. Production
+       seeds NONE. */
     static void SeedDemoHandoffs(WebApplication app, AuroraDb db)
     {
         if (db.Handoffs.Any()) return;

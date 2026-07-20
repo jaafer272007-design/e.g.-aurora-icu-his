@@ -18,25 +18,27 @@ const uoClass = (v: number | null) => (v === null ? '' : v < 30 ? 'bad' : v < 50
 
 const shown = (v: number | null) => (v === null ? '—' : v)
 
-/** My Assigned Patients — the signed-in nurse's REAL worklist (Patient
- *  Assignment & Responsibility): derived from active assignments, never a
- *  fixture — the fabricated "2 of 2 · this shift" claim is gone. Zero is
- *  an honest state (nothing assigned yet — see the Unassigned panel).
- *  Cards open Patient Mission Control by stable PatientID. */
+/** My Patients — the signed-in nurse's OPT-OUT worklist (Assignment
+ *  Simplification): every nurse covers every patient by default; the
+ *  list is all open patients minus this nurse's carved removals. Empty
+ *  only when the unit is empty or every patient was removed from her
+ *  focused list — removal never limits what she can ACT on (worklist,
+ *  never authority). Cards open Patient Mission Control. */
 export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[] }) {
   const navigate = useNavigate()
   return (
     <Card
       icon={<IconUsers size={15} stroke="var(--blue)" />}
-      title="My Assigned Patients"
-      aside={`${patients.length} assigned`}
+      title="My Patients"
+      aside={`covering ${patients.length}`}
     >
       <div className="aplist">
         {patients.length === 0 && (
           <div className="apempty">
-            No patients are assigned to you right now. Assignment is managed from the
-            patient chart (Senior Doctor); unassigned patients are listed in the
-            Unassigned panel so nobody falls through.
+            Nothing on your focused list — either the unit has no open admissions,
+            or every patient was removed from your list (Senior Doctor manages
+            coverage from the patient chart). You can still act on any patient in
+            an emergency: the list is a worklist, never an authority.
           </div>
         )}
         {patients.map(p => (

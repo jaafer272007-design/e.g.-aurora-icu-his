@@ -5,11 +5,11 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignableStaff, AssignedPatient, Assignment, AssignmentKind, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CreateAssignmentDraft, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignedPatient, Assignment, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CoverageRow, CoverageStaff, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, FormularyEvent, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType, Order, OrderSetDef,
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
-  RosterRecordDto, RoundingPatient, TimelineEvent, UnassignedPatient, UnitSummaryResponse, UserAccount,
+  MineWorklist, Removal, RosterRecordDto, RoundingPatient, TimelineEvent, UnitSummaryResponse, UserAccount,
   DispositionEntry, FrequencyEntry, IsolationTypeEntry, ShiftEntry,
 } from './types'
 import { runtimeApiBase } from '../runtimeConfig'
@@ -21,7 +21,7 @@ import { GOALS, INFUSIONS, PATIENT_ALERTS } from './data/panels'
 import { latestObservations, projectHemodynamics, projectVentilator } from './bedside'
 import { ACTION_QUEUES } from './data/workspace'
 import { IO_ENTRIES, NURSING_TASKS, applyTaskToggle, insertIoEntry } from './data/nursing'
-import { ASSIGNMENTS, applyAssignmentEnd, insertAssignment } from './data/assignments'
+import { MOCK_NURSES, mockCoverage, mockMine, mockRemove, mockRestore } from './data/assignments'
 import { allConsults } from './data/consults'
 import { deriveTimeline } from './data/timeline'
 import { FORMULARY, INTERACTION_RULES, NAMED_FREQUENCIES, ORDER_SET_DEFS } from './data/formulary'
@@ -659,12 +659,14 @@ export function deriveInfusionsFromOrders(orders: Order[]): Infusion[] {
     }))
 }
 
-/* ---------------- Patient Assignment & Responsibility (Aurora Core) ----------------
+/* ---------------- Assignment — the OPT-OUT coverage model (Aurora Core) ----------------
    REAL endpoints (/api/icu/assignments…) with the usual offline mock
-   fallback. Assignment is a WORKLIST, never an authority: nothing here
-   gates administration — an unassigned nurse responding to an emergency
-   documents exactly as before. The retired NURSE_ASSIGNMENT /
-   ROUNDING_LIST fixtures are superseded by these reads. */
+   fallback. Doctors have NO assignment concept (every doctor covers
+   every patient); every nurse covers every patient by default and
+   exceptions are carved as removals. Worklist, never authority — with
+   ZERO exceptions: nothing here gates any clinical action (the SBAR
+   handoff gate is dropped), and the server refuses removing the LAST
+   covering nurse (a patient never has zero coverage). */
 
 const toAssignedPatient = (r: RosterRecordDto): AssignedPatient => ({
   patientId: r.patientId, bedId: r.bedId, name: r.name, age: r.age, sex: r.sex,
@@ -687,142 +689,131 @@ async function assignmentRoster(): Promise<RosterRecordDto[]> {
   throw apiUnavailable('roster')
 }
 
-/** GET /api/icu/assignments — the unit-wide read (everyone with
- *  patients.view: who is responsible is basic clinical safety). */
-export async function getAssignments(patientId?: string): Promise<Assignment[]> {
+/** GET /api/icu/assignments — the unit-wide COVERAGE read (everyone with
+ *  patients.view: who is covering is basic clinical safety). Every open
+ *  encounter with its covering nurses + removal exceptions. */
+export async function getCoverage(patientId?: string): Promise<CoverageRow[]> {
   const q = patientId ? `?patientId=${encodeURIComponent(patientId)}` : ''
-  const real = await apiGet<Assignment[]>(`/api/icu/assignments${q}`, 'assignments')
+  const real = await apiGet<CoverageRow[]>(`/api/icu/assignments${q}`, 'coverage')
   if (real) return real
-  if (import.meta.env.VITE_APP_ENV !== 'production')
-    return respond(patientId ? ASSIGNMENTS.filter(a => a.patientId === patientId) : ASSIGNMENTS, 120)
-  throw apiUnavailable('assignments')
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const rows = mockCoverage()
+    return respond(patientId ? rows.filter(r => r.patientId === patientId) : rows, 120)
+  }
+  throw apiUnavailable('coverage')
 }
 
-/** GET /api/icu/assignments/mine — the signed-in clinician's ACTIVE
- *  worklist. Server-derived from the TOKEN (#104): the user binding and
- *  the ACTIVE role's kind (Nurse → nurse, Doctor/SeniorDoctor → doctor).
- *  The mock fallback mirrors the same rule from the local session. */
-export async function getMyAssignments(name: string, jobTitle: JobTitle): Promise<Assignment[]> {
-  const real = await apiGet<Assignment[]>('/api/icu/assignments/mine', 'my assignments')
+/** GET /api/icu/assignments/mine — the signed-in clinician's worklist.
+ *  Server-derived from the TOKEN (#104); the wire states the model:
+ *  nurse = all open patients minus my removals, doctor = ALL patients
+ *  (no assignment concept). The mock mirrors the same rule locally. */
+export async function getMyWorklist(name: string, jobTitle: JobTitle): Promise<MineWorklist> {
+  const real = await apiGet<MineWorklist>('/api/icu/assignments/mine', 'my worklist')
   if (real) return real
   if (import.meta.env.VITE_APP_ENV !== 'production') {
     const profile = profileOf(jobTitle)
-    const kind = profile === 'Nurse' ? 'nurse'
-      : profile === 'Doctor' || profile === 'SeniorDoctor' ? 'doctor' : null
-    if (!kind) return respond([], 120)
-    const userId = usernameOf(name)
-    return respond(ASSIGNMENTS.filter(a => a.userId === userId && a.kind === kind && !a.endedAt), 120)
+    const kind = profile === 'Nurse' ? 'nurse' as const
+      : profile === 'Doctor' || profile === 'SeniorDoctor' ? 'doctor' as const : null
+    return respond(mockMine(kind, usernameOf(name)), 120)
   }
-  throw apiUnavailable('my assignments')
+  throw apiUnavailable('my worklist')
 }
 
-/** GET /api/icu/assignments/staff — the assign picker (assignments.manage). */
-export async function getAssignableStaff(): Promise<AssignableStaff[]> {
-  const real = await apiGet<AssignableStaff[]>('/api/icu/assignments/staff', 'assignable staff')
+/** GET /api/icu/assignments/staff — the coverage-manager picker: the
+ *  active nurses coverage derives from (assignments.manage). */
+export async function getCoverageStaff(): Promise<CoverageStaff[]> {
+  const real = await apiGet<CoverageStaff[]>('/api/icu/assignments/staff', 'coverage staff')
   if (real) return real
-  if (import.meta.env.VITE_APP_ENV !== 'production') {
-    return respond(SAMPLE_STAFF.flatMap(s => {
-      const profile = profileOf(s.jobTitle)
-      const kinds: AssignmentKind[] = profile === 'Nurse' ? ['nurse']
-        : profile === 'Doctor' || profile === 'SeniorDoctor' ? ['doctor'] : []
-      return kinds.length === 0 ? [] : [{
-        userId: usernameOf(s.name), name: s.name, jobTitle: s.jobTitle, kinds,
-      }]
-    }), 120)
-  }
-  throw apiUnavailable('assignable staff')
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(MOCK_NURSES, 120)
+  throw apiUnavailable('coverage staff')
 }
 
-export type AssignmentWriteResult = { kind: 'ok'; assignment: Assignment } | { kind: 'rejected'; error: string }
+/** GET /api/icu/assignments/history — the superseded #114 opt-in rows
+ *  (audit preserved forever; no new rows are ever created). */
+export async function getAssignmentHistory(patientId?: string): Promise<Assignment[]> {
+  const q = patientId ? `?patientId=${encodeURIComponent(patientId)}` : ''
+  const real = await apiGet<Assignment[]>(`/api/icu/assignments/history${q}`, 'assignment history')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond([], 120)
+  throw apiUnavailable('assignment history')
+}
 
-/** POST /api/icu/assignments — assign responsibility (assignments.manage;
- *  the SeniorDoctor interim — see the 02 record). */
-export async function createAssignment(
-  draft: CreateAssignmentDraft, actor: string, jobTitle: JobTitle,
-): Promise<AssignmentWriteResult> {
+export type RemovalWriteResult = { kind: 'ok'; removal: Removal } | { kind: 'rejected'; error: string }
+
+/** POST /api/icu/assignments/remove — carve the exception
+ *  (assignments.manage). 🔴 The server refuses removing the LAST
+ *  covering nurse — a patient never has zero coverage. */
+export async function removeNurse(
+  patientId: string, userId: string, reason: string | undefined,
+  actor: string, jobTitle: JobTitle,
+): Promise<RemovalWriteResult> {
   if (!hasPermission(jobTitle, 'assignments.manage'))
     return { kind: 'rejected', error: 'Insufficient permissions' }
-  const res = await adtPost<Assignment>('/api/icu/assignments', 'assignment create', draft)
-  if (res.kind === 'ok') return { kind: 'ok', assignment: res.data }
+  const res = await adtPost<Removal>('/api/icu/assignments/remove', 'coverage removal',
+    reason ? { patientId, userId, reason } : { patientId, userId })
+  if (res.kind === 'ok') return { kind: 'ok', removal: res.data }
   if (res.kind === 'rejected') return { kind: 'rejected', error: res.error }
   if (import.meta.env.VITE_APP_ENV !== 'production') {
-    const staff = SAMPLE_STAFF.find(s => usernameOf(s.name) === draft.userId)
-    if (!staff) return { kind: 'rejected', error: `userId '${draft.userId}' does not match any user account — assignments reference real accounts, never free text` }
-    const row = insertAssignment(draft, staff.name, staff.jobTitle, actor, jobTitle, nowHm())
-    return 'error' in row ? { kind: 'rejected', error: row.error } : { kind: 'ok', assignment: clone(row) }
+    const row = mockRemove(patientId, userId, reason, actor, jobTitle, nowHm())
+    return 'error' in row ? { kind: 'rejected', error: row.error } : { kind: 'ok', removal: clone(row) }
   }
-  throw apiUnavailable('assignment create')
+  throw apiUnavailable('coverage removal')
 }
 
-/** POST /api/icu/assignments/{id}/end — handover / correction; the
- *  discharge cascade ends assignments server-side on its own. */
-export async function endAssignment(
-  assignmentId: string, reason: string | undefined, actor: string, jobTitle: JobTitle,
-): Promise<AssignmentWriteResult> {
+/** POST /api/icu/assignments/restore — undo the exception
+ *  (assignments.manage; restored, never deleted). */
+export async function restoreNurse(
+  patientId: string, userId: string, actor: string, jobTitle: JobTitle,
+): Promise<RemovalWriteResult> {
   if (!hasPermission(jobTitle, 'assignments.manage'))
     return { kind: 'rejected', error: 'Insufficient permissions' }
-  const res = await adtPost<Assignment>(
-    `/api/icu/assignments/${encodeURIComponent(assignmentId)}/end`, 'assignment end',
-    reason ? { reason } : {})
-  if (res.kind === 'ok') return { kind: 'ok', assignment: res.data }
+  const res = await adtPost<Removal>('/api/icu/assignments/restore', 'coverage restore', { patientId, userId })
+  if (res.kind === 'ok') return { kind: 'ok', removal: res.data }
   if (res.kind === 'rejected') return { kind: 'rejected', error: res.error }
   if (import.meta.env.VITE_APP_ENV !== 'production') {
-    const row = applyAssignmentEnd(assignmentId, actor, jobTitle, reason, nowHm())
-    return 'error' in row ? { kind: 'rejected', error: row.error } : { kind: 'ok', assignment: clone(row) }
+    const row = mockRestore(patientId, userId, actor, jobTitle, nowHm())
+    return 'error' in row ? { kind: 'rejected', error: row.error } : { kind: 'ok', removal: clone(row) }
   }
-  throw apiUnavailable('assignment end')
+  throw apiUnavailable('coverage restore')
 }
 
-/** the nurse workspace worklist: my active nurse assignments joined with
- *  the roster for the bedside display fields. Zero assignments is a
- *  VALID state (honest empty worklist + the Unassigned panel). */
+/** the nurse workspace worklist: everything I cover (the OPT-OUT
+ *  default: all patients minus my removals), joined with the roster for
+ *  the bedside display fields. No setup needed — a fresh install's
+ *  nurse sees the whole unit. */
 export async function getNurseWorklist(
   name: string, jobTitle: JobTitle,
-): Promise<{ assignments: Assignment[]; patients: AssignedPatient[] }> {
-  const [assignments, roster] = await Promise.all([
-    getMyAssignments(name, jobTitle), assignmentRoster(),
+): Promise<{ mine: MineWorklist; patients: AssignedPatient[] }> {
+  const [mine, roster] = await Promise.all([
+    getMyWorklist(name, jobTitle), assignmentRoster(),
   ])
   const byId = new Map(roster.map(r => [r.patientId, r]))
-  const patients = assignments
-    .map(a => byId.get(a.patientId)).filter((r): r is RosterRecordDto => !!r)
+  const patients = mine.patientIds
+    .map(id => byId.get(id)).filter((r): r is RosterRecordDto => !!r)
     .map(toAssignedPatient)
-  return { assignments, patients }
+  return { mine, patients }
 }
 
-/** the doctor workspace rounding list — same derivation, doctor kind
- *  (cross-cover is real: the list is the ASSIGNMENT, never
- *  attending-derived). */
+/** the doctor workspace rounding list — ALL patients (doctors have NO
+ *  assignment concept; every doctor covers every patient). */
 export async function getRoundingWorklist(
   name: string, jobTitle: JobTitle,
-): Promise<{ assignments: Assignment[]; patients: RoundingPatient[] }> {
-  const [assignments, roster] = await Promise.all([
-    getMyAssignments(name, jobTitle), assignmentRoster(),
+): Promise<{ mine: MineWorklist; patients: RoundingPatient[] }> {
+  const [mine, roster] = await Promise.all([
+    getMyWorklist(name, jobTitle), assignmentRoster(),
   ])
   const byId = new Map(roster.map(r => [r.patientId, r]))
-  const patients = assignments
-    .map(a => byId.get(a.patientId)).filter((r): r is RosterRecordDto => !!r)
+  const patients = mine.patientIds
+    .map(id => byId.get(id)).filter((r): r is RosterRecordDto => !!r)
     .map(toRoundingPatient)
-  return { assignments, patients }
+  return { mine, patients }
 }
 
-/** the UNASSIGNED panel (the P-1191 failure made structural): every open
- *  encounter with no active nurse / no active doctor. Zero assignments is
- *  allowed — but must be VISIBLE, so no patient silently falls through. */
-export async function getUnassignedPatients(): Promise<{ nurse: UnassignedPatient[]; doctor: UnassignedPatient[] }> {
-  const [assignments, roster] = await Promise.all([getAssignments(), assignmentRoster()])
-  const covered = (kind: AssignmentKind) => new Set(
-    assignments.filter(a => a.kind === kind && !a.endedAt).map(a => a.patientId))
-  const row = (r: RosterRecordDto): UnassignedPatient => ({
-    patientId: r.patientId, name: r.name, bedId: r.bedId,
-    diagnosis: r.diagnosis, severity: r.severity,
-  })
-  const nurse = covered('nurse')
-  const doctor = covered('doctor')
-  return {
-    nurse: roster.filter(r => !nurse.has(r.patientId)).map(row),
-    doctor: roster.filter(r => !doctor.has(r.patientId)).map(row),
-  }
-}
+/* getUnassignedPatients / endAssignment / createAssignment are RETIRED
+   (Assignment Simplification): the opt-out default + the server's
+   last-nurse 409 make an uncovered patient IMPOSSIBLE — the Unassigned
+   panel's job moved from "visible" to "prevented"; the opt-in flow is
+   replaced by removeNurse/restoreNurse above. */
 
 /** GET /api/icu/worklist/queues — notes due (orders/results queues are
  *  derived views). NULL in production: clinical notes are not a domain
@@ -920,8 +911,9 @@ export async function getHandoffEntries(patientId: string, encounterId?: string)
 
 /** POST /api/icu/nursing/handoff — write ONE new immutable SBAR entry
  *  (append-only: prior entries are never touched). REAL-ONLY write on
- *  the user's own token; the server gates on handoff.document + an
- *  ACTIVE nurse assignment and stamps author/role/time itself. */
+ *  the user's own token; the server gates on handoff.document only —
+ *  the #114 assignment gate is GONE (Assignment Simplification: any
+ *  nurse hands over any patient) — and stamps author/role/time. */
 export function writeHandoff(
   patientId: string, note: { s: string; b: string; a: string; r: string },
 ): Promise<AdtWriteResult<HandoffEntry>> {

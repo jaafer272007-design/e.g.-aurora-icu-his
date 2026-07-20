@@ -1,21 +1,28 @@
-# Deployed Assignments E2E — verifies Patient Assignment & Responsibility
-# LIVE: assignments.manage is SeniorDoctor-only (a Specialist and a nurse
-# are 403 on every mutation; everyone with patients.view READS), a second
-# nurse is NEVER a 409 (the locked many-to-many decision — ECMO/CRRT/
-# handover reality), the P-1191 scenario is fixed (an assigned nurse's
-# /mine worklist carries the patient whose derived MAR dose she then
-# documents), an UNASSIGNED nurse can still administer (assignment is a
-# WORKLIST, never an authority — the emergency case, asserted
-# explicitly), a bed TRANSFER leaves assignments intact (patient-based,
-# never bed-based), and discharge auto-ends every active assignment in
-# the same transaction, audited with the discharging clinician + active
-# role ("ended at encounter close"; ended-never-deleted stays readable).
+# Deployed Assignments E2E — verifies the OPT-OUT COVERAGE MODEL live
+# (Assignment Simplification — the validator's clinical correction that
+# REPLACED #114's opt-in machinery). Coverage: every ACTIVE Nurse-profile
+# account covers every open patient BY DEFAULT (no setup); exceptions are
+# REMOVALS (restorable, never deleted). Doctors have NO assignment
+# concept — /mine for a doctor profile is the whole census. Core
+# assertions: assignments.manage stays SeniorDoctor-only (Specialist and
+# nurse 403 on remove/restore/staff; everyone with patients.view READS
+# coverage); the staff picker lists ONLY nurses; primary/secondary is
+# GONE from the wire (an old-shape body fails Disallow binding);
+# 🔴 WORKLIST NEVER AUTHORITY, ZERO EXCEPTIONS: a REMOVED nurse still
+# documents administration, charts observations AND posts an SBAR
+# handoff on the removed patient (the #114 handoff assignment-gate is
+# DROPPED — asserted explicitly); 🔴 NEVER ZERO NURSES: removing the
+# LAST covering nurse answers 409 (state-aware: the run walks the LIVE
+# covering list down to one, so leftover e2e nurse accounts never break
+# it); migration honesty live: NO legacy #114 row is still active (the
+# boot supersede), history stays readable via /assignments/history;
+# discharge drops the patient off every worklist by construction (no
+# cascade exists — coverage derives over OPEN encounters only).
 #
-# IDEMPOTENT AND SELF-SUFFICIENT: every mutation targets an assignment
-# this run creates on ITS OWN admitted patient; the med order rides the
-# seeded reference formulary (paracetamol — active in the staging seed,
-# no allergy conflict with this run's patient). Cleanup discharges the
-# run's encounter (the cascade closes its orders AND its assignments).
+# IDEMPOTENT AND SELF-SUFFICIENT: every removal targets THIS run's own
+# admitted patient and is restored (or closed out by the discharge) in
+# cleanup; the med order rides the seeded reference formulary
+# (paracetamol — active in the staging seed, no allergy conflict).
 name: Deployed Assignments E2E
 on: workflow_dispatch
 
@@ -72,7 +79,7 @@ jobs:
           fi
           echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV)" && exit 1
 
-      - name: Login (SeniorDoctor, Specialist, two nurses) + run-unique names
+      - name: Login (SeniorDoctor, Specialist, two nurses)
         run: |
           for u in sara.rahman liam.osei maya.chen priya.patel; do
             t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
@@ -87,245 +94,237 @@ jobs:
             echo "$u: token issued"
           done
 
-      - name: Admit THIS RUN's patient (unique MRN, dynamic free bed)
+      - name: Admit THIS RUN's patient (dynamic free bed)
         run: |
           FREE=$(curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/adt/beds" \
             | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free beds"; print(f[0])')
           resp=$(curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d "{\"nameFirst\":\"Assign\",\"nameSecond\":\"E2E\",\"nameFamily\":\"Patient\",\"age\":51,\"sex\":\"M\",\"allergies\":\"None documented\",\"bedId\":\"$FREE\",\"diagnosis\":\"assignment E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
+            -d "{\"nameFirst\":\"Coverage\",\"nameSecond\":\"E2E\",\"nameFamily\":\"Patient\",\"age\":51,\"sex\":\"M\",\"allergies\":\"None documented\",\"bedId\":\"$FREE\",\"diagnosis\":\"assignment E2E\",\"attending\":\"Dr. Sara Rahman\"}" \
             "$API/api/icu/adt/admissions")
           pid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["patient"]["patientId"])')
           eid=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
-          { echo "PID=$pid"; echo "EID=$eid"; echo "BED0=$FREE"; } >> "$GITHUB_ENV"
+          { echo "PID=$pid"; echo "EID=$eid"; } >> "$GITHUB_ENV"
           echo "admitted $pid ($eid) at $FREE"
 
-      - name: Reads — unauth 401; EVERY patients.view profile reads (+ CORS); unknown query param 400
+      - name: "DEFAULT COVERAGE — no setup: both nurses cover the fresh patient; doctor /mine = the census; nurse /mine carries the patient; reads for every clinical profile; unknown param 400; unauth 401"
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/assignments")
-          echo "unauth assignments -> HTTP $code"; [ "$code" = "401" ] || exit 1
-          # everyone with patients.view SEES assignments — a NURSE reads
-          # the unit-wide list (knowing who is responsible is basic
-          # clinical safety, not privileged information)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/assignments")
+          echo "unauth coverage -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          for who in SEN SPE NUR1 NUR2; do
+            tok=$(eval echo "\$$who")
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" "$API/api/icu/assignments")
+            echo "$who reads coverage -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $SEN" "$API/api/icu/assignments?bogus=1")
+          echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
           curl -sf -D /tmp/h -H "Authorization: Bearer $NUR1" -H "Origin: $PAGES_ORIGIN" \
-            "$API/api/icu/assignments" -o /tmp/all.json
+            "$API/api/icu/assignments?patientId=$PID" -o /tmp/cov.json
           grep -i "^access-control-allow-origin: $PAGES_ORIGIN" /tmp/h
-          python3 -c '
-          import json; d=json.load(open("/tmp/all.json"))
-          assert isinstance(d,list), d
-          for a in d:
-              assert a["kind"] in ("nurse","doctor") and a["role"] in ("primary","secondary"), a
-              assert a["userId"] and a["userName"], "assignment without a real user reference: %s" % a
-          print(f"unit-wide assignments: {len(d)} rows, every one referencing a real account")'
-          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments?bogus=1")
-          echo "unknown query param -> HTTP $code"; [ "$code" = "400" ] || exit 1
-          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments?status=nope")
-          echo "bad status vocab -> HTTP $code"; [ "$code" = "400" ] || exit 1
-
-      - name: RBAC — assignments.manage is SeniorDoctor ONLY (Specialist and nurse 403 on create/end/staff; unauth 401)
-        run: |
-          body="{\"patientId\":\"$PID\",\"userId\":\"maya.chen\",\"kind\":\"nurse\",\"role\":\"primary\",\"shift\":\"day\"}"
-          for tok in "$SPE" "$NUR1"; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/assignments")
-            echo "non-SeniorDoctor create -> HTTP $code"; [ "$code" = "403" ] || exit 1
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" "$API/api/icu/assignments/staff")
-            echo "non-SeniorDoctor staff -> HTTP $code"; [ "$code" = "403" ] || exit 1
-            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' -d '{}' "$API/api/icu/assignments/ASG-1001/end")
-            echo "non-SeniorDoctor end -> HTTP $code"; [ "$code" = "403" ] || exit 1
+          PID="$PID" python3 - <<'PY'
+          import json, os
+          rows = json.load(open("/tmp/cov.json")); assert len(rows) == 1, rows
+          c = rows[0]; assert c["patientId"] == os.environ["PID"]
+          ids = {n["userId"] for n in c["nurses"]}
+          assert {"maya.chen", "priya.patel"} <= ids, ids     # both demo nurses cover BY DEFAULT
+          assert c["removals"] == []                            # a fresh patient has no exceptions
+          print(f"fresh patient covered by {len(ids)} nurse(s) with ZERO setup — the opt-out default")
+          PY
+          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments/mine" -o /tmp/mine_n1.json
+          PID="$PID" python3 -c 'import json,os; m=json.load(open("/tmp/mine_n1.json")); assert m["kind"]=="nurse" and os.environ["PID"] in m["patientIds"] and os.environ["PID"] not in m["removedPatientIds"]; print("nurse /mine carries the new patient immediately")'
+          for who in SEN SPE; do
+            tok=$(eval echo "\$$who")
+            curl -sf -H "Authorization: Bearer $tok" "$API/api/icu/assignments/mine" -o /tmp/mine_d.json
+            PID="$PID" python3 -c 'import json,os; m=json.load(open("/tmp/mine_d.json")); assert m["kind"]=="doctor" and os.environ["PID"] in m["patientIds"] and m["removedPatientIds"]==[]; print("doctor /mine is the CENSUS (no assignment concept)")'
           done
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "$body" "$API/api/icu/assignments")
-          echo "unauth create -> HTTP $code"; [ "$code" = "401" ] || exit 1
 
-      - name: Staff picker — real accounts with their assignable kinds (SeniorDoctor read)
+      - name: "RBAC + the retired wire — remove/restore/staff are SeniorDoctor-only; the staff picker lists ONLY nurses; primary/secondary is GONE (old-shape body fails Disallow binding)"
         run: |
+          BODY='{"patientId":"'$PID'","userId":"maya.chen"}'
+          for who in SPE NUR1; do
+            tok=$(eval echo "\$$who")
+            for ep in remove restore; do
+              rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $tok" -H 'Content-Type: application/json' -d "$BODY" "$API/api/icu/assignments/$ep")
+              echo "$who $ep -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+            done
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $tok" "$API/api/icu/assignments/staff")
+            echo "$who staff -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d "$BODY" "$API/api/icu/assignments/remove")
+          echo "unauth remove -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
           curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments/staff" -o /tmp/staff.json
-          python3 -c '
-          import json; d=json.load(open("/tmp/staff.json"))
-          by={s["userId"]: s for s in d}
-          assert by["maya.chen"]["kinds"]==["nurse"], by.get("maya.chen")
-          assert by["sara.rahman"]["kinds"]==["doctor"], by.get("sara.rahman")
-          assert "samir.qassem" not in by, "a pharmacist is not assignable as nurse or doctor"
-          assert "system" not in by, "the reserved system principal must never be assignable"
-          print(f"assignable staff: {len(d)} accounts (nurse/doctor kinds only)")'
+          python3 - <<'PY'
+          import json
+          staff = json.load(open("/tmp/staff.json"))
+          ids = {s["userId"] for s in staff}
+          assert {"maya.chen", "priya.patel"} <= ids, ids
+          assert "sara.rahman" not in ids and "liam.osei" not in ids   # doctors have NO assignment concept
+          assert all("kinds" not in s for s in staff)                   # the #114 kinds field is gone
+          print(f"staff picker: {len(staff)} nurse account(s), zero doctors")
+          PY
+          # the #114 wire shape is DEAD: role/kind/shift fail Disallow binding
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","userId":"maya.chen","kind":"nurse","role":"primary","shift":"day"}' "$API/api/icu/assignments/remove")
+          echo "old opt-in shape (kind/role/shift) -> HTTP $rc (Disallow binding)"; [ "$rc" = "400" ] || exit 1
+          # validation: unknown references 400; a DOCTOR account cannot be removed (no nurse coverage exists for it)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"P-9999","userId":"maya.chen"}' "$API/api/icu/assignments/remove")
+          echo "unknown patient -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","userId":"ghost.user"}' "$API/api/icu/assignments/remove")
+          echo "unknown user -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","userId":"liam.osei"}' "$API/api/icu/assignments/remove")
+          rc=$(echo "$out" | tail -1); echo "removing a DOCTOR -> HTTP $rc"; [ "$rc" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "no Nurse-profile role" || exit 1
 
-      - name: Create validation — vocab/unknown-reference/wrong-kind → 400, never persisted
-        run: |
-          for body in \
-            '{"patientId":"'$PID'","userId":"maya.chen","kind":"nurse","role":"primary"}' \
-            '{"patientId":"'$PID'","userId":"maya.chen","kind":"porter","role":"primary","shift":"day"}' \
-            '{"patientId":"'$PID'","userId":"maya.chen","kind":"nurse","role":"boss","shift":"day"}' \
-            '{"patientId":"'$PID'","userId":"maya.chen","kind":"nurse","role":"primary","shift":"no_such_shift_e2e"}' \
-            '{"patientId":"P-999999","userId":"maya.chen","kind":"nurse","role":"primary","shift":"day"}' \
-            '{"patientId":"'$PID'","userId":"no.such.user","kind":"nurse","role":"primary","shift":"day"}' \
-            '{"patientId":"'$PID'","userId":"samir.qassem","kind":"nurse","role":"primary","shift":"day"}' \
-            '{"patientId":"'$PID'","userId":"maya.chen","kind":"nurse","role":"primary","shift":"day","bogus":1}'; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/assignments")
-            echo "malformed create -> HTTP $code ($body)"; [ "$code" = "400" ] || exit 1
-          done
-          n=$(curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments?patientId=$PID" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
-          echo "assignments persisted for $PID: $n"; [ "$n" = "0" ] || exit 1
-
-      - name: P-1191 setup — signed paracetamol order; the UNASSIGNED nurse documents (EMERGENCY CASE — administer is NEVER gated on assignment)
+      - name: "REMOVE + the worklist effect — audited removal; the patient leaves ONLY that nurse's /mine (as a removed id); the other nurse and the coverage read keep it; replay 409"
         run: |
           curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","userId":"maya.chen","reason":"1:1 with another patient — assignments E2E"}' \
+            "$API/api/icu/assignments/remove" -o /tmp/rmv.json
+          PID="$PID" python3 - <<'PY'
+          import json, os
+          r = json.load(open("/tmp/rmv.json"))
+          assert r["removalId"].startswith("RMV-") and r["patientId"] == os.environ["PID"]
+          assert r["userId"] == "maya.chen" and r["removedBy"] == "Dr. Sara Rahman"
+          assert r["removedByRole"] == "Consultant" and "1:1" in r["reason"] and r["restoredAt"] is None
+          print("removal audited:", r["removalId"], "by", r["removedBy"], "—", r["reason"])
+          PY
+          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments/mine" -o /tmp/mine_after.json
+          PID="$PID" python3 -c 'import json,os; m=json.load(open("/tmp/mine_after.json")); assert os.environ["PID"] not in m["patientIds"] and os.environ["PID"] in m["removedPatientIds"]; print("the patient left the REMOVED nurse'"'"'s focused worklist (and is named as removed)")'
+          curl -sf -H "Authorization: Bearer $NUR2" "$API/api/icu/assignments/mine" -o /tmp/mine_n2.json
+          PID="$PID" python3 -c 'import json,os; m=json.load(open("/tmp/mine_n2.json")); assert os.environ["PID"] in m["patientIds"]; print("the OTHER nurse still covers (exceptions are per-nurse)")'
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments?patientId=$PID" -o /tmp/cov2.json
+          python3 -c '
+          import json
+          c = json.load(open("/tmp/cov2.json"))[0]
+          assert "maya.chen" not in {n["userId"] for n in c["nurses"]}
+          active = [r for r in c["removals"] if not r["restoredAt"]]
+          assert len(active) == 1 and active[0]["userId"] == "maya.chen"
+          print("coverage read shows the exception inline (audit visible to every clinical viewer)")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","userId":"maya.chen"}' "$API/api/icu/assignments/remove")
+          echo "remove replay -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+
+      - name: "🔴 WORKLIST, NEVER AUTHORITY — ZERO EXCEPTIONS: the REMOVED nurse documents administration, charts observations AND posts an SBAR handoff on the removed patient (the #114 handoff gate is DROPPED)"
+        run: |
+          # a signed order so there is a real dose to document
+          OID=$(curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
             -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"paracetamol","drug":"Paracetamol","dose":"1 g","route":"IV","frequency":"q6h","duration":"3 days","prn":false}}],"sign":true}' \
-            "$API/api/icu/orders" > /tmp/o.json
-          OID=$(python3 -c 'import json; print(json.load(open("/tmp/o.json"))[0]["orderId"])')
-          echo "OID=$OID" >> "$GITHUB_ENV"
-          curl -sf -H "Authorization: Bearer $NUR2" "$API/api/icu/mar" -o /tmp/mar.json
-          A1=$(python3 -c '
-          import json,re; d=json.load(open("/tmp/mar.json"))
-          sched=[r for r in d if r["orderId"]=="'$OID'" and r["status"]=="scheduled"]
-          assert len(sched)==1, sched
-          assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",sched[0]["adminId"]), sched[0]
-          print(sched[0]["adminId"])')
-          # THE LOCKED WORKLIST-NOT-AUTHORITY RULE, asserted live: at this
-          # moment NOBODY is assigned to this patient — priya.patel has NO
-          # active assignment here, and she documents the dose 200. A
-          # nurse responding to an arrest is never 403'd.
-          mine=$(curl -sf -H "Authorization: Bearer $NUR2" "$API/api/icu/assignments/mine" \
-            | python3 -c 'import json,sys; print(sum(1 for a in json.load(sys.stdin) if a["patientId"]=="'$PID'"))')
-          echo "priya active assignments on $PID: $mine"; [ "$mine" = "0" ] || exit 1
-          curl -sf -X POST -H "Authorization: Bearer $NUR2" -H 'Content-Type: application/json' \
-            -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1" \
-            | python3 -c '
-          import json,sys; d=json.load(sys.stdin)
-          a=[x for x in d["administrations"] if x["status"]=="given"][0]
-          assert a["documentedBy"]=="RN Priya Patel", a
-          print("UNASSIGNED nurse documented the dose:", a["documentedBy"], a["scheduledTime"])'
+            "$API/api/icu/orders" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["orderId"])')
+          echo "signed order $OID"
+          # the dose instance is DERIVED at read — take its adminId from the MAR
+          ADMID=$(curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/mar" | python3 -c '
+          import json,sys
+          rows=[r for r in json.load(sys.stdin) if r["orderId"]=="'$OID'" and r["status"]=="scheduled"]
+          assert rows, "no scheduled MAR row for the signed order"
+          print(rows[0]["adminId"])')
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$ADMID")
+          echo "REMOVED nurse documents administration of dose $ADMID -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","entries":[{"typeCode":"hr","value":96}]}' "$API/api/icu/observations")
+          echo "REMOVED nurse charts an observation -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","s":"Assignments E2E — the removed nurse hands over","b":"","a":"","r":""}' \
+            "$API/api/icu/nursing/handoff")
+          echo "REMOVED nurse posts an SBAR handoff -> HTTP $rc (the #114 assignment gate is GONE)"; [ "$rc" = "200" ] || exit 1
+          echo "authority comes from role and licensure, never a list — asserted on all three write paths"
 
-      - name: Assign nurse 1 — audited with the token actor + ACTIVE role; the patient reaches her /mine worklist (the P-1191 fix)
+      - name: "RESTORE — audited both halves; the patient returns to the worklist; restore replay 409"
         run: |
           curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"patientId":"'$PID'","userId":"maya.chen","kind":"nurse","role":"primary","shift":"day"}' \
-            "$API/api/icu/assignments" -o /tmp/a1.json
-          ASG1=$(python3 -c '
-          import json; a=json.load(open("/tmp/a1.json"))
-          assert a["encounterId"]=="'$EID'" and a["patientId"]=="'$PID'" and a["bedId"]=="'$BED0'", a
-          assert a["userId"]=="maya.chen" and a["userName"]=="RN Maya Chen" and a["kind"]=="nurse", a
-          assert a["role"]=="primary" and a["shift"]=="day", a
-          assert a["assignedBy"]=="Dr. Sara Rahman" and a["assignedByRole"]=="Consultant" and a["assignedAt"], a
-          assert not a.get("endedAt"), a
-          print(a["assignmentId"])')
-          echo "ASG1=$ASG1" >> "$GITHUB_ENV"
-          # her worklist now carries the patient — his q6h paracetamol
-          # schedule is on HER MAR scope (the narrowing source is real)
-          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments/mine" -o /tmp/mine1.json
+            -d '{"patientId":"'$PID'","userId":"maya.chen"}' "$API/api/icu/assignments/restore" -o /tmp/rst.json
           python3 -c '
-          import json; d=json.load(open("/tmp/mine1.json"))
-          assert all(a["kind"]=="nurse" for a in d), "a nurse worklist must serve ONLY nurse-kind assignments (#104): %s" % d
-          mine=[a for a in d if a["patientId"]=="'$PID'"]
-          assert len(mine)==1, d
-          print("maya /mine carries", mine[0]["patientId"], "· all rows kind=nurse")'
-          # …and she documents the NEXT derived instance (assigned-path documentation)
-          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/mar" -o /tmp/mar2.json
-          A2=$(python3 -c '
-          import json; d=json.load(open("/tmp/mar2.json"))
-          sched=[r for r in d if r["orderId"]=="'$OID'" and r["status"]=="scheduled"]
-          assert len(sched)==1, sched
-          print(sched[0]["adminId"])')
-          curl -sf -X POST -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
-            -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A2" > /dev/null
-          echo "assigned nurse documented the next instance $A2"
+          import json
+          r = json.load(open("/tmp/rst.json"))
+          assert r["restoredAt"] and r["restoredBy"] == "Dr. Sara Rahman"
+          assert r["removedAt"] and r["removedBy"]      # both halves on ONE row — restored, never deleted
+          print("restored:", r["removalId"], "—", r["removedAt"], "→", r["restoredAt"])'
+          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments/mine" \
+            | PID="$PID" python3 -c 'import json,sys,os; m=json.load(sys.stdin); assert os.environ["PID"] in m["patientIds"] and os.environ["PID"] not in m["removedPatientIds"]; print("the patient is back on the worklist")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","userId":"maya.chen"}' "$API/api/icu/assignments/restore")
+          echo "restore replay -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
 
-      - name: A SECOND nurse assigns successfully — NO 409 (locked decision 1); the SAME user+kind replay IS 409
+      - name: "🔴 NEVER ZERO NURSES — removing the LAST covering nurse is REFUSED (state-aware walk of the LIVE covering list); everything restored after"
         run: |
-          # ICU reality: ECMO/CRRT/massive transfusion/handover — a second
-          # nurse is routine, never blocked
-          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"patientId":"'$PID'","userId":"priya.patel","kind":"nurse","role":"secondary","shift":"night"}' \
-            "$API/api/icu/assignments" -o /tmp/a2.json
-          ASG2=$(python3 -c '
-          import json; a=json.load(open("/tmp/a2.json"))
-          assert a["userId"]=="priya.patel" and a["role"]=="secondary" and a["shift"]=="night", a
-          print(a["assignmentId"])')
-          echo "ASG2=$ASG2" >> "$GITHUB_ENV"
-          # a doctor assignment on the same patient coexists too
-          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"patientId":"'$PID'","userId":"sara.rahman","kind":"doctor","role":"primary","shift":"day"}' \
-            "$API/api/icu/assignments" -o /tmp/a3.json
-          ASG3=$(python3 -c 'import json; a=json.load(open("/tmp/a3.json")); assert a["kind"]=="doctor", a; print(a["assignmentId"])')
-          echo "ASG3=$ASG3" >> "$GITHUB_ENV"
-          # sara /mine (Consultant → doctor kind) carries the patient; every row kind=doctor
-          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments/mine" \
-            | python3 -c '
-          import json,sys; d=json.load(sys.stdin)
-          assert all(a["kind"]=="doctor" for a in d), "a doctor worklist must serve ONLY doctor-kind assignments (#104): %s" % d
-          assert any(a["patientId"]=="'$PID'" for a in d), d
-          print("sara /mine carries the patient · all rows kind=doctor")'
-          # replay: the SAME nurse+kind while active → 409 naming the state
-          resp=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"patientId":"'$PID'","userId":"maya.chen","kind":"nurse","role":"secondary","shift":"night"}' \
-            "$API/api/icu/assignments")
-          code=$(echo "$resp" | tail -1)
-          echo "same-nurse replay -> HTTP $code"; [ "$code" = "409" ] || exit 1
-          echo "$resp" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already actively assigned" in e, e; print("409:", e)'
+          # walk the patient's LIVE covering list down to one (robust
+          # against leftover e2e nurse accounts on the durable staging DB)
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments?patientId=$PID" -o /tmp/cov3.json
+          NURSES=$(python3 -c 'import json; print(" ".join(n["userId"] for n in json.load(open("/tmp/cov3.json"))[0]["nurses"]))')
+          set -- $NURSES
+          TOTAL=$#
+          echo "live covering nurses: $TOTAL ($NURSES)"
+          [ "$TOTAL" -ge 2 ] || { echo "need at least 2 covering nurses for this leg"; exit 1; }
+          REMOVED=""
+          while [ $# -gt 1 ]; do
+            u=$1; shift
+            curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+              -d '{"patientId":"'$PID'","userId":"'$u'","reason":"last-nurse guarantee probe"}' \
+              "$API/api/icu/assignments/remove" >/dev/null
+            REMOVED="$REMOVED $u"
+            echo "removed $u ($# still covering)"
+          done
+          LAST=$1
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","userId":"'$LAST'"}' "$API/api/icu/assignments/remove")
+          rc=$(echo "$out" | tail -1)
+          echo "removing the LAST covering nurse ($LAST) -> HTTP $rc"
+          [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | grep -q "LAST nurse" || { echo "$out"; exit 1; }
+          echo "the hard guarantee holds: a patient can never reach zero nurse coverage"
+          for u in $REMOVED; do
+            curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+              -d '{"patientId":"'$PID'","userId":"'$u'"}' "$API/api/icu/assignments/restore" >/dev/null
+            echo "restored $u"
+          done
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments?patientId=$PID" \
+            | python3 -c "import json,sys; c=json.load(sys.stdin)[0]; assert len(c['nurses']) == $TOTAL; print('coverage back to the full default ($TOTAL nurses)')"
 
-      - name: Bed TRANSFER leaves assignments intact (patient-based, never bed-based — the validator's stated reason)
+      - name: "MIGRATION HONESTY live — no legacy #114 row is still active (the boot supersede); history stays readable forever"
         run: |
-          FREE=$(curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/adt/beds" \
-            | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId")]; assert f, "no free bed to transfer into"; print(f[0])')
-          curl -sf -X POST -H "Authorization: Bearer $NUR1" -H 'Content-Type: application/json' \
-            -d "{\"bedId\":\"$FREE\"}" "$API/api/icu/adt/encounters/$EID/transfer" > /dev/null
-          echo "transferred $EID: $BED0 -> $FREE"
-          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments?patientId=$PID&status=active" \
-            | python3 -c '
-          import json,sys; d=json.load(sys.stdin)
-          assert len(d)==3, "a bed move must never silently drop a nurse: %s" % d
-          assert all(a["bedId"]=="'$FREE'" for a in d), "assignment reads must show the CURRENT bed (derived from the encounter): %s" % d
-          assert {a["userId"] for a in d}=={"maya.chen","priya.patel","sara.rahman"}, d
-          print("all 3 assignments intact after transfer; bedId now '$FREE' (derived)")'
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments/history" -o /tmp/hist.json
+          python3 - <<'PY'
+          import json
+          rows = json.load(open("/tmp/hist.json"))
+          active = [a for a in rows if not a.get("endedAt")]
+          assert active == [], f"ACTIVE legacy rows survived the supersede: {[a['assignmentId'] for a in active]}"
+          superseded = [a for a in rows if a.get("endReason") == "superseded by the opt-out coverage model (assignment simplification)"]
+          print(f"legacy #114 history: {len(rows)} row(s) readable, 0 active, {len(superseded)} carrying the supersede reason")
+          PY
 
-      - name: Handover — end one assignment (audited); replay 409; absent id 404; ended stays readable (never deleted)
+      - name: "DISCHARGE — the patient leaves every worklist by construction (coverage derives over OPEN encounters; no cascade exists)"
         run: |
-          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"reason":"handover — day shift ends"}' "$API/api/icu/assignments/$ASG2/end" \
-            | python3 -c '
-          import json,sys; a=json.load(sys.stdin)
-          assert a["endedAt"] and a["endedBy"]=="Dr. Sara Rahman" and a["endedByRole"]=="Consultant", a
-          assert a["endReason"]=="handover — day shift ends", a
-          print("ended", a["assignmentId"], "by", a["endedBy"], "(", a["endedByRole"], ")")'
-          resp=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{}' "$API/api/icu/assignments/$ASG2/end")
-          code=$(echo "$resp" | tail -1)
-          echo "re-end -> HTTP $code"; [ "$code" = "409" ] || exit 1
-          echo "$resp" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already ended" in e, e; print("409:", e)'
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' -d '{}' "$API/api/icu/assignments/ASG-999999/end")
-          echo "absent id -> HTTP $code"; [ "$code" = "404" ] || exit 1
-          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments?patientId=$PID&status=ended" \
-            | python3 -c '
-          import json,sys; d=json.load(sys.stdin)
-          assert any(a["assignmentId"]=="'$ASG2'" for a in d), "an ended assignment is HISTORY, not an absence: %s" % d
-          print("ended assignment still readable (ended-never-deleted)")'
-          # priya /mine no longer carries the patient — the worklist is live
-          n=$(curl -sf -H "Authorization: Bearer $NUR2" "$API/api/icu/assignments/mine" \
-            | python3 -c 'import json,sys; print(sum(1 for a in json.load(sys.stdin) if a["patientId"]=="'$PID'"))')
-          echo "priya /mine rows for $PID after handover: $n"; [ "$n" = "0" ] || exit 1
-
-      - name: DISCHARGE auto-ends ALL active assignments (audited cascade, same transaction); assigning on the closed episode → 409
-        run: |
-          curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"disposition":"ward"}' "$API/api/icu/adt/encounters/$EID/discharge" > /dev/null
+          curl -sf -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null
           echo "discharged $EID"
-          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments?patientId=$PID" -o /tmp/after.json
-          python3 -c '
-          import json; d=json.load(open("/tmp/after.json"))
-          active=[a for a in d if not a.get("endedAt")]
-          assert not active, "discharge left active assignments: %s" % active
-          cascaded=[a for a in d if a.get("endReason")=="ended at encounter close"]
-          assert {a["assignmentId"] for a in cascaded}=={"'$ASG1'","'$ASG3'"}, cascaded
-          for a in cascaded:
-              assert a["endedBy"]=="Dr. Sara Rahman" and a["endedByRole"]=="Consultant", a
-          print(f"cascade ended {len(cascaded)} assignments — audited with the discharging clinician + active role")'
-          resp=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"patientId":"'$PID'","userId":"maya.chen","kind":"nurse","role":"primary","shift":"day"}' \
-            "$API/api/icu/assignments")
-          code=$(echo "$resp" | tail -1)
-          echo "assign on discharged patient -> HTTP $code"; [ "$code" = "409" ] || exit 1
-          echo "$resp" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "no open encounter" in e, e; print("409:", e)'
+          curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments/mine" \
+            | PID="$PID" python3 -c 'import json,sys,os; m=json.load(sys.stdin); assert os.environ["PID"] not in m["patientIds"] and os.environ["PID"] not in m["removedPatientIds"]; print("closed encounter: off the nurse worklist")'
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments/mine" \
+            | PID="$PID" python3 -c 'import json,sys,os; m=json.load(sys.stdin); assert os.environ["PID"] not in m["patientIds"]; print("closed encounter: off the doctor census")'
+          curl -sf -H "Authorization: Bearer $SEN" "$API/api/icu/assignments" \
+            | PID="$PID" python3 -c 'import json,sys,os; rows=json.load(sys.stdin); assert not any(c["patientId"]==os.environ["PID"] for c in rows); print("closed encounter: no coverage row (open encounters only)")'
+          # carving an exception on the CLOSED episode is initiating care -> 409
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+            -d '{"patientId":"'$PID'","userId":"maya.chen"}' "$API/api/icu/assignments/remove")
+          echo "remove on the closed episode -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
 
-      - name: Failure-path cleanup — release THIS run's encounter (runs on failure/cancel too)
+      - name: Failure-path cleanup — restore this run's removals and release the encounter (runs on failure/cancel too)
         if: always()
         run: |
-          [ -n "$EID" ] || { echo "no encounter was admitted — nothing to clean"; exit 0; }
+          [ -n "${EID:-}" ] || { echo "no encounter was admitted — nothing to clean"; exit 0; }
+          # restore any removal this run left active (only possible while
+          # the encounter is still open; after our own discharge step the
+          # coverage row is gone and there is nothing to restore)
+          cov=$(curl -s -H "Authorization: Bearer $SEN" "$API/api/icu/assignments?patientId=$PID")
+          for u in $(echo "$cov" | python3 -c 'import json,sys
+          try: rows=json.load(sys.stdin)
+          except Exception: rows=[]
+          print(" ".join(r["userId"] for c in rows for r in c["removals"] if not r["restoredAt"]))'); do
+            curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
+              -d '{"patientId":"'$PID'","userId":"'$u'"}' "$API/api/icu/assignments/restore" >/dev/null \
+              && echo "cleanup restored $u" || echo "cleanup restore of $u failed (encounter may be closed — acceptable)"
+          done
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" "$API/api/icu/adt/encounters/$EID/discharge")
           echo "cleanup discharge $EID -> HTTP $code (200 = closed now, 409 = already closed by the suite)"
           [ "$code" = "200" ] || [ "$code" = "409" ] || exit 1

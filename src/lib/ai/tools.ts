@@ -18,11 +18,11 @@
    denominator. A patient with no charted data is never "the least sick". */
 
 import {
-  getAssignments, getEncounters, getImagingStudies, getLabDraws, getMarRows,
+  getCoverage, getEncounters, getImagingStudies, getLabDraws, getMarRows,
   getObservations, getPatientIdentity, getPatientOrders, getPatients, getTimeline,
 } from '../api'
 import type {
-  Assignment, Encounter, ImagingStudy, LabDraw, MarRow, Observation, Order,
+  CoverageRow, Encounter, ImagingStudy, LabDraw, MarRow, Observation, Order,
   OrderStatus, PatientIdentity, PatientSummary, TimelineEvent,
 } from '../api/types'
 import {
@@ -53,7 +53,7 @@ export type AiToolResult =
   | { kind: 'unavailable'; what: string }
   | { kind: 'identity'; patient: PatientSummary; identity: PatientIdentity }
   | { kind: 'encounters'; patient: PatientSummary; rows: Encounter[] }
-  | { kind: 'assignments'; patient: PatientSummary | null; rows: Assignment[] }
+  | { kind: 'assignments'; patient: PatientSummary | null; rows: CoverageRow[] }
   | { kind: 'orders'; patient: PatientSummary; rows: Order[]; status: OrderStatus | null }
   | { kind: 'mar'; patient: PatientSummary; rows: MarRow[] }
   | { kind: 'observations'; patient: PatientSummary; rows: Observation[] }
@@ -164,7 +164,7 @@ export async function executeAiTool(tool: string, args: Record<string, unknown> 
   /* every remaining tool is patient-scoped except assignments (optional) */
   const ref = argString(args, 'patient')
   if (tool === 'assignments' && ref === null)
-    return { kind: 'assignments', patient: null, rows: await getAssignments() }
+    return { kind: 'assignments', patient: null, rows: await getCoverage() }
   if (ref === null) throw new Error(`the model called ${tool} without a patient — nothing was executed`)
 
   const census = await getPatients()
@@ -183,7 +183,7 @@ export async function executeAiTool(tool: string, args: Record<string, unknown> 
     case 'encounters':
       return { kind: 'encounters', patient, rows: await getEncounters({ patientId: id }) }
     case 'assignments':
-      return { kind: 'assignments', patient, rows: await getAssignments(id) }
+      return { kind: 'assignments', patient, rows: await getCoverage(id) }
     case 'orders': {
       const statusArg = argString(args, 'status')
       const status = ORDER_STATUSES.find(s => s === statusArg) ?? null

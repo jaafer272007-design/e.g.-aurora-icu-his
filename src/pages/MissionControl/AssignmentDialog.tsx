@@ -1,26 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
-import { createAssignment, endAssignment, getAssignableStaff, getShifts, shiftLabel } from '../../lib/api'
-import type {
-  AssignableStaff, Assignment, AssignmentKind, AssignmentRole, AssignmentShift, ShiftEntry,
-} from '../../lib/api/types'
+import { useEffect, useState } from 'react'
+import { removeNurse, restoreNurse } from '../../lib/api'
+import type { CoverageRow } from '../../lib/api/types'
 import { displayStamp } from '../../lib/time'
 
-/* CARE TEAM (Patient Assignment & Responsibility) — who is responsible
- * for this patient right now. EVERYONE with patients.view sees the list
- * (basic clinical safety); assigning/ending is gated on
+/* NURSE COVERAGE (Assignment Simplification — the opt-out model): every
+ * nurse covers every patient BY DEFAULT; this dialog carves and restores
+ * the EXCEPTIONS. Doctors have no assignment concept (every doctor
+ * covers every patient — nothing to manage). EVERYONE with patients.view
+ * sees coverage (basic clinical safety); removing/restoring is gated on
  * assignments.manage (SeniorDoctor — the recorded interim; the follow-up
- * is a SeniorNurse profile holding the same atom). Assignment is a
- * WORKLIST, never an authority: nothing here gates administration.
- * Many-to-many by design — a second nurse is never blocked; two active
- * primaries render plainly (normal for ten minutes at handover, a
- * data-quality signal at six hours) instead of being refused. Ended
- * assignments stay visible forever (ended, never deleted). */
+ * is a SeniorNurse profile holding the same atom).
+ * 🔴 Coverage is a WORKLIST, never an authority — with zero exceptions:
+ * a removed nurse still charts, administers and responds here.
+ * 🔴 The server refuses removing the LAST covering nurse — a patient
+ * never has zero coverage (prevented, not warned). */
 export function AssignmentDialog(
-  { patientId, patientName, assignments, canManage, actor, jobTitle, onClose, onChanged }:
+  { coverage, canManage, actor, jobTitle, onClose, onChanged }:
   {
-    patientId: string
-    patientName: string
-    assignments: Assignment[]
+    coverage: CoverageRow
     canManage: boolean
     actor: string
     jobTitle: import('../../lib/session').JobTitle
@@ -28,178 +25,114 @@ export function AssignmentDialog(
     onChanged: () => void
   },
 ) {
-  const [staff, setStaff] = useState<AssignableStaff[] | null>(null)
-  const [kind, setKind] = useState<AssignmentKind>('nurse')
-  const [userId, setUserId] = useState('')
-  const [role, setRole] = useState<AssignmentRole>('primary')
-  /* SHIFT — the MANAGED vocabulary (Configuration Vocabularies): the
-     picker offers ACTIVE entries (three-shift hospitals edit the list
-     live); existing rows keep their stored code and render through the
-     label resolver even after a retire (snapshot semantics). */
-  const [shift, setShift] = useState<AssignmentShift>('day')
-  const [shifts, setShifts] = useState<ShiftEntry[] | null>(null)
-  const [endingId, setEndingId] = useState<string | null>(null)
-  const [endReason, setEndReason] = useState('')
+  const [removingId, setRemovingId] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    getShifts().then(list => {
-      setShifts(list)
-      const act = list.filter(x => x.active)
-      if (act.length > 0 && !act.some(x => x.code === 'day')) setShift(act[0].code)
-    }).catch(() => setShifts(null))
-    if (canManage) getAssignableStaff().then(setStaff).catch(() => setStaff([]))
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', esc)
     return () => document.removeEventListener('keydown', esc)
-  }, [canManage, onClose])
+  }, [onClose])
 
-  const active = assignments.filter(a => !a.endedAt)
-  const ended = assignments.filter(a => !!a.endedAt)
-  const options = useMemo(
-    () => (staff ?? []).filter(s => s.kinds.includes(kind)),
-    [staff, kind],
-  )
-  /* two active primaries of one kind — permitted and rendered plainly
-     (the flagged recommendation: never block, make it visible) */
-  const doublePrimary = (['nurse', 'doctor'] as const).filter(k =>
-    active.filter(a => a.kind === k && a.role === 'primary').length > 1)
+  const activeRemovals = coverage.removals.filter(r => !r.restoredAt)
+  const restoredRemovals = coverage.removals.filter(r => !!r.restoredAt)
 
-  async function assign(e: React.FormEvent) {
-    e.preventDefault()
-    if (!userId) return
+  async function confirmRemove(userId: string) {
     setError(null)
     setBusy(true)
-    const res = await createAssignment({ patientId, userId, kind, role, shift }, actor, jobTitle)
+    const res = await removeNurse(coverage.patientId, userId, reason.trim() || undefined, actor, jobTitle)
     setBusy(false)
-    if (res.kind === 'ok') { setUserId(''); onChanged() }
-    else setError(res.error)
-  }
-
-  async function confirmEnd(assignmentId: string) {
-    setError(null)
-    setBusy(true)
-    const res = await endAssignment(assignmentId, endReason.trim() || undefined, actor, jobTitle)
-    setBusy(false)
-    setEndingId(null)
-    setEndReason('')
+    setRemovingId(null)
+    setReason('')
     if (res.kind === 'ok') onChanged()
     else setError(res.error)
   }
 
-  const kindTag = (k: AssignmentKind) => (k === 'nurse' ? 'RN' : 'Dr')
+  async function confirmRestore(userId: string) {
+    setError(null)
+    setBusy(true)
+    const res = await restoreNurse(coverage.patientId, userId, actor, jobTitle)
+    setBusy(false)
+    if (res.kind === 'ok') onChanged()
+    else setError(res.error)
+  }
 
   return (
     <div className="idscrim" onClick={onClose}>
       <div className="iddialog ctdialog" role="dialog" aria-modal="true" aria-labelledby="ctTitle" onClick={e => e.stopPropagation()}>
-        <h2 id="ctTitle">Care team · {patientName} <span className="num">{patientId}</span></h2>
+        <h2 id="ctTitle">Nurse coverage · {coverage.patientName} <span className="num">{coverage.patientId}</span></h2>
         <p className="idnote">
-          Responsibility follows the <b>patient</b>, never the bed — a transfer changes nothing here.
-          Assignment is a worklist, not an authority: in an emergency any nurse may administer and
-          document regardless of this list.
+          Every nurse covers every patient <b>by default</b> — you carve exceptions here (a 1:1
+          elsewhere, a nurse off this room), and doctors need no list at all (every doctor covers
+          every patient). Coverage is a worklist, <b>never an authority</b>: a removed nurse still
+          charts, administers and responds on this patient in an emergency. The last covering
+          nurse can never be removed — a patient always has coverage.
         </p>
 
-        <div className="cthead">Active assignments</div>
-        {active.length === 0 && (
-          <div className="ctempty" role="alert">
-            UNASSIGNED — no active {['nurse', 'doctor'].filter(k => !active.some(a => a.kind === k)).join(' or ')}.
-            This patient is on nobody's worklist until someone is assigned.
-          </div>
-        )}
-        {active.length > 0 && (
-          <div className="ctlist">
-            {active.map(a => (
-              <div className="ctrow" key={a.assignmentId}>
-                <span className={`ctkind ${a.kind}`}>{kindTag(a.kind)}</span>
-                <span className="ctwho">{a.userName}<small>{a.userTitle}</small></span>
-                <span className={`ctrole ${a.role}`}>{a.role}</span>
-                <span className="ctshift">{shiftLabel(a.shift)}</span>
-                <span className="ctsince num">
-                  {a.assignedAt ? `since ${displayStamp(a.assignedAt)}` : 'seeded'}
-                  {a.assignedBy ? ` · by ${a.assignedBy}` : ''}
+        <div className="cthead">Covering nurses ({coverage.nurses.length})</div>
+        <div className="ctlist">
+          {coverage.nurses.map(n => (
+            <div className="ctrow" key={n.userId}>
+              <span className="ctkind nurse">RN</span>
+              <span className="ctwho">{n.name}<small>{n.jobTitle}</small></span>
+              <span className="ctshift">covering (default)</span>
+              {canManage && removingId !== n.userId && (
+                <button className="btn ghost ctend" onClick={() => { setRemovingId(n.userId); setReason('') }}
+                  aria-label={`Remove ${n.name} from this patient's coverage`}>Remove</button>
+              )}
+              {canManage && removingId === n.userId && (
+                <span className="ctendrow">
+                  <input
+                    value={reason} onChange={e => setReason(e.target.value)}
+                    placeholder="reason (optional — e.g. 1:1 with another patient)" aria-label="Removal reason (optional)"
+                  />
+                  <button className="btn primary" disabled={busy} onClick={() => confirmRemove(n.userId)}>Confirm remove</button>
+                  <button className="btn ghost" onClick={() => setRemovingId(null)}>Keep</button>
                 </span>
-                {canManage && endingId !== a.assignmentId && (
-                  <button className="btn ghost ctend" onClick={() => { setEndingId(a.assignmentId); setEndReason('') }}
-                    aria-label={`End assignment of ${a.userName}`}>End</button>
-                )}
-                {canManage && endingId === a.assignmentId && (
-                  <span className="ctendrow">
-                    <input
-                      value={endReason} onChange={e => setEndReason(e.target.value)}
-                      placeholder="reason (optional — e.g. handover)" aria-label="End reason (optional)"
-                    />
-                    <button className="btn primary" disabled={busy} onClick={() => confirmEnd(a.assignmentId)}>Confirm end</button>
-                    <button className="btn ghost" onClick={() => setEndingId(null)}>Keep</button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {activeRemovals.length > 0 && (
+          <>
+            <div className="cthead">Removed from this patient ({activeRemovals.length})</div>
+            <div className="ctlist">
+              {activeRemovals.map(r => (
+                <div className="ctrow off" key={r.removalId}>
+                  <span className="ctkind nurse">RN</span>
+                  <span className="ctwho">{r.userName}<small>{r.userTitle}</small></span>
+                  <span className="ctsince num">
+                    removed {displayStamp(r.removedAt)} · by {r.removedBy}
+                    {r.reason ? ` — ${r.reason}` : ''}
                   </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {doublePrimary.length > 0 && (
-          <div className="ctdouble">
-            {doublePrimary.map(k => (
-              <span key={k}>Two active primary {k}s — normal briefly at handover; end one when the handover completes.</span>
-            ))}
-          </div>
+                  {canManage && (
+                    <button className="btn ghost ctend" disabled={busy} onClick={() => confirmRestore(r.userId)}
+                      aria-label={`Restore ${r.userName} to this patient's coverage`}>Restore</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
-        {canManage && (
-          <form onSubmit={assign} className="ctform">
-            <div className="cthead">Assign responsibility</div>
-            <div className="ctgrid">
-              <label>Kind
-                <select value={kind} onChange={e => { setKind(e.target.value as AssignmentKind); setUserId('') }}>
-                  <option value="nurse">Nurse</option>
-                  <option value="doctor">Doctor</option>
-                </select>
-              </label>
-              <label>Clinician <i>real accounts only</i>
-                <select value={userId} onChange={e => setUserId(e.target.value)}>
-                  <option value="">{staff ? 'Select…' : 'Loading…'}</option>
-                  {options.map(s => <option key={s.userId} value={s.userId}>{s.name} · {s.jobTitle}</option>)}
-                </select>
-              </label>
-              <label>Role
-                <select value={role} onChange={e => setRole(e.target.value as AssignmentRole)}>
-                  <option value="primary">Primary</option>
-                  <option value="secondary">Secondary</option>
-                </select>
-              </label>
-              <label>Shift <i>label, chosen by you</i>
-                <select value={shift} onChange={e => setShift(e.target.value as AssignmentShift)}>
-                  {(shifts?.filter(x => x.active) ?? []).map(x =>
-                    <option key={x.code} value={x.code}>{x.label}</option>)}
-                </select>
-              </label>
-            </div>
-            <div className="idfoot">
-              <button type="button" className="btn ghost" onClick={onClose}>Close</button>
-              <button type="submit" className="btn primary" disabled={busy || !userId}>
-                {busy ? 'Assigning…' : '+ Assign'}
-              </button>
-            </div>
-          </form>
-        )}
-        {!canManage && (
-          <div className="idfoot">
-            <span className="ctro">Managing assignments requires the Senior Doctor authority.</span>
-            <button type="button" className="btn ghost" onClick={onClose}>Close</button>
-          </div>
-        )}
+        <div className="idfoot">
+          {!canManage && <span className="ctro">Carving coverage exceptions requires the Senior Doctor authority.</span>}
+          <button type="button" className="btn ghost" onClick={onClose}>Close</button>
+        </div>
         {error && <div className="iderr" role="alert">{error}</div>}
 
-        {ended.length > 0 && (
+        {restoredRemovals.length > 0 && (
           <div className="idhist">
-            <div className="idhttl">Assignment history — ended, never deleted</div>
-            {ended.map(a => (
-              <div className="idhrow" key={a.assignmentId}>
-                <span className="num">{a.assignedAt ? displayStamp(a.assignedAt) : '—'} → {displayStamp(a.endedAt!)}</span>
-                <span className="idha">{a.userName} · {a.role} {a.kind} · {shiftLabel(a.shift)}</span>
+            <div className="idhttl">Removal history — restored, never deleted</div>
+            {restoredRemovals.map(r => (
+              <div className="idhrow" key={r.removalId}>
+                <span className="num">{displayStamp(r.removedAt)} → {displayStamp(r.restoredAt!)}</span>
+                <span className="idha">{r.userName}{r.reason ? ` — ${r.reason}` : ''}</span>
                 <span className="idhd">
-                  ended by {a.endedBy}{a.endedByRole ? ` (${a.endedByRole})` : ''}
-                  {a.endReason ? ` — ${a.endReason}` : ''}
+                  removed by {r.removedBy} · restored by {r.restoredBy}{r.restoredByRole ? ` (${r.restoredByRole})` : ''}
                 </span>
               </div>
             ))}

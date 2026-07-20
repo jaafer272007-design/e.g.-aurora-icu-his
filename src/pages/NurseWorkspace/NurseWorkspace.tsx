@@ -7,15 +7,14 @@ import { displayStamp, dueStateFor, nowHm, useNow } from '../../lib/time'
 import { IconCheck, IconPencil, IconUsers } from '../../components/icons'
 import {
   completeImplementation, documentAdministration, getImplementationQueue, getIoEntries,
-  getHandoffEntries, getMarRows, getNurseWorklist, getNursingTasks, getShifts, getUnassignedPatients, recordIoEntry, shiftLabel, toggleNursingTask, writeHandoff,
+  getHandoffEntries, getMarRows, getNurseWorklist, getNursingTasks, recordIoEntry, toggleNursingTask, writeHandoff,
 } from '../../lib/api'
 import type {
-  AdministrationAction, AssignedPatient, Assignment, IoEntry, IoKind, MarRow, NursingTask, Order,
-  UnassignedPatient, HandoffEntry,
+  AdministrationAction, AssignedPatient, IoEntry, IoKind, MarRow, MineWorklist, NursingTask, Order,
+  HandoffEntry,
 } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { AssignedPatientsCard } from './AssignedPatientsCard'
-import { UnassignedCard } from '../../components/UnassignedCard'
 import { MarCard } from './MarCard'
 import { OrdersCard } from './OrdersCard'
 import { TasksCard } from './TasksCard'
@@ -31,12 +30,12 @@ export function NurseWorkspace() {
   /* behind RequireSession(meds.administer) — session is present */
   const session = getSession()!
   const { toast, showToast } = useToast()
-  /* the REAL worklist (Patient Assignment & Responsibility): the signed-in
-     nurse's ACTIVE assignments — bound to the USER + active role (#104),
-     never a fixture. Zero assignments is a valid, honest state: the cards
-     render empty and the Unassigned panel is the safety net. */
-  const [worklist, setWorklist] = useState<{ assignments: Assignment[]; patients: AssignedPatient[] } | null>(null)
-  const [unassigned, setUnassigned] = useState<UnassignedPatient[] | null>(null)
+  /* the OPT-OUT worklist (Assignment Simplification): every nurse covers
+     every patient by default — the list is ALL open patients minus this
+     nurse's carved removals. No setup needed; no Unassigned panel exists
+     (the server refuses removing the last covering nurse, so an
+     uncovered patient is impossible, not merely visible). */
+  const [worklist, setWorklist] = useState<{ mine: MineWorklist; patients: AssignedPatient[] } | null>(null)
   const [mar, setMar] = useState<MarRow[] | null>(null)
   const [orders, setOrders] = useState<Order[] | null>(null)
   const [implementedIds, setImplementedIds] = useState<Set<string>>(new Set())
@@ -66,19 +65,11 @@ export function NurseWorkspace() {
       getImplementationQueue(ids).then(setOrders)
       if (ids[0]) loadHandoffs(ids[0])
     })
-    /* the Unassigned panel (unit-level safety view): open encounters with
-       no active NURSE — so no patient silently falls through */
-    getUnassignedPatients().then(u => setUnassigned(u.nurse)).catch(() => setUnassigned([]))
-    getShifts().catch(() => {}) /* primes shiftLabel for the header */
     getNursingTasks().then(setTasks)
     getIoEntries().then(setIo)
   }, [session.name, session.jobTitle])
 
   const patients = worklist?.patients ?? []
-  /* the shift(s) on my active assignments — chosen by the assigner,
-     resolved through the managed vocabulary (a retired shift keeps
-     resolving on rows that carry it; unknown codes render verbatim) */
-  const shifts = [...new Set((worklist?.assignments ?? []).map(a => shiftLabel(a.shift)))]
   const patientName = (patientId: string) => patients.find(p => p.patientId === patientId)?.name ?? patientId
 
   /* MAR: documentation APPENDS an administration fact on the canonical
@@ -170,7 +161,7 @@ export function NurseWorkspace() {
       <AppHeader
         subtitle="Nurse Workspace"
         kpis={kpis}
-        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile${shifts.length > 0 ? ` · ${shifts.join('/')} shift` : ''}` }}
+        user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
       />
       <div className="shell">
         <NavSidebar
@@ -185,9 +176,6 @@ export function NurseWorkspace() {
             {io !== undefined && worklist && <IoCard entries={io} patients={patients} onRecord={recordIo} />}
           </div>
           <div className="col">
-            {/* the safety net: nurse-unassigned open encounters, visible to
-                everyone — zero assignments is allowed but never silent */}
-            {unassigned && <UnassignedCard kind="nurse" patients={unassigned} />}
             {orders && <OrdersCard orders={orders} completedIds={implementedIds} onComplete={completeOrder} />}
             {tasks !== undefined && <TasksCard tasks={tasks} onToggle={toggleTask} />}
             {worklist && <SbarCard patients={patients} entriesByPatient={handoffs} busy={handoffBusy} onSelect={loadHandoffs} onSave={saveSbar} />}

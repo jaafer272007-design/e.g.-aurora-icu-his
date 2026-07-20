@@ -86,7 +86,7 @@ export type Permission =
   | 'results.document'     // Lab Result-Entry: manually document/transcribe a lab result (ICU bedside team)
   | 'results.correct'      // Lab Result Editing: Tier-2 correction of a documented result (Consultant-tier ONLY — never office admin)
   | 'notes.document'       // nursing tasks, I&O
-  | 'handoff.document'     // SBAR handoff entry (Nurse ONLY — owner's 2026-07-18 decision; the write additionally requires an ACTIVE nurse assignment, checked server-side)
+  | 'handoff.document'     // SBAR handoff entry (Nurse ONLY — owner's 2026-07-18 decision). Fully GLOBAL since the Assignment Simplification: the #114 assignment gate is DROPPED — any nurse posts on any patient, like charting/administration (coverage gates NOTHING).
   | 'identity.correct'     // Structured Patient Name + National ID: audited identity correction (office Administrator — registration work, not clinical data)
   | 'ai.view'
   | 'admin.view'           // administrative landing view
@@ -102,7 +102,7 @@ export type Permission =
   | 'observations.correct' // Stage 11 §8 (F2): tier-2 retrospective correction (Consultant-tier ONLY — never office admin)
   | 'observations.configure' // Stage 11 §3 (F3): group enablement (same Consultant-tier home)
   | 'patients.measure'     // Weight & Height capture: record/correct the reference weight & height (any doctor or nurse — never office admin)
-  | 'assignments.manage'   // Patient Assignment: assign/end nurse & doctor assignments (SeniorDoctor — the recorded interim; a future SeniorNurse profile holds the SAME atom). A clinical care decision — never on either administrator profile. Everyone with patients.view can SEE assignments; only managing is gated.
+  | 'assignments.manage'   // Nurse coverage (opt-out model): carve/restore coverage exceptions — doctors have NO assignment concept (SeniorDoctor — the recorded interim; a future SeniorNurse profile holds the SAME atom). A clinical care decision — never on either administrator profile. Everyone with patients.view can SEE coverage; only managing is gated.
   | 'codestatus.set'       // Code Status SAFETY FIX: set/change an open encounter's code status (PHYSICIAN authority — Doctor/SeniorDoctor; never office admin)
   | 'codestatus.manage'    // Code Status SAFETY FIX: maintain the vocabulary (clinical governance — SeniorDoctor ONLY, the observations.configure precedent; never office admin)
   | 'imagingcatalog.manage' // Imaging Catalogue: maintain the study catalogue (CLINICAL — the lab-catalogue gating: Ancillary + SeniorDoctor; a DISTINCT atom from labcatalog.manage because radiology and the lab are different producing services; never office admin)
@@ -110,7 +110,7 @@ export type Permission =
   | 'beds.manage'          // Bed Registry: add/retire/reactivate the unit's beds (VALIDATOR'S DECISION: SeniorDoctor — unit command — AND office Administrator — facility config; beds are places, not patient data, so the clinical exclusion is untouched). Never rename, never delete; retire refused while occupied.
   | 'dispositions.manage'  // Configuration Vocabularies: maintain the discharge-disposition vocabulary (CLINICAL governance — SeniorDoctor ONLY, the codestatus.manage precedent; never office admin). 'died' is reserved-unretireable; isDeath is immutable at creation.
   | 'isolation.manage'     // Configuration Vocabularies: maintain the IPC isolation-type vocabulary (CLINICAL governance — SeniorDoctor ONLY; never office admin). Setting a PATIENT's isolation rides observations.record, exactly the codestatus.set split.
-  | 'shifts.manage'        // Configuration Vocabularies: maintain the working-shift vocabulary the #114 assignments reference (OPERATIONAL/clinical governance — SeniorDoctor ONLY; never office admin). Snapshot semantics: retiring never touches existing assignments.
+  | 'shifts.manage'        // Configuration Vocabularies: maintain the working-shift vocabulary (OPERATIONAL/clinical governance — SeniorDoctor ONLY; never office admin). Since the Assignment Simplification nothing references shifts at assignment time (the opt-out model has no per-assignment shift); the vocabulary remains hospital data and historical #114 rows keep resolving their stored codes.
   | 'frequencies.manage'   // Configuration Vocabularies: maintain the NAMED medication-frequency vocabulary (PHARMACY governance — Pharmacist ONLY, the formulary.manage precedent). The structured q<n>h pattern stays code, never a hospital list.
 
 /* Provisional permission sets (finer-grained permissions come in a later

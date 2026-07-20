@@ -379,24 +379,27 @@ function ResultBlock({ r }: { r: AiToolResult }) {
       return (
         <div className="accard">
           <h3>
-            Assignments {r.patient ? <>— <PatientLine p={r.patient} /></> : '— whole unit'} ({r.rows.length})
+            Nurse coverage {r.patient ? <>— <PatientLine p={r.patient} /></> : '— whole unit'} ({r.rows.length})
           </h3>
           {r.rows.length === 0
-            ? <Empty what={r.patient ? `active assignments for ${r.patient.name}` : 'active assignments'} />
+            ? <Empty what="open admissions" />
             : (
               <ul className="aclist">
-                {r.rows.map(a => (
-                  <li key={a.assignmentId}>
-                    <b>{a.userName}</b>
-                    <span className="acdim">{a.userTitle}</span>
-                    <span>{a.kind} · {a.role} · {a.shift} shift</span>
-                    <span>→ {a.patientName}</span>
-                    <BedChip bedId={a.bedId} />
+                {r.rows.map(c => (
+                  <li key={c.encounterId}>
+                    <b>{c.patientName}</b>
+                    <BedChip bedId={c.bedId} />
+                    <span>covered by {c.nurses.length} nurse{c.nurses.length === 1 ? '' : 's'}: {c.nurses.map(n => n.name).join(', ')}</span>
+                    {c.removals.filter(x => !x.restoredAt).length > 0 && (
+                      <span className="acdim">
+                        removed: {c.removals.filter(x => !x.restoredAt).map(x => x.userName).join(', ')}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
-          <p className="acscorefoot">Assignment is a worklist, never an authority.</p>
+          <p className="acscorefoot">Everyone covers everyone by default; coverage is a worklist, never an authority.</p>
         </div>
       )
     case 'orders':

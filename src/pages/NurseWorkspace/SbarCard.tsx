@@ -33,8 +33,10 @@ interface SbarCardProps {
 
 /** Shift handoff — the append-only SBAR series per admission (owner's
  *  2026-07-18 model). Every save is a NEW immutable entry; the list
- *  below the form IS the record, newest first. Writes are gated
- *  server-side to the ASSIGNED nursing team on the open encounter. */
+ *  below the form IS the record, newest first. Any nurse records a
+ *  handoff on any patient — the #114 assignment gate is gone
+ *  (Assignment Simplification: coverage is a worklist, never an
+ *  authority, zero exceptions). */
 export function SbarCard({ patients, entriesByPatient, busy, onSelect, onSave }: SbarCardProps) {
   const [patientId, setPatientId] = useState(patients[0]?.patientId ?? '')
   const pid = patientId || patients[0]?.patientId
@@ -82,7 +84,7 @@ export function SbarCard({ patients, entriesByPatient, busy, onSelect, onSave }:
         {busy ? 'Recording…' : 'Record Handoff Entry'}
       </button>
       <p className="sbarrule">
-        Written by the nursing team assigned to this patient. Each save adds a new entry to this
+        Any nurse can record a handoff on any patient. Each save adds a new entry to this
         admission's permanent record — entries are never edited or removed; a correction is the
         next entry.
       </p>

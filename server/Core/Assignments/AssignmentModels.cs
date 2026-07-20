@@ -3,38 +3,73 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Aurora.Core.Assignments;
 
-/* ---------- Patient Assignment & Responsibility (Aurora Core) ----------
-   The validator's design (docs/design/patient-assignment.md): ONE Core
-   concept, two kinds — who is RESPONSIBLE for a patient right now, as a
-   WORKLIST and never an authority (meds.administer stays global; a nurse
-   responding to an arrest must never be 403'd).
+/* ---------- Assignment — the OPT-OUT coverage model (Aurora Core) ----------
+   The validator's hands-on clinical correction (Assignment Simplification
+   design), REPLACING #114's many-to-many opt-in model:
 
-   Locked decisions baked into this model:
-   - Patient ⇄ Nurse is MANY-TO-MANY: no 409 on a second nurse — ECMO,
-     CRRT, massive transfusion, unstable patients, and briefly three at
-     handover are ICU routine, not exceptions. Only re-assigning the SAME
-     user+kind while already active is a state conflict.
-   - ENCOUNTER-SCOPED and therefore PATIENT-BASED, never bed-based: the
-     assignment references the encounter (the aggregate root — exactly as
-     orders do), so a bed move for sterilisation or equipment failure
-     touches NOTHING here; responsibility follows the patient.
-   - UserId references a REAL Users row (Username) — never free text
-     (contrast Encounter.Attending, the legacy display string this
-     supersedes in meaning; that field is deliberately left alone).
-   - Shift is CHOSEN by the assigner, not derived from the clock
-     (derivation breaks at boundaries: a nurse arriving 06:45 for
-     handover is on the DAY shift). *[Superseded in part by the
-     Configuration Vocabularies build (design §3, the validator's
-     decision — three-shift ICUs are real): the hardcoded 'day'|'night'
-     label is now a CODE from the managed Shifts vocabulary, seeded
-     day/night so existing rows stay valid as data. The stored code is
-     a SNAPSHOT — retiring a shift never touches existing assignments
-     (they keep rendering through the label resolver); only NEW
-     assignments are refused it. "No Shift entity exists" is thereby
-     superseded: ShiftRow is that entity.]*
-   - ENDED, NEVER DELETED (never-destroy): an ended assignment is
-     history, not an absence. Every create and end carries actor +
-     ACTIVE role (#104) + dated time — the row IS the audit record. */
+   - DOCTORS have NO assignment concept at all. Every doctor covers every
+     patient — a formal doctor-assignment is a fiction; the doctor view is
+     simply "all patients".
+   - NURSES cover ALL patients BY DEFAULT (no setup). The persistent
+     concept is the EXCEPTION: a REMOVAL takes one patient off one nurse's
+     focused worklist (the 1:1 with the crashing patient, the nurse not
+     taking the isolation room). Restoring undoes it. Coverage is DERIVED:
+     every active Nurse-profile account minus active removals.
+   - PRIMARY/SECONDARY: dropped — everyone-covers-everyone needs no
+     hierarchy; it is "covering / not covering", nothing more. (A
+     primary-nurse concept, if ever wanted, is a later explicit addition —
+     recorded.)
+
+   🔴 THE INVARIANT THAT DID NOT CHANGE (asserted in every tier):
+   assignment is WORKLIST, never AUTHORITY. A removal changes a nurse's
+   focused view, NOT her ability to act — any nurse charts, administers
+   and responds on ANY patient (authority is role + licensure; in a crash
+   whoever is closest responds regardless of any list). Since this build
+   coverage gates NOTHING AT ALL: the #114 SBAR-handoff assignment gate —
+   the one scoped exception — is DROPPED by the owner's decision.
+
+   🔴 NEVER ZERO NURSES (the hard guarantee, owner's decision — prevent,
+   not warn): removing the LAST covering nurse from a patient is refused
+   409. A patient always has coverage; the system does not allow an
+   uncovered patient to exist.
+
+   MIGRATION HONESTY: the #114 PatientAssignments table and every row are
+   KEPT as the permanent audit record (readable via /assignments/history);
+   boot ends any still-active row with the supersede reason. The new model
+   starts from everyone-covered (an empty removals table). */
+
+/** ONE carved exception: this nurse is NOT covering this encounter.
+    Restored-never-deleted (the ended-never-deleted convention) — the row
+    is the audit record of both halves. */
+[Table("AssignmentRemovals")]
+class AssignmentRemoval
+{
+    [Key]
+    public string RemovalId { get; set; } = "";
+    public int Seq { get; set; }
+    /** encounter-scoped like every clinical record — a re-admission starts
+        from the default (covered by everyone) */
+    public string EncounterId { get; set; } = "";
+    /** Users.Username — a real account reference, never free text */
+    public string UserId { get; set; } = "";
+    public string RemovedAt { get; set; } = "";
+    public string RemovedBy { get; set; } = "";
+    public string RemovedByRole { get; set; } = "";
+    /** optional — "1:1 with the crashing patient" is routine, not exceptional */
+    public string? Reason { get; set; }
+    public string? RestoredAt { get; set; }
+    public string? RestoredBy { get; set; }
+    public string? RestoredByRole { get; set; }
+
+    public bool ActiveRemoval => RestoredAt is null;
+}
+
+/* ---------- the LEGACY #114 table — history, never deleted ---------- */
+
+/** the superseded opt-in assignment row. No new rows are ever created;
+    boot ended the active ones with the supersede reason. Kept so the
+    #114 audit trail (who was assigned, by whom, ended why) stays
+    readable forever via GET /assignments/history. */
 [Table("PatientAssignments")]
 class PatientAssignment
 {
@@ -42,19 +77,13 @@ class PatientAssignment
     public string AssignmentId { get; set; } = "";
     public int Seq { get; set; }
     public string EncounterId { get; set; } = "";
-    /** Users.Username — a real account reference, never free text */
     public string UserId { get; set; } = "";
     public string Kind { get; set; } = "";    // nurse | doctor
-    public string Role { get; set; } = "";    // primary | secondary
-    public string Shift { get; set; } = "";   // Shifts vocabulary CODE (snapshot, chosen)
-    /* audit: who created it, as which ACTIVE role, when (dated UTC
-       "yyyy-MM-dd HH:mm"); "" on historical seed rows — facts are never
-       invented (the ADT AdmittedAt convention) */
+    public string Role { get; set; } = "";    // primary | secondary (historical)
+    public string Shift { get; set; } = "";   // Shifts vocabulary code (historical snapshot)
     public string AssignedAt { get; set; } = "";
     public string AssignedBy { get; set; } = "";
     public string AssignedByRole { get; set; } = "";
-    /* the END half (null while active): handover, correction, or the
-       discharge cascade ("ended at encounter close") */
     public string? EndedAt { get; set; }
     public string? EndedBy { get; set; }
     public string? EndedByRole { get; set; }
@@ -63,11 +92,35 @@ class PatientAssignment
     public bool Active => EndedAt is null;
 }
 
-/* wire contract. patientId/patientName/bedId are DERIVED at read from the
-   encounter (never stored here — the bed especially: a transfer must be
-   visible through the assignment without the assignment changing).
-   userName/userTitle resolve from the referenced Users row at read —
-   the reference is stored, the display is derived (no snapshot to drift). */
+/* ---------------- wire contracts ---------------- */
+
+/** one open encounter's derived coverage: who is covering, and the
+    removal exceptions (active AND restored — the audit renders inline).
+    patient/bed derived from the encounter at read, never stored. */
+record CoverageDto(
+    string PatientId, string PatientName, string BedId, string EncounterId,
+    List<CoveringNurseDto> Nurses, List<RemovalDto> Removals);
+
+record CoveringNurseDto(string UserId, string Name, string JobTitle);
+
+record RemovalDto(
+    string RemovalId, string EncounterId, string PatientId, string PatientName,
+    string BedId, string UserId, string UserName, string UserTitle,
+    string RemovedAt, string RemovedBy, string RemovedByRole, string? Reason,
+    string? RestoredAt = null, string? RestoredBy = null, string? RestoredByRole = null);
+
+/** the signed-in clinician's worklist. kind states the model on the wire:
+    'nurse' = all open patients minus my removals; 'doctor' = ALL open
+    patients (no assignment concept); null = this profile has no worklist.
+    removedPatientIds lets the nurse UI say WHY a patient is absent. */
+record MineDto(string? Kind, string[] PatientIds, string[] RemovedPatientIds);
+
+/** coverage-manager picker row: the active Nurse-profile accounts
+    coverage derives from (doctors have no assignment concept — no kinds
+    field survives). */
+record CoverageStaffDto(string UserId, string Name, string JobTitle);
+
+/** the LEGACY #114 row on the wire (history read — shape preserved) */
 record AssignmentDto(
     string AssignmentId, string EncounterId, string PatientId, string PatientName,
     string BedId, string UserId, string UserName, string UserTitle,
@@ -76,16 +129,10 @@ record AssignmentDto(
     string? EndedAt = null, string? EndedBy = null, string? EndedByRole = null,
     string? EndReason = null);
 
-/* assignable-staff picker row: active accounts holding a role whose
-   profile can carry the kind — Nurse for 'nurse'; Doctor/SeniorDoctor
-   for 'doctor'. kinds lists what the account may be assigned AS. */
-record AssignableStaffDto(string UserId, string Name, string JobTitle, string[] Kinds);
-
 /* REQUEST DTOs — Disallow: an unrecognized field fails binding → automatic
    400, never a silent no-op (codified patient-safety rule) */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record CreateAssignmentRequest(
-    string? PatientId, string? UserId, string? Kind, string? Role, string? Shift);
+record RemoveNurseRequest(string? PatientId, string? UserId, string? Reason = null);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record EndAssignmentRequest(string? Reason);
+record RestoreNurseRequest(string? PatientId, string? UserId);

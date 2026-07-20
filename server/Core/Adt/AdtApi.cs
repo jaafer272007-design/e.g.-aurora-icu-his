@@ -860,16 +860,11 @@ static class AdtApi
                deliberate Core-internal coupling; a future domain-event
                seam would decouple it.) */
             Aurora.Core.Orders.OrderLogic.DischargeCascade(db, enc.EncounterId, actor);
-            /* THE SAME RULE FOR RESPONSIBILITY (Patient Assignment design
-               §8): closing the encounter ends its active assignments in
-               the SAME transaction — audited with the discharging
-               clinician + ACTIVE role and the named lifecycle reason
-               ("ended at encounter close"); rows remain forever (ended,
-               never deleted). Bed TRANSFER deliberately touches no
-               assignment — responsibility is patient-based, never
-               bed-based (locked decision 3). */
-            Aurora.Core.Assignments.AssignmentLogic.DischargeCascade(
-                db, enc.EncounterId, actor, user.FindFirst("jobTitle")?.Value ?? "Unknown");
+            /* NO assignment cascade since the opt-out coverage model
+               (Assignment Simplification): coverage is DERIVED over OPEN
+               encounters, so closing the episode removes it from every
+               worklist by construction; removal rows on the closed
+               encounter simply become history (restored-never-deleted). */
             db.SaveChanges();
             var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
             return Results.Json(enc.ToDto(name), JsonOpts.Web);

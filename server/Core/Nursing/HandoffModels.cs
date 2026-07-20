@@ -19,13 +19,13 @@ namespace Aurora.Core.Nursing;
    - ENCOUNTER-SCOPED (the ORD-113 lesson): the entry references the
      admission it belongs to; a re-admitted patient starts a fresh
      series and the old one stays on its closed encounter.
-   - WRITE AUTHORITY (the owner's deliberate, SCOPED exception to
-     worklist-never-authority, recorded with attribution in 01/02):
-     only a NURSE with an ACTIVE assignment (primary or secondary) on
-     the patient's open encounter may write — the nurse actually caring
-     for the patient hands over; secondary included because handover is
-     exactly when they cover. Doctor handoff is a separate, undesigned
-     record — deliberately NOT merged into this one.
+   - WRITE AUTHORITY: any NURSE (handoff.document) on any patient.
+     *[Superseded (Assignment Simplification, owner's decision): the
+     original ACTIVE-assignment gate — the one scoped exception to
+     worklist-never-authority — is DROPPED. Coverage gates nothing;
+     an SBAR post is fully global like charting and administration.]*
+     Doctor handoff is a separate, undesigned record — deliberately
+     NOT merged into this one.
    - Stamped with author + ACTIVE role (#104) + dated server time
      (#95); the row IS the audit record. */
 [Table("Handoffs")]
