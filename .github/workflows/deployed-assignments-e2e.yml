@@ -187,7 +187,7 @@ jobs:
           r = json.load(open("/tmp/rmv.json"))
           assert r["removalId"].startswith("RMV-") and r["patientId"] == os.environ["PID"]
           assert r["userId"] == "maya.chen" and r["removedBy"] == "Dr. Sara Rahman"
-          assert r["removedByRole"] == "Consultant" and "1:1" in r["reason"] and r["restoredAt"] is None
+          assert r["removedByRole"] == "Consultant" and "1:1" in r["reason"] and r.get("restoredAt") is None
           print("removal audited:", r["removalId"], "by", r["removedBy"], "—", r["reason"])
           PY
           curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments/mine" -o /tmp/mine_after.json
@@ -199,7 +199,7 @@ jobs:
           import json
           c = json.load(open("/tmp/cov2.json"))[0]
           assert "maya.chen" not in {n["userId"] for n in c["nurses"]}
-          active = [r for r in c["removals"] if not r["restoredAt"]]
+          active = [r for r in c["removals"] if not r.get("restoredAt")]
           assert len(active) == 1 and active[0]["userId"] == "maya.chen"
           print("coverage read shows the exception inline (audit visible to every clinical viewer)")'
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
@@ -238,7 +238,7 @@ jobs:
           python3 -c '
           import json
           r = json.load(open("/tmp/rst.json"))
-          assert r["restoredAt"] and r["restoredBy"] == "Dr. Sara Rahman"
+          assert r.get("restoredAt") and r.get("restoredBy") == "Dr. Sara Rahman"
           assert r["removedAt"] and r["removedBy"]      # both halves on ONE row — restored, never deleted
           print("restored:", r["removalId"], "—", r["removedAt"], "→", r["restoredAt"])'
           curl -sf -H "Authorization: Bearer $NUR1" "$API/api/icu/assignments/mine" \
@@ -320,7 +320,7 @@ jobs:
           for u in $(echo "$cov" | python3 -c 'import json,sys
           try: rows=json.load(sys.stdin)
           except Exception: rows=[]
-          print(" ".join(r["userId"] for c in rows for r in c["removals"] if not r["restoredAt"]))'); do
+          print(" ".join(r["userId"] for c in rows for r in c["removals"] if not r.get("restoredAt")))'); do
             curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
               -d '{"patientId":"'$PID'","userId":"'$u'"}' "$API/api/icu/assignments/restore" >/dev/null \
               && echo "cleanup restored $u" || echo "cleanup restore of $u failed (encounter may be closed — acceptable)"
