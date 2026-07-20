@@ -118,6 +118,8 @@ jobs:
             echo "$u: token issued"
           done
           { echo "DRUG=e2e-drug-${GITHUB_RUN_ID}"; echo "DRUG2=e2e-drug2-${GITHUB_RUN_ID}";
+            echo "FREENAME=E2E Free Drug ${GITHUB_RUN_ID} (Mixed Case)";
+            echo "FVAL=E2E With Meals ${GITHUB_RUN_ID}";
             } >> "$GITHUB_ENV"
 
       - name: Reads — 401 unauth; every profile 200 (+ CORS); seeded SUBSET; vocabulary exact
@@ -192,10 +194,13 @@ jobs:
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$CRE" "$API/api/icu/formulary")
           rc=$(echo "$out" | tail -1); echo "duplicate create -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already exists in the formulary" in e, e'
-          # malformed → 400: unknown field (binding), bad drugId, empty strengths, invalid per-drug frequency
+          # malformed → 400: unknown field (binding), over-long drugId (the
+          # platform bound — the old lowercase/2-64 FORMAT rule is REMOVED;
+          # free-text acceptance is proven in the FREE-TEXT NAMES step),
+          # empty strengths, invalid per-drug frequency
           for body in \
             "$(echo "$CRE" | sed "s/\"prnCapable\":false/\"prnCapable\":false,\"typo\":true/")" \
-            "$(echo "$CRE" | sed "s/$DRUG/Bad_Id/")" \
+            "$(echo "$CRE" | sed "s/$DRUG/$(python3 -c 'print("x"*2001)')/")" \
             "$(echo "$CRE" | sed "s/\"strengths\":\[\"1 mg\"\]/\"strengths\":[]/;s/$DRUG/e2e-x-$GITHUB_RUN_ID/")" \
             "$(echo "$CRE" | sed "s/\"frequencies\":\[\"daily\"\]/\"frequencies\":[\"whenever\"]/;s/$DRUG/e2e-x-$GITHUB_RUN_ID/")" \
             ; do
@@ -219,6 +224,35 @@ jobs:
           echo "no-change edit -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d '{"name":"X"}' "$API/api/icu/formulary/ghost-$GITHUB_RUN_ID")
           echo "absent edit -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+
+      - name: FREE-TEXT NAMES — name-only create (hidden drug_ key), duplicate-active-name 409, free frequency value, q6h named 400
+        run: |
+          # (a) create with NO drugId — the pharmacist types only the NAME
+          # (mixed case, spaces, parentheses); the server generates the
+          # hidden internal key (the auto-generated-MRN principle)
+          FBODY="{\"name\":\"$FREENAME\",\"brandNames\":[],\"drugClass\":\"Test\",\"form\":\"tablet\",\"strengths\":[\"1 mg\"],\"doses\":[\"1 mg\"],\"defaultDose\":\"1 mg\",\"routes\":[\"PO\"],\"frequencies\":[\"daily\"],\"prnCapable\":false,\"allergyBlock\":[],\"allergyWarn\":[]}"
+          curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$FBODY" "$API/api/icu/formulary" > /tmp/free.json
+          FDRUG=$(python3 -c '
+          import json,os; d=json.load(open("/tmp/free.json"))
+          assert d["name"]==os.environ["FREENAME"], d["name"]
+          assert d["drugId"].startswith("drug_") and len(d["drugId"])==16, d["drugId"]
+          print(d["drugId"])')
+          echo "FDRUG=$FDRUG" >> "$GITHUB_ENV"
+          echo "free-text name accepted verbatim; hidden key $FDRUG"
+          # (b) a duplicate ACTIVE name — case-insensitive — is refused 409
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d "$(echo "$FBODY" | FREENAME="$FREENAME" python3 -c 'import sys,os; print(sys.stdin.read().replace(os.environ["FREENAME"], os.environ["FREENAME"].upper()))')" \
+            "$API/api/icu/formulary")
+          rc=$(echo "$out" | tail -1); echo "duplicate active name (upper-cased) -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "an active drug named" in e and "indistinguishable" in e, e; print("409:", e)'
+          # (c) a FREE-TEXT named frequency (spaces + case) is accepted…
+          curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d "{\"value\":\"$FVAL\"}" "$API/api/icu/formulary/frequencies" \
+            | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert d["value"]==os.environ["FVAL"] and d["active"] is True, d; print("frequency accepted verbatim:", d["value"])'
+          # …and the q<n>h STRUCTURAL guard survives (safety rule, kept):
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d '{"value":"q6h"}' "$API/api/icu/formulary/frequencies")
+          echo "named q6h -> HTTP $rc (structured pattern stays code)"; [ "$rc" = "400" ] || exit 1
 
       - name: Admit THIS RUN's patient (self-sufficiency — never depends on seeded admissions)
         run: |
@@ -313,7 +347,7 @@ jobs:
             # 409 = already discharged (an earlier retry) — both terminal states are clean
             { [ "$rc" = "200" ] || [ "$rc" = "409" ]; } || fails=$((fails+1))
           fi
-          for d in "${DRUG:-}" "${DRUG2:-}"; do
+          for d in "${DRUG:-}" "${DRUG2:-}" "${FDRUG:-}"; do
             [ -n "$d" ] || continue
             rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$d/deactivate")
             echo "deactivate run drug $d -> HTTP $rc"
@@ -321,6 +355,12 @@ jobs:
             # failed before creating it — all three leave nothing active
             { [ "$rc" = "200" ] || [ "$rc" = "409" ] || [ "$rc" = "404" ]; } || fails=$((fails+1))
           done
+          if [ -n "${FVAL:-}" ]; then
+            enc=$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["FVAL"], safe=""))')
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/frequencies/$enc/deactivate")
+            echo "deactivate run frequency '$FVAL' -> HTTP $rc"
+            { [ "$rc" = "200" ] || [ "$rc" = "409" ] || [ "$rc" = "404" ]; } || fails=$((fails+1))
+          fi
           # loud outcome assertion — the cleanup itself must not silently no-op
           if [ -n "${EID:-}" ]; then
             st=$(curl -s -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID" \

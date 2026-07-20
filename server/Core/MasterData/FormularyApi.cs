@@ -65,8 +65,14 @@ static class FormularyApi
         {
             if (Rbac.Deny(user, "formulary.manage") is IResult denied) return denied;
 
+            /* free-text correction: the pharmacist types only the NAME —
+               an omitted drugId is generated (hidden internal key);
+               an explicit one (suites, the staging sync) stays accepted */
             var drugId = (req.DrugId ?? "").Trim();
-            if (FormularyLogic.ValidateDrugId(drugId) is string idErr) return ApiError.BadRequest(idErr);
+            if (drugId.Length == 0)
+                drugId = FormularyLogic.NewKey("drug", id => db.FormularyDrugs.AsNoTracking().Any(d => d.DrugId == id));
+            else if (FormularyLogic.ValidateExplicitId("drugId", drugId) is string idErr)
+                return ApiError.BadRequest(idErr);
             if (FormularyLogic.CheckText("name", req.Name, required: true) is string nErr) return ApiError.BadRequest(nErr);
             if (FormularyLogic.CheckText("drugClass", req.DrugClass, required: true) is string cErr) return ApiError.BadRequest(cErr);
             if (FormularyLogic.CheckText("form", req.Form, required: true) is string fErr) return ApiError.BadRequest(fErr);
@@ -89,6 +95,16 @@ static class FormularyApi
             if (db.FormularyDrugs.AsNoTracking().FirstOrDefault(d => d.DrugId == drugId) is FormularyDrugRow existing)
                 return ApiError.StateConflict(
                     $"drug id '{drugId}' already exists in the formulary ({existing.Name}, {(existing.Active ? "active" : "inactive")}) — drug ids are permanent");
+            /* with the id hidden, the NAME is the only identity a human
+               sees — a duplicate ACTIVE name is refused (the imaging
+               catalogue precedent); the id-dup check stays FIRST so
+               identical re-posts keep their established 409 */
+            var loweredName = req.Name!.Trim().ToLowerInvariant();
+            if (db.FormularyDrugs.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(d => d.Active && d.Name.Trim().ToLowerInvariant() == loweredName)
+                is FormularyDrugRow dupName)
+                return ApiError.StateConflict(
+                    $"an active drug named '{dupName.Name}' already exists in the formulary — two identical entries would be indistinguishable when ordering; edit or retire the existing one");
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var dto = new FormularyDrugDto(
@@ -133,6 +149,15 @@ static class FormularyApi
             if (FormularyLogic.CheckFrequencies(db, "frequencies", req.Frequencies) is string qErr)
                 return ApiError.BadRequest(qErr);
             if (FormularyLogic.CheckDoseLimits(req.DoseLimits) is string dlErr) return ApiError.BadRequest(dlErr);
+            if (req.Name is not null)
+            {
+                var loweredName = req.Name.Trim().ToLowerInvariant();
+                if (db.FormularyDrugs.AsNoTracking().AsEnumerable()
+                        .FirstOrDefault(d => d.DrugId != drugId && d.Active && d.Name.Trim().ToLowerInvariant() == loweredName)
+                    is FormularyDrugRow dupName)
+                    return ApiError.StateConflict(
+                        $"an active drug named '{dupName.Name}' already exists in the formulary — two identical entries would be indistinguishable when ordering");
+            }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var events = new List<FormularyEventDto>();
@@ -219,6 +244,13 @@ static class FormularyApi
             if (row is null) return ApiError.NotFound();
             if (row.Active)
                 return ApiError.StateConflict($"drug '{drugId}' is already active — there is nothing to reactivate");
+            /* reactivation may not resurrect a duplicate ordering entry */
+            var loweredName = row.Name.Trim().ToLowerInvariant();
+            if (db.FormularyDrugs.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(d => d.DrugId != drugId && d.Active && d.Name.Trim().ToLowerInvariant() == loweredName)
+                is FormularyDrugRow dupName)
+                return ApiError.StateConflict(
+                    $"an active drug named '{dupName.Name}' already exists in the formulary — reactivating '{row.Name}' would put two identical entries on the ordering menu");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.Active = true;
             row.EventsJson = FormularyLogic.AppendEvents(row.EventsJson,

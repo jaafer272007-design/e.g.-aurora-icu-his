@@ -18,7 +18,7 @@ import type {
 import { IMAGING_MODALITIES } from '../../lib/api/types'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
-import { displayStamp, useNow } from '../../lib/time'
+import { clockZone, displayStamp, localStamp, useNow, wireStampOfLocal } from '../../lib/time'
 
 /* the pseudo-panel key for the Custom / Other tab (not a catalogue testId) */
 const CUSTOM = '__custom__'
@@ -108,7 +108,7 @@ export function LabEntry() {
   const [imgOrderId, setImgOrderId] = useState('')       // '' = unlinked
   const [imgModality, setImgModality] = useState('CXR')
   const [imgDescription, setImgDescription] = useState('')
-  const [imgPerformedAt, setImgPerformedAt] = useState('')
+  const [imgPerformedAt, setImgPerformedAt] = useState(() => localStamp(Date.now()))
   const [imgFindings, setImgFindings] = useState('')
   const [imgImpression, setImgImpression] = useState('')
   const [imgRadiologist, setImgRadiologist] = useState('')
@@ -216,7 +216,7 @@ export function LabEntry() {
     setEntryError(null)
     setImgOrders(null); setImgStudies(null); setImgOrderId(''); setImgDescription('')
     setImgFindings(''); setImgImpression(''); setImgRadiologist(''); setImgCritical(false)
-    setImgNote(''); setImgError(null); setImgPerformedAt('')
+    setImgNote(''); setImgError(null); setImgPerformedAt(localStamp(Date.now()))
     loadImaging()
     getRosterRecord(patientId).then(rec => {
       if (stale) return
@@ -352,7 +352,7 @@ export function LabEntry() {
       patientId,
       ...(imgOrderId ? { orderId: imgOrderId } : { description: imgDescription.trim() }),
       modality: imgModality,
-      performedAt: imgPerformedAt.trim(),
+      performedAt: wireStampOfLocal(imgPerformedAt.trim()) ?? imgPerformedAt.trim(),
       findings: imgFindings.trim(),
       impression: imgImpression.trim(),
       reportingRadiologist: imgRadiologist.trim(),
@@ -365,7 +365,7 @@ export function LabEntry() {
       showToast('Imaging report documented',
         `${r.data.modality} · ${linked}${r.data.flag === 'critical' ? ' · CRITICAL (clinician-marked)' : ''} · source manual`)
       setImgOrderId(''); setImgDescription(''); setImgFindings(''); setImgImpression('')
-      setImgRadiologist(''); setImgCritical(false); setImgNote(''); setImgPerformedAt('')
+      setImgRadiologist(''); setImgCritical(false); setImgNote(''); setImgPerformedAt(localStamp(Date.now()))
       loadImaging()
     } else if (r.kind === 'rejected') {
       setImgError(r.error)
@@ -617,7 +617,7 @@ export function LabEntry() {
                   </div>
                 )}
                 <div className="lefield">
-                  <label htmlFor="lei-perf">Study performed at (UTC) <i className="req">required</i></label>
+                  <label htmlFor="lei-perf">Study performed at ({clockZone() ?? 'local time'} — pre-filled with now, edit if it happened earlier) <i className="req">required</i></label>
                   <input id="lei-perf" className="num" placeholder="yyyy-MM-dd HH:mm" value={imgPerformedAt}
                     onChange={e => { setImgPerformedAt(e.target.value); setImgError(null) }} disabled={imgBusy} />
                 </div>

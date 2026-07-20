@@ -78,10 +78,14 @@ static class HospitalIdentityApi
             var shortName = (req.ShortName ?? "").Trim();
             var address = (req.Address ?? "").Trim();
             if (name.Length == 0) return ApiError.BadRequest("hospital name is required — identity cannot be saved without it");
-            if (name.Length > 120) return ApiError.BadRequest("hospital name exceeds 120 characters");
-            if (unitName.Length > 80) return ApiError.BadRequest("unit name exceeds 80 characters");
-            if (shortName.Length > 20) return ApiError.BadRequest("short name exceeds 20 characters");
-            if (address.Length > 400) return ApiError.BadRequest("address exceeds 400 characters");
+            /* free-text correction: identity fields are what the hospital
+               says they are — only the platform bound applies (the old
+               120/80/20/400 caps were style rules) */
+            foreach (var (v, fieldName) in new[] {
+                (name, "hospital name"), (unitName, "unit name"),
+                (shortName, "short name"), (address, "address") })
+                if (v.Length > FormularyLogic.MaxTextLength)
+                    return ApiError.BadRequest($"{fieldName} exceeds {FormularyLogic.MaxTextLength} characters");
 
             var row = db.HospitalIdentity.FirstOrDefault(r => r.Id == RowId);
             var created = row is null;

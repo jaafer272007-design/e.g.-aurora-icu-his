@@ -51,7 +51,9 @@ export interface VocabSpec {
 }
 
 export interface VocabApiAdapter {
-  create(draft: { code: string; label: string; isDeath?: boolean }): Promise<AdtWriteResult<unknown>>
+  /** the entry's code is a hidden internal key the SERVER generates —
+   *  the client sends only the human-typed label/value (free text) */
+  create(draft: { label: string; isDeath?: boolean }): Promise<AdtWriteResult<unknown>>
   update?(key: string, label: string): Promise<AdtWriteResult<unknown>>
   deactivate(key: string): Promise<AdtWriteResult<unknown>>
   reactivate(key: string): Promise<AdtWriteResult<unknown>>
@@ -71,7 +73,6 @@ export function VocabManager({ title, icon, accent, spec, rows, api, onChanged, 
   const [panel, setPanel] = useState<{ kind: 'edit' | 'retire' | 'history'; key: string } | null>(null)
   const [rowError, setRowError] = useState<{ key: string; error: string } | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
-  const [cCode, setCCode] = useState('')
   const [cLabel, setCLabel] = useState('')
   const [cDeath, setCDeath] = useState(false)
   const [eLabel, setELabel] = useState('')
@@ -91,12 +92,11 @@ export function VocabManager({ title, icon, accent, spec, rows, api, onChanged, 
 
   const doCreate = () => run(null, 'the entry', () =>
     api.create({
-      code: cCode.trim(),
-      label: spec.valueKeyed ? cCode.trim() : cLabel.trim(),
+      label: cLabel.trim(),
       ...(spec.createDeathAttr && cDeath ? { isDeath: true } : {}),
     }), () => {
-    showToast(`${title} — added`, `${spec.valueKeyed ? cCode.trim() : cLabel.trim()} is selectable ${spec.usedAt} immediately`)
-    setCCode(''); setCLabel(''); setCDeath(false)
+    showToast(`${title} — added`, `${cLabel.trim()} is selectable ${spec.usedAt} immediately`)
+    setCLabel(''); setCDeath(false)
   })
 
   const doEdit = (r: VocabRow) => run(r.key, 'the change', () =>
@@ -137,7 +137,6 @@ export function VocabManager({ title, icon, accent, spec, rows, api, onChanged, 
                 <div className="uamain">
                   <span className="uawho">
                     <b>{r.label}</b>
-                    {!spec.valueKeyed && <small className="num">{r.key}</small>}
                   </span>
                   <span className="uarole">
                     <span>{spec.noun.charAt(0).toUpperCase() + spec.noun.slice(1)}</span>
@@ -181,8 +180,8 @@ export function VocabManager({ title, icon, accent, spec, rows, api, onChanged, 
                 {open === 'edit' && api.update && (
                   <div className="uapanel" role="region" aria-label={`Edit ${spec.noun}: ${r.key}`}>
                     <div className="uafields">
-                      <label>Label (the code <span className="num">{r.key}</span> is permanent)
-                        <input value={eLabel} onChange={ev => setELabel(ev.target.value)} disabled={busy} maxLength={60} />
+                      <label>Label (free text — records carrying the old label keep their history)
+                        <input value={eLabel} onChange={ev => setELabel(ev.target.value)} disabled={busy} />
                       </label>
                     </div>
                     <div className="uapanelacts">
@@ -226,21 +225,16 @@ export function VocabManager({ title, icon, accent, spec, rows, api, onChanged, 
         <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doCreate() }}>
           <div className="uafields">
             {spec.valueKeyed ? (
-              <label>Value (permanent — appears verbatim on orders)
-                <input value={cCode} onChange={e => setCCode(e.target.value)} disabled={busy}
-                  placeholder={spec.codePlaceholder} autoComplete="off" maxLength={40} />
+              <label>Value (free text — appears verbatim on orders, permanent once added)
+                <input value={cLabel} onChange={e => setCLabel(e.target.value)} disabled={busy}
+                  placeholder={spec.codePlaceholder} autoComplete="off" />
               </label>
             ) : (
-              <>
-                <label>Code (permanent — lowercase, digits, underscore)
-                  <input value={cCode} onChange={e => setCCode(e.target.value)} disabled={busy}
-                    placeholder={spec.codePlaceholder} autoComplete="off" maxLength={40} />
-                </label>
-                <label>Label (shown at the bedside and on every record)
-                  <input value={cLabel} onChange={e => setCLabel(e.target.value)} disabled={busy}
-                    placeholder={spec.labelPlaceholder} maxLength={60} />
-                </label>
-              </>
+              <label>Name (free text — shown at the bedside and on every record; the
+                system keeps its own hidden identifier)
+                <input value={cLabel} onChange={e => setCLabel(e.target.value)} disabled={busy}
+                  placeholder={spec.labelPlaceholder ?? spec.codePlaceholder} />
+              </label>
             )}
             {spec.createDeathAttr && (
               <label className="uacheck">
@@ -253,7 +247,7 @@ export function VocabManager({ title, icon, accent, spec, rows, api, onChanged, 
           </div>
           {formError && <div className="uaerr" role="alert">{formError}</div>}
           <button className="uasubmit" type="submit"
-            disabled={busy || !cCode.trim() || (!spec.valueKeyed && !cLabel.trim())}>
+            disabled={busy || !cLabel.trim()}>
             {busy ? 'Adding…' : 'Add to vocabulary'}
           </button>
         </form>

@@ -429,7 +429,7 @@ export function Configuration() {
                     codePlaceholder: 'with meals',
                   }}
                   rows={frequencyRows}
-                  api={{ create: d => createFrequency(d.code), deactivate: deactivateFrequency, reactivate: reactivateFrequency }}
+                  api={{ create: d => createFrequency(d.label), deactivate: deactivateFrequency, reactivate: reactivateFrequency }}
                   onChanged={reload} showToast={showToast} />
               )}
 
@@ -450,19 +450,19 @@ export function Configuration() {
                         <div className="uafields">
                           <label>Hospital name (letterhead + every identity surface)
                             <input value={hName} onChange={e => setHName(e.target.value)} disabled={identBusy}
-                              placeholder="e.g. St. Mary's Teaching Hospital" maxLength={120} />
+                              placeholder="e.g. St. Mary's Teaching Hospital" />
                           </label>
                           <label>Unit / ICU name (headers, bed board — this install&apos;s one unit)
                             <input value={hUnit} onChange={e => setHUnit(e.target.value)} disabled={identBusy}
-                              placeholder="e.g. Adult ICU — Unit 1" maxLength={80} />
+                              placeholder="e.g. Adult ICU — Unit 1" />
                           </label>
                           <label>Short name / abbreviation (compact headers)
                             <input value={hShort} onChange={e => setHShort(e.target.value)} disabled={identBusy}
-                              placeholder="e.g. SMTH" maxLength={20} />
+                              placeholder="e.g. SMTH" />
                           </label>
                           <label>Address block (printed under the letterhead; optional)
                             <textarea value={hAddr} onChange={e => setHAddr(e.target.value)} disabled={identBusy}
-                              rows={3} maxLength={400} placeholder={'Street, City\nPhone · Fax'} />
+                              rows={3} placeholder={'Street, City\nPhone · Fax'} />
                           </label>
                         </div>
                         {identError && <div className="uaerr" role="alert">{identError}</div>}
@@ -698,13 +698,13 @@ export function Configuration() {
                   <Card icon={<IconSettings size={15} stroke="var(--blue)" />} title="Add Bed" aside="on the board and admittable immediately">
                     <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doBedCreate() }}>
                       <div className="uafields">
-                        <label>Bed id (permanent — never renamed once created)
+                        <label>Bed label (free text — permanent, never renamed once created)
                           <input value={bId} onChange={e => setBId(e.target.value)} disabled={bedBusy}
-                            placeholder="B-17" autoComplete="off" maxLength={20} />
+                            placeholder="B-17" autoComplete="off" />
                         </label>
-                        <label>Area (the board groups beds by area)
+                        <label>Area (free text — the board groups beds by area)
                           <input value={bArea} onChange={e => setBArea(e.target.value)} disabled={bedBusy}
-                            placeholder="Pod C" maxLength={40} />
+                            placeholder="Pod C" />
                         </label>
                         <label>Position (optional — ordering on the board; appended last when omitted)
                           <input value={bSeq} onChange={e => setBSeq(e.target.value.replace(/[^0-9]/g, ''))} disabled={bedBusy}

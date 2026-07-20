@@ -286,6 +286,17 @@ jobs:
             | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert d["setId"]==os.environ["SID"] and d["history"][0]["actor"]=="Samir Qassem"; print("set created:", d["setId"])'
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$SCRE" "$API/api/icu/order-sets")
           echo "duplicate setId -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          # FREE-TEXT correction — name-only create: the author types only
+          # the NAME; the server generates the hidden oset_ key. A
+          # duplicate ACTIVE name (case-insensitive) is refused 409.
+          FSID=$(curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"E2E Free Bundle $GITHUB_RUN_ID\",\"description\":\"free-text e2e\",\"items\":[{\"category\":\"Lab\",\"summary\":\"E2E panel\",\"testId\":\"$TID\",\"priority\":\"Routine\"}]}" \
+            "$API/api/icu/order-sets" | python3 -c 'import json,sys; d=json.load(sys.stdin); i=d["setId"]; assert i.startswith("oset_") and len(i)==16, i; print(i)')
+          echo "FSID=$FSID" >> "$GITHUB_ENV"; echo "name-only set created: $FSID (hidden key)"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"e2e free bundle $GITHUB_RUN_ID\",\"description\":\"dup\",\"items\":[{\"category\":\"Lab\",\"summary\":\"E2E panel\",\"testId\":\"$TID\",\"priority\":\"Routine\"}]}" \
+            "$API/api/icu/order-sets")
+          echo "duplicate active set name (case-insensitive) -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
             -d '{"setId":"e2e-bad-'$GITHUB_RUN_ID'","name":"X","description":"d","items":[{"category":"Lab","summary":"s","testId":"no-such-test","priority":"Routine"}]}' "$API/api/icu/order-sets")
           echo "set w/ unknown test -> HTTP $rc (authoring integrity)"; [ "$rc" = "400" ] || exit 1
@@ -338,7 +349,7 @@ jobs:
           # $DTID (the Consultant leg's test) is normally already TRUE-
           # deleted by its own step — deactivate then answers 404, accepted
           # below. It only still exists if the run died mid-step.
-          for pair in "lab-catalog:$TID:LAB" "lab-catalog:$DTID:DOC" "order-sets:$SID:PHA" "formulary:$DID:PHA"; do
+          for pair in "lab-catalog:$TID:LAB" "lab-catalog:$DTID:DOC" "order-sets:$SID:PHA" "order-sets:${FSID:-}:PHA" "formulary:$DID:PHA"; do
             path="${pair%%:*}"; rest="${pair#*:}"; id="${rest%%:*}"; who="${rest#*:}"
             [ -n "$id" ] || continue
             eval "t=\$$who"

@@ -39,21 +39,32 @@ static class CodeStatusApi
         }).RequireAuthorization();
 
         /* POST /api/icu/code-statuses — add an entry (Senior Doctor).
-           Codes are permanent natural keys: lowercase snake identifiers,
-           duplicate → 409 naming the existing entry. */
+           Free-text correction: the clinician types only the LABEL — an
+           omitted code is generated (hidden internal key, permanent once
+           created); an explicit code stays wire-accepted with no format
+           rule. Duplicate code → 409; duplicate ACTIVE label → 409 (the
+           label is the only identity a human sees). */
         app.MapPost("/api/icu/code-statuses", (CreateCodeStatusRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "codestatus.manage") is IResult denied) return denied;
             var code = (req.Code ?? "").Trim();
-            if (code.Length == 0) return ApiError.BadRequest("code is required");
-            if (!System.Text.RegularExpressions.Regex.IsMatch(code, "^[a-z0-9_]{2,40}$"))
-                return ApiError.BadRequest("code must be 2-40 lowercase letters, digits or underscores (a permanent identifier, e.g. 'dnr_dni')");
+            if (code.Length == 0)
+                code = FormularyLogic.NewKey("cs", c => db.CodeStatuses.AsNoTracking().Any(x => x.Code == c));
+            else if (FormularyLogic.ValidateExplicitId("code", code) is string idErr)
+                return ApiError.BadRequest(idErr);
             var label = (req.Label ?? "").Trim();
             if (label.Length == 0) return ApiError.BadRequest("label is required");
-            if (label.Length > 60) return ApiError.BadRequest("label exceeds 60 characters");
+            if (label.Length > FormularyLogic.MaxTextLength)
+                return ApiError.BadRequest($"label exceeds {FormularyLogic.MaxTextLength} characters");
             if (db.CodeStatuses.FirstOrDefault(c => c.Code == code) is CodeStatusRow existing)
                 return ApiError.StateConflict(
                     $"code status '{code}' already exists ({existing.Label}, {(existing.Active ? "active" : "inactive")}) — codes are permanent");
+            var loweredLabel = label.ToLowerInvariant();
+            if (db.CodeStatuses.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(c => c.Active && c.Label.Trim().ToLowerInvariant() == loweredLabel)
+                is CodeStatusRow dupLabel)
+                return ApiError.StateConflict(
+                    $"an active code status labelled '{dupLabel.Label}' already exists — two identical entries would be indistinguishable at the bedside; edit or retire the existing one");
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var row = new CodeStatusRow
@@ -78,9 +89,16 @@ static class CodeStatusApi
             if (row is null) return ApiError.NotFound();
             var label = (req.Label ?? "").Trim();
             if (label.Length == 0) return ApiError.BadRequest("label is required");
-            if (label.Length > 60) return ApiError.BadRequest("label exceeds 60 characters");
+            if (label.Length > FormularyLogic.MaxTextLength)
+                return ApiError.BadRequest($"label exceeds {FormularyLogic.MaxTextLength} characters");
             if (label == row.Label)
                 return ApiError.BadRequest("no field change — the provided label matches the current entry");
+            var loweredLabel = label.ToLowerInvariant();
+            if (db.CodeStatuses.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(c => c.Code != code && c.Active && c.Label.Trim().ToLowerInvariant() == loweredLabel)
+                is CodeStatusRow dupLabel)
+                return ApiError.StateConflict(
+                    $"an active code status labelled '{dupLabel.Label}' already exists — two identical entries would be indistinguishable at the bedside");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.EventsJson = FormularyLogic.AppendEvents(row.EventsJson,
                 [new(FormularyLogic.Now(), actor, "changed", $"label: {row.Label} → {label}")]);
@@ -115,6 +133,13 @@ static class CodeStatusApi
             if (row is null) return ApiError.NotFound();
             if (row.Active)
                 return ApiError.StateConflict($"code status '{code}' is already active — there is nothing to reactivate");
+            /* reactivation may not resurrect a duplicate bedside label */
+            var loweredLabel = row.Label.Trim().ToLowerInvariant();
+            if (db.CodeStatuses.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(c => c.Code != code && c.Active && c.Label.Trim().ToLowerInvariant() == loweredLabel)
+                is CodeStatusRow dupLabel)
+                return ApiError.StateConflict(
+                    $"an active code status labelled '{dupLabel.Label}' already exists — reactivating '{row.Label}' would put two identical entries at the bedside");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.Active = true;
             row.EventsJson = FormularyLogic.AppendEvents(row.EventsJson,

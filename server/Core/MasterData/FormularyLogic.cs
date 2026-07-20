@@ -64,14 +64,24 @@ static class FormularyLogic
 
     /* ---------- drug field validation (create + edit share it) ---------- */
 
-    public static string? ValidateDrugId(string drugId)
+    /** Hidden internal keys (the free-text-fields correction): a human
+        types only the display name — the SYSTEM owns the identifier (the
+        auto-generated-MRN principle, the imaging StudyId precedent).
+        Explicit ids remain wire-accepted with NO format rule (suites and
+        the staging formulary sync keep working); the old 2-64
+        lowercase/digit/hyphen rule was a style rule and is removed. */
+    public static string NewKey(string prefix, Func<string, bool> exists)
     {
-        if (drugId.Length == 0) return "drugId is required";
-        if (drugId.Length is < 2 or > 64) return "drugId must be 2-64 characters";
-        if (!drugId.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-'))
-            return "drugId may contain only lowercase letters, digits and '-'";
-        return null;
+        while (true)
+        {
+            var id = $"{prefix}_{Guid.NewGuid():N}"[..16];
+            if (!exists(id)) return id;
+        }
     }
+
+    /** an explicit id needs only the platform bound — never a format */
+    public static string? ValidateExplicitId(string field, string id) =>
+        id.Length > MaxTextLength ? $"{field} exceeds {MaxTextLength} characters" : null;
 
     public static string? CheckText(string field, string? value, bool required)
     {

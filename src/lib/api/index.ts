@@ -1069,8 +1069,9 @@ export async function getCodeStatuses(): Promise<CodeStatusEntry[]> {
   throw apiUnavailable('code-status vocabulary')
 }
 
-/** POST /api/icu/code-statuses — add an entry. REAL-ONLY write. */
-export function createCodeStatus(draft: { code: string; label: string }): Promise<AdtWriteResult<CodeStatusEntry>> {
+/** POST /api/icu/code-statuses — add an entry. REAL-ONLY write.
+ *  code is a hidden internal key — omitted by the UI (server-generated). */
+export function createCodeStatus(draft: { code?: string; label: string }): Promise<AdtWriteResult<CodeStatusEntry>> {
   return usersWrite<CodeStatusEntry>('/api/icu/code-statuses', 'code-status create', draft)
 }
 
@@ -1207,8 +1208,9 @@ export function deleteLabTest(testId: string): Promise<AdtWriteResult<LabTest>> 
   return usersWrite<LabTest>(`/api/icu/lab-catalog/${encodeURIComponent(testId)}`, 'lab-catalogue delete', undefined, 'DELETE')
 }
 
-/** POST /api/icu/order-sets — author a set (ordersets.manage). REAL-ONLY. */
-export function createOrderSet(draft: { setId: string; name: string; description: string; items: OrderSetItemTemplate[] }): Promise<AdtWriteResult<OrderSetDef>> {
+/** POST /api/icu/order-sets — author a set (ordersets.manage). REAL-ONLY.
+ *  setId is a hidden internal key — omitted by the UI (server-generated). */
+export function createOrderSet(draft: { setId?: string; name: string; description: string; items: OrderSetItemTemplate[] }): Promise<AdtWriteResult<OrderSetDef>> {
   return usersWrite<OrderSetDef>('/api/icu/order-sets', 'order-set create', draft)
 }
 
@@ -1828,7 +1830,7 @@ export async function getDispositions(): Promise<DispositionEntry[]> {
   throw apiUnavailable('disposition vocabulary')
 }
 
-export function createDisposition(draft: { code: string; label: string; isDeath?: boolean }): Promise<AdtWriteResult<DispositionEntry>> {
+export function createDisposition(draft: { code?: string; label: string; isDeath?: boolean }): Promise<AdtWriteResult<DispositionEntry>> {
   return usersWrite<DispositionEntry>('/api/icu/dispositions', 'disposition create', draft)
 }
 export function updateDisposition(code: string, draft: { label: string }): Promise<AdtWriteResult<DispositionEntry>> {
@@ -1852,7 +1854,7 @@ export async function getIsolationTypes(): Promise<IsolationTypeEntry[]> {
   throw apiUnavailable('isolation-type vocabulary')
 }
 
-export function createIsolationType(draft: { code: string; label: string }): Promise<AdtWriteResult<IsolationTypeEntry>> {
+export function createIsolationType(draft: { code?: string; label: string }): Promise<AdtWriteResult<IsolationTypeEntry>> {
   return usersWrite<IsolationTypeEntry>('/api/icu/isolation-types', 'isolation-type create', draft)
 }
 export function updateIsolationType(code: string, draft: { label: string }): Promise<AdtWriteResult<IsolationTypeEntry>> {
@@ -1876,7 +1878,7 @@ export async function getShifts(): Promise<ShiftEntry[]> {
   throw apiUnavailable('shift vocabulary')
 }
 
-export function createShift(draft: { code: string; label: string }): Promise<AdtWriteResult<ShiftEntry>> {
+export function createShift(draft: { code?: string; label: string }): Promise<AdtWriteResult<ShiftEntry>> {
   return usersWrite<ShiftEntry>('/api/icu/shifts', 'shift create', draft)
 }
 export function updateShift(code: string, draft: { label: string }): Promise<AdtWriteResult<ShiftEntry>> {

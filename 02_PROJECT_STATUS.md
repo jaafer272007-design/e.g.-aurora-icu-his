@@ -1,6 +1,58 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-20 · current through the IMAGING CATALOGUE
+**Last updated: 2026-07-20 · current through the FREE-TEXT FIELDS +
+AUTO-FILLED TIMESTAMPS CORRECTION (cross-cutting — the #142 principle
+applied SYSTEM-WIDE, from the owner's hands-on testing). FIX 1: every
+STYLE rule on a human-typed name/label field is REMOVED — the
+formulary drugId (2-64 lowercase/digit/hyphen), the order-set setId
+(same rule), the code-status and disposition/isolation/shift codes
+(`^[a-z0-9_]{2,40}$`), the named-frequency value charset/40, the bed
+id charset/20, every 60-char label cap, the hospital-identity
+120/80/20/400 caps (which were ALSO client-side maxLength attributes
+— found by the rendered pass, removed), and the imaging unlinked
+description + reportingRadiologist 200s. A human now types ONLY free
+text (the platform 2000-char abuse bound is the one rule left); where
+a stable identity is needed the SYSTEM generates a hidden key
+(drug_/oset_/cs_/dsp_/iso_/shf_ + GUID hex — never typed, never
+displayed; Formulary/Order-Set rows and vocabulary rows no longer
+render codes), and a duplicate ACTIVE name/label answers 409 naming
+the holder on create/edit/reactivate (the imaging-catalogue precedent
+extended; INACTIVE names never block). Value-keyed fields where the
+typed value IS the display stay typed — frequencies, bed labels, the
+lab testId — just with no format rule. EXPLICIT ids remain
+wire-accepted everywhere (the suites and the staging formulary sync
+keep working; id-dup 409s are checked FIRST so established messages
+hold). SAFETY RULES KEPT, each re-proven: national-ID + file-number
+uniqueness 409s, MRN auto-generated + typed-MRN 400, the q<n>h
+structural frequency guard (MAR parses it — a named 'q6h' would
+shadow the built-in meaning), the reserved 'died' disposition,
+frequency-orderability membership, the imaging modality vocabulary,
+bed permanence 409s, the seq range, platform bounds, performedAt
+shape/not-future; the USERNAME format rule is kept deliberately (a
+login identifier the human retypes at every sign-in, not a display
+label — flagged for the owner). FIX 2: the sweep found exactly ONE
+blank type-now field — the imaging-entry performedAt, which demanded
+hand-typed UTC; it now PRE-FILLS the server-local wall clock
+(localStamp), stays editable for backdating, and converts wall→UTC on
+submit (wireStampOfLocal — the #140 one-conversion path's write
+side, label naming the zone); the report-correction dialog already
+pre-filled the stored stamp (verified, unchanged); every other "when"
+is server-stamped at the moment of the action (MAR administration,
+lab collected/resulted, acknowledgments, ADT events, weight/height,
+handoff), and observations stay deliberately no-back-dating (the §2
+locked rule — excluded by design, not omission). NO SCHEMA CHANGE, no
+migration — existing rows keep their ids/codes/labels verbatim.
+Verified 46/46 headless ×2 providers (SQLite + Postgres) + 24/24
+rendered (production appliance on Asia/Baghdad — prefill proven
++180 min off UTC and converted back exactly on the wire; staging
+bundle pass); the formulary suite gains the FREE-TEXT NAMES step
+(name-only create → drug_ key, case-insensitive dup 409, free
+frequency value, q6h named 400) and the labcatalog suite a name-only
+order-set leg (oset_ key + dup 409); the code-status/vocabulary
+management endpoints remain deployed-suite-uncovered (recorded gap,
+unchanged since #105/#110 — covered here by the local three-tier
+pass);
+prior marker retained: current through the IMAGING CATALOGUE
 CLINICAL-MODEL CORRECTION — the shipped #136 catalogue was found
 MIS-MODELED by the clinical validator on hands-on testing: each entry
 was a fully-specified study (body region, contrast and portable BAKED
@@ -1878,6 +1930,10 @@ record.]*
   runner executes needs the runner to execute it.
 
 ### Layer 4 — Master Data: the Formulary (built) — Aurora Core
+
+*[Superseded in part — the typed-id/format rules and small caps described
+below were removed by the Free-text fields correction (see that record);
+lifecycles, RBAC, audit and permanence invariants are unchanged.]*
 The REFERENCE layer begins (`server/Core/MasterData/`) — the third kind
 of data, distinct from transactional (orders, results) and entity
 (patients, encounters, users): a real, database-backed drug formulary
@@ -5471,6 +5527,80 @@ are the mirror-the-lab-catalogue lifecycle (retire/reactivate/true
 delete), the imagingcatalog.manage RBAC, the coded-order linkage and
 the snapshot-at-use rule.]*
 
+### Free-text name/label fields + auto-filled timestamps (built) — the #142 principle system-wide
+
+**The finding (owner's hands-on testing):** the imaging studyId
+friction that #142 fixed was not unique — the same style rules kept
+rejecting valid input across the platform. The verify-first sweep
+confirmed every site in code: FormularyLogic.ValidateDrugId (2-64,
+lowercase/digits/hyphen — also reused for order-set setIds),
+CodeStatusApi + VocabApi `^[a-z0-9_]{2,40}$` codes and 60-char label
+caps, the named-frequency `^[a-zA-Z0-9][a-zA-Z0-9 _/\-]{1,39}$` rule,
+BedRegistryApi's `^[A-Za-z0-9][A-Za-z0-9 _-]{0,19}$` + 40-char area,
+HospitalIdentityApi's 120/80/20/400 caps (duplicated as client
+maxLength attributes — caught by the rendered pass, not the code
+sweep), and the imaging unlinked-description/reportingRadiologist
+200s.
+
+**The split (reported with the build):**
+- **Style → REMOVED:** all of the above. A human types only a
+  free-text name/label; the single remaining rule is the platform
+  2000-char bound. Hidden system-generated keys (`drug_`/`oset_`/
+  `cs_`/`dsp_`/`iso_`/`shf_` + GUID hex via FormularyLogic.NewKey,
+  collision-checked) carry identity behind the scenes — the
+  auto-generated-MRN principle; codes no longer render anywhere
+  (Formulary/Order-Set rows, vocabulary rows, toasts). Explicit ids
+  stay WIRE-ACCEPTED (suites + staging formulary sync unbroken;
+  free-text explicit ids are legal too), id-dup 409s checked FIRST.
+  New integrity guard family: duplicate ACTIVE name/label → 409
+  naming the holder, on create, edit and reactivate (two identical
+  picker entries are an accident); inactive names never block.
+- **Safety → KEPT (none removed):** national-ID uniqueness 409,
+  file-number uniqueness 409, MRN auto-generated + typed-MRN 400 +
+  the MRN-format rule on correction, the q<n>h structural guard on
+  named frequencies (MAR derives schedules by parsing q<n>h — a named
+  'q6h' would shadow it), the reserved 'died' disposition, per-drug
+  frequency orderability, the imaging modality vocabulary (#142
+  locked), bed-id permanence/uniqueness 409s + the live-occupancy
+  retire guard, seq 1-9999, all platform text bounds, performedAt
+  shape + not-future. The USERNAME 3-64 lowercase rule is also kept
+  — a login identifier the human retypes at every sign-in, not a
+  display label (flagged; one owner's word removes it).
+
+**FIX 2 — auto-filled editable "now":** the sweep found exactly one
+blank type-now field: the imaging-entry performedAt (`#lei-perf`),
+which asked for hand-typed UTC. It now pre-fills `localStamp(now)`
+(the server's wall clock per #140), the label names the zone, the
+value stays editable for backdating, and submit converts wall→UTC via
+`wireStampOfLocal` — the one-conversion path's write side. The
+report-correction dialog already pre-filled the stored stamp
+(verified). Everything else that records "when" is server-stamped at
+the action (MAR, lab collected/resulted, acknowledgments, ADT,
+weight/height, handoff); observations remain no-back-dating by locked
+design — excluded deliberately, not missed.
+
+**No schema change.** No migration; every existing id/code/label is
+byte-preserved. RBAC untouched.
+
+**Verified:** 46/46 headless ×2 providers (SQLite + Postgres —
+free-text accept incl. unicode/half-width, hidden-key prefixes,
+dup-409 family incl. reactivation, explicit-id compat, inactive-name
+non-blocking, order-set apply through the shared path, every KEPT
+safety rule exercised); 24/24 rendered — production appliance
+(Asia/Baghdad): single Name inputs across Configuration, no code ever
+rendered, free-text drug added from the UI, bed with spaces on the
+registry, >120-char hospital name saved, performedAt PRE-FILLED with
+Baghdad wall time (proven ≈180 min off UTC), backdated 20 min in the
+field and stored in UTC exactly; staging-bundle pass green. Suites:
+formulary FREE-TEXT NAMES step + labcatalog name-only order-set leg
+(both with failure-path cleanup); the old `Bad_Id` 400 leg became an
+over-long-id bound probe (the format rule it asserted no longer
+exists). Supersedes, rule-level: the #32 drugId format, the #33 setId
+format, the #105/#110 typed-code model (codes now system-generated —
+their PERMANENCE invariant survives unchanged), the #108 bedId
+format, the #106 identity caps, and the "(UTC)" typed imaging
+performedAt from #105's entry form.
+
 ### Locale/Timezone + Patient File Number (built) — the last of the editable arc
 
 From the validator's design (LOCALE_FILENUMBER_DESIGN.md — driven by a
@@ -5566,6 +5696,10 @@ recommend not now), and the mock layer's mixed-clock stamp in
 pre-existing, midnight-adjacent only).
 
 ### Configuration Vocabularies (built) — dispositions, isolation types, shifts, named frequencies (the arc's last four)
+
+*[Superseded in part — the typed-id/format rules and small caps described
+below were removed by the Free-text fields correction (see that record);
+lifecycles, RBAC, audit and permanence invariants are unchanged.]*
 
 Built from the validator's CONFIG_VOCABULARIES_DESIGN.md (2026-07-19).
 Every hospital-varying vocabulary is now editable, governed data on the
@@ -5798,6 +5932,10 @@ pattern.
 
 ### Bed Registry (built) — fourth Configuration tenant; the retire rule is LIVE OCCUPANCY
 
+*[Superseded in part — the typed-id/format rules and small caps described
+below were removed by the Free-text fields correction (see that record);
+lifecycles, RBAC, audit and permanence invariants are unchanged.]*
+
 **The finding (configurability audit + this PR's verify-first sweep):**
 - `BedRow {BedId [Key], Area, Seq}` (AdtModels.cs) — no Active flag, no
   audit; seeded from `Data/beds-seed.json` (16 beds, Pod A/B) in BOTH
@@ -5980,6 +6118,10 @@ builds green.
 
 ### Config Home + Hospital Identity (built) — the Configuration area's foundation
 
+*[Superseded in part — the typed-id/format rules and small caps described
+below were removed by the Free-text fields correction (see that record);
+lifecycles, RBAC, audit and permanence invariants are unchanged.]*
+
 **The finding (configurability audit + this PR's verify-first sweep):**
 hospital identity was compiled-in on four render surfaces —
 `PrintLayout.tsx` ("AURORA GENERAL HOSPITAL" on every printed
@@ -6081,6 +6223,10 @@ Production bundle grep: "AURORA GENERAL HOSPITAL" and "Unit 4B" ABSENT
 PRESENT. `tsc -b --force` + both builds green.
 
 ### Code Status governed vocabulary (built) — the SAFETY FIX, first Configuration-area tenant
+
+*[Superseded in part — the typed-id/format rules and small caps described
+below were removed by the Free-text fields correction (see that record);
+lifecycles, RBAC, audit and permanence invariants are unchanged.]*
 
 **The finding (configurability audit + this PR's verify-first sweep):**
 `PatientRow.CodeStatus` was an unvalidated free-text string with NO
