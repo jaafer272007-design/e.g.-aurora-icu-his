@@ -9,24 +9,25 @@ using Microsoft.EntityFrameworkCore;
 namespace Aurora.Core.MasterData;
 
 /* ------------- Order Sets API (Layer 4 phase 2 — Master Data) -------------
-   MAINTAINING ORDER SETS is protocol authorship — assigned to the
-   PHARMACIST profile (ordersets.manage) as its own permission: order sets
-   are predominantly medication bundles governed alongside the formulary
-   (a therapeutics-committee function Pharmacy stewards in this
-   provisional model), but the permission stays a distinct atom so a
-   future profile split costs a table edit, not a redesign. Doctors,
-   nurses, administrators → generic 403 on set mutations; every
-   authenticated profile reads.
+   MAINTAINING ORDER SETS is protocol authorship — SENIOR MEDICAL
+   authority (ordersets.manage on the SENIORDOCTOR profile; moved from
+   the provisional Pharmacist stewardship by owner decision, 2026-07-20):
+   an order set is a CLINICAL PROTOCOL — a sepsis bundle, a DKA protocol
+   — and authoring one is a senior medical decision. Pharmacy governance
+   applies where it belongs: every drug a set references must exist in
+   the formulary Pharmacy maintains. Pharmacists, plain doctors, nurses,
+   administrators → generic 403 on set mutations; every authenticated
+   profile reads.
 
    APPLYING a set is CLINICAL authority, not management authority: the
    apply endpoint requires the order-creation permissions and runs the
    composed drafts through OrdersApi.Create — the exact create path — so
-   the encounter guard (discharged patient → 409), draft validation, and
-   the inactive-drug/test 409s apply identically. A set is a convenience
-   layer, never a bypass. NOTE: the client-side allergy screening the
-   Orders screen performs when it expands a set is NOT yet replicated
-   here — that is the recorded server-side safety-enforcement work item;
-   until it ships, this endpoint applies every item.
+   the encounter guard (discharged patient → 409), draft validation, the
+   inactive-drug/test 409s AND the full server-side safety screen
+   (allergy / interaction / duplicate-therapy via SafetyLogic inside the
+   shared Create) apply identically. A set is a convenience layer, never
+   a bypass. (The safety-enforcement PR closed the gap an earlier note
+   here recorded — set apply inherits the whole screen.)
 
    AUTHORING integrity: set items validate their SHAPE at create/edit
    (category/priority whitelists via the orders draft rules, complete
@@ -50,7 +51,8 @@ static class OrderSetsApi
                 .AsEnumerable().Select(x => x.ToDto()), JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* POST /api/icu/order-sets — create a set (ordersets.manage) */
+        /* POST /api/icu/order-sets — create a set (ordersets.manage —
+           SeniorDoctor protocol authorship) */
         app.MapPost("/api/icu/order-sets", (CreateOrderSetRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "ordersets.manage") is IResult denied) return denied;

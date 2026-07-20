@@ -38,7 +38,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /admin/users            User Administration        users.manage (Layer 3)
    /formulary              Formulary management       formulary.manage (Layer 4 — Pharmacy)
    /lab-catalog            Lab catalogue management   labcatalog.manage (Layer 4 — Laboratory)
-   /order-sets             Order-set management       ordersets.manage (Layer 4 — Pharmacy)
+   /order-sets             Order-set management       ordersets.manage (SeniorDoctor — protocol authorship)
    /beds                   ICU Bed Overview           patients.view
    /patients/:patientId    Patient Mission Control    patients.view
    /patients/:patientId/history  Patient History Overview  results.view (clinical history — the office Administrator is locked out by design)

@@ -110,14 +110,19 @@ jobs:
           fi
           echo "STALE DEPLOYMENT: the deployed build '$build' (server tree $BS) does not carry this ref's server content (expected tree $WANT_SRV) — refusing to run the suite against a different server" && exit 1
 
-      - name: Login five profiles + run-unique names
+      - name: Login six profiles + run-unique names
         run: |
-          for u in sara.rahman maya.chen samir.qassem yusuf.karim noor.al-amin; do
+          # SPC (liam.osei, Specialist → plain Doctor profile) exists to
+          # prove the apply/authoring split after the governance move:
+          # a Specialist APPLIES a set (orders.create) but cannot AUTHOR
+          # one (no ordersets.manage — that is Consultant-tier).
+          for u in sara.rahman liam.osei maya.chen samir.qassem yusuf.karim noor.al-amin; do
             t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
               -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
             case $u in
               sara.rahman)  echo "DOC=$t" >> "$GITHUB_ENV";;
+              liam.osei)    echo "SPC=$t" >> "$GITHUB_ENV";;
               maya.chen)    echo "NUR=$t" >> "$GITHUB_ENV";;
               samir.qassem) echo "PHA=$t" >> "$GITHUB_ENV";;
               yusuf.karim)  echo "ADM=$t" >> "$GITHUB_ENV";;
@@ -160,7 +165,7 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/order-sets?active=true")
           echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
 
-      - name: RBAC both directions — catalogue is labcatalog.manage (Laboratory + Consultant), sets are Pharmacy-only
+      - name: RBAC both directions — catalogue is labcatalog.manage (Laboratory + Consultant), sets are SeniorDoctor-only (protocol authorship)
         run: |
           TCRE="{\"testId\":\"$TID\",\"name\":\"E2E Panel\",\"category\":\"Chemistry\",\"specimen\":\"Serum\",\"analytes\":[{\"analyte\":\"X\",\"unit\":\"mg/dL\",\"refRange\":\"1-2\",\"refLow\":1,\"refHigh\":2}]}"
           echo "TCRE=$TCRE" >> "$GITHUB_ENV"
@@ -193,8 +198,14 @@ jobs:
           echo "DOC remove UNUSED test -> HTTP $rc (delete-if-unused)"; [ "$rc" = "200" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $DOC" "$API/api/icu/lab-catalog/$DTID")
           echo "remove already-removed -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
+          # ORDER-SET AUTHORING moved Pharmacist → SeniorDoctor
+          # (2026-07-20, owner decision: an order set is a clinical
+          # protocol; authoring is senior medical governance). The
+          # DENIED direction now includes the PHARMACIST — the former
+          # holder — and the SPECIALIST (plain Doctor profile: applying
+          # is clinician authority, authoring is not).
           SCRE_PROBE='{"setId":"rbac-probe","name":"X","description":"d","items":[{"category":"Nursing","summary":"x","priority":"Routine"}]}'
-          for who in DOC NUR ADM LAB; do
+          for who in PHA SPC NUR ADM LAB; do
             eval "t=\$$who"
             rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $t" -H 'Content-Type: application/json' -d "$SCRE_PROBE" "$API/api/icu/order-sets")
             echo "$who set create -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
@@ -357,29 +368,39 @@ jobs:
             -d "{\"drugId\":\"$DID\",\"name\":\"E2E Set Drug\",\"brandNames\":[],\"drugClass\":\"Test\",\"form\":\"tablet\",\"strengths\":[\"1 mg\"],\"doses\":[\"1 mg\"],\"defaultDose\":\"1 mg\",\"routes\":[\"PO\"],\"frequencies\":[\"daily\"],\"prnCapable\":false,\"allergyBlock\":[],\"allergyWarn\":[]}" \
             "$API/api/icu/formulary" > /dev/null
           SCRE="{\"setId\":\"$SID\",\"name\":\"E2E Bundle\",\"description\":\"catalogue e2e\",\"items\":[{\"category\":\"Lab\",\"summary\":\"E2E panel\",\"testId\":\"$TID\",\"priority\":\"STAT\",\"requiresImplementation\":true},{\"category\":\"Medication\",\"priority\":\"Routine\",\"medication\":{\"drugId\":\"$DID\",\"drug\":\"E2E Set Drug\",\"dose\":\"1 mg\",\"route\":\"PO\",\"frequency\":\"daily\",\"duration\":\"3 days\",\"prn\":false}}]}"
-          curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$SCRE" "$API/api/icu/order-sets" \
-            | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert d["setId"]==os.environ["SID"] and d["history"][0]["actor"]=="Samir Qassem"; print("set created:", d["setId"])'
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "$SCRE" "$API/api/icu/order-sets")
+          # AUTHORING is the CONSULTANT's now (ordersets.manage moved
+          # Pharmacist → SeniorDoctor 2026-07-20) — DOC authors, actor
+          # from the token; the Pharmacist's denial is asserted in the
+          # RBAC step above.
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$SCRE" "$API/api/icu/order-sets" \
+            | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert d["setId"]==os.environ["SID"] and d["history"][0]["actor"]=="Dr. Sara Rahman"; print("set created:", d["setId"])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$SCRE" "$API/api/icu/order-sets")
           echo "duplicate setId -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
           # FREE-TEXT correction — name-only create: the author types only
           # the NAME; the server generates the hidden oset_ key. A
           # duplicate ACTIVE name (case-insensitive) is refused 409.
-          FSID=$(curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+          FSID=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d "{\"name\":\"E2E Free Bundle $GITHUB_RUN_ID\",\"description\":\"free-text e2e\",\"items\":[{\"category\":\"Lab\",\"summary\":\"E2E panel\",\"testId\":\"$TID\",\"priority\":\"Routine\"}]}" \
             "$API/api/icu/order-sets" | python3 -c 'import json,sys; d=json.load(sys.stdin); i=d["setId"]; assert i.startswith("oset_") and len(i)==16, i; print(i)')
           echo "FSID=$FSID" >> "$GITHUB_ENV"; echo "name-only set created: $FSID (hidden key)"
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d "{\"name\":\"e2e free bundle $GITHUB_RUN_ID\",\"description\":\"dup\",\"items\":[{\"category\":\"Lab\",\"summary\":\"E2E panel\",\"testId\":\"$TID\",\"priority\":\"Routine\"}]}" \
             "$API/api/icu/order-sets")
           echo "duplicate active set name (case-insensitive) -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"setId":"e2e-bad-'$GITHUB_RUN_ID'","name":"X","description":"d","items":[{"category":"Lab","summary":"s","testId":"no-such-test","priority":"Routine"}]}' "$API/api/icu/order-sets")
           echo "set w/ unknown test -> HTTP $rc (authoring integrity)"; [ "$rc" = "400" ] || exit 1
-          # APPLY — clinician authority via the shared create path
+          # APPLY — clinician authority via the shared create path,
+          # UNCHANGED by the governance move: the SPECIALIST (who cannot
+          # author) applies fine; the nurse (no orders.create) is 403;
+          # the PHARMACIST (former authoring holder, no orders.create)
+          # is 403 — authoring and applying are fully separate.
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply")
           echo "nurse apply -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
-          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply" \
-            | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert len(d)==2 and all(o["status"]=="pending" for o in d); assert any(o.get("testId")==os.environ["TID"] for o in d); print("applied:", [o["orderId"] for o in d])'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply")
+          echo "pharmacist apply -> HTTP $rc (authoring != applying)"; [ "$rc" = "403" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $SPC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply" \
+            | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert len(d)==2 and all(o["status"]=="pending" for o in d); assert any(o.get("testId")==os.environ["TID"] for o in d); assert all(o["orderedBy"]=="Dr. Liam Osei" for o in d); print("SPECIALIST applied (cannot author):", [o["orderId"] for o in d])'
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/ghost-$GITHUB_RUN_ID/apply")
           echo "apply absent set -> HTTP $rc"; [ "$rc" = "404" ] || exit 1
           # set referencing a DEACTIVATED drug → 409 at apply (the run's OWN drug)
@@ -388,14 +409,14 @@ jobs:
           rc=$(echo "$out" | tail -1); echo "apply set w/ inactive drug -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "inactive in the formulary" in e, e'
           curl -s -o /dev/null -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/$DID/reactivate"
-          # inactive SET → 409; replay/reactivate cycle
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/order-sets/$SID/deactivate")
+          # inactive SET → 409; replay/reactivate cycle (authoring = DOC)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/order-sets/$SID/deactivate")
           echo "set deactivate -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "{\"patientId\":\"$PID\",\"sign\":false}" "$API/api/icu/order-sets/$SID/apply")
           echo "apply inactive set -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/order-sets/$SID/deactivate")
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/order-sets/$SID/deactivate")
           echo "set re-deactivate -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
-          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/order-sets/$SID/reactivate")
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/order-sets/$SID/reactivate")
           echo "set reactivate -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
 
       - name: Apply to a DISCHARGED patient — the SAME 409 a single order gets (string-equal)
@@ -424,7 +445,7 @@ jobs:
           # $DTID (the Consultant leg's test) is normally already TRUE-
           # deleted by its own step — deactivate then answers 404, accepted
           # below. It only still exists if the run died mid-step.
-          for pair in "lab-catalog:$TID:LAB" "lab-catalog:$DTID:DOC" "order-sets:$SID:PHA" "order-sets:${FSID:-}:PHA" "formulary:$DID:PHA"; do
+          for pair in "lab-catalog:$TID:LAB" "lab-catalog:$DTID:DOC" "order-sets:$SID:DOC" "order-sets:${FSID:-}:DOC" "formulary:$DID:PHA"; do
             path="${pair%%:*}"; rest="${pair#*:}"; id="${rest%%:*}"; who="${rest#*:}"
             [ -n "$id" ] || continue
             eval "t=\$$who"

@@ -97,7 +97,7 @@ export type Permission =
   | 'users.view'           // read the account list (System Administrator ONLY)
   | 'formulary.manage'     // Layer 4: maintain the drug formulary (Pharmacy authority)
   | 'labcatalog.manage'    // Layer 4 phase 2: maintain the lab test catalogue (Laboratory authority)
-  | 'ordersets.manage'     // Layer 4 phase 2: author order sets (stewarded with the formulary)
+  | 'ordersets.manage'     // author order sets — clinical protocols, SENIOR medical authorship (moved Pharmacist → SeniorDoctor, 2026-07-20)
   | 'observations.record'  // Stage 11 §4 (F1): chart a bedside observation (any doctor or nurse)
   | 'observations.correct' // Stage 11 §8 (F2): tier-2 retrospective correction (Consultant-tier ONLY — never office admin)
   | 'observations.configure' // Stage 11 §3 (F3): group enablement (same Consultant-tier home)
@@ -136,7 +136,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'results.document', 'results.correct',
-    'labcatalog.manage', 'notes.document', 'ai.view',
+    'labcatalog.manage', 'ordersets.manage', 'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record',
     'observations.correct', 'observations.configure', 'patients.measure',
     'assignments.manage', 'codestatus.set', 'codestatus.manage',
@@ -174,7 +174,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   /* medication-chart review + Layer 4: maintaining the formulary is
      PHARMACY's authority (the same polarity flip as results.create on
      Ancillary — doctors/nurses/administrators are 403'd on mutations) */
-  Pharmacist: ['patients.view', 'orders.view', 'results.view', 'formulary.manage', 'ordersets.manage',
+  Pharmacist: ['patients.view', 'orders.view', 'results.view', 'formulary.manage',
     'frequencies.manage'],
   /* vent-focused: orders, ABGs, and risk trajectories, view-only */
   RespiratoryTherapist: ['patients.view', 'orders.view', 'results.view', 'ai.view'],
