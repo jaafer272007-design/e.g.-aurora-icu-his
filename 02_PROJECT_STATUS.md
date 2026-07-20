@@ -5336,6 +5336,35 @@ re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
 
+### The recurring Render "139" — ROOT CAUSE FOUND AND CLOSED (inotify exhaustion at CreateBuilder)
+
+**The evidence (the owner's pasted deploy log, #142's failed auto AND
+manual deploys, 2026-07-20):** `System.IO.IOException: The configured
+user limit (128) on the number of inotify instances has been reached` —
+thrown from `FileSystemWatcher.StartRaisingEvents` inside
+`WebApplication.CreateBuilder`, BEFORE any Aurora code, before EF,
+before the #138 advisory lock could matter; the runtime aborts and
+Render surfaces exit 139. CreateBuilder's default appsettings loading
+uses `reloadOnChange:true` → one inotify instance; the per-user inotify
+limit is SHARED across every container on a multi-tenant free-tier
+node, so a crowded node kills our boot — intermittently, only at
+deploy/boot, and "passing on retry" when the pressure eases. This
+honestly amends the history: #137's first-attempt 139 and this one
+share this cause; **the #138 advisory lock fixed a real
+concurrent-migration hazard but was NOT this crash's cause** (its
+record stands for what it actually fixed).
+
+**The fix (Program.cs + render.yaml, defense in depth):**
+`DOTNET_hostBuilder__reloadConfigOnChange=false` (a container's
+appsettings never change at runtime — all config here is env-driven) +
+`DOTNET_USE_POLLING_FILE_WATCHER=true` (any residual watcher polls
+instead of consuming inotify). Set IN-PROCESS at the top of Main so
+every host is immune (Render, the appliance, dev), and carried in the
+blueprint too. **Proven empirically:** the pre-fix image's server
+process holds 1 `anon_inode:inotify` descriptor; the fixed build holds
+0 — with zero inotify footprint, a node at the limit can no longer
+kill the boot. Local boot + /healthz + config loading verified intact.
+
 ### Imaging Catalogue clinical-model correction (built) — region/contrast to order time, free-text names, hidden generated ids
 
 **The finding (the validator's hands-on testing; this PR's verify-first
