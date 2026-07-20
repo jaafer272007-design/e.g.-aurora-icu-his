@@ -46,10 +46,29 @@ class HospitalIdentityRow
     public string UnitName { get; set; } = "";
     public string ShortName { get; set; } = "";
     /* free-text address block for the print letterhead (design §2: real
-       hospitals want it on printed documents; a LOGO IMAGE is the
-       flagged fast-follow — upload/storage/print rendering — and does
-       not block identity) */
+       hospitals want it on printed documents) */
     public string Address { get; set; } = "";
+
+    /* ---- BRANDING (Print Center branding build — the #135 flagged
+       fast-follow, now built) ----
+       HeaderText/FooterText: the hospital's OWN branding lines on every
+       printed document (a tagline under the letterhead; an accreditation
+       or legal line in the footer). Free text is SAFE here — this is the
+       institution's administrative face, never clinical data (the
+       hospital.configure split).
+       LOGO — the system's FIRST binary/image capability. Stored ON-PREM
+       IN THIS ROW (the appliance is an isolated install; an external
+       image service would be a new dependency and an egress): base64
+       text + mime, PNG or JPEG only, decoded size ≤ 512 KB (a letterhead
+       logo, not an asset library), magic-byte validated at upload so the
+       mime can never lie. LogoVersion increments on every set/clear —
+       the client cache-busts the byte endpoint with it. */
+    public string HeaderText { get; set; } = "";
+    public string FooterText { get; set; } = "";
+    public string LogoMime { get; set; } = "";
+    public string LogoBase64 { get; set; } = "";
+    public int LogoVersion { get; set; }
+
     /* append-only audit history — actor from the token, dated UTC
        (the Layer 3 convention) */
     public string EventsJson { get; set; } = "[]";
@@ -57,11 +76,18 @@ class HospitalIdentityRow
     public bool Configured =>
         Name.Length > 0 || UnitName.Length > 0 || ShortName.Length > 0 || Address.Length > 0;
 
-    /* the PUBLIC identity (no history): served to the login screen
-       pre-authentication — a hospital's name is its public face */
-    public HospitalIdentityDto ToDto() => new(Name, UnitName, ShortName, Address, Configured);
+    public bool HasLogo => LogoBase64.Length > 0;
 
-    public HospitalIdentityWithHistoryDto ToHistoryDto() => new(Name, UnitName, ShortName, Address, Configured,
+    /* the PUBLIC identity (no history): served to the login screen
+       pre-authentication — a hospital's name is its public face. The
+       logo BYTES are not inlined here (a 512 KB base64 on every boot
+       read would tax every app load) — hasLogo/logoVersion point the
+       client at the dedicated byte endpoint. */
+    public HospitalIdentityDto ToDto() =>
+        new(Name, UnitName, ShortName, Address, HeaderText, FooterText, HasLogo, LogoVersion, Configured);
+
+    public HospitalIdentityWithHistoryDto ToHistoryDto() =>
+        new(Name, UnitName, ShortName, Address, HeaderText, FooterText, HasLogo, LogoVersion, Configured,
         JsonSerializer.Deserialize<List<FormularyEventDto>>(EventsJson, JsonOpts.Web)!);
 }
 
@@ -79,11 +105,19 @@ class HospitalIdentityRow
    PUBLIC read carries them (the history/edit responses are configuration
    surfaces, not the boot read) — the record defaults keep every other
    composition site unchanged. */
-record HospitalIdentityDto(string Name, string UnitName, string ShortName, string Address, bool Configured,
+record HospitalIdentityDto(string Name, string UnitName, string ShortName, string Address,
+    string HeaderText, string FooterText, bool HasLogo, int LogoVersion, bool Configured,
     string ServerTimeZone = "UTC", int ServerUtcOffsetMinutes = 0);
 
-record HospitalIdentityWithHistoryDto(string Name, string UnitName, string ShortName, string Address, bool Configured,
+record HospitalIdentityWithHistoryDto(string Name, string UnitName, string ShortName, string Address,
+    string HeaderText, string FooterText, bool HasLogo, int LogoVersion, bool Configured,
     List<FormularyEventDto> History);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record EditHospitalIdentityRequest(string? Name, string? UnitName, string? ShortName, string? Address);
+record EditHospitalIdentityRequest(string? Name, string? UnitName, string? ShortName, string? Address,
+    string? HeaderText, string? FooterText);
+
+/* logo upload — JSON base64 (small bounded payload; no multipart
+   machinery for one letterhead image). Disallow rejects unknown fields. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record SetHospitalLogoRequest(string? Mime, string? DataBase64);

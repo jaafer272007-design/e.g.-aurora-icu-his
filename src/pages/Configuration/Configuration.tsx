@@ -13,10 +13,11 @@ import {
   createIsolationType, createShift, deactivateCodeStatus, deactivateDisposition,
   deactivateFrequency, deactivateImagingStudy, deactivateIsolationType, deactivateShift,
   deleteImagingStudy, getAdtBeds, getCodeStatuses, getDispositions, getFrequencyEntries,
-  getHospitalIdentityHistory, getImagingCatalog, getIsolationTypes, getObservationCatalog,
+  clearHospitalLogo, getHospitalIdentityHistory, getImagingCatalog, getIsolationTypes, getObservationCatalog,
   getShifts, reactivateBed,
   reactivateCodeStatus, reactivateDisposition, reactivateFrequency, reactivateImagingStudy,
   reactivateIsolationType, reactivateShift, retireBed, updateCodeStatus, updateDisposition,
+  hospitalLogoUrl, setHospitalLogo,
   updateHospitalIdentity, updateImagingStudy, updateIsolationType, updateShift,
 } from '../../lib/api'
 import type { AdtWriteResult } from '../../lib/api'
@@ -120,6 +121,7 @@ export function Configuration() {
       getHospitalIdentityHistory().then(r => {
         setIdent(r); setIdentLoaded(true)
         setHName(r.name); setHUnit(r.unitName); setHShort(r.shortName); setHAddr(r.address)
+        setHHeader(r.headerText); setHFooter(r.footerText)
       }).catch(() => setIdentLoaded(true))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -293,6 +295,10 @@ export function Configuration() {
   /* ---- hospital identity (specialized: one record, edit-in-place) ---- */
   const [hName, setHName] = useState(''); const [hUnit, setHUnit] = useState('')
   const [hShort, setHShort] = useState(''); const [hAddr, setHAddr] = useState('')
+  /* branding (Print Center branding build) */
+  const [hHeader, setHHeader] = useState(''); const [hFooter, setHFooter] = useState('')
+  const [logoBusy, setLogoBusy] = useState(false)
+  const [logoError, setLogoError] = useState<string | null>(null)
   const [identBusy, setIdentBusy] = useState(false)
   const [identError, setIdentError] = useState<string | null>(null)
   const [identHistoryOpen, setIdentHistoryOpen] = useState(false)
@@ -301,6 +307,7 @@ export function Configuration() {
     setIdentBusy(true); setIdentError(null)
     const res = await updateHospitalIdentity({
       name: hName.trim(), unitName: hUnit.trim(), shortName: hShort.trim(), address: hAddr.trim(),
+      headerText: hHeader.trim(), footerText: hFooter.trim(),
     })
     setIdentBusy(false)
     if (res.kind === 'ok') {
@@ -313,8 +320,48 @@ export function Configuration() {
   }
   const identDirty = ident
     ? (hName.trim() !== ident.name || hUnit.trim() !== ident.unitName
-      || hShort.trim() !== ident.shortName || hAddr.trim() !== ident.address)
-    : (hName.trim().length > 0 || hUnit.trim().length > 0 || hShort.trim().length > 0 || hAddr.trim().length > 0)
+      || hShort.trim() !== ident.shortName || hAddr.trim() !== ident.address
+      || hHeader.trim() !== ident.headerText || hFooter.trim() !== ident.footerText)
+    : (hName.trim().length > 0 || hUnit.trim().length > 0 || hShort.trim().length > 0 || hAddr.trim().length > 0
+      || hHeader.trim().length > 0 || hFooter.trim().length > 0)
+
+  /* ---- letterhead logo (the system's first image capability) ----
+     client pre-checks are courtesy; the server re-validates mime, magic
+     bytes and the 512 KB cap authoritatively. */
+  async function doUploadLogo(file: File) {
+    setLogoError(null)
+    if (file.type !== 'image/png' && file.type !== 'image/jpeg') {
+      setLogoError('The logo must be a PNG or JPEG image.'); return
+    }
+    if (file.size > 512 * 1024) {
+      setLogoError(`That image is ${Math.round(file.size / 1024)} KB — the letterhead logo limit is 512 KB.`); return
+    }
+    setLogoBusy(true)
+    const buf = new Uint8Array(await file.arrayBuffer())
+    let bin = ''
+    for (const b of buf) bin += String.fromCharCode(b)
+    const res = await setHospitalLogo(file.type, btoa(bin))
+    setLogoBusy(false)
+    if (res.kind === 'ok') {
+      setIdent(res.data)
+      invalidateHospitalIdentity()
+      showToast('Logo saved', 'The letterhead now carries this image — audited on the identity history')
+      return
+    }
+    setLogoError(res.kind === 'rejected' ? res.error : offlineMsg('the logo'))
+  }
+  async function doClearLogo() {
+    setLogoError(null); setLogoBusy(true)
+    const res = await clearHospitalLogo()
+    setLogoBusy(false)
+    if (res.kind === 'ok') {
+      setIdent(res.data)
+      invalidateHospitalIdentity()
+      showToast('Logo removed', 'The letterhead is back to its placeholder — audited')
+      return
+    }
+    setLogoError(res.kind === 'rejected' ? res.error : offlineMsg('the logo'))
+  }
 
   const sectionMeta: Record<SectionId, { blurb: React.ReactNode }> = {
     identity: { blurb: <>The install&apos;s own name, unit, short name and letterhead address — administrative configuration (office Administrator). One record: edit-in-place, audited, amend-never-erase.</> },
@@ -473,6 +520,14 @@ export function Configuration() {
                             <textarea value={hAddr} onChange={e => setHAddr(e.target.value)} disabled={identBusy}
                               rows={3} placeholder={'Street, City\nPhone · Fax'} />
                           </label>
+                          <label>Header text (a branding line under the letterhead name; optional)
+                            <input value={hHeader} onChange={e => setHHeader(e.target.value)} disabled={identBusy}
+                              placeholder="e.g. Excellence in critical care" />
+                          </label>
+                          <label>Footer text (a branding line in every document footer; optional)
+                            <input value={hFooter} onChange={e => setHFooter(e.target.value)} disabled={identBusy}
+                              placeholder="e.g. Accredited by … · CONFIDENTIAL medical record" />
+                          </label>
                         </div>
                         {identError && <div className="uaerr" role="alert">{identError}</div>}
                         <div className="uapanelacts">
@@ -504,11 +559,36 @@ export function Configuration() {
                     )}
                   </Card>
 
+                  <Card icon={<IconGrid size={15} stroke="var(--violet)" />} title="Letterhead Logo"
+                    aside={ident?.hasLogo ? 'set' : 'not set'}>
+                    <div className="uaempty" style={{ marginBottom: 8 }}>
+                      The image on every printed document&apos;s letterhead (PNG or JPEG, up to 512 KB) —
+                      stored inside this install&apos;s own database, never an external service. While no
+                      logo is set, documents render a neutral placeholder box.
+                    </div>
+                    {ident?.hasLogo && (
+                      <div className="ualogorow">
+                        <img className="ualogopreview" alt="Current letterhead logo"
+                          src={hospitalLogoUrl(true, ident.logoVersion) ?? undefined} />
+                        <button className="uaact warn" type="button" disabled={logoBusy} onClick={() => void doClearLogo()}>
+                          Remove logo
+                        </button>
+                      </div>
+                    )}
+                    <label className="uaact ualogoupload">
+                      {logoBusy ? 'Uploading…' : (ident?.hasLogo ? 'Replace logo…' : 'Upload logo…')}
+                      <input type="file" accept="image/png,image/jpeg" disabled={logoBusy} style={{ display: 'none' }}
+                        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void doUploadLogo(f) }} />
+                    </label>
+                    {logoError && <div className="uaerr" role="alert">{logoError}</div>}
+                  </Card>
+
                   <Card icon={<IconSettings size={15} stroke="var(--faint)" />} title="About this area" aside="grows tenant by tenant">
                     <div className="uaempty">
                       The configurability arc&apos;s vocabulary work is COMPLETE: identity, code status,
                       imaging, beds, dispositions, isolation types, shifts and named frequencies are
-                      all per-hospital data. A letterhead <b>logo image</b> is a recorded fast-follow;
+                      all per-hospital data. The letterhead <b>logo image</b> and the branding
+                      header/footer lines are configured here (the Print Center branding build);
                       the first-run wizard and the production seed split are the next majors.
                     </div>
                   </Card>

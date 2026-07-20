@@ -1,6 +1,81 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-20 · current through ASSIGNMENT
+**Last updated: 2026-07-20 · current through PRINT CENTER BRANDING +
+THE DOCUMENT-LEVEL FORMAT ENGINE (Option A — the owner's directive is
+the design, scoped to the verify-first report). PIECE 1 — HOSPITAL
+BRANDING on the #135 identity record: the recorded logo fast-follow
+is BUILT as the system's FIRST BINARY capability — the logo image
+lives ON-PREM IN the identity DB row (`LogoBase64`/`LogoMime` +
+`LogoVersion`; never an external service — the appliance stays
+isolated), STATED LIMITS: PNG/JPEG only, 512 KB decoded cap,
+MAGIC-BYTE validated (the declared type must match the actual
+content — a renamed GIF is a 400, not a stored lie); the anonymous
+boot read stays byte-free (`hasLogo` + `logoVersion` only) and a
+dedicated anonymous `GET /api/icu/hospital-identity/logo?v=` serves
+the bytes (cache-busted by the version, 404 while unset);
+set/replace/clear are AUDITED with mime + size; custom HEADER/FOOTER
+TEXT (free text — the hospital's own branding words; trimmed,
+2000-cap) joins the identity record on the SAME validated-write +
+per-field prior→next audit pattern; everything flows through the ONE
+resolver (src/lib/hospitalIdentity.ts), so the logo replaces the ✚
+placeholder on every letterhead + print, the header line renders
+under the hospital name and the footer line in every document footer
+with ZERO per-surface edits; RBAC unchanged in shape:
+hospital.configure = the OFFICE ADMINISTRATOR only (nurse /
+SeniorDoctor / SystemAdmin 403 re-proven on the new writes). The
+#135 stale hardcode is FOLDED IN: the letterhead subtitle now
+renders the CONFIGURED unit name, not the hardcoded "Adult Intensive
+Care Unit" it ignored (unset ⇒ the segment is omitted, per the #135
+unset rule).
+PIECE 2a — the PRINT CENTER ENGINE at DOCUMENT level (design P2,
+partially delivered): the person printing sets PAPER
+(A4/Letter/Legal), ORIENTATION, MARGINS (narrow/normal/wide), FONT
+SIZE (small/normal/large) and SECTION TOGGLES (logo / signature
+block / footer text) on the rendered document before window.print()
+— ONE injected stylesheet (@page + root type size + screen-scoped
+preview metrics so the preview stays WYSIWYG) plus chrome-hiding
+classes WRAP the knobs the templates already isolated (the
+registry's orientation becomes the overridable default; print.css
+section classes); the templates themselves are UNTOUCHED and the
+engine is purely client. APPLY-AND-PRINT is the STATED CHOICE:
+format state is per-document and resets on the next open —
+per-hospital SAVED print defaults are the recorded fast-follow, and
+the engine's flowsheet columns/time-window + QR knobs remain future.
+🔴 THE SAFETY LINE, held absolutely and verified: formatting changes
+how a document LOOKS, never what it SAYS — every control maps to
+@page rules, a root font-size, or display:none on document CHROME;
+the clinical content renders from the persisted record with ZERO
+editable elements on the page (asserted: the clinical text is
+BYTE-IDENTICAL under maximal formatting, and no
+input/textarea/contenteditable exists inside the document). 🔴
+EXPLICITLY DEFERRED (Option A): per-word/per-line rich formatting —
+recorded, pending real hospital use of the document-level controls.
+GUARD RAILS: NOT a rich-text clinical editor, NOT a Word rebuild, NO
+bypass of governed vocabularies; the workflow is unchanged
+(structured data → document → format/brand → print). MIGRATION
+HONESTY: AddHospitalBranding is pure AddColumn ×5 — an upgraded
+install keeps its identity and gains NO branding it never set.
+Verified: 28/28 headless (fresh SQLite) + 29/29 (Postgres
+LIVE-UPGRADE: the old server's configured identity survives the new
+server on the SAME database with hasLogo honestly false) + 6/6
+production appliance (old image → new image on the SAME live
+Postgres; the PRODUCTION build prints a branded letterhead) + 22/22
+rendered (branding configured through the real Configuration UI, the
+logo uploaded via the real file input, letterhead + format engine
+verified on screen; 🔴 both safety assertions; REAL PDF OUTPUTS —
+facesheet-default.pdf vs facesheet-formatted.pdf, pdftotext-compared:
+the chrome differs, the clinical facts do not; all 14 templates
+still render). Suites: deployed-frontend-e2e gains the BRANDING step
+— header/footer + logo ROUND-TRIP against the durable staging DB
+(RBAC 403s; gif-mime 400 + magic-mismatch 400; the uploaded PNG
+reads back BYTE-IDENTICAL; EXACT-REVERT restores the prior fields
+AND the prior logo state-aware — set back or cleared);
+deployed-print-e2e is unaffected by design (it asserts clinical
+fields only). DEFERRALS recorded: per-word/per-line rich formatting;
+saved per-hospital print defaults; the flowsheet columns/time-window
++ QR engine knobs.**
+
+prior marker retained: current through ASSIGNMENT
 SIMPLIFICATION — the opt-out coverage model (design 7f9f474b, the
 validator's clinical correction), REPLACING #114's opt-in machinery
 wholesale. The model: DOCTORS have NO assignment concept at all —
@@ -64,7 +139,7 @@ suite now makes ZERO coverage calls and asserts both nurses write
 200 with no relationship set up (the absence is the assertion).
 DEFERRALS recorded: the SeniorNurse profile (future holder of
 assignments.manage); a nurse-centric coverage board (the dialog is
-per-patient today).**
+per-patient today).
 
 prior marker retained: current through the OBSERVATIONS
 CATALOGUE — the fifth Configuration tenant and the most
@@ -6352,6 +6427,15 @@ rendering (neutral placeholder / omitted segments); formulary + lab
 catalogue managers stay where they are (linked from the sidebar — not
 moved); single-unit boundary.
 
+*[Amended 2026-07-20 — the Print Center branding PR: the recorded logo
+fast-follow is BUILT. The identity record now also carries a logo image
+(PNG/JPEG, ≤ 512 KB decoded, magic-byte validated, stored in the same
+single DB row on-prem, served by a dedicated anonymous byte endpoint)
+plus header/footer branding text — same audited validated-write
+pattern, same office-Administrator gate, same ONE-resolver
+propagation. The field set named above is the #135-era snapshot; the
+full record is the top marker.]*
+
 **Verification.** Headless matrix **28/28** (anonymous read serves the
 seeded DATA and never the history; history 401/403/403/403/200 across
 anonymous/nurse/SeniorDoctor/SystemAdmin/office-admin; PUT 403 for
@@ -8861,6 +8945,16 @@ instruction, source stated per the documentation rule.]*
   discipline as the Observation model being device-ready without the
   Device Adapter). To be designed in its own session when it is its
   turn.
+  *[Amended 2026-07-20 — the Print Center branding PR: the
+  DOCUMENT-LEVEL half of this engine is DELIVERED — paper size /
+  orientation / margins / font size / show-hide (logo · signature ·
+  footer text), apply-and-print at print time, wrapping the isolated
+  knobs exactly as recorded here (the templates untouched). Still
+  future: per-hospital SAVED print defaults (the recorded
+  fast-follow), the flowsheet's columns/time-window knobs, and a QR
+  toggle (no QR section exists to toggle yet). Per-word/per-line rich
+  formatting is the explicit Option-A deferral, recorded in the top
+  marker.]*
 
 - **Clinical Scoring Engine — a generic scoring engine, SOFA first**
   (formalizes and supersedes the earlier "Derived Clinical Scores" gap

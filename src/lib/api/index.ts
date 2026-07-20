@@ -1129,6 +1129,29 @@ export function updateHospitalIdentity(draft: EditHospitalIdentityDraft): Promis
   return usersWrite<HospitalIdentityWithHistory>('/api/icu/hospital-identity', 'hospital-identity edit', draft, 'PUT')
 }
 
+/* ---- letterhead logo (Print Center branding) — the byte endpoint is
+   anonymous like the identity fields; the client builds its URL here so
+   every surface (Configuration preview, print letterhead) points at the
+   same place, cache-busted by logoVersion. null while no logo is set
+   (or in a pure-mock session with no API at all). */
+export function hospitalLogoUrl(hasLogo: boolean, logoVersion: number): string | null {
+  if (!hasLogo) return null
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return null
+  return `${API_BASE}/api/icu/hospital-identity/logo?v=${logoVersion}`
+}
+
+/** POST /api/icu/hospital-identity/logo — upload the letterhead logo
+ *  (PNG/JPEG, ≤512 KB decoded; magic-byte checked server-side). */
+export function setHospitalLogo(mime: string, dataBase64: string): Promise<AdtWriteResult<HospitalIdentityWithHistory>> {
+  return usersWrite<HospitalIdentityWithHistory>('/api/icu/hospital-identity/logo', 'hospital logo', { mime, dataBase64 })
+}
+
+/** POST /api/icu/hospital-identity/logo/clear — remove the logo (409
+ *  when none is set). */
+export function clearHospitalLogo(): Promise<AdtWriteResult<HospitalIdentityWithHistory>> {
+  return usersWrite<HospitalIdentityWithHistory>('/api/icu/hospital-identity/logo/clear', 'hospital logo clear', {})
+}
+
 /** PUT /api/icu/formulary/:drugId — edit reference fields (drugId is the
  *  immutable natural key). REAL-ONLY write. */
 export function updateFormularyDrug(drugId: string, draft: EditDrugDraft): Promise<AdtWriteResult<FormularyDrug>> {

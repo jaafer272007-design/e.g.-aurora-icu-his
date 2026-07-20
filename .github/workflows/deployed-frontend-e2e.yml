@@ -141,6 +141,91 @@ jobs:
           case "$tz" in UTC|Etc/UTC) [ "$off" = "0" ] || { echo "staging reports $tz but offset $off"; exit 1; };; esac
           echo "server clock on the wire: $tz (offset $off min)"
 
+      - name: "BRANDING (Print Center branding build) — header/footer + logo round-trip, RBAC, EXACT-REVERT (state-aware: the ONE identity record is restored byte-stable)"
+        run: |
+          J='Content-Type: application/json'
+          tok() { curl -sf -X POST "$API/api/auth/login" -H "$J" -d "{\"username\":\"$1\",\"password\":\"Aurora2026!\"}" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])'; }
+          OFF=$(tok huda.nasser); NUR=$(tok maya.chen)
+          # capture the CURRENT identity (the one record — everything must revert)
+          curl -sf "$API/api/icu/hospital-identity" -o /tmp/id0.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/id0.json'))
+          assert 'headerText' in d and 'footerText' in d and 'hasLogo' in d, d
+          print('identity carries the branding fields; hasLogo =', d['hasLogo'])
+          PY
+          HASLOGO=$(python3 -c "import json;print(json.load(open('/tmp/id0.json'))['hasLogo'])")
+          NAME0=$(python3 -c "import json;print(json.load(open('/tmp/id0.json'))['name'])")
+          # staging is seeded-configured; an unconfigured record could not be
+          # reverted to unconfigured (PUT requires a name), so refuse rather
+          # than leave the ONE record mutated
+          [ -n "$NAME0" ] || { echo "identity is UNCONFIGURED on this target — refusing the write legs (cannot exact-revert)"; exit 1; }
+          # capture pre-existing logo bytes so a configured logo survives this run
+          if [ "$HASLOGO" = "True" ]; then
+            curl -sf "$API/api/icu/hospital-identity/logo" -o /tmp/logo0.bin
+            MIME0=$(curl -sfI "$API/api/icu/hospital-identity/logo" | tr -d '\r' | awk -F': ' 'tolower($1)=="content-type"{print $2}')
+            echo "pre-existing logo captured ($MIME0, $(wc -c < /tmp/logo0.bin) bytes)"
+          fi
+          # RBAC: branding is the OFFICE profile's — a nurse is 403 on all three writes
+          body='{"name":"x","unitName":"","shortName":"","address":"","headerText":"","footerText":""}'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $NUR" -H "$J" -d "$body" "$API/api/icu/hospital-identity")
+          echo "nurse identity PUT -> $rc"; [ "$rc" = "403" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H "$J" -d '{"mime":"image/png","dataBase64":"aGk="}' "$API/api/icu/hospital-identity/logo")
+          echo "nurse logo POST -> $rc"; [ "$rc" = "403" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" "$API/api/icu/hospital-identity/logo/clear")
+          echo "nurse logo clear -> $rc"; [ "$rc" = "403" ] || exit 1
+          # set run-unique header/footer (the office admin), assert the PUBLIC read carries them
+          RID="e2e-$GITHUB_RUN_ID"
+          python3 - "$RID" <<'PY'
+          import json,sys
+          d=json.load(open('/tmp/id0.json'))
+          body={"name":d['name'],"unitName":d['unitName'],"shortName":d['shortName'],"address":d['address'],
+                "headerText":f"Branding probe {sys.argv[1]}","footerText":f"Footer probe {sys.argv[1]}"}
+          json.dump(body,open('/tmp/set.json','w'))
+          PY
+          curl -sf -X PUT -H "Authorization: Bearer $OFF" -H "$J" -d @/tmp/set.json "$API/api/icu/hospital-identity" > /dev/null
+          curl -sf "$API/api/icu/hospital-identity" | python3 -c "
+          import json,sys; d=json.load(sys.stdin)
+          assert d['headerText']=='Branding probe $RID' and d['footerText']=='Footer probe $RID', d
+          print('branding lines live on the anonymous boot read')"
+          # logo validation gates: bad mime 400, magic-byte mismatch 400
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H "$J" -d '{"mime":"image/gif","dataBase64":"aGk="}' "$API/api/icu/hospital-identity/logo")
+          echo "gif mime -> $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H "$J" -d '{"mime":"image/png","dataBase64":"aGVsbG8gbm90IGEgcG5n"}' "$API/api/icu/hospital-identity/logo")
+          echo "magic-byte mismatch -> $rc"; [ "$rc" = "400" ] || exit 1
+          # a real 1x1 PNG uploads; the byte endpoint round-trips it EXACTLY
+          PNG="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+          curl -sf -X POST -H "Authorization: Bearer $OFF" -H "$J" -d "{\"mime\":\"image/png\",\"dataBase64\":\"$PNG\"}" "$API/api/icu/hospital-identity/logo" > /dev/null
+          curl -sf "$API/api/icu/hospital-identity/logo" -o /tmp/logo.bin
+          python3 - "$PNG" <<'PY'
+          import base64,sys
+          assert open('/tmp/logo.bin','rb').read()==base64.b64decode(sys.argv[1]), 'logo bytes differ from upload'
+          print('logo bytes round-trip byte-identical')
+          PY
+          # EXACT-REVERT: restore the captured identity fields, then the logo state
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/id0.json'))
+          body={"name":d['name'],"unitName":d['unitName'],"shortName":d['shortName'],"address":d['address'],
+                "headerText":d['headerText'],"footerText":d['footerText']}
+          json.dump(body,open('/tmp/revert.json','w'))
+          PY
+          curl -sf -X PUT -H "Authorization: Bearer $OFF" -H "$J" -d @/tmp/revert.json "$API/api/icu/hospital-identity" > /dev/null
+          if [ "$HASLOGO" = "True" ]; then
+            B64=$(base64 -w0 /tmp/logo0.bin)
+            curl -sf -X POST -H "Authorization: Bearer $OFF" -H "$J" -d "{\"mime\":\"$MIME0\",\"dataBase64\":\"$B64\"}" "$API/api/icu/hospital-identity/logo" > /dev/null
+            echo "pre-existing logo restored"
+          else
+            curl -sf -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/hospital-identity/logo/clear" > /dev/null
+            echo "logo cleared back to unset"
+          fi
+          curl -sf "$API/api/icu/hospital-identity" | python3 -c "
+          import json,sys
+          now=json.load(sys.stdin); was=json.load(open('/tmp/id0.json'))
+          for k in ('name','unitName','shortName','address','headerText','footerText','hasLogo'):
+              assert now[k]==was[k], (k, was[k], now[k])
+          print('identity restored byte-stable (audit history honestly records this run)')"
+
       - name: PAGES ORIGIN — cross-origin config + build identity intact
         run: |
           rc=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$PAGES/")
