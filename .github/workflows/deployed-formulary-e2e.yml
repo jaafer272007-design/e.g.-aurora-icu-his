@@ -249,6 +249,14 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
             -d "{\"value\":\"$FVAL\"}" "$API/api/icu/formulary/frequencies" \
             | python3 -c 'import json,sys,os; d=json.load(sys.stdin); assert d["value"]==os.environ["FVAL"] and d["active"] is True, d; print("frequency accepted verbatim:", d["value"])'
+          # …then retire it IMMEDIATELY: the downstream byte-identical
+          # vocabulary-text step quotes ACTIVE values, so a live run value
+          # would drift its exact-match (this run's TEXT DRIFT lesson);
+          # acceptance is already proven above, and cleanup tolerates the
+          # resulting 409 on its own deactivate.
+          enc=$(python3 -c 'import os,urllib.parse; print(urllib.parse.quote(os.environ["FVAL"], safe=""))')
+          curl -sf -X POST -H "Authorization: Bearer $PHA" "$API/api/icu/formulary/frequencies/$enc/deactivate" > /dev/null
+          echo "run frequency retired — the vocabulary-text step stays byte-identical"
           # …and the q<n>h STRUCTURAL guard survives (safety rule, kept):
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $PHA" -H 'Content-Type: application/json' \
             -d '{"value":"q6h"}' "$API/api/icu/formulary/frequencies")
