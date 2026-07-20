@@ -48,14 +48,18 @@ static class BedRegistryApi
         app.MapPost("/api/icu/adt/beds", (CreateBedRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "beds.manage") is IResult denied) return denied;
+            /* free-text correction: the bed label IS the visible identity
+               (it renders on charts), so it stays the typed key — but
+               with NO format rule, only the platform bound; permanence
+               and uniqueness (the 409s below) are what protect records */
             var bedId = (req.BedId ?? "").Trim();
             if (bedId.Length == 0) return ApiError.BadRequest("bedId is required");
-            if (!System.Text.RegularExpressions.Regex.IsMatch(bedId, "^[A-Za-z0-9][A-Za-z0-9 _-]{0,19}$"))
-                return ApiError.BadRequest(
-                    "bedId must be 1-20 characters — letters, digits, spaces, '-' or '_', starting with a letter or digit (a permanent identifier, e.g. 'B-17')");
+            if (bedId.Length > AdtLogic.MaxTextLength)
+                return ApiError.BadRequest($"bedId exceeds {AdtLogic.MaxTextLength} characters");
             var area = (req.Area ?? "").Trim();
             if (area.Length == 0) return ApiError.BadRequest("area is required (the board groups beds by area, e.g. 'Pod A')");
-            if (area.Length > 40) return ApiError.BadRequest("area exceeds 40 characters");
+            if (area.Length > AdtLogic.MaxTextLength)
+                return ApiError.BadRequest($"area exceeds {AdtLogic.MaxTextLength} characters");
             if (req.Seq is < 1 or > 9999) return ApiError.BadRequest("seq must be between 1 and 9999");
             if (db.Beds.FirstOrDefault(b => b.BedId == bedId) is BedRow existing)
                 return existing.Active

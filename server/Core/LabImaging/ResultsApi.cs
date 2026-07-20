@@ -491,7 +491,7 @@ static class ResultsApi
             if (string.IsNullOrWhiteSpace(req.ReportingRadiologist))
                 return ApiError.BadRequest("reportingRadiologist is required — the paper report names its author (recorded as free text; they are not a system user)");
             foreach (var (v, name, max) in new[] { (req.Findings, "findings", 8000), (req.Impression, "impression", 4000),
-                (req.ReportingRadiologist, "reportingRadiologist", 200), (req.Note, "note", 2000) })
+                (req.ReportingRadiologist, "reportingRadiologist", OrderLogic.MaxTextLength), (req.Note, "note", 2000) })
                 if (v is { } s && s.Length > max) return ApiError.BadRequest($"{name} exceeds {max} characters");
             var modality = (req.Modality ?? "").Trim();
             if (!ResultsLogic.ImagingModalities.Contains(modality))
@@ -535,7 +535,8 @@ static class ResultsApi
                 description = (req.Description ?? "").Trim();
                 if (description.Length == 0)
                     return ApiError.BadRequest("description is required for an unlinked report — pick the study type (no order is ever fabricated)");
-                if (description.Length > 200) return ApiError.BadRequest("description exceeds 200 characters");
+                if (description.Length > OrderLogic.MaxTextLength)
+                    return ApiError.BadRequest($"description exceeds {OrderLogic.MaxTextLength} characters");
             }
 
             var pt = db.AdtPatients.AsNoTracking().First(p => p.PatientId == req.PatientId);
@@ -697,7 +698,7 @@ static class ResultsApi
             {
                 ("findings", req.Findings, s.Report ?? "", 8000, v => s.Report = v),
                 ("impression", req.Impression, s.Impression ?? "", 4000, v => s.Impression = v),
-                ("reportingRadiologist", req.ReportingRadiologist, s.ReportingRadiologist ?? "", 200, v => s.ReportingRadiologist = v),
+                ("reportingRadiologist", req.ReportingRadiologist, s.ReportingRadiologist ?? "", OrderLogic.MaxTextLength, v => s.ReportingRadiologist = v),
                 ("note", req.Note, s.Note ?? "", 2000, v => s.Note = v),
             };
             foreach (var t in texts)

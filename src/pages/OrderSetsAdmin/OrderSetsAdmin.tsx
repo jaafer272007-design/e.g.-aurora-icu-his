@@ -42,7 +42,6 @@ export function OrderSetsAdmin() {
   const [rowError, setRowError] = useState<{ setId: string; error: string } | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const [cSetId, setCSetId] = useState('')
   const [cName, setCName] = useState('')
   const [cDescription, setCDescription] = useState('')
   const [cItems, setCItems] = useState('')
@@ -86,10 +85,10 @@ export function OrderSetsAdmin() {
     const items = parseItems(cItems)
     if (typeof items === 'string') { setFormError(items); return }
     await applyWrite(null, 'the set', () => createOrderSet({
-      setId: cSetId.trim(), name: cName.trim(), description: cDescription.trim(), items,
+      name: cName.trim(), description: cDescription.trim(), items,
     }), s => {
-      showToast('Order set created', `${s.name} (${s.setId}) — ${s.items.length} order template(s)`)
-      setCSetId(''); setCName(''); setCDescription(''); setCItems('')
+      showToast('Order set created', `${s.name} — ${s.items.length} order template(s)`)
+      setCName(''); setCDescription(''); setCItems('')
     })
   }
 
@@ -151,7 +150,6 @@ export function OrderSetsAdmin() {
                       <div className="uamain">
                         <span className="uawho">
                           <b>{s.name}</b>
-                          <small className="num">{s.setId}</small>
                         </span>
                         <span className="uarole">
                           <span>{s.description}</span>
@@ -238,10 +236,7 @@ export function OrderSetsAdmin() {
             <Card icon={<IconAdmit size={15} stroke="var(--cyan)" />} title="Create Order Set" aside="new sets are active immediately">
               <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doCreate() }}>
                 <div className="uafields">
-                  <label>Set id (permanent — lowercase, digits, hyphen)
-                    <input value={cSetId} onChange={ev => setCSetId(ev.target.value)} disabled={busy} placeholder="sepsis-bundle" autoComplete="off" />
-                  </label>
-                  <label>Name
+                  <label>Name (free text — the system keeps its own hidden identifier)
                     <input value={cName} onChange={ev => setCName(ev.target.value)} disabled={busy} />
                   </label>
                   <label className="uawide">Description
@@ -255,7 +250,7 @@ export function OrderSetsAdmin() {
                 </div>
                 {formError && <div className="uaerr" role="alert">{formError}</div>}
                 <button className="uasubmit" type="submit"
-                  disabled={busy || !cSetId.trim() || !cName.trim() || !cDescription.trim() || !cItems.trim()}>
+                  disabled={busy || !cName.trim() || !cDescription.trim() || !cItems.trim()}>
                   {busy ? 'Creating…' : 'Create order set'}
                 </button>
               </form>

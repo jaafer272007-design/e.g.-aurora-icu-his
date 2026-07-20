@@ -149,7 +149,6 @@ export function Formulary() {
   const [rowError, setRowError] = useState<{ drugId: string; error: string } | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const [cDrugId, setCDrugId] = useState('')
   const [cFields, setCFields] = useState<DrugFields>(emptyFields)
   const [eFields, setEFields] = useState<DrugFields>(emptyFields)
 
@@ -186,9 +185,9 @@ export function Formulary() {
   }
 
   async function doCreate() {
-    await applyWrite(null, 'the drug', () => createFormularyDrug({ drugId: cDrugId.trim(), ...draftOf(cFields) }), d => {
-      showToast('Drug added', `${d.name} (${d.drugId}) is active in the formulary`)
-      setCDrugId(''); setCFields(emptyFields)
+    await applyWrite(null, 'the drug', () => createFormularyDrug({ ...draftOf(cFields) }), d => {
+      showToast('Drug added', `${d.name} is active in the formulary`)
+      setCFields(emptyFields)
     })
   }
 
@@ -250,7 +249,7 @@ export function Formulary() {
                       <div className="uamain">
                         <span className="uawho">
                           <b>{d.name}</b>
-                          <small className="num">{d.drugId}{d.brandNames.length > 0 ? ` · ${d.brandNames.join(' · ')}` : ''}</small>
+                          {d.brandNames.length > 0 && <small className="num">{d.brandNames.join(' · ')}</small>}
                         </span>
                         <span className="uarole">
                           <span>{d.drugClass}</span>
@@ -332,16 +331,10 @@ export function Formulary() {
 
             <Card icon={<IconAdmit size={15} stroke="var(--cyan)" />} title="Add Drug" aside="new drugs are active immediately">
               <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doCreate() }}>
-                <div className="uafields">
-                  <label>Drug id (permanent — lowercase, digits, hyphen)
-                    <input value={cDrugId} onChange={e => setCDrugId(e.target.value)} disabled={busy}
-                      placeholder="drug-name" autoComplete="off" />
-                  </label>
-                </div>
                 <DrugForm fields={cFields} setFields={setCFields} busy={busy} vocab={vocab} />
                 {formError && <div className="uaerr" role="alert">{formError}</div>}
                 <button className="uasubmit" type="submit"
-                  disabled={busy || !cDrugId.trim() || !cFields.name.trim() || !cFields.drugClass.trim()
+                  disabled={busy || !cFields.name.trim() || !cFields.drugClass.trim()
                     || !cFields.form.trim() || !cFields.strengths.trim() || !cFields.doses.trim()
                     || !cFields.defaultDose.trim() || !cFields.routes.trim() || !cFields.frequencies.trim()}>
                   {busy ? 'Adding…' : 'Add to formulary'}

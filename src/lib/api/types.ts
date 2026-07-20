@@ -761,7 +761,9 @@ export interface FormularyDrug {
 
 /** POST /api/icu/formulary — create draft (Pharmacist formulary.manage) */
 export interface CreateDrugDraft {
-  drugId: string
+  /** hidden internal key — omitted by the UI (the server generates it);
+   *  wire-accepted for existing callers */
+  drugId?: string
   name: string
   brandNames: string[]
   drugClass: string

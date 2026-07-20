@@ -55,15 +55,29 @@ static class OrderSetsApi
         {
             if (Rbac.Deny(user, "ordersets.manage") is IResult denied) return denied;
 
+            /* free-text correction: the author types only the NAME — an
+               omitted setId is generated (hidden internal key); an
+               explicit one (existing suites) stays wire-accepted */
             var setId = (req.SetId ?? "").Trim();
-            if (FormularyLogic.ValidateDrugId(setId) is string idErr)
-                return ApiError.BadRequest(idErr.Replace("drugId", "setId"));
+            if (setId.Length == 0)
+                setId = FormularyLogic.NewKey("oset", id => db.OrderSets.AsNoTracking().Any(x => x.SetId == id));
+            else if (FormularyLogic.ValidateExplicitId("setId", setId) is string idErr)
+                return ApiError.BadRequest(idErr);
             if (FormularyLogic.CheckText("name", req.Name, required: true) is string nErr) return ApiError.BadRequest(nErr);
             if (FormularyLogic.CheckText("description", req.Description, required: true) is string dErr) return ApiError.BadRequest(dErr);
             if (ValidateItems(req.Items, db) is string iErr) return ApiError.BadRequest(iErr);
             if (db.OrderSets.AsNoTracking().FirstOrDefault(x => x.SetId == setId) is OrderSetRow existing)
                 return ApiError.StateConflict(
                     $"set id '{setId}' already exists ({existing.Name}, {(existing.Active ? "active" : "inactive")}) — set ids are permanent");
+            /* with the id hidden, the NAME is the only identity a human
+               sees — a duplicate ACTIVE name is refused (id-dup FIRST so
+               identical re-posts keep their established 409) */
+            var loweredName = req.Name!.Trim().ToLowerInvariant();
+            if (db.OrderSets.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(x => x.Active && x.Name.Trim().ToLowerInvariant() == loweredName)
+                is OrderSetRow dupName)
+                return ApiError.StateConflict(
+                    $"an active order set named '{dupName.Name}' already exists — two identical entries would be indistinguishable when ordering; edit or retire the existing one");
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var dto = new OrderSetDto(
@@ -91,6 +105,15 @@ static class OrderSetsApi
             }
             if (req.Items is not null && ValidateItems(req.Items, db) is string iErr)
                 return ApiError.BadRequest(iErr);
+            if (req.Name is not null)
+            {
+                var loweredName = req.Name.Trim().ToLowerInvariant();
+                if (db.OrderSets.AsNoTracking().AsEnumerable()
+                        .FirstOrDefault(x => x.SetId != setId && x.Active && x.Name.Trim().ToLowerInvariant() == loweredName)
+                    is OrderSetRow dupName)
+                    return ApiError.StateConflict(
+                        $"an active order set named '{dupName.Name}' already exists — two identical entries would be indistinguishable when ordering");
+            }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var events = new List<FormularyEventDto>();
@@ -144,6 +167,13 @@ static class OrderSetsApi
             if (row is null) return ApiError.NotFound();
             if (row.Active)
                 return ApiError.StateConflict($"set '{setId}' is already active — there is nothing to reactivate");
+            /* reactivation may not resurrect a duplicate ordering entry */
+            var loweredName = row.Name.Trim().ToLowerInvariant();
+            if (db.OrderSets.AsNoTracking().AsEnumerable()
+                    .FirstOrDefault(x => x.SetId != setId && x.Active && x.Name.Trim().ToLowerInvariant() == loweredName)
+                is OrderSetRow dupName)
+                return ApiError.StateConflict(
+                    $"an active order set named '{dupName.Name}' already exists — reactivating '{row.Name}' would put two identical entries on the ordering menu");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.Active = true;
             row.EventsJson = FormularyLogic.AppendEvents(row.EventsJson,
