@@ -1,79 +1,91 @@
-import type { Assignment, CreateAssignmentDraft } from '../types'
+import type { CoverageRow, CoveringNurse, MineWorklist, Removal } from '../types'
 import { ROSTER } from './roster'
 
-/* Patient Assignment & Responsibility — MOCK STORE (offline demo parity).
-   Mirrors server/Core/Assignments + the Seeder's demo assignments: RN
-   Maya Chen on P-1001/P-1004 and Dr. Rahman's six-patient panel (the
-   same patients the retired NURSE_ASSIGNMENT / ROUNDING_LIST fixtures
-   claimed — now honest rows a signed-in user matches or doesn't).
-   Seed rows carry empty audit stamps (historical data — the ADT
-   convention: facts are never invented). */
+/* Assignment — OPT-OUT coverage MOCK STORE (offline demo parity).
+   Mirrors server/Core/Assignments: every nurse covers every roster
+   patient by default; the only persistent state is the REMOVAL
+   exceptions. The demo nurse accounts below mirror the seeded staging
+   users (the mock stand-in for the active Nurse-profile accounts
+   coverage derives from). NO seed removals — the default IS the state. */
 
-const seedRow = (
-  n: number, patientId: string, userId: string, userName: string,
-  userTitle: string, kind: Assignment['kind'],
-): Assignment => {
-  const r = ROSTER.find(x => x.patientId === patientId)!
+export const MOCK_NURSES: CoveringNurse[] = [
+  { userId: 'maya.chen', name: 'RN Maya Chen', jobTitle: 'Staff Nurse' },
+  { userId: 'priya.patel', name: 'RN Priya Patel', jobTitle: 'Staff Nurse' },
+]
+
+const REMOVALS: Removal[] = []
+let seq = 0
+
+const encOf = (patientId: string) => `ENC-${patientId.slice(patientId.indexOf('-') + 1)}`
+
+const activeRemoval = (patientId: string, userId: string) =>
+  REMOVALS.find(r => r.patientId === patientId && r.userId === userId && !r.restoredAt)
+
+/** the unit-wide derived coverage (mock) */
+export function mockCoverage(): CoverageRow[] {
+  return ROSTER.map(r => {
+    const removedHere = new Set(
+      REMOVALS.filter(x => x.patientId === r.patientId && !x.restoredAt).map(x => x.userId))
+    return {
+      patientId: r.patientId, patientName: r.name, bedId: r.bedId, encounterId: encOf(r.patientId),
+      nurses: MOCK_NURSES.filter(n => !removedHere.has(n.userId)),
+      removals: REMOVALS.filter(x => x.patientId === r.patientId),
+    }
+  })
+}
+
+/** the signed-in clinician's worklist (mock — mirrors /assignments/mine) */
+export function mockMine(kind: 'nurse' | 'doctor' | null, userId: string): MineWorklist {
+  if (kind === null) return { kind: null, patientIds: [], removedPatientIds: [] }
+  if (kind === 'doctor')
+    return { kind: 'doctor', patientIds: ROSTER.map(r => r.patientId), removedPatientIds: [] }
+  const removed = new Set(
+    REMOVALS.filter(x => x.userId === userId && !x.restoredAt).map(x => x.patientId))
   return {
-    assignmentId: `ASG-${1000 + n}`,
-    encounterId: `ENC-${patientId.slice(patientId.indexOf('-') + 1)}`,
-    patientId, patientName: r.name, bedId: r.bedId,
-    userId, userName, userTitle,
-    kind, role: 'primary', shift: 'day',
-    assignedAt: '', assignedBy: '', assignedByRole: '',
-    endedAt: null, endedBy: null, endedByRole: null, endReason: null,
+    kind: 'nurse',
+    patientIds: ROSTER.map(r => r.patientId).filter(id => !removed.has(id)),
+    removedPatientIds: ROSTER.map(r => r.patientId).filter(id => removed.has(id)),
   }
 }
 
-export const ASSIGNMENTS: Assignment[] = [
-  seedRow(1, 'P-1001', 'maya.chen', 'RN Maya Chen', 'Staff Nurse', 'nurse'),
-  seedRow(2, 'P-1004', 'maya.chen', 'RN Maya Chen', 'Staff Nurse', 'nurse'),
-  seedRow(3, 'P-1001', 'sara.rahman', 'Dr. Sara Rahman', 'Consultant', 'doctor'),
-  seedRow(4, 'P-1004', 'sara.rahman', 'Dr. Sara Rahman', 'Consultant', 'doctor'),
-  seedRow(5, 'P-1007', 'sara.rahman', 'Dr. Sara Rahman', 'Consultant', 'doctor'),
-  seedRow(6, 'P-1008', 'sara.rahman', 'Dr. Sara Rahman', 'Consultant', 'doctor'),
-  seedRow(7, 'P-1012', 'sara.rahman', 'Dr. Sara Rahman', 'Consultant', 'doctor'),
-  seedRow(8, 'P-1013', 'sara.rahman', 'Dr. Sara Rahman', 'Consultant', 'doctor'),
-]
-
-let seq = ASSIGNMENTS.length
-
-/** mock create — mirrors the server's rules that matter offline: the
- *  patient must be on the roster (mock stand-in for the open-encounter
- *  chokepoint) and the SAME user+kind may not be actively duplicated;
- *  a SECOND nurse is never a conflict (locked decision 1). */
-export function insertAssignment(
-  draft: CreateAssignmentDraft, userName: string, userTitle: string,
+/** mock remove — mirrors the server rules that matter offline: real
+ *  patient, real nurse, no replay, and 🔴 NEVER ZERO NURSES. */
+export function mockRemove(
+  patientId: string, userId: string, reason: string | undefined,
   actor: string, actorRole: string, now: string,
-): Assignment | { error: string } {
-  const r = ROSTER.find(x => x.patientId === draft.patientId)
-  if (!r) return { error: `patient '${draft.patientId}' has no open encounter — assigning responsibility is not permitted: new care cannot be initiated on a closed episode` }
-  const dup = ASSIGNMENTS.find(a =>
-    a.patientId === draft.patientId && a.userId === draft.userId && a.kind === draft.kind && !a.endedAt)
-  if (dup) return { error: `'${userName}' is already actively assigned as ${dup.role} ${dup.kind} (${dup.assignmentId}) — end that assignment first (handover), or assign a different clinician` }
-  const row: Assignment = {
-    assignmentId: `ASG-${1000 + ++seq}`,
-    encounterId: `ENC-${draft.patientId.slice(draft.patientId.indexOf('-') + 1)}`,
-    patientId: draft.patientId, patientName: r.name, bedId: r.bedId,
-    userId: draft.userId, userName, userTitle,
-    kind: draft.kind, role: draft.role, shift: draft.shift,
-    assignedAt: now, assignedBy: actor, assignedByRole: actorRole,
-    endedAt: null, endedBy: null, endedByRole: null, endReason: null,
+): Removal | { error: string } {
+  const r = ROSTER.find(x => x.patientId === patientId)
+  if (!r) return { error: `patient '${patientId}' has no open encounter — carving a coverage exception is not permitted: new care cannot be initiated on a closed episode` }
+  const nurse = MOCK_NURSES.find(n => n.userId === userId)
+  if (!nurse) return { error: `userId '${userId}' does not match any user account — coverage references real accounts, never free text` }
+  if (activeRemoval(patientId, userId))
+    return { error: `'${nurse.name}' is already removed from this patient — there is nothing to remove` }
+  const removedHere = new Set(
+    REMOVALS.filter(x => x.patientId === patientId && !x.restoredAt).map(x => x.userId))
+  const remaining = MOCK_NURSES.filter(n => n.userId !== userId && !removedHere.has(n.userId))
+  if (remaining.length === 0)
+    return { error: `'${nurse.name}' is the LAST nurse covering this patient — a patient must never have zero nurse coverage, so this removal is refused (restore another nurse first, or add nurse accounts)` }
+  const row: Removal = {
+    removalId: `RMV-${1000 + ++seq}`,
+    encounterId: encOf(patientId),
+    patientId, patientName: r.name, bedId: r.bedId,
+    userId, userName: nurse.name, userTitle: nurse.jobTitle,
+    removedAt: now, removedBy: actor, removedByRole: actorRole,
+    reason: reason?.trim() || null,
+    restoredAt: null, restoredBy: null, restoredByRole: null,
   }
-  ASSIGNMENTS.push(row)
+  REMOVALS.push(row)
   return row
 }
 
-/** mock end — ended, never deleted */
-export function applyAssignmentEnd(
-  assignmentId: string, actor: string, actorRole: string, reason: string | undefined, now: string,
-): Assignment | { error: string } {
-  const row = ASSIGNMENTS.find(a => a.assignmentId === assignmentId)
-  if (!row) return { error: 'Not found' }
-  if (row.endedAt) return { error: `assignment '${assignmentId}' already ended by ${row.endedBy} at ${row.endedAt} — there is nothing to end` }
-  row.endedAt = now
-  row.endedBy = actor
-  row.endedByRole = actorRole
-  row.endReason = reason?.trim() || null
+/** mock restore — restored, never deleted */
+export function mockRestore(
+  patientId: string, userId: string, actor: string, actorRole: string, now: string,
+): Removal | { error: string } {
+  const row = activeRemoval(patientId, userId)
+  if (!row) return { error: `'${userId}' is not removed from this patient — they are already covering (the default); there is nothing to restore` }
+  row.restoredAt = now
+  row.restoredBy = actor
+  row.restoredByRole = actorRole
   return row
 }

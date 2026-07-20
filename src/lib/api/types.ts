@@ -381,39 +381,86 @@ export interface RoundingPatient {
    the rounding list derives from REAL doctor assignments — the fixture's
    hardcoded physician + six patient ids are gone. */
 
-/* ---------- Patient Assignment & Responsibility (Aurora Core) ----------
-   Who is responsible for a patient right now — a WORKLIST, never an
-   authority (meds.administer stays global). Encounter-scoped and
-   therefore patient-based (a bed transfer never touches an assignment);
-   many-to-many (a second nurse is never a conflict); ended-never-deleted;
-   audited with actor + ACTIVE role (#104). */
+/* ---------- Assignment — the OPT-OUT coverage model (Aurora Core) ----------
+   The validator's clinical correction, replacing #114's opt-in model:
+   doctors have NO assignment concept (every doctor covers every patient);
+   every NURSE covers every patient BY DEFAULT and exceptions are carved
+   as REMOVALS (restorable, never deleted). Primary/secondary dropped.
+   🔴 Worklist, never authority — with ZERO exceptions since this build
+   (the SBAR handoff gate is dropped): a removal changes the focused
+   view, never the ability to act. 🔴 Removing the LAST covering nurse
+   is refused by the server — a patient never has zero coverage. */
 
+/** one open encounter's derived coverage */
+export interface CoverageRow {
+  patientId: string
+  patientName: string
+  bedId: string
+  encounterId: string
+  /** active Nurse-profile accounts minus active removals — never empty
+   *  (the server refuses the removal that would empty it) */
+  nurses: CoveringNurse[]
+  /** the exception rows, active AND restored (the inline audit) */
+  removals: Removal[]
+}
+
+export interface CoveringNurse {
+  userId: string
+  name: string
+  jobTitle: string
+}
+
+/** one carved exception: this nurse is NOT covering this encounter */
+export interface Removal {
+  removalId: string
+  encounterId: string
+  patientId: string
+  patientName: string
+  bedId: string
+  userId: string
+  userName: string
+  userTitle: string
+  removedAt: string
+  removedBy: string
+  removedByRole: string
+  reason?: string | null
+  restoredAt?: string | null
+  restoredBy?: string | null
+  restoredByRole?: string | null
+}
+
+/** the signed-in clinician's worklist — the wire states the model:
+ *  'nurse' = all open patients minus my removals; 'doctor' = ALL open
+ *  patients; null = no worklist for this profile */
+export interface MineWorklist {
+  kind: 'nurse' | 'doctor' | null
+  patientIds: string[]
+  removedPatientIds: string[]
+}
+
+/** coverage-manager picker row: the active nurses coverage derives from */
+export interface CoverageStaff {
+  userId: string
+  name: string
+  jobTitle: string
+}
+
+/* ---- the LEGACY #114 shape (history read only — /assignments/history;
+   no new rows are ever created) ---- */
 export type AssignmentKind = 'nurse' | 'doctor'
-export type AssignmentRole = 'primary' | 'secondary'
-/** a LABEL chosen by the assigner (no Shift entity exists) — matches the
- *  timeline's Day 07–19 / Night 19–07 vocabulary */
-/** a Shifts vocabulary CODE (managed since the Configuration
- *  Vocabularies build — seeded day/night; hospitals edit the list live,
- *  so the type is an open string; the server validates against the
- *  active vocabulary and the stored value is a snapshot) */
-export type AssignmentShift = string
 
 export interface Assignment {
   assignmentId: string
   encounterId: string
-  /** derived from the encounter at read — patient-based responsibility;
-   *  bedId shows the CURRENT bed without the assignment changing */
   patientId: string
   patientName: string
   bedId: string
-  /** Users.Username — a real account reference, never free text */
   userId: string
   userName: string
   userTitle: string
   kind: AssignmentKind
-  role: AssignmentRole
-  shift: AssignmentShift
-  /** "" on historical seed rows (facts are never invented) */
+  role: 'primary' | 'secondary'
+  shift: string
   assignedAt: string
   assignedBy: string
   assignedByRole: string
@@ -423,32 +470,11 @@ export interface Assignment {
   endReason?: string | null
 }
 
-/** assign-picker row: an ACTIVE account and the kinds it may be assigned
- *  as (multi-role accounts may carry both) */
-export interface AssignableStaff {
-  userId: string
-  name: string
-  jobTitle: string
-  kinds: AssignmentKind[]
-}
-
-export interface CreateAssignmentDraft {
-  patientId: string
-  userId: string
-  kind: AssignmentKind
-  role: AssignmentRole
-  shift: AssignmentShift
-}
-
-/** one open encounter with no active nurse (or doctor) — the Unassigned
- *  panel's row: zero assignments is allowed but must be VISIBLE */
-export interface UnassignedPatient {
-  patientId: string
-  name: string
-  bedId: string
-  diagnosis: string
-  severity: Severity
-}
+/* UnassignedPatient / AssignableStaff / CreateAssignmentDraft are
+   RETIRED (Assignment Simplification): with the opt-out default and the
+   last-nurse 409, an uncovered patient CANNOT exist — the Unassigned
+   panel's reason to exist is gone (the safety moved from "visible" to
+   "impossible"); the opt-in create flow is replaced by remove/restore. */
 
 export interface ActionQueueItem {
   title: string

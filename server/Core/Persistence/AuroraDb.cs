@@ -63,6 +63,7 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
        responsible for a patient right now — encounter-scoped,
        many-to-many, ended-never-deleted; a WORKLIST, never an authority */
     public DbSet<Aurora.Core.Assignments.PatientAssignment> Assignments => Set<Aurora.Core.Assignments.PatientAssignment>();
+    public DbSet<Aurora.Core.Assignments.AssignmentRemoval> AssignmentRemovals => Set<Aurora.Core.Assignments.AssignmentRemoval>();
     /* Stage 11 (design §12 step 1): the GENERIC Observation record plus
        the data-driven Type Catalogue and group enablement — types and
        groups are DATA, never schema */

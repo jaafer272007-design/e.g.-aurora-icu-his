@@ -1,6 +1,72 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-20 · current through the OBSERVATIONS
+**Last updated: 2026-07-20 · current through ASSIGNMENT
+SIMPLIFICATION — the opt-out coverage model (design 7f9f474b, the
+validator's clinical correction), REPLACING #114's opt-in machinery
+wholesale. The model: DOCTORS have NO assignment concept at all —
+every doctor covers every patient, `/assignments/mine` answers the
+whole census with kind 'doctor', the rounding list IS the census
+(verified nothing depended on doctor-assignment). NURSES cover every
+patient BY DEFAULT (opt-OUT): coverage is DERIVED — active
+Nurse-profile accounts minus active removals per open encounter — and
+the ONLY persisted concept is the removal exception
+(`AssignmentRemoval`, RMV-n, audited both halves,
+restored-never-deleted). Primary/secondary roles and shifts are
+DROPPED. 🔴 THE INVARIANT, unchanged and now EXCEPTIONLESS: coverage
+is a WORKLIST, never an AUTHORITY — a removed nurse still charts,
+administers and posts handoffs on the removed patient (asserted
+explicitly on all three write paths at every tier), and since the
+owner's follow-up decision the #114 SBAR handoff assignment gate is
+GONE ENTIRELY (`HandoffApi` checks handoff.document only; any nurse
+hands over any patient, fully global — coverage gates NOTHING, zero
+exceptions). 🔴 THE HARD GUARANTEE (owner chose PREVENT over warn): a
+patient must NEVER have zero nurses — removing the LAST covering
+nurse answers 409 naming the refusal; the floor is enforced, not
+advised. RBAC: assignments.manage stays SeniorDoctor (no matrix
+change; SeniorNurse recorded as the eventual holder); everyone with
+patients.view reads coverage. Wire: GET /assignments (coverage +
+inline removal audit), /mine (the model on the wire: nurse worklist +
+removedPatientIds, doctor census, others null-kind honest-empty),
+/staff (active nurses, manage-gated), /history (the SUPERSEDED #114
+rows, readable forever), POST /remove + /restore (four-code,
+EncounterGuard, replay 409s); the #114 create/end wire is GONE (old
+shape → Disallow 400). MIGRATION HONESTY: AddAssignmentSimplification
+is pure-additive (CreateTable AssignmentRemovals only); the supersede
+runs AT BOOT, idempotently — every still-active #114 row is ended by
+System with reason 'superseded by the opt-out coverage model
+(assignment simplification)'; legacy rows are never discarded
+(history endpoint), demo assignment seeding deleted (the default IS
+the state), and the ADT discharge cascade is removed (coverage
+derives over open encounters — nothing to cascade). UI: the coverage
+dialog (covering nurses + Remove-with-reason, removed list + Restore,
+restored history; read-only without the manage atom), Nurse Workspace
+'My Patients — covering N' = the whole unit, Doctor Workspace
+'Rounding List — All Patients', the Unassigned panel/card DELETED.
+Verified: 51/51 headless (fresh SQLite — EPHEMERAL by design, no
+upgrade leg exists there) + 53/53 (Postgres LIVE-UPGRADE: old e20cc12
+server seeded 8 + 1 old-wire legacy assignments → new server on the
+SAME database ended all 9 with the supersede reason at boot) + 10/10
+production appliance (old image → new image on the SAME live
+Postgres: a REAL old-wire assignment superseded; the removed nurse
+posts a handoff 200 IN PRODUCTION; last-nurse 409 with two real
+created nurse accounts) + 14/14 rendered (staging appliance: dialog
+remove/restore/history, the LAST-nurse refusal visible in the UI,
+nurse worklist covering 14/14, global SBAR with zero setup, read-only
+nurse view, doctor census). Suites: deployed-assignments-e2e FULLY
+REWRITTEN for the opt-out model (default coverage, retired-wire 400s,
+audited remove/restore, the 🔴 authority step — administer via the
+derived MAR adminId + chart + handoff by the REMOVED nurse — the 🔴
+state-aware last-nurse walk, migration honesty, discharge
+derivation, always() restore-then-discharge cleanup);
+deployed-handoff-e2e updated per the owner's directive — the
+assignment-gate step and both /assignments setup calls DELETED, the
+suite now makes ZERO coverage calls and asserts both nurses write
+200 with no relationship set up (the absence is the assertion).
+DEFERRALS recorded: the SeniorNurse profile (future holder of
+assignments.manage); a nurse-centric coverage board (the dialog is
+per-patient today).**
+
+prior marker retained: current through the OBSERVATIONS
 CATALOGUE — the fifth Configuration tenant and the most
 safety-sensitive editable surface yet (design 7ad5a8f8; every shape
 decision owner-confirmed before the build). Hospitals now ADD custom
@@ -79,7 +145,7 @@ path (a set bound can be moved, not blanked); attention-page
 integration of the obs flags; the seeded-type range-edit 200 leg runs
 in the local tiers only (nothing durable may mutate the staging
 taxonomy — the staging suite proves the same code path on the custom
-type).**
+type).
 
 prior marker retained: current through the FREE-TEXT FIELDS +
 AUTO-FILLED TIMESTAMPS CORRECTION (cross-cutting — the #142 principle
@@ -6718,6 +6784,18 @@ shipped otherwise):**
 
 ### SBAR handoff persistence — the append-only series (a Stage-11 mock closure; a data-loss fix)
 
+*[Amendment 2026-07-20 (ASSIGNMENT SIMPLIFICATION — the owner's
+directive): the assignment WRITE GATE described below — "writes gated
+to the ASSIGNED nursing team", the one place assignment ever gated a
+clinical action — is REMOVED ENTIRELY. Any nurse posts an SBAR handoff
+on any patient, fully global like charting and administration;
+handoff.document (Nurse-only) is the only write gate. Coverage now
+gates NOTHING, with zero exceptions. deployed-handoff-e2e no longer
+makes any assignment call — a nurse with no set-up relationship
+writing 200 is the assertion. Everything else in this section
+(append-only series, encounter scoping, validation, discharge
+lifecycle) stands unchanged.]*
+
 **Report (verify-first, delivered before any design talk):** the SBAR
 handoff card on /nurse rendered and accepted input but persisted
 NOWHERE — pure client state (`SbarCard` + a local `onSave` that only
@@ -7871,6 +7949,17 @@ DOB, reason only) — see the flag below.
   the re-admission flow keeping the same MRN).
 
 ### Patient Assignment & Responsibility (built — the validator's design, care-pathway #1)
+
+*[SUPERSEDED 2026-07-20 by ASSIGNMENT SIMPLIFICATION (the top
+marker): the opt-in model below — explicit assignments,
+primary/secondary roles, shifts, the unassigned panel, the discharge
+cascade and the SBAR handoff gate — is REPLACED by the opt-out
+coverage model (doctors: no assignment concept; nurses: everyone
+covers by default, removals are the only persisted state; coverage
+gates nothing). The #114 rows were never discarded: every still-active
+row is ended at boot by System with the supersede reason and stays
+readable forever via GET /api/icu/assignments/history. This section is
+retained as the record of the superseded design.]*
 
 *[Attributed addition 2026-07-16, post-merge: the suite's FIRST staging
 run found a live defect the fresh-DB local matrix could not — the

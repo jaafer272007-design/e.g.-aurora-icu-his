@@ -30,11 +30,11 @@ static class MarApi
         /* GET /api/icu/mar — unit-wide MAR rows, DERIVED server-side at read time
            (expected instances from the order's frequency + therapy start,
            overlaid with the stored administration facts — derived state is
-           never stored). The nurse-assignment narrowing stays a client-side
+           never stored). The nurse-worklist narrowing stays a client-side
            derivation, same as the orders implement queue — WORKFLOW, not
-           authority; since Patient Assignment & Responsibility its source
-           is the REAL assignments read instead of a fixture, and it must
-           never become a server-side gate here: a nurse responding to an
+           authority; since Assignment Simplification its source is the
+           opt-out coverage read (/assignments/mine), and it must never
+           become a server-side gate here: a nurse responding to an
            emergency documents any patient's dose (locked decision 6). */
         app.MapGet("/api/icu/mar", (System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {

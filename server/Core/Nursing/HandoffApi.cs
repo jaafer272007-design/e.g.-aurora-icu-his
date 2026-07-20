@@ -8,8 +8,11 @@ using Microsoft.EntityFrameworkCore;
 namespace Aurora.Core.Nursing;
 
 /* ---------------- SBAR Handoff API ----------------
-   Append-only, encounter-scoped, nurse-assignment-gated (see
-   HandoffModels.cs for the owner's 2026-07-18 model decisions).
+   Append-only, encounter-scoped (see HandoffModels.cs for the owner's
+   2026-07-18 model decisions). Nurse-gated by PROFILE only
+   (handoff.document) — the #114 assignment gate was DROPPED with the
+   Assignment Simplification (owner's decision): any nurse posts on any
+   patient, fully global like charting and administration.
    There is deliberately NO update and NO delete surface — an entry is
    what was communicated at that handover; the next entry is the only
    way forward. */
@@ -48,20 +51,15 @@ static class HandoffApi
         }).RequireAuthorization();
 
         /* POST /api/icu/nursing/handoff — write ONE new immutable entry.
-           Gate order keeps the 403s honest and oracle-free:
+           Gate order keeps the 403s honest:
            1. handoff.document — the Nurse-profile permission (owner's
               decision: nurse-only; the doctor handoff is a separate,
-              undesigned record).
+              undesigned record). This is the ONLY authority gate —
+              coverage gates nothing (Assignment Simplification).
            2. shape: patient exists, ≥1 of the four fields non-empty,
               each ≤ 4000 chars.
            3. EncounterGuard — a handoff is care on the admission: 409 on
-              a closed episode (the discharge cascade already ended the
-              assignments, so 4 would also refuse — the guard answers
-              with the lifecycle's own message first).
-           4. the ASSIGNMENT gate (the owner's scoped exception to
-              worklist-never-authority): an ACTIVE nurse assignment —
-              primary or secondary — on THIS encounter, matched on the
-              caller's own account. */
+              a closed episode. */
         app.MapPost("/api/icu/nursing/handoff", (WriteHandoffRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "handoff.document") is IResult denied) return denied;
@@ -79,14 +77,11 @@ static class HandoffApi
             if (EncounterGuard.RequireOpenForPatient(db, patientId, "recording a handoff", out var enc) is IResult conflict)
                 return conflict;
             var username = user.FindFirst("sub")?.Value ?? "";
-            var assigned = db.Assignments.AsNoTracking().Any(x =>
-                x.EncounterId == enc!.EncounterId && x.Kind == "nurse"
-                && x.UserId == username && x.EndedAt == null);
-            if (!assigned)
-                /* the four-code convention: 403 is GENERIC, never explains
-                   (oracle-free) — the workspace states the assignment rule
-                   as static text beside the form instead */
-                return Results.Json(new { error = "Insufficient permissions" }, JsonOpts.Web, statusCode: 403);
+            /* the #114 assignment gate is DROPPED (Assignment
+               Simplification, owner's decision): any nurse posts an SBAR
+               handoff on ANY patient — fully global like charting and
+               administration. Coverage gates NOTHING; worklist is never
+               authority, with zero exceptions. */
             var row = new HandoffRow
             {
                 HandoffId = HandoffLogic.NextId(),

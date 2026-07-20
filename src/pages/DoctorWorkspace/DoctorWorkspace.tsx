@@ -11,15 +11,14 @@ import { IconFlask, IconNote, IconPencil, IconUsers } from '../../components/ico
 import { News2Pill } from '../../components/News2Pill'
 import {
   acknowledgeResult, getActionQueues, getConsults, getPendingOrders,
-  getResultInbox, getRoundingWorklist, getUnassignedPatients, signOrder,
+  getResultInbox, getRoundingWorklist, signOrder,
 } from '../../lib/api'
 import type {
-  ActionQueueItem, Assignment, Consult, Order, QueueKey, ResultInboxItem,
-  RoundingPatient, UnassignedPatient,
+  ActionQueueItem, Consult, MineWorklist, Order, QueueKey, ResultInboxItem,
+  RoundingPatient,
 } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { displayStamp } from '../../lib/time'
-import { UnassignedCard } from '../../components/UnassignedCard'
 
 const QUEUE_LABEL: Record<QueueKey, string> = {
   orders: 'Orders to Sign',
@@ -42,12 +41,10 @@ export function DoctorWorkspace() {
   const session = getSession()!
   const navigate = useNavigate()
   const { toast, showToast } = useToast()
-  /* the REAL rounding list (Patient Assignment & Responsibility): the
-     signed-in doctor's ACTIVE assignments — bound to the USER + active
-     role (#104), never a fixture; cross-cover is real (the list is the
-     assignment, not attending-derived). */
-  const [rounding, setRounding] = useState<{ assignments: Assignment[]; patients: RoundingPatient[] } | null>(null)
-  const [unassigned, setUnassigned] = useState<UnassignedPatient[] | null>(null)
+  /* the rounding list is the CENSUS (Assignment Simplification): doctors
+     have NO assignment concept — every doctor covers every patient, so
+     the list is simply all open admissions. */
+  const [rounding, setRounding] = useState<{ mine: MineWorklist; patients: RoundingPatient[] } | null>(null)
   /* "Orders to Sign" is a derived view over the canonical Order model
      (Screen 5, status === 'pending'); "Results to Acknowledge" over the
      canonical results store (Screen 6). Only "notes" remains workspace-local. */
@@ -61,9 +58,6 @@ export function DoctorWorkspace() {
 
   useEffect(() => {
     getRoundingWorklist(session.name, session.jobTitle).then(setRounding)
-    /* the Unassigned panel (unit-level safety view): open encounters with
-       no active DOCTOR — so no patient silently falls through */
-    getUnassignedPatients().then(u => setUnassigned(u.doctor)).catch(() => setUnassigned([]))
     getPendingOrders().then(setPendingOrders)
     getResultInbox().then(setResults)
     getActionQueues().then(q =>
@@ -125,13 +119,13 @@ export function DoctorWorkspace() {
 
         <main>
           <div className="col">
-            <Card headId="rlHead" icon={<IconUsers size={15} stroke="var(--blue)" />} title="My Rounding List"
+            <Card headId="rlHead" icon={<IconUsers size={15} stroke="var(--blue)" />} title="Rounding List — All Patients"
               aside={rounding ? `${rounding.patients.length} patients` : '— patients'}>
               <div className="rlist" role="list">
                 {rounding && rounding.patients.length === 0 && (
                   <div className="rlempty">
-                    No patients are assigned to you right now. Assignment is managed
-                    from the patient chart; unassigned patients are listed below.
+                    No open admissions — the unit census is empty. Every doctor
+                    covers every patient; there is no doctor assignment to manage.
                   </div>
                 )}
                 {rounding?.patients.map(p => (
@@ -167,9 +161,6 @@ export function DoctorWorkspace() {
               </div>
             </Card>
 
-            {/* the safety net: doctor-unassigned open encounters, visible to
-                everyone — zero assignments is allowed but never silent */}
-            {unassigned && <UnassignedCard kind="doctor" patients={unassigned} />}
 
             <Card
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>}
