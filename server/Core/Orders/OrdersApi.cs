@@ -203,18 +203,26 @@ static class OrdersApi
                    documented FACTS. Expected instances derive at MAR read
                    from frequency + the signed time (therapy start). */
                 /* Imaging Catalogue (snapshot-at-use): a coded imaging
-                   order's Summary defaults to the study's CURRENT name —
-                   captured here, never re-resolved (a client-provided
-                   summary, e.g. "name — indication", stays authoritative) */
+                   order's Summary defaults to the ASSEMBLED description —
+                   study name + typed region + contrast (the corrected
+                   model: "CT — head — with contrast") — captured here,
+                   never re-resolved (a client-provided summary stays
+                   authoritative; the client composes the same assembly) */
+                var region = draft.Region?.Trim() is { Length: > 0 } r ? r : null;
                 var summary = draft.Summary;
                 if (summary is null && draft.StudyId is not null)
-                    summary = ImagingCatalogLogic.Resolve(db, draft.StudyId)!.Name;
+                    summary = string.Join(" — ", new[]
+                    {
+                        ImagingCatalogLogic.Resolve(db, draft.StudyId)!.Name,
+                        region,
+                        draft.Contrast == true ? "with contrast" : null,
+                    }.Where(p => p is not null));
                 var dto = new OrderDto(
                     OrderLogic.NextOrderId(), draft.PatientId!, enc.EncounterId, enc.BedId, pt.DisplayName,
                     draft.Category!, summary ?? OrderLogic.MedSummary(medication!),
                     medication, draft.Priority!, req.Sign ? "active" : "pending",
                     actor, time, draft.RequiresImplementation, null, history, null,
-                    draft.TestId, draft.StudyId);
+                    draft.TestId, draft.StudyId, region, draft.Contrast);
                 db.Orders.Add(OrderRow.FromDto(dto, OrderLogic.NextSeq()));
                 created.Add(dto);
             }

@@ -166,7 +166,6 @@ export function LabCatalog() {
   const [rowError, setRowError] = useState<{ testId: string; error: string } | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const [cTestId, setCTestId] = useState('')
   const [cName, setCName] = useState('')
   const [cCategory, setCCategory] = useState('')
   const [cSpecimen, setCSpecimen] = useState('')
@@ -216,12 +215,15 @@ export function LabCatalog() {
     const analytes = rowsToDefs(cRows)
     if (typeof analytes === 'string') { setFormError(analytes); return }
     if (!cConfirm) { setFormError('Confirm that these ranges/thresholds will drive automatic flagging for all patients'); return }
+    /* the free-text correction: ONE name field, no typed id — the server
+       derives the panel key (what the user typed is what results render
+       under, exactly like the seeded "CBC") */
     await applyWrite(null, 'the test', () => createLabTest({
-      testId: cTestId.trim(), name: cName.trim(), category: cCategory.trim(),
+      name: cName.trim(), category: cCategory.trim(),
       specimen: cSpecimen.trim(), analytes,
     }), t => {
-      showToast('Test added', `${t.name} (${t.testId}) is active — its definition now drives flagging for all patients`)
-      setCTestId(''); setCName(''); setCCategory(''); setCSpecimen(''); setCRows([emptyRow()]); setCConfirm(false)
+      showToast('Test added', `${t.name} is active — its definition now drives flagging for all patients`)
+      setCName(''); setCCategory(''); setCSpecimen(''); setCRows([emptyRow()]); setCConfirm(false)
     })
   }
 
@@ -414,11 +416,8 @@ export function LabCatalog() {
             <Card icon={<IconAdmit size={15} stroke="var(--cyan)" />} title="Add Test" aside="new tests are active immediately">
               <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doCreate() }}>
                 <div className="uafields">
-                  <label>Test id (permanent — letters, digits, hyphen)
-                    <input value={cTestId} onChange={ev => setCTestId(ev.target.value)} disabled={busy} placeholder="CBC" autoComplete="off" />
-                  </label>
-                  <label>Name
-                    <input value={cName} onChange={ev => setCName(ev.target.value)} disabled={busy} placeholder="Complete Blood Count" />
+                  <label>Name (free text — results render under exactly this label)
+                    <input value={cName} onChange={ev => setCName(ev.target.value)} disabled={busy} placeholder="CBC" autoComplete="off" />
                   </label>
                   <label>Category
                     <input value={cCategory} onChange={ev => setCCategory(ev.target.value)} disabled={busy} placeholder="Hematology" />
@@ -437,7 +436,7 @@ export function LabCatalog() {
                 </div>
                 {formError && <div className="uaerr" role="alert">{formError}</div>}
                 <button className="uasubmit" type="submit"
-                  disabled={busy || !cConfirm || !cTestId.trim() || !cName.trim() || !cCategory.trim() || !cSpecimen.trim() || cRows.every(rowIsBlank)}>
+                  disabled={busy || !cConfirm || !cName.trim() || !cCategory.trim() || !cSpecimen.trim() || cRows.every(rowIsBlank)}>
                   {busy ? 'Adding…' : 'Add to catalogue'}
                 </button>
               </form>

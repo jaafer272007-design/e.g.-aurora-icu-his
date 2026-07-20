@@ -181,14 +181,21 @@ export function OrdersMedication() {
      Entry, an imaging order IS fulfilled by the report documented against
      it (the picked-order linkage) — so like labs it completes via its
      result and carries no implement flag. */
-  const handleImagingOrder = (study: ImagingStudyDef, detail: string, priority: OrderPriority, sign: boolean) => {
+  const handleImagingOrder = (study: ImagingStudyDef, region: string, contrast: boolean,
+    detail: string, priority: OrderPriority, sign: boolean) => {
     /* CODED order (the linkage key): studyId joins the order to the
-       catalogue; the summary snapshots the study NAME at order time
-       (+ the free-text indication) — never re-resolved later */
+       catalogue. The CORRECTED model: region + contrast are order-time
+       and travel structured on the draft; the summary snapshots the
+       ASSEMBLED description ("CT — head — with contrast — indication")
+       at order time — never re-resolved later. */
+    const assembled = [study.name, region || null, contrast ? 'with contrast' : null, detail || null]
+      .filter(Boolean).join(' — ')
     const draft: NewOrderDraft = {
       patientId, category: 'Imaging',
       studyId: study.studyId,
-      summary: detail ? `${study.name} — ${detail}` : study.name,
+      summary: assembled,
+      ...(region ? { region } : {}),
+      ...(contrast ? { contrast } : {}),
       priority,
     }
     createOrders([draft], session.name, sign, session.jobTitle).then(([o]) => {

@@ -202,17 +202,15 @@ export function Configuration() {
     }))
     : null
 
-  /* ---- imaging catalogue (specialized: modality/attrs + true delete) ---- */
+  /* ---- imaging catalogue (CORRECTED model: modality + free-text name
+     only — the internal id is generated and never shown) ---- */
   const [imgBusy, setImgBusy] = useState(false)
   const [imgPanel, setImgPanel] = useState<{ kind: 'edit' | 'retire' | 'history'; id: string } | null>(null)
   const [imgRowError, setImgRowError] = useState<{ id: string; error: string } | null>(null)
   const [imgFormError, setImgFormError] = useState<string | null>(null)
-  const [iId, setIId] = useState(''); const [iName, setIName] = useState('')
-  const [iModality, setIModality] = useState('CXR'); const [iRegion, setIRegion] = useState('')
-  const [iContrast, setIContrast] = useState(false); const [iPortable, setIPortable] = useState(false)
+  const [iName, setIName] = useState('')
+  const [iModality, setIModality] = useState('CXR')
   const [eiName, setEiName] = useState(''); const [eiModality, setEiModality] = useState('CXR')
-  const [eiRegion, setEiRegion] = useState(''); const [eiContrast, setEiContrast] = useState(false)
-  const [eiPortable, setEiPortable] = useState(false)
 
   async function applyImgWrite(id: string | null, what: string,
     run: () => Promise<AdtWriteResult<ImagingStudyDef>>, onOk: (st: ImagingStudyDef) => void) {
@@ -225,16 +223,13 @@ export function Configuration() {
     else setImgFormError(error)
   }
   const doImgCreate = () => applyImgWrite(null, 'the study', () => createImagingStudy({
-    studyId: iId.trim(), name: iName.trim(), modality: iModality,
-    ...(iRegion.trim() ? { region: iRegion.trim() } : {}),
-    contrast: iContrast, portable: iPortable,
+    name: iName.trim(), modality: iModality,
   }), st => {
-    showToast('Imaging study added', `${st.name} (${st.studyId}) is orderable immediately`)
-    setIId(''); setIName(''); setIRegion(''); setIContrast(false); setIPortable(false)
+    showToast('Imaging study added', `${st.name} is orderable immediately`)
+    setIName('')
   })
   const doImgEdit = (st: ImagingStudyDef) => applyImgWrite(st.studyId, 'the change', () => updateImagingStudy(st.studyId, {
-    name: eiName.trim(), modality: eiModality, region: eiRegion.trim(),
-    contrast: eiContrast, portable: eiPortable,
+    name: eiName.trim(), modality: eiModality,
   }), upd => { showToast('Imaging study updated', `${upd.name} — the change is on the study's audit history`); setImgPanel(null) })
   const doImgRetire = (st: ImagingStudyDef) => applyImgWrite(st.studyId, 'the retirement', () => deactivateImagingStudy(st.studyId),
     upd => { showToast('Imaging study retired', `${upd.name} is off the ordering menu (historical orders keep rendering)`); setImgPanel(null) })
@@ -245,10 +240,7 @@ export function Configuration() {
   function openImgPanel(kind: 'edit' | 'retire' | 'history', st: ImagingStudyDef) {
     setImgRowError(null)
     if (imgPanel?.kind === kind && imgPanel.id === st.studyId) { setImgPanel(null); return }
-    if (kind === 'edit') {
-      setEiName(st.name); setEiModality(st.modality); setEiRegion(st.region)
-      setEiContrast(st.contrast); setEiPortable(st.portable)
-    }
+    if (kind === 'edit') { setEiName(st.name); setEiModality(st.modality) }
     setImgPanel({ kind, id: st.studyId })
   }
 
@@ -526,11 +518,10 @@ export function Configuration() {
                             <div className="uamain">
                               <span className="uawho">
                                 <b>{st.name}</b>
-                                <small className="num">{st.studyId}</small>
                               </span>
                               <span className="uarole">
-                                <span>{st.modality}{st.region ? ` · ${st.region}` : ''}</span>
-                                <small className="uaprofile">{st.contrast ? 'contrast' : 'no contrast'} · {st.portable ? 'portable' : 'department'}</small>
+                                <span>{st.modality}</span>
+                                <small className="uaprofile">region &amp; contrast are chosen at order time</small>
                               </span>
                               <span className={`uastatus ${st.active ? 'on' : 'offed'}`}>{st.active ? 'Active' : 'Retired'}</span>
                               <span className="uaacts">
@@ -552,7 +543,7 @@ export function Configuration() {
                             </div>
 
                             {open === 'history' && (
-                              <div className="uapanel" role="region" aria-label={`History: ${st.studyId}`}>
+                              <div className="uapanel" role="region" aria-label={`History: ${st.name}`}>
                                 {st.history.length === 0 && (
                                   <span className="uaconfirm">No recorded events — a seeded study (historical data carries no invented audit).</span>
                                 )}
@@ -565,25 +556,15 @@ export function Configuration() {
                             )}
 
                             {open === 'edit' && (
-                              <div className="uapanel" role="region" aria-label={`Edit imaging study: ${st.studyId}`}>
+                              <div className="uapanel" role="region" aria-label={`Edit imaging study: ${st.name}`}>
                                 <div className="uafields">
-                                  <label>Name (the id <span className="num">{st.studyId}</span> is permanent)
-                                    <input value={eiName} onChange={ev => setEiName(ev.target.value)} disabled={imgBusy} maxLength={80} />
+                                  <label>Name (free text — whatever the hospital calls it)
+                                    <input value={eiName} onChange={ev => setEiName(ev.target.value)} disabled={imgBusy} />
                                   </label>
                                   <label>Modality (fixed vocabulary — one source with result entry)
                                     <select value={eiModality} onChange={ev => setEiModality(ev.target.value)} disabled={imgBusy}>
                                       {IMAGING_MODALITIES.map(m => <option key={m} value={m}>{m}</option>)}
                                     </select>
-                                  </label>
-                                  <label>Body region (optional)
-                                    <input value={eiRegion} onChange={ev => setEiRegion(ev.target.value)} disabled={imgBusy} maxLength={40} />
-                                  </label>
-                                  <label>Attributes
-                                    <span className="uaconfirm">
-                                      <label><input type="checkbox" checked={eiContrast} onChange={ev => setEiContrast(ev.target.checked)} disabled={imgBusy} /> contrast</label>
-                                      {' '}
-                                      <label><input type="checkbox" checked={eiPortable} onChange={ev => setEiPortable(ev.target.checked)} disabled={imgBusy} /> portable</label>
-                                    </span>
                                   </label>
                                 </div>
                                 <div className="uapanelacts">
@@ -596,7 +577,7 @@ export function Configuration() {
                             )}
 
                             {open === 'retire' && (
-                              <div className="uapanel" role="alertdialog" aria-label={`Confirm retirement: ${st.studyId}`}>
+                              <div className="uapanel" role="alertdialog" aria-label={`Confirm retirement: ${st.name}`}>
                                 <span className="uaconfirm">
                                   Retire <b>{st.name}</b>? It leaves the ordering menu and the server refuses
                                   new orders for it. Historical orders carrying it keep rendering (never
@@ -622,34 +603,19 @@ export function Configuration() {
                   <Card icon={<IconSettings size={15} stroke="var(--violet)" />} title="Add Imaging Study" aside="orderable immediately (hospital finalises the list)">
                     <form className="uaform" onSubmit={ev => { ev.preventDefault(); void doImgCreate() }}>
                       <div className="uafields">
-                        <label>Study id (permanent — lowercase, digits, underscore)
-                          <input value={iId} onChange={e => setIId(e.target.value)} disabled={imgBusy}
-                            placeholder="ct_head_plain" autoComplete="off" maxLength={40} />
-                        </label>
-                        <label>Name (shown on ordering chips and order summaries)
+                        <label>Name (free text — whatever the hospital calls it; region &amp; contrast are chosen when ordering)
                           <input value={iName} onChange={e => setIName(e.target.value)} disabled={imgBusy}
-                            placeholder="CT Head without contrast" maxLength={80} />
+                            placeholder="CT" autoComplete="off" />
                         </label>
                         <label>Modality (fixed vocabulary)
                           <select value={iModality} onChange={e => setIModality(e.target.value)} disabled={imgBusy}>
                             {IMAGING_MODALITIES.map(m => <option key={m} value={m}>{m}</option>)}
                           </select>
                         </label>
-                        <label>Body region (optional)
-                          <input value={iRegion} onChange={e => setIRegion(e.target.value)} disabled={imgBusy}
-                            placeholder="Head" maxLength={40} />
-                        </label>
-                        <label>Attributes
-                          <span className="uaconfirm">
-                            <label><input type="checkbox" checked={iContrast} onChange={e => setIContrast(e.target.checked)} disabled={imgBusy} /> contrast</label>
-                            {' '}
-                            <label><input type="checkbox" checked={iPortable} onChange={e => setIPortable(e.target.checked)} disabled={imgBusy} /> portable</label>
-                          </span>
-                        </label>
                       </div>
                       {imgFormError && <div className="uaerr" role="alert">{imgFormError}</div>}
                       <button className="uasubmit" type="submit"
-                        disabled={imgBusy || !iId.trim() || !iName.trim()}>
+                        disabled={imgBusy || !iName.trim()}>
                         {imgBusy ? 'Adding…' : 'Add to catalogue'}
                       </button>
                     </form>

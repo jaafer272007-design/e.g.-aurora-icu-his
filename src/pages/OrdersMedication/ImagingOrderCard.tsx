@@ -9,17 +9,21 @@ interface ImagingOrderCardProps {
    *  null = the catalogue service is unreachable (honest unavailable —
    *  never a fabricated list). */
   studies: ImagingStudyDef[] | null
-  onOrder: (study: ImagingStudyDef, detail: string, priority: OrderPriority, sign: boolean) => void
+  onOrder: (study: ImagingStudyDef, region: string, contrast: boolean,
+    detail: string, priority: OrderPriority, sign: boolean) => void
 }
 
-/** Imaging ordering on the CANONICAL ordering screen. Places a REAL
- *  Imaging-category order through the same createOrders → POST
- *  /api/icu/orders path medications and labs use — now CODED: the order
- *  carries the catalogue studyId (the order half of the order→report
- *  linkage; #105 built the report half) and its summary snapshots the
- *  study name at order time. Study + free-text indication + urgency. */
+/** Imaging ordering on the CANONICAL ordering screen — the CORRECTED
+ *  clinical model: the catalogue holds only the study (modality + name);
+ *  the ORDER carries the specifics. The doctor picks the study, TYPES the
+ *  body region free-text (head / chest / left knee — no rules, no managed
+ *  list) and ticks ONE contrast checkbox (ticked = with contrast; no
+ *  separate "without" option — absence IS plain). The order renders as
+ *  the assembled description: "CT — head — with contrast". */
 export function ImagingOrderCard({ studies, onOrder }: ImagingOrderCardProps) {
   const [studyId, setStudyId] = useState('')
+  const [region, setRegion] = useState('')
+  const [contrast, setContrast] = useState(false)
   const [detail, setDetail] = useState('')
   const [priority, setPriority] = useState<OrderPriority>('Routine')
 
@@ -27,16 +31,24 @@ export function ImagingOrderCard({ studies, onOrder }: ImagingOrderCardProps) {
 
   const place = (sign: boolean) => {
     if (!selected) return
-    onOrder(selected, detail.trim(), priority, sign)
+    onOrder(selected, region.trim(), contrast, detail.trim(), priority, sign)
     setStudyId('')
+    setRegion('')
+    setContrast(false)
     setDetail('')
   }
+
+  /* the assembled description, exactly as it will read on the order */
+  const assembled = selected
+    ? [selected.name, region.trim() || null, contrast ? 'with contrast' : null]
+      .filter(Boolean).join(' — ')
+    : ''
 
   return (
     <Card
       icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--violet)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="12" cy="12" r="4.5" /><path d="M12 7.5v-2M12 18.5v-2M7.5 12h-2M18.5 12h-2" /></svg>}
       title="Order Imaging"
-      aside="same authority as med/lab orders"
+      aside="study from the catalogue · specifics at order time"
     >
       {studies === null ? (
         <div className="omempty">
@@ -56,12 +68,28 @@ export function ImagingOrderCard({ studies, onOrder }: ImagingOrderCardProps) {
                 key={s.studyId}
                 className={`omimgchip${studyId === s.studyId ? ' on' : ''}`}
                 aria-pressed={studyId === s.studyId}
-                title={`${s.modality}${s.region ? ` · ${s.region}` : ''}${s.contrast ? ' · contrast' : ''}${s.portable ? ' · portable' : ''}`}
+                title={s.modality}
                 onClick={() => setStudyId(cur => (cur === s.studyId ? '' : s.studyId))}
               >
                 {s.name}
               </button>
             ))}
+          </div>
+          <div className="omlabrow">
+            <input
+              value={region} onChange={e => setRegion(e.target.value)}
+              placeholder="Body region — e.g. head, chest, left knee"
+              aria-label="Body region (free text)"
+              className="omlabsearch"
+            />
+            <label className="omimgcontrast">
+              <input
+                type="checkbox" checked={contrast}
+                onChange={e => setContrast(e.target.checked)}
+                aria-label="With contrast"
+              />
+              {' '}with contrast
+            </label>
           </div>
           <div className="omlabrow">
             <input
@@ -77,8 +105,8 @@ export function ImagingOrderCard({ studies, onOrder }: ImagingOrderCardProps) {
           {selected ? (
             <div className="omlabhit">
               <span>
-                <b>{selected.name}</b>
-                <small className="omlabmeta"> · {selected.modality}{selected.contrast ? ' · contrast' : ''}{selected.portable ? ' · portable' : ''} · {priority}{detail.trim() ? ` · ${detail.trim()}` : ''}</small>
+                <b>{assembled}</b>
+                <small className="omlabmeta"> · {selected.modality} · {priority}{detail.trim() ? ` · ${detail.trim()}` : ''}</small>
               </span>
               <span className="omlabacts">
                 <button className="btn ghost" onClick={() => place(false)}>Pending</button>

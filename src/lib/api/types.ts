@@ -666,6 +666,13 @@ export interface Order {
    *  (snapshot-at-use). Optional; absent on free-text imaging orders and
    *  pre-catalogue rows. */
   studyId?: string
+  /** CORRECTED IMAGING MODEL: body region + contrast are ORDER-TIME
+   *  decisions on the ORDER — region free text as the doctor typed it,
+   *  contrast a single tick (true = with contrast; absence IS plain).
+   *  Imaging orders only; historical orders carry values backfilled from
+   *  the old baked-in study definitions. */
+  region?: string
+  contrast?: boolean
   priority: OrderPriority
   status: OrderStatus
   orderedBy: string
@@ -692,6 +699,10 @@ export interface NewOrderDraft {
    *  (snapshot-at-use). Optional; absent on free-text imaging orders and
    *  pre-catalogue rows. */
   studyId?: string
+  /** order-time imaging specifics (the corrected model): free-text body
+   *  region + the single contrast checkbox — Imaging drafts only */
+  region?: string
+  contrast?: boolean
   priority: OrderPriority
   requiresImplementation?: boolean
 }
@@ -805,7 +816,10 @@ export interface LabTest {
 
 /** POST /api/icu/lab-catalog — create draft (labcatalog.manage) */
 export interface CreateLabTestDraft {
-  testId: string
+  /** OPTIONAL since the free-text correction: the UI sends only the name
+   *  and the server derives the panel key from it (what the user typed
+   *  is what results render under — no format rules) */
+  testId?: string
   name: string
   category: string
   specimen: string
@@ -1383,34 +1397,29 @@ export interface FrequencyEntry {
    order→report linkage. Deactivate-never-delete: a retired study keeps
    rendering on orders that carry it but isn't newly orderable. */
 export interface ImagingStudyDef {
-  /** permanent natural key (lowercase snake, e.g. 'ct_head_plain') */
+  /** SYSTEM-GENERATED internal key — purely the order→report linkage;
+   *  never typed and never displayed (the auto-generated-MRN principle).
+   *  Pre-correction rows keep their old snake ids. */
   studyId: string
+  /** FREE TEXT — whatever the user typed; no format rules (the corrected
+   *  model: an entry is modality + name, nothing else) */
   name: string
   /** one of IMAGING_MODALITIES — the fixed reconciled vocabulary */
   modality: string
-  region: string
-  /** structured ICU-relevant attributes (design §1 — small set only) */
-  contrast: boolean
-  portable: boolean
   active: boolean
   history: FormularyEvent[]
 }
 
+/** the corrected create shape: name + modality ONLY — region/contrast
+ *  are order-time and portable is gone (no studyId: the server owns it) */
 export interface CreateImagingStudyDraft {
-  studyId: string
   name: string
   modality: string
-  region?: string
-  contrast?: boolean
-  portable?: boolean
 }
 
 export interface EditImagingStudyDraft {
   name?: string
   modality?: string
-  region?: string
-  contrast?: boolean
-  portable?: boolean
 }
 
 /* ---------- GET /api/icu/adt/patients/:patientId ---------- */

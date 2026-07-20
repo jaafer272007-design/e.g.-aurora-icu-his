@@ -255,6 +255,103 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{"reason":"x"}' "$API/api/icu/results/labs/LAB-0000/unacknowledge")
           echo "un-acknowledge of a NONEXISTENT id -> HTTP $rc"; [ "$rc" = "404" ] || exit 1   # 404 stays reserved for absence
 
+      # RUNS BEFORE the discharge step DELIBERATELY (the #141 sequencing
+      # lesson): ordering needs this run's encounter still OPEN.
+      - name: CORRECTED IMAGING MODEL — free-text study add (no code typed) → order with region+contrast (assembled summary) → report → Completed; dup 409; old baked fields now 400; cleanup retires the run study
+        run: |
+          STUDYNAME="E2E CT Scan $GITHUB_RUN_ID"
+          # 1) ADD: name + modality ONLY — the id is system-generated, never typed
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"$STUDYNAME\",\"modality\":\"CT\"}" "$API/api/icu/imaging-catalog" -o /tmp/study.json
+          SID=$(NAME="$STUDYNAME" python3 -c '
+          import json,os
+          d=json.load(open("/tmp/study.json"))
+          assert d["name"]==os.environ["NAME"] and d["modality"]=="CT" and d["active"] is True, d
+          assert d["studyId"].startswith("img_"), d["studyId"]      # generated internal key
+          assert "region" not in d and "contrast" not in d and "portable" not in d, d
+          print(d["studyId"])')
+          echo "added '$STUDYNAME' -> generated id $SID"
+          # duplicate ACTIVE name -> 409 naming it
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"$STUDYNAME\",\"modality\":\"CT\"}" "$API/api/icu/imaging-catalog")
+          echo "duplicate active name -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          # the OLD model's baked-in fields are a contract error now (Disallow)
+          for body in '{"name":"E2E bad","modality":"CT","region":"Head"}' \
+                      '{"name":"E2E bad","modality":"CT","portable":true}' \
+                      '{"studyId":"e2e_bad","name":"E2E bad","modality":"CT"}'; do
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+              -d "$body" "$API/api/icu/imaging-catalog")
+            echo "old-model field on create -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          done
+          # 2) ORDERABLE IMMEDIATELY, specifics at ORDER time: free-text region +
+          # one contrast tick; no summary sent -> the server assembles it
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Imaging\",\"studyId\":\"$SID\",\"region\":\"head\",\"contrast\":true,\"priority\":\"STAT\"}],\"sign\":true}" \
+            "$API/api/icu/orders" -o /tmp/imgorder.json
+          OID=$(NAME="$STUDYNAME" python3 -c '
+          import json,os
+          d=json.load(open("/tmp/imgorder.json"))[0]
+          n=os.environ["NAME"]
+          assert d["summary"]==n+" — head — with contrast", d["summary"]
+          assert d["region"]=="head" and d["contrast"] is True and d["status"]=="active", d
+          print(d["orderId"])')
+          echo "ordered: $OID renders assembled '$STUDYNAME — head — with contrast'"
+          # region/contrast are Imaging-only SHAPE (400 on a Lab draft)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Lab\",\"summary\":\"x\",\"region\":\"head\",\"priority\":\"Routine\"}],\"sign\":false}" "$API/api/icu/orders")
+          echo "region on a Lab draft -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          # 3) RESULTABLE IMMEDIATELY: the clinician documents the paper report
+          # against the order (/document, the #105 linked form) — the report
+          # INHERITS the assembled description from the order
+          NOWSTAMP=$(date -u +"%Y-%m-%d %H:%M")
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"patientId\":\"$PID\",\"orderId\":\"$OID\",\"modality\":\"CT\",\"performedAt\":\"$NOWSTAMP\",\"findings\":\"No acute finding.\",\"impression\":\"Unremarkable.\",\"reportingRadiologist\":\"Dr. E2E Radiology\",\"critical\":false}" \
+            "$API/api/icu/results/imaging/document" -o /tmp/imgrep.json
+          RID=$(OID="$OID" NAME="$STUDYNAME" python3 -c '
+          import json,os; d=json.load(open("/tmp/imgrep.json"))
+          assert d["orderId"]==os.environ["OID"], d
+          assert d["description"]==os.environ["NAME"]+" — head — with contrast", d["description"]
+          print(d["studyId"])')
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID&status=completed" \
+            | OID="$OID" python3 -c '
+          import json,sys,os
+          ids={o["orderId"] for o in json.load(sys.stdin)}
+          assert os.environ["OID"] in ids, ids
+          print("the order reflects COMPLETED via its linked report — the full loop, no code change")'
+          # 4) cleanup: a referenced study is never deleted (409 directing retire) -> retire it;
+          # acknowledge the run report (no inbox accumulation)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $DOC" "$API/api/icu/imaging-catalog/$SID")
+          echo "delete referenced study -> HTTP $rc"; [ "$rc" = "409" ] || exit 1
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/imaging-catalog/$SID/deactivate" >/dev/null && echo "run study retired (off the menu; the order keeps rendering)"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/imaging/$RID/acknowledge" >/dev/null && echo "run report acknowledged"
+
+      - name: LAB FREE-TEXT ADD → order → result — the same loop holds for labs (name with a SPACE, no id typed)
+        run: |
+          LABNAME="E2E Blood Gas $GITHUB_RUN_ID"
+          # name only — the panel key derives from it (spaces legal now; the old
+          # letters/digits/hyphen rule is gone). TECH = the Laboratory (Ancillary
+          # holds labcatalog.manage).
+          curl -sf -X POST -H "Authorization: Bearer $TECH" -H 'Content-Type: application/json' \
+            -d "{\"name\":\"$LABNAME\",\"category\":\"Chemistry\",\"specimen\":\"Arterial blood\",\"analytes\":[{\"analyte\":\"pH\",\"unit\":\"\",\"refRange\":\"7.35-7.45\",\"refLow\":7.35,\"refHigh\":7.45}]}" \
+            "$API/api/icu/lab-catalog" -o /tmp/newtest.json
+          NAME="$LABNAME" python3 -c '
+          import json,os; d=json.load(open("/tmp/newtest.json"))
+          assert d["testId"]==os.environ["NAME"] and d["name"]==os.environ["NAME"] and d["active"] is True, d
+          print("lab test added — the typed name IS the panel key:", d["testId"])'
+          # orderable immediately
+          LOID=$(curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"drafts\":[{\"patientId\":\"$PID\",\"category\":\"Lab\",\"summary\":\"$LABNAME now\",\"testId\":\"$LABNAME\",\"priority\":\"STAT\"}],\"sign\":true}" \
+            "$API/api/icu/orders" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["orderId"])')
+          # resultable immediately (the documentation path validates panel against the catalogue)
+          NLID=$(curl -sf -X POST -H "Authorization: Bearer $TECH" -H 'Content-Type: application/json' \
+            -d "{\"patientId\":\"$PID\",\"panel\":\"$LABNAME\",\"label\":\"Now\",\"note\":\"free-text loop\",\"items\":[{\"analyte\":\"pH\",\"value\":7.4,\"unit\":\"\",\"refRange\":\"7.35-7.45\",\"refLow\":7.35,\"refHigh\":7.45,\"flag\":\"normal\"}]}" \
+            "$API/api/icu/results/labs" | python3 -c 'import json,sys; print(json.load(sys.stdin)["labId"])')
+          echo "lab loop: added '$LABNAME' -> ordered $LOID -> resulted $NLID"
+          # cleanup: acknowledge the result; retire the run test (referenced -> never deleted)
+          curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/results/labs/$NLID/acknowledge" >/dev/null
+          ENC_NAME=$(LN="$LABNAME" python3 -c 'import urllib.parse,os; print(urllib.parse.quote(os.environ["LN"]))')
+          curl -sf -X POST -H "Authorization: Bearer $TECH" "$API/api/icu/lab-catalog/$ENC_NAME/deactivate" >/dev/null && echo "run lab test retired"
+
       - name: THE ASYMMETRIC ENCOUNTER RULE, live — discharge; create → 409; acknowledge AND un-acknowledge on the CLOSED encounter → 200
         run: |
           curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID/discharge" >/dev/null && echo "discharged $EID"

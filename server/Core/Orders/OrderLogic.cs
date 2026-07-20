@@ -100,6 +100,16 @@ static class OrderLogic
             if (MasterData.ImagingCatalogLogic.Resolve(db, d.StudyId) is null)
                 return $"{at}.studyId '{d.StudyId}' does not match any catalogue study";
         }
+        /* the corrected imaging model's ORDER-TIME specifics are the same
+           shape rule: only an Imaging draft may carry a body region or the
+           contrast tick — region is FREE TEXT (no format rules; only the
+           platform oversized-input bound) */
+        if (d.Region is not null && d.Category != "Imaging")
+            return $"{at}: only an Imaging order may carry a body region";
+        if (d.Contrast is not null && d.Category != "Imaging")
+            return $"{at}: only an Imaging order may carry a contrast flag";
+        if (d.Region is not null && CheckText($"{at}.region", d.Region, required: false) is string reg)
+            return reg;
         /* a provided-but-blank summary must never override the composed
            medication summary or create a contentless order */
         if (CheckText($"{at}.summary", d.Summary, required: false) is string s) return s;

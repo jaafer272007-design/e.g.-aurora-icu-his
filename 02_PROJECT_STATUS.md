@@ -1,6 +1,63 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-19 · current through LOCALE/TIMEZONE + PATIENT
+**Last updated: 2026-07-20 · current through the IMAGING CATALOGUE
+CLINICAL-MODEL CORRECTION — the shipped #136 catalogue was found
+MIS-MODELED by the clinical validator on hands-on testing: each entry
+was a fully-specified study (body region, contrast and portable BAKED
+into the definition — one modality exploding into many rows) and the
+`^[a-z0-9_]{2,40}$` studyId format repeatedly rejected valid input.
+THE CORRECTED MODEL (validator's decision, built from the design doc):
+a catalogue entry is MODALITY + a FREE-TEXT NAME — nothing else. All
+id/format validation removed (the only bound left is the platform-wide
+2000-char oversized-input guard — abuse protection, not a format); the
+internal StudyId is SYSTEM-GENERATED (`img_`+GUID12, the
+auto-generated-MRN principle: never typed, never displayed — asserted
+absent from the rendered Configuration tenant) so the #105/#136
+order→report LINKAGE is preserved by construction; a duplicate ACTIVE
+name is refused 409 naming the holder (two identical ordering chips
+are an accident), incl. on reactivation. BODY REGION + CONTRAST MOVED
+TO ORDER TIME where they clinically belong: `Orders.Region` free text
+as the doctor types it, `Orders.Contrast` ONE checkbox (ticked = with
+contrast; NO separate "without" option — absence IS plain), both
+Imaging-only SHAPE (400 elsewhere); the order's Summary snapshots the
+ASSEMBLED description ("CT — head — with contrast[ — indication]"),
+composed client-side and server-side when omitted — and because
+Summary is the single render string, the assembled form reaches the
+order list, the result-entry picker, print and the timeline with zero
+surface forks (the linked report additionally INHERITS it as its
+description). PORTABLE REMOVED ENTIRELY. Migration
+(CorrectImagingCatalogModel, order-of-operations load-bearing): add
+the order columns → SQL-copy each referenced study's baked
+region/contrast onto EVERY order carrying it (correlated subqueries,
+both providers; the design's hard rule — no historical order loses its
+region) → only then drop the definition columns; StudyIds + names
+byte-preserved. Production starter seed simplified to 6 modality-level
+entries (flagged); demo seed keeps its 3 names (staging chips
+byte-identical, proven rendered). LABS (§3, checked and fixed): the
+lab model is NOT mis-modeled (category/specimen/analytes are true
+test properties) but had the same friction — a typed "Test id
+(letters, digits, hyphen)" that rejected spaces; the lab key is
+USER-FACING (it IS the panel label results render under), so the fix
+is ONE free-text Name field with the key derived from it (spaces now
+legal, explicit testId kept wire-compatible for API callers) — never a
+hidden GUID that would leak codes onto clinical displays (asymmetry
+flagged deliberately). RBAC unchanged (imagingcatalog.manage stays
+Ancillary + SeniorDoctor). The labs suite gains two steps: the full
+corrected loop (free-text add → order with region+contrast → assembled
+render asserted → /document report → COMPLETED → retire cleanup;
+old-model fields asserted 400) and the lab free-text loop (spaced
+name → order → result), both placed BEFORE the discharge step (the
+#141 sequencing lesson applied in advance). Verified: 36/36 headless
+×2 providers (SQLite + Postgres); live-upgrade replica 10/10 (old
+image seeds + orders + links a report → new image on the SAME volume:
+order KEPT its region 'Chest' structurally, summary byte-identical,
+completed status intact, double-boot idempotent); rendered 21/21 on
+the PRODUCTION appliance (add "E2E CT Scan…" with NO code typed →
+chip → region 'head' + contrast tick → assembled on order list, Active
+Orders Sheet PRINT, result-entry picker → documented → COMPLETED; lab
+"Blood Gas Panel…" one-field add; no img_ code visible anywhere) +
+staging chips byte-identical — see the record below;
+prior marker retained: current through LOCALE/TIMEZONE + PATIENT
 FILE NUMBER — the last two per-hospital hardcodings of the editable
 arc, from the validator's design (driven by a REAL HOSPITAL UNDER
 CONTRACT). PART 1 — store UTC, display local (machine clock): STORAGE
@@ -5278,6 +5335,112 @@ byte-parity) + 9/9 real-browser (nurse re-points via the picker — tags,
 re-derived identity and both amendments render; the freed order
 reappears in Lab Entry's pending picker; consultant unlinks with a
 reason and the honest unlinked rendering returns; zero page errors).
+
+### Imaging Catalogue clinical-model correction (built) — region/contrast to order time, free-text names, hidden generated ids
+
+**The finding (the validator's hands-on testing; this PR's verify-first
+sweep confirmed all four audit items in code):**
+- `ImagingCatalogApi.cs` enforced `^[a-z0-9_]{2,40}$` on a USER-TYPED
+  studyId — the exact input rejection the validator hit — and
+  `ImagingStudyDefRow` baked Region/Contrast/Portable into the study
+  DEFINITION, forcing one modality to become many rows ("CT Head",
+  "CT Chest with contrast"… — clinically wrong: region and contrast
+  are order-time decisions about one CT).
+- Ordering read the catalogue only for chips + the studyId reference;
+  the order's stored Summary was already the SINGLE render string on
+  the order list, result-entry picker, print and timeline — so an
+  assembled summary would reach every surface with zero forks.
+- Result entry never read the catalogue at all (pending-order picker +
+  report.OrderId linkage, #105/#108/#110) — "resultable immediately"
+  held structurally once orderable; only the report's `/document`
+  linked form mattered (it inherits the order's description).
+- The lab "add test" form had the same FRICTION (typed
+  "Test id — letters, digits, hyphen": "Blood Gas" with a space was
+  rejected) but NOT the mis-model — and the lab key is USER-FACING
+  (it is the panel label results render under), unlike imaging's
+  purely internal code.
+
+**What was built (from IMAGING_CATALOGUE_CORRECTION_DESIGN.md):**
+- **Corrected entry model**: `ImagingStudyDefRow` = StudyId (internal)
+  + Name (free text, no format rules; platform 2000-char bound only) +
+  Modality (the ONE fixed vocabulary, kept) + Active + audit. Region /
+  Contrast / Portable DELETED from the row, the DTOs and the manager
+  UI; the create/edit requests are name+modality only and Disallow
+  makes the old baked fields (and a typed studyId) binding-time 400s —
+  contract, asserted in the suite.
+- **Hidden generated identity** (the auto-generated-MRN principle):
+  `ImagingCatalogLogic.NewStudyId` → `img_` + 12 GUID hex, never
+  typed, never rendered (the /config tenant shows name + modality
+  only; the rendered pass asserts no `img_…` appears). Pre-correction
+  snake ids preserved — linkage by construction.
+- **Duplicate-name 409** naming the holder (active rows,
+  case-insensitive, trim) on create AND edit AND reactivation — two
+  identical ordering chips are an accident, not a catalogue (flagged
+  decision: a state conflict, not input validation).
+- **Order-time specifics**: `OrderRow/OrderDto/NewOrderDraftDto` gain
+  `Region` (free text, bounded) + `Contrast` (bool?) — Imaging-only
+  shape (400 on other categories), WhenWritingNull additive tails
+  (legacy wire bytes unchanged). The Summary snapshot assembles
+  `name — region — with contrast[ — indication]` (client composes;
+  server composes identically when the summary is omitted — API
+  parity). Unticked contrast is ABSENT on the wire — there is no
+  "without contrast" state, by design.
+- **UI**: ImagingOrderCard = chips + free-text region input + ONE
+  "with contrast" checkbox + indication + priority, live assembled
+  preview; Configuration imaging tenant = Name+Modality add/edit only,
+  rows say "region & contrast are chosen at order time"; LabCatalog
+  add form = ONE free-text Name field (the typed Test id input
+  removed; server derives the key from the name, explicit testId still
+  wire-accepted for compat; `ValidateTestId` keeps required+bounded
+  only). Mock IMAGING_CATALOG mirrors the corrected shape.
+- **Migration `CorrectImagingCatalogModel`** (order matters): AddColumn
+  Orders.Region/Contrast → `UPDATE "Orders" SET … (SELECT …ImagingCatalog…)`
+  correlated-subquery copy of each referenced study's baked values
+  onto every order carrying it (NULLIF keeps empty regions NULL; both
+  providers) → DropColumn the three definition fields. Scaffolded
+  drop-first; reordered by hand.
+- **Seeds**: production starter now 6 modality-level entries (Chest
+  X-ray / X-ray / CT / MRI / Ultrasound / Echocardiogram — the
+  corrected clinical shape; flagged, hospital finalises anyway); demo
+  keeps its 3 names so staging renders byte-identically.
+- **deployed-labs-e2e** gains the corrected-model step (free-text add,
+  dup 409, old-fields 400, order region+contrast with server-assembled
+  summary asserted, Lab-draft region 400, /document report inheriting
+  the assembled description, ?status=completed, referenced-delete 409
+  → retire + acknowledge cleanup) and the LAB free-text loop (spaced
+  name = panel key → order → result → retire), both BEFORE the
+  discharge step (#141's sequencing lesson applied in advance).
+
+**Verification:** headless **36/36 ×2 providers** (SQLite dev +
+Postgres staging container): shape on the wire (exactly
+studyId/name/modality/active/history), free text incl. unicode/spaces
+("CT Scan — بالصبغة ✓…"), dup/reactivation 409s, RBAC unchanged
+(nurse/office 403, Ancillary 200, unauth 401), audited rename diff,
+assembled-summary + client-summary authority, unknown-400/retired-409
+unchanged, full order→report→completed loop, labs spaced-key loop +
+explicit-id compat. **Live-upgrade replica 10/10**: old image (main)
+seeds the OLD shape + coded order + linked report → new image on the
+SAME volume: migration applied, catalogue rows migrated
+(ids+names preserved), THE ORDER KEPT ITS REGION ('Chest' backfilled
+structurally, summary byte-identical, completed intact), corrected
+model live post-upgrade, double-boot idempotent. **Rendered 21/21 on
+the PRODUCTION appliance** (production bundle + production seed +
+per-user credentials): /config add with NO code typed → ordering chip
+→ region 'head' + contrast tick → "…— head — with contrast" on the
+order list, the printed Active Orders Sheet, and the result-entry
+picker → documented from the browser → order renders COMPLETED; lab
+one-field add ("Blood Gas Panel …", space legal); no internal id
+visible anywhere; staging pass: chips byte-identical
+(Portable CXR | CT Abdomen/Pelvis | Bedside Echo). `tsc -b --force`,
+vite (staging + production bundles) and dotnet all green.
+
+*[Supersede note (2026-07-20): this corrects the #136 record below —
+the entry field-set there ("code + name + modality + body region +
+contrast + portable") and the studyId format rule are SUPERSEDED by
+the corrected model above; the #136 mechanics that survive unchanged
+are the mirror-the-lab-catalogue lifecycle (retire/reactivate/true
+delete), the imagingcatalog.manage RBAC, the coded-order linkage and
+the snapshot-at-use rule.]*
 
 ### Locale/Timezone + Patient File Number (built) — the last of the editable arc
 

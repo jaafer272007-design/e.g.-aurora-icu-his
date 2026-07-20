@@ -9,20 +9,22 @@ namespace Aurora.Core.MasterData;
 
 /* ------------- Imaging Catalogue API (Master Data, Aurora Core) -------------
    MAINTAINING THE IMAGING CATALOGUE IS CLINICAL — the lab-catalogue
-   gating, never the office Administrator. FLAGGED DECISION (design §2,
-   recommendation followed): a DISTINCT imagingcatalog.manage atom rather
-   than reusing labcatalog.manage — radiology and the laboratory are
-   different producing services and a hospital may govern them separately
-   — held by the SAME roles for now (Ancillary + SeniorDoctor; splitting
-   later is a Rbac row edit, no schema change). Every authenticated
-   profile may READ (ordering and result-entry render from it).
+   gating, never the office Administrator. RBAC unchanged by the model
+   correction: a DISTINCT imagingcatalog.manage atom held by Ancillary +
+   SeniorDoctor. Every authenticated profile may READ (ordering and
+   result-entry render from it).
 
-   Mirrors LabCatalogApi verbatim: audited mutations on the entry's
-   append-only history, deactivate-never-delete (a retired study keeps
-   rendering on records that carry it; NEW orders for it are 409'd), TRUE
-   delete only for a never-ordered study (else 409 directing retire).
-   Four-code rule: 403 permission · 404 absent · 409 state conflict ·
-   400 malformed. */
+   CORRECTED MODEL (the validator's finding): an entry is modality + a
+   free-text name, nothing else. The internal StudyId is SYSTEM-GENERATED
+   (never typed, never displayed) purely for order→result linkage — all
+   user-facing id validation is gone. Region/contrast moved to order
+   time; portable removed.
+
+   Mirrors LabCatalogApi: audited mutations on the entry's append-only
+   history, deactivate-never-delete (a retired study keeps rendering on
+   records that carry it; NEW orders for it are 409'd), TRUE delete only
+   for a never-ordered study (else 409 directing retire). Four-code rule:
+   403 permission · 404 absent · 409 state conflict · 400 malformed. */
 static class ImagingCatalogApi
 {
     public static void Map(WebApplication app)
@@ -39,33 +41,34 @@ static class ImagingCatalogApi
                 .AsEnumerable().Select(s => s.ToDto()), JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* POST /api/icu/imaging-catalog — add a study. Study ids are
-           permanent natural keys (lowercase snake); modality must come
-           from the ONE reconciled vocabulary (ResultsLogic). */
+        /* POST /api/icu/imaging-catalog — add a study: NAME (free text, no
+           format rules — only the platform oversized-input bound) +
+           MODALITY (the one fixed vocabulary). The internal id is
+           generated here. A duplicate ACTIVE name is refused as a state
+           conflict naming the holder — two identical ordering chips are
+           an accident, not a catalogue. */
         app.MapPost("/api/icu/imaging-catalog", (CreateImagingStudyRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "imagingcatalog.manage") is IResult denied) return denied;
-            var studyId = (req.StudyId ?? "").Trim();
-            if (studyId.Length == 0) return ApiError.BadRequest("studyId is required");
-            if (!System.Text.RegularExpressions.Regex.IsMatch(studyId, "^[a-z0-9_]{2,40}$"))
-                return ApiError.BadRequest("studyId must be 2-40 lowercase letters, digits or underscores (a permanent identifier, e.g. 'ct_head')");
             var name = (req.Name ?? "").Trim();
             if (name.Length == 0) return ApiError.BadRequest("name is required");
-            if (name.Length > 80) return ApiError.BadRequest("name exceeds 80 characters");
+            if (name.Length > FormularyLogic.MaxTextLength)
+                return ApiError.BadRequest($"name exceeds {FormularyLogic.MaxTextLength} characters");
             var modality = (req.Modality ?? "").Trim();
             if (!ResultsLogic.ImagingModalities.Contains(modality))
                 return ApiError.BadRequest($"modality must be one of: {string.Join(", ", ResultsLogic.ImagingModalities)}");
-            var region = (req.Region ?? "").Trim();
-            if (region.Length > 40) return ApiError.BadRequest("region exceeds 40 characters");
-            if (db.ImagingCatalog.FirstOrDefault(s => s.StudyId == studyId) is ImagingStudyDefRow existing)
+            var lowered = name.ToLowerInvariant();
+            if (db.ImagingCatalog.AsEnumerable()
+                    .FirstOrDefault(s => s.Active && s.Name.Trim().ToLowerInvariant() == lowered)
+                is ImagingStudyDefRow dup)
                 return ApiError.StateConflict(
-                    $"study id '{studyId}' already exists in the catalogue ({existing.Name}, {(existing.Active ? "active" : "inactive")}) — study ids are permanent");
+                    $"an active study named '{dup.Name}' already exists in the catalogue — two identical entries would be indistinguishable on the ordering menu; edit or retire the existing one");
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var row = new ImagingStudyDefRow
             {
-                StudyId = studyId, Name = name, Modality = modality, Region = region,
-                Contrast = req.Contrast ?? false, Portable = req.Portable ?? false,
+                StudyId = ImagingCatalogLogic.NewStudyId(db),
+                Name = name, Modality = modality,
                 Seq = (db.ImagingCatalog.Max(s => (int?)s.Seq) ?? 0) + 1,
                 Active = true,
                 EventsJson = System.Text.Json.JsonSerializer.Serialize(
@@ -76,9 +79,9 @@ static class ImagingCatalogApi
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* PUT /api/icu/imaging-catalog/{studyId} — edit reference fields;
-           the study id is the immutable natural key. No-change → 400;
-           every change lands an audited diff. */
+        /* PUT /api/icu/imaging-catalog/{studyId} — edit name/modality; the
+           internal id is immutable. No-change → 400; every change lands
+           an audited diff. */
         app.MapPut("/api/icu/imaging-catalog/{studyId}", (string studyId, EditImagingStudyRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "imagingcatalog.manage") is IResult denied) return denied;
@@ -88,30 +91,28 @@ static class ImagingCatalogApi
 
             var name = req.Name is null ? row.Name : req.Name.Trim();
             if (name.Length == 0) return ApiError.BadRequest("name is required");
-            if (name.Length > 80) return ApiError.BadRequest("name exceeds 80 characters");
+            if (name.Length > FormularyLogic.MaxTextLength)
+                return ApiError.BadRequest($"name exceeds {FormularyLogic.MaxTextLength} characters");
             var modality = req.Modality is null ? row.Modality : req.Modality.Trim();
             if (!ResultsLogic.ImagingModalities.Contains(modality))
                 return ApiError.BadRequest($"modality must be one of: {string.Join(", ", ResultsLogic.ImagingModalities)}");
-            var region = req.Region is null ? row.Region : req.Region.Trim();
-            if (region.Length > 40) return ApiError.BadRequest("region exceeds 40 characters");
-            var contrast = req.Contrast ?? row.Contrast;
-            var portable = req.Portable ?? row.Portable;
+            var lowered = name.Trim().ToLowerInvariant();
+            if (db.ImagingCatalog.AsEnumerable()
+                    .FirstOrDefault(s => s.StudyId != studyId && s.Active && s.Name.Trim().ToLowerInvariant() == lowered)
+                is ImagingStudyDefRow dup)
+                return ApiError.StateConflict(
+                    $"an active study named '{dup.Name}' already exists in the catalogue — two identical entries would be indistinguishable on the ordering menu");
 
             var changes = new List<string>();
-            string Show(string v) => v.Length == 0 ? "(none)" : v;
             if (row.Name != name) changes.Add($"name: {row.Name} → {name}");
             if (row.Modality != modality) changes.Add($"modality: {row.Modality} → {modality}");
-            if (row.Region != region) changes.Add($"region: {Show(row.Region)} → {Show(region)}");
-            if (row.Contrast != contrast) changes.Add($"contrast: {row.Contrast} → {contrast}");
-            if (row.Portable != portable) changes.Add($"portable: {row.Portable} → {portable}");
             if (changes.Count == 0)
                 return ApiError.BadRequest("no field change — the provided values match the current entry");
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.EventsJson = FormularyLogic.AppendEvents(row.EventsJson,
                 [new(FormularyLogic.Now(), actor, "changed", string.Join(", ", changes))]);
-            row.Name = name; row.Modality = modality; row.Region = region;
-            row.Contrast = contrast; row.Portable = portable;
+            row.Name = name; row.Modality = modality;
             db.SaveChanges();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
@@ -125,7 +126,7 @@ static class ImagingCatalogApi
             var row = db.ImagingCatalog.FirstOrDefault(s => s.StudyId == studyId);
             if (row is null) return ApiError.NotFound();
             if (!row.Active)
-                return ApiError.StateConflict($"study '{studyId}' is already inactive — there is nothing to deactivate");
+                return ApiError.StateConflict($"study '{row.Name}' is already inactive — there is nothing to deactivate");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.Active = false;
             row.EventsJson = FormularyLogic.AppendEvents(row.EventsJson,
@@ -141,7 +142,14 @@ static class ImagingCatalogApi
             var row = db.ImagingCatalog.FirstOrDefault(s => s.StudyId == studyId);
             if (row is null) return ApiError.NotFound();
             if (row.Active)
-                return ApiError.StateConflict($"study '{studyId}' is already active — there is nothing to reactivate");
+                return ApiError.StateConflict($"study '{row.Name}' is already active — there is nothing to reactivate");
+            /* reactivation may not resurrect a duplicate ordering chip */
+            var lowered = row.Name.Trim().ToLowerInvariant();
+            if (db.ImagingCatalog.AsEnumerable()
+                    .FirstOrDefault(s => s.StudyId != studyId && s.Active && s.Name.Trim().ToLowerInvariant() == lowered)
+                is ImagingStudyDefRow dup)
+                return ApiError.StateConflict(
+                    $"an active study named '{dup.Name}' already exists in the catalogue — reactivating this one would put two identical entries on the ordering menu");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             row.Active = true;
             row.EventsJson = FormularyLogic.AppendEvents(row.EventsJson,
@@ -166,7 +174,7 @@ static class ImagingCatalogApi
             var orders = db.Orders.AsNoTracking().Count(o => o.StudyId == studyId);
             if (orders > 0)
                 return ApiError.StateConflict(
-                    $"study '{studyId}' is referenced by {orders} order(s) — a used study is never deleted; " +
+                    $"study '{row.Name}' is referenced by {orders} order(s) — a used study is never deleted; " +
                     "deactivate (retire) it instead: it leaves the ordering menu while historical orders keep rendering");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var dto = row.ToDto();
@@ -184,4 +192,17 @@ static class ImagingCatalogLogic
         uses this for the unknown-400 / inactive-409 checks */
     public static ImagingStudyDefRow? Resolve(AuroraDb db, string studyId) =>
         db.ImagingCatalog.AsNoTracking().FirstOrDefault(s => s.StudyId == studyId);
+
+    /** the system-generated internal study key (the auto-generated-MRN
+        principle): opaque, stable, never typed and never displayed —
+        purely the order→result linkage key. GUID-derived so it needs no
+        counter state; the loop guards the astronomically unlikely clash. */
+    public static string NewStudyId(AuroraDb db)
+    {
+        while (true)
+        {
+            var id = $"img_{Guid.NewGuid():N}"[..16];
+            if (!db.ImagingCatalog.AsNoTracking().Any(s => s.StudyId == id)) return id;
+        }
+    }
 }
