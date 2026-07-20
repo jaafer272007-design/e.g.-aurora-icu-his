@@ -51,6 +51,38 @@ using Microsoft.IdentityModel.Tokens;
 BootGuards.RefuseUnknownEnvironment();
 BootGuards.ProductionConfigTripwire();
 
+/* THE RECURRING RENDER "139" — ROOT CAUSE (diagnosed 2026-07-20 from the
+   crashed deploy's log, ending the transient-marked history: #137's
+   first-attempt 139, #142's failed auto AND manual deploys):
+
+     System.IO.IOException: The configured user limit (128) on the number
+     of inotify instances has been reached ...
+       at System.IO.FileSystemWatcher.StartRaisingEvents()
+       at ...Json.JsonConfigurationSource.Build(...)
+       at ...WebApplication.CreateBuilder(...)   ← before ANY Aurora code
+
+   CreateBuilder's default config loads appsettings*.json with
+   reloadOnChange:true, which allocates an INOTIFY INSTANCE per watcher.
+   The per-user inotify limit is shared across every container on a
+   multi-tenant node (Render free tier) — when neighbors exhaust it, our
+   boot throws before Main's first statement finishes and the runtime
+   aborts (surfaced as exit 139). That is why it struck intermittently,
+   only at boot, and "passed on retry": the retry lands when the node's
+   pressure eases. NOT a migration issue — the #138 advisory lock fixed a
+   real concurrent-migration hazard, but not this.
+
+   The fix removes the dependency entirely: config-on-change reload is
+   disabled (a container's appsettings never change at runtime — every
+   deployment path here configures via environment variables), and any
+   residual file watcher polls instead of consuming inotify instances.
+   Set IN-PROCESS before CreateBuilder so every host is immune — Render,
+   the appliance, dev — with the blueprint (render.yaml) carrying the
+   same pair as defense in depth. Verified empirically: the server
+   process holds ZERO anon_inode:inotify descriptors after this change
+   (it held them before). */
+Environment.SetEnvironmentVariable("DOTNET_hostBuilder__reloadConfigOnChange", "false");
+Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "true");
+
 var builder = WebApplication.CreateBuilder(args);
 
 /* Render (and most PaaS) inject PORT; default 8080 for local Docker runs. */
