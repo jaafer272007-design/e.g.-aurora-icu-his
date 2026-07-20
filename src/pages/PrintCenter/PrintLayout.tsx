@@ -35,13 +35,24 @@ export function PrintLayout({ title, context, printedBy, printedAt, children }: 
      document. The optional address block prints only when configured. */
   const identity = useHospitalIdentity()
   const hospName = identity?.name ?? HOSPITAL_NAME_UNSET
+  /* BRANDING (Print Center branding build): the configured LOGO replaces
+     the placeholder box; the configured header/footer lines render as
+     the hospital's own words. All of it is document CHROME — styling
+     around the clinical record, never part of it — and each piece is
+     individually toggleable by the print-time format engine (the
+     fmt-nologo / fmt-nobrand classes in print.css). */
   return (
     <article className="print-doc">
       <header className="pd-head">
-        <div className="pd-logo" aria-hidden="true">✚</div>
+        {identity?.logoUrl
+          ? <img className="pd-logo-img" src={identity.logoUrl} alt="" aria-hidden="true" />
+          : <div className="pd-logo" aria-hidden="true">✚</div>}
         <div className="pd-hosp">
           <div className={`pd-hosp-name${identity?.configured ? '' : ' unset'}`}>{hospName}</div>
-          <div className="pd-hosp-sub">Adult Intensive Care Unit · Aurora HIS</div>
+          {/* the CONFIGURED unit name (#135) — the old hardcoded
+              "Adult Intensive Care Unit" subtitle ignored it */}
+          <div className="pd-hosp-sub">{identity?.unitName ? `${identity.unitName} · Aurora HIS` : 'Aurora HIS'}</div>
+          {identity?.headerText ? <div className="pd-hosp-tag">{identity.headerText}</div> : null}
           {identity?.address ? <div className="pd-hosp-addr">{identity.address}</div> : null}
         </div>
         <div className="pd-doc-meta">
@@ -105,6 +116,7 @@ export function PrintLayout({ title, context, printedBy, printedAt, children }: 
       {children}
 
       <footer className="pd-foot">
+        {identity?.footerText ? <p className="pd-foot-brand">{identity.footerText}</p> : null}
         {hasChartedTimes && (
           <p className="pd-footnote">
             † Clinical times print exactly as charted — “HH:mm” for today and “D-n HH:mm” for prior

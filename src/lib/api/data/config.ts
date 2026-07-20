@@ -22,6 +22,12 @@ export const HOSPITAL_IDENTITY = {
   unitName: 'Unit 4B',
   shortName: 'AURORA',
   address: '',
+  /* branding (offline mock): no custom lines, no logo — the letterhead
+     renders its placeholder, same as a fresh install */
+  headerText: '',
+  footerText: '',
+  hasLogo: false,
+  logoVersion: 0,
   configured: true,
 } as const
 

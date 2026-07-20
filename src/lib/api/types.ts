@@ -1850,6 +1850,15 @@ export interface HospitalIdentity {
   unitName: string
   shortName: string
   address: string
+  /** BRANDING (Print Center branding build): the hospital's own header
+   *  tagline and footer line on printed documents — administrative face,
+   *  never clinical data */
+  headerText: string
+  footerText: string
+  /** letterhead logo: bytes live behind the dedicated /logo endpoint
+   *  (never inlined on the boot read); logoVersion cache-busts it */
+  hasLogo: boolean
+  logoVersion: number
   configured: boolean
   /** the server's MACHINE CLOCK (Locale/Timezone §1.3) — only the PUBLIC
    *  read carries these; the client primes its display clock from them
@@ -1867,4 +1876,6 @@ export interface EditHospitalIdentityDraft {
   unitName: string
   shortName: string
   address: string
+  headerText: string
+  footerText: string
 }

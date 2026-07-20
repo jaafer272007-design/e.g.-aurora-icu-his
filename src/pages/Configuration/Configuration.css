@@ -45,3 +45,8 @@
   .cfg .cfggroup{flex-direction:row;flex-wrap:wrap;align-items:center;gap:4px}
   .cfg .cfggrouptitle{width:100%;padding:0 2px 2px}
 }
+
+/* ===== letterhead logo (Print Center branding) ===== */
+.ualogorow{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.ualogopreview{max-height:64px;max-width:180px;object-fit:contain;background:#fff;border-radius:8px;padding:6px;border:1px solid var(--stroke)}
+.ualogoupload{display:inline-block;cursor:pointer}

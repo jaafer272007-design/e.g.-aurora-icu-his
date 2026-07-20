@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getHospitalIdentity } from './api'
+import { getHospitalIdentity, hospitalLogoUrl } from './api'
 import type { HospitalIdentity } from './api/types'
 
 /* ==================== Hospital identity — ONE resolver ====================
@@ -35,17 +35,30 @@ export interface HospitalIdentityView {
   shortName: string
   /** letterhead address block, or '' (letterhead omits the line) */
   address: string
+  /** BRANDING (Print Center branding build): the hospital's own header
+   *  tagline / footer line for printed documents, or '' (omitted) */
+  headerText: string
+  footerText: string
+  /** the letterhead logo byte-endpoint URL (cache-busted by version),
+   *  or null while no logo is set — the letterhead renders its
+   *  placeholder box */
+  logoUrl: string | null
   /** false = fresh install / identity service unreachable */
   configured: boolean
 }
 
 export function resolveHospitalIdentity(id: HospitalIdentity | null): HospitalIdentityView {
   if (!id || !id.configured) {
-    return { name: HOSPITAL_NAME_UNSET, unitName: '', shortName: '', address: '', configured: false }
+    return {
+      name: HOSPITAL_NAME_UNSET, unitName: '', shortName: '', address: '',
+      headerText: '', footerText: '', logoUrl: null, configured: false,
+    }
   }
   return {
     name: id.name.length > 0 ? id.name : HOSPITAL_NAME_UNSET,
     unitName: id.unitName, shortName: id.shortName, address: id.address,
+    headerText: id.headerText ?? '', footerText: id.footerText ?? '',
+    logoUrl: hospitalLogoUrl(id.hasLogo ?? false, id.logoVersion ?? 0),
     configured: id.name.length > 0,
   }
 }
