@@ -308,7 +308,10 @@ jobs:
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"patientId":"'$PID'","entries":[{"typeCode":"'$CODE'","value":80}]}' "$API/api/icu/observations")
           rc=$(echo "$out" | tail -1); echo "charting the RETIRED type -> HTTP $rc"; [ "$rc" = "409" ] || { echo "$out"; exit 1; }
-          echo "$out" | head -1 | grep -q "retired from this hospital's catalogue" || exit 1
+          # grep a fragment WITHOUT the apostrophe: the wire JSON escapes
+          # it (') — "hospital's" never appears literally in the body
+          # (run 29770659196's failure; the 409 itself was correct)
+          echo "$out" | head -1 | grep -q "retired from this hospital" || { echo "$out"; exit 1; }
           CODE="$CODE" python3 -c '
           import json, os, urllib.request
           req = urllib.request.Request(os.environ["API"] + "/api/icu/observations?patientId=" + os.environ["PID"])
