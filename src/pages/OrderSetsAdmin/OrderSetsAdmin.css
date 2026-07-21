@@ -10,33 +10,33 @@
 .osbrow {
   display: grid; grid-template-columns: 22px 86px 1fr auto auto;
   gap: 8px; align-items: center;
-  padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px;
-  background: var(--panel-2, rgba(255, 255, 255, .02)); font-size: 12px;
+  padding: 6px 8px; border: 1px solid var(--stroke); border-radius: 8px;
+  background: rgba(var(--lift-rgb),.03); font-size: 12px;
 }
 .osbnum { color: var(--faint); }
 .osbcat { font-weight: 600; color: var(--blue); }
 .osblabel { overflow-wrap: anywhere; }
-.osbprio { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.osbprio { color: var(--dim); font-size: 11px; white-space: nowrap; }
 .osbacts { display: inline-flex; gap: 4px; }
 .osbacts .uaact { padding: 2px 7px; }
 
 .osbempty { color: var(--faint); font-size: 12px; padding: 4px 2px; }
 
 .osbadd {
-  border: 1px dashed var(--line); border-radius: 10px;
+  border: 1px dashed var(--stroke); border-radius: 10px;
   padding: 10px; display: flex; flex-direction: column; gap: 8px;
 }
 .osbline { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
-.osbline label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+.osbline label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--dim); }
 .osbline select, .osbline input { min-width: 110px; }
 .osbcheck { flex-direction: row !important; align-items: center; gap: 6px !important; padding-bottom: 6px; }
-.osbwide { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+.osbwide { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--dim); }
 
 .osbsearch { width: 100%; }
 .osbhits { display: flex; flex-direction: column; gap: 3px; }
 .osbhit {
   display: flex; justify-content: space-between; gap: 10px;
-  padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px 9px; border: 1px solid var(--stroke); border-radius: 8px;
   background: none; color: var(--text); cursor: pointer; font-size: 12px; text-align: left;
 }
 .osbhit:hover { border-color: var(--blue); }

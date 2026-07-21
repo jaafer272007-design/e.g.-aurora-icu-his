@@ -51,7 +51,7 @@
  box-shadow:0 0 0 1px rgba(var(--blue-rgb),.25), 0 6px 18px rgba(20,80,160,.25)}
 .mc .ptcard .r1{display:flex;align-items:center;gap:8px}
 .mc .ptcard .nm{font-size:13px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mc .acount{min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;font-size:10.5px;font-weight:700;
+.mc .acount{min-width:18px;height:18px;border-radius:9px;background:var(--badge);color:#fff;font-size:10.5px;font-weight:700;
  display:grid;place-items:center;font-family:var(--mono);box-shadow:0 0 10px rgba(var(--red-rgb),.5)}
 .mc .acount.zero{background:rgba(var(--steel-rgb),.15);color:var(--dim);box-shadow:none}
 .mc .ptcard .dx{font-size:11px;color:var(--dim);margin:4px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -344,18 +344,18 @@
 .mc .pt-id .idbtn{background:none;border:1px solid rgba(130,170,230,.25);border-radius:8px;color:var(--blue);font-size:11px;padding:2px 8px;cursor:pointer;min-height:24px}
 .mc .pt-id .idbtn:hover{background:rgba(var(--blue-rgb),.12)}
 .idscrim{position:fixed;inset:0;background:rgba(3,7,14,.62);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:60}
-.iddialog{width:min(660px,94vw);max-height:88vh;overflow:auto;background:var(--card-bg,#0b1422);border:1px solid rgba(130,170,230,.2);border-radius:18px;padding:20px 22px;box-shadow:0 12px 34px rgba(0,0,0,.38)}
+.iddialog{width:min(660px,94vw);max-height:88vh;overflow:auto;background:var(--dlg);border:1px solid rgba(130,170,230,.2);border-radius:18px;padding:20px 22px;box-shadow:0 12px 34px rgba(0,0,0,.38)}
 .iddialog h2{font-size:16px;margin:0 0 6px}
-.iddialog .idnote{font-size:12px;color:var(--muted,#8fa3c0);margin:0 0 12px}
+.iddialog .idnote{font-size:12px;color:var(--dim);margin:0 0 12px}
 .idgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
 .idgrid label{display:flex;flex-direction:column;gap:4px;font-size:12px}
-.idgrid label i{color:var(--muted,#8fa3c0);font-style:normal;font-size:11px}
-.idgrid input,.idgrid textarea{background:rgba(9,16,28,.7);border:1px solid rgba(130,170,230,.18);border-radius:10px;color:inherit;padding:8px 10px;font-size:13px;min-height:38px}
+.idgrid label i{color:var(--dim);font-style:normal;font-size:11px}
+.idgrid input,.idgrid textarea{background:rgba(var(--lift-rgb),.03);border:1px solid var(--stroke);border-radius:10px;color:var(--text);padding:8px 10px;font-size:13px;min-height:38px}
 .idgrid textarea{min-height:56px;resize:vertical}
 .idgrid .idwide{grid-column:1 / -1}
 /* the MRN-regenerate affordance (the #116 flag resolved): a checkbox row,
    not a text field — Aurora assigns the number */
-.idgrid .idregen{flex-direction:row;align-items:flex-start;gap:8px;grid-column:1 / -1;color:var(--muted,#8fa3c0)}
+.idgrid .idregen{flex-direction:row;align-items:flex-start;gap:8px;grid-column:1 / -1;color:var(--dim)}
 .idgrid .idregen input[type=checkbox]{min-height:0;width:14px;height:14px;margin-top:2px;accent-color:var(--blue)}
 .idgrid input:disabled{opacity:.55;font-style:italic}
 .iderr{color:var(--red);font-size:12px;margin-top:10px}
@@ -364,10 +364,10 @@
 .idfoot .btn.primary{background:rgba(var(--blue-rgb),.18);border-color:var(--blue);color:var(--blue)}
 .idfoot .btn:disabled{opacity:.5;cursor:not-allowed}
 .idhist{margin-top:16px;border-top:1px solid rgba(130,170,230,.14);padding-top:10px}
-.idhttl{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted,#8fa3c0);margin-bottom:6px}
+.idhttl{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
 .idhrow{display:flex;gap:10px;font-size:12px;padding:4px 0;flex-wrap:wrap}
 .idhrow .idha{color:var(--cyan)}
-.idhrow .idhd{color:var(--muted,#8fa3c0);flex:1 1 100%}
+.idhrow .idhd{color:var(--dim);flex:1 1 100%}
 
 /* ---- Care Team (Patient Assignment & Responsibility) ---- */
 .ctchip{cursor:pointer;font:inherit;text-align:left;color:inherit}

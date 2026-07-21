@@ -1,6 +1,50 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-21 · current through TWO CLINICAL-TESTING POLISH
+**Last updated: 2026-07-21 · current through THE TWO-THEME CONTRAST
+RENDER-SWEEP (the held item 3 from the polish batch). THE BUG (clinical
+testing): despite the token-based system and the AA-verified light theme
+(#103), hands-on testing found real INVISIBLE controls — the
+nurse-coverage panel's Close button + patient name white-on-white in
+light, the admission section in dark — and the validator reported it was
+widespread. ROOT CAUSE (found by a static token audit, not guesswork):
+several component CSS files referenced **CSS variables that were never
+defined in tokens.css**, so they silently fell through to a theme-blind
+hardcoded fallback (or, with no fallback, to an inherited/initial value):
+`var(--muted,#8fa3c0)` ×13 (a fixed steel-grey, low-contrast on light
+panels), `var(--card-bg,#0b1422)` ×2 (the identity-correct + patient-
+match DIALOGS were pinned to a dark navy → dark-token text on them was
+invisible in light — the reported bug), and `--txt-1/2/3` + `--line`
+(Alerts + Statistics text/borders) + `--panel-2` (OrderSets). THE FIX
+(client-only, no new UI): every undefined-token usage now routes through
+a DEFINED, theme-aware token — `--muted→--dim`, `--card-bg→--dlg`,
+`--txt-1/2/3→--text/--txt2/--txt3`, `--line→--stroke`, `--panel-2→a
+--lift-rgb tint`; the identity-dialog input wells moved off a hardcoded
+dark rgba onto the `--lift-rgb`/`--stroke` pattern the working forms use.
+Two token refinements closed the last low-contrast tiers: the dark
+`--faint` tertiary-label colour was brightened `#5d7089→#7889a2` (tiny
+9–11px KPI/caption labels were 3.4–3.9:1, below AA 4.5 for small text;
+now ≥4.8:1, still clearly faint and dimmer than `--dim`), and a dedicated
+`--badge` red (`#c62436` dark / `#a51a2c` light) was added for the
+white-on-red count badges (`.acount`/`.nbdg`) which were 2.99:1 on the
+bright severity `--red` — the LOCKED clinical `--red` is unchanged; the
+badge just uses a deeper red so white meets AA. VERIFIED by a RENDERED
+two-theme contrast sweep of the WHOLE app — a Playwright auditor that
+composites each text node's effective background (glass panels included)
+and computes the WCAG ratio, excluding gradient/image-backed elements it
+can't judge — across all 26 routes + the coverage panel and identity
+dialog, in BOTH light and dark: from 638 flagged elements down to
+**0 low-contrast elements, 0 screens (ALL_CONTRAST_PASS)**. The two
+reported bugs are proven fixed in rendered screenshots (coverage panel in
+light: white dialog, dark Close button + patient name both legible;
+admission section in dark: every field label legible). Both themes keep
+their hue meanings; the dark theme's only visible change is the slightly
+brighter faint labels + slightly deeper count badges. No engine/score/API
+change; no migration. flagged as intentionally-left literals (per the
+tokens.css exceptions list, re-confirmed): EnvironmentChrome (identity
+must look identical everywhere), modal scrims, black shadows, print.css,
+and the pre-boot fatal-error screen (main.tsx, shown before tokens load).**
+
+prior marker retained: current through TWO CLINICAL-TESTING POLISH
 FIXES — the Attending consultant dropdown + the patient-chart Order
 shortcut (item 3, the two-theme contrast pass, is HELD as its own
 separate PR by the owner's "stack now, split theme pass" decision). FIX
