@@ -1,4 +1,5 @@
 import type { Bed } from '../../lib/api/types'
+import type { PatientScores } from '../../hooks/usePatientScores'
 import { resolveCodeStatus } from '../../lib/codeStatus'
 import { BedChip, TagList } from '../../components/Tag'
 import { SeverityDot } from '../../components/SeverityDot'
@@ -10,6 +11,9 @@ import { News2Pill } from '../../components/News2Pill'
 interface BedCardProps {
   bed: Bed
   index: number
+  /** the shared score computation for this bed's patient (undefined =
+   *  still loading → the neutral unscored presentation, never a verdict) */
+  scores: PatientScores | undefined
   onOpen: (patientId: string) => void
 }
 
@@ -17,7 +21,14 @@ interface BedCardProps {
    snapshot in demo-seeded environments) — displayed as charted, no live
    jitter (a static value presented as a moving one is a fabricated
    stream; the honest-data rule, decision F5). null = not charted → '—',
-   and threshold classes stay silent on a blank. */
+   and threshold classes stay silent on a blank.
+
+   SEVERITY is DERIVED from the real scores (worst of {NEWS2 band, SOFA} —
+   scoring/display.ts): the card accent, the dot and the sparkline colour
+   all restate the same computation the NEWS2 pill shows. The old wire /
+   fixture severity is retired (no-reassuring-default rule) — green
+   appears only when a complete score earned it. The per-vital classes
+   below are warning-direction accents only ('' = plain, never green). */
 const hrClass = (v: number | null) => (v === null ? '' : v > 111 ? 'bad' : v > 50 ? 'warn' : '')
 const mapClass = (v: number | null) => (v === null ? '' : v < 65 ? 'bad' : v < 70 ? 'warn' : '')
 const spo2Class = (v: number | null) => (v === null ? '' : v < 92 ? 'bad' : v < 95 ? 'warn' : '')
@@ -26,7 +37,7 @@ const uoClass = (v: number | null) => (v === null ? '' : v < 30 ? 'bad' : v < 50
 
 const shown = (v: number | null) => (v === null ? '—' : v)
 
-export function BedCard({ bed, index, onOpen }: BedCardProps) {
+export function BedCard({ bed, index, scores, onOpen }: BedCardProps) {
   const delay = { animationDelay: `${index * 40}ms` }
   if (!bed.patient) {
     return (
@@ -38,18 +49,20 @@ export function BedCard({ bed, index, onOpen }: BedCardProps) {
     )
   }
   const p = bed.patient
-  const trendColor = p.severity === 'crit' ? 'var(--red)' : p.severity === 'high' ? 'var(--amber)' : 'var(--green)'
+  const sev = scores?.severity ?? 'unscored'
+  const trendColor = sev === 'crit' ? 'var(--red)' : sev === 'high' ? 'var(--amber)'
+    : sev === 'stable' ? 'var(--green)' : 'var(--dim)'
   const v = p.vitals
   return (
     <button
-      className={`bcard sev-${p.severity}`}
+      className={`bcard sev-${sev}`}
       style={delay}
       aria-label={`Open chart ${p.name}`}
       onClick={() => onOpen(p.patientId)}
     >
       <div className="brow1">
         <BedChip bedId={bed.bedId} />
-        <SeverityDot sev={p.severity} />
+        <SeverityDot sev={sev} />
         <span className="los">ICU D{p.los} · {bed.area}</span>
         {(() => { const cs = resolveCodeStatus(p); return (
           <span className={`codechip ${cs.kind === 'none' ? 'none' : cs.full ? 'full' : 'dnr'}`}>
@@ -60,10 +73,11 @@ export function BedCard({ bed, index, onOpen }: BedCardProps) {
       <div className="bname">{p.name}<small>{p.age} · {p.sex}</small></div>
       <div className="bdx">{p.diagnosis}</div>
       <div className="btags"><TagList flags={p.flags} iso={p.isolation} /></div>
-      {/* Real computed NEWS2 (the bedside early-warning score) — replaces
-          the fabricated SOFA/EWS chips. Display-only band colour, no alerts.
-          SOFA (organ dysfunction) lives on the patient page. */}
-      <div className="scores"><News2Pill patientId={p.patientId} /></div>
+      {/* Real computed NEWS2 (the bedside early-warning score) — the SAME
+          computation the dot/accent derive from (one fetch, one truth).
+          Display-only band colour, no alerts. SOFA lives on the patient
+          page and contributes to the derived severity. */}
+      <div className="scores"><News2Pill state={scores?.state ?? 'loading'} news2={scores?.news2 ?? null} /></div>
       <div className="vgrid">
         <VitalTile variant="vg" label="HR" value={shown(v.hr)} valueClass={hrClass(v.hr)} />
         <VitalTile variant="vg" label="MAP" value={shown(v.map)} valueClass={mapClass(v.map)} />

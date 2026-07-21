@@ -7,7 +7,7 @@ import type {
   Encounter, LabDraw, Observation, ObservationType, Order, PatientIdentity, RosterRecordDto,
 } from '../../lib/api/types'
 import { dayOffsetOf, localStamp } from '../../lib/time'
-import { computeNews2, computeSofa } from '../../lib/scoring'
+import { computeNews2, computeSofa, type ScoreResult } from '../../lib/scoring'
 import type {
   ActiveOrdersData, AdmissionNoteData, ConsultReportData, DailyProgressData, DischargeSummaryData,
   FaceSheetData, FlowsheetColumn, FlowsheetData, FlowsheetRow, FlowsheetSection,
@@ -167,7 +167,7 @@ export async function resolveContext(patientId: string, preferredEncounterId?: s
 function toVitals(r: RosterRecordDto): PrintVitals {
   return {
     bedside: r.bedsideVitals, monitor: r.monitorVitals, rhythm: r.rhythm,
-    flags: r.flags, organs: r.organs,
+    flags: r.flags,
   }
 }
 
@@ -175,23 +175,32 @@ function toVitals(r: RosterRecordDto): PrintVitals {
  *  the SAME scoring engine as the screens). Display strings only: a
  *  computed value, "Incomplete …", or "—" when the observation source is
  *  unreachable — never the retired fabricated roster integers. */
-async function buildPrintScores(patientId: string, encounter: Encounter | null): Promise<PrintScores> {
+async function buildPrintScores(patientId: string, encounter: Encounter | null): Promise<{
+  scores: PrintScores
+  /** the raw worst-24h SOFA behind the display string — for SCORE-BACKED
+   *  derived lines (the Daily Progress problem list); null = the
+   *  observation source is unavailable and nothing is derived */
+  sofaWorst: ScoreResult | null
+}> {
   const [obs, draws, orders] = await Promise.all([
     getObservations(patientId, encounter?.encounterId),
     getLabDraws(patientId),
     getPatientOrders(patientId),
   ])
   const now = new Date()
-  if (obs === null) return { sofa: '— (observation data unavailable)', news2: '— (observation data unavailable)' }
+  if (obs === null) return { scores: { sofa: '— (observation data unavailable)', news2: '— (observation data unavailable)' }, sofaWorst: null }
   const sofa = computeSofa({ labs: draws, observations: obs, orders, weightKg: encounter?.weightKg ?? null, now })
   const news2 = computeNews2({ observations: obs, now })
   return {
-    sofa: sofa.worst.complete
-      ? `${sofa.worst.total} / 24 (worst 24 h)`
-      : `Incomplete — ${sofa.worst.computedCount}/6 systems scored`,
-    news2: news2.result.complete
-      ? `${news2.result.total} / 20 · ${news2.band!.label}`
-      : `Incomplete — ${news2.result.computedCount}/7 parameters`,
+    scores: {
+      sofa: sofa.worst.complete
+        ? `${sofa.worst.total} / 24 (worst 24 h)`
+        : `Incomplete — ${sofa.worst.computedCount}/6 systems scored`,
+      news2: news2.result.complete
+        ? `${news2.result.total} / 20 · ${news2.band!.label}`
+        : `Incomplete — ${news2.result.computedCount}/7 parameters`,
+    },
+    sofaWorst: sofa.worst,
   }
 }
 
@@ -225,7 +234,7 @@ export async function buildAdmissionNote(patientId: string, encounterId?: string
   return {
     context: rc.context,
     vitals: rc.roster ? toVitals(rc.roster) : null,
-    scores: await buildPrintScores(patientId, rc.encounter),
+    scores: (await buildPrintScores(patientId, rc.encounter)).scores,
     medicationOrders: medOrders(rc.orders).map(toMedLine),
     investigations: rc.orders.filter(o => o.category === 'Lab' || o.category === 'Imaging'),
   }
@@ -245,16 +254,24 @@ export async function buildDailyProgress(patientId: string, encounterId?: string
   for (const d of scopedDraws) latestByPanel.set(d.panel, d) // draws arrive oldest→newest per panel
 
   const r = rc.roster
+  /* the problem list is SCORE-BACKED (no-reassuring-default rule): the
+     admission diagnosis plus every SOFA system the engine actually
+     scored >= 1 in the last 24 h, with its evidence. The old lines came
+     from the retired roster organ FIXTURES — a printed clinical document
+     carried organ claims backed by nothing. A system the engine marks
+     insufficient-data is NOT a problem line (not assessed != well —
+     the printed scores line already states how many systems scored). */
+  const { scores, sofaWorst } = await buildPrintScores(patientId, rc.encounter)
   const problems = [
     rc.context.patient.diagnosis,
-    ...(r ? (Object.entries(r.organs) as [string, string][])
-      .filter(([, s]) => s !== 'ok')
-      .map(([organ, s]) => `${organ}: ${s === 'crit' ? 'critical' : 'watch'}`) : []),
+    ...(sofaWorst?.components ?? [])
+      .filter(c => c.score !== null && c.score >= 1)
+      .map(c => `${c.label}: SOFA ${c.score}/4 (worst 24 h) — ${c.detail}`),
   ]
   return {
     context: rc.context,
     vitals: r ? toVitals(r) : null,
-    scores: await buildPrintScores(patientId, rc.encounter),
+    scores,
     activeProblems: problems,
     ventilation: r
       ? { flagged: r.flags.includes('vent'), rhythm: r.rhythm, spo2: r.bedsideVitals.spo2, rr: r.monitorVitals.rr }

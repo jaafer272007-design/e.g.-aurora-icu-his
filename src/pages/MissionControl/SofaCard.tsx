@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge } from '../../components/Badge'
-import { getEncounters, getLabDraws, getObservations, getPatientOrders } from '../../lib/api'
-import { computeSofa, type ScoredComponent, type SofaComputation } from '../../lib/scoring'
-import { useNow } from '../../lib/time'
+import type { ScoreState } from '../../hooks/usePatientScores'
+import type { ScoredComponent, SofaComputation } from '../../lib/scoring'
 
 /* Classic SOFA v1 — the Clinical Scoring Engine's first real score, shown
    on the patient page. COMPUTED AT RENDER from the canonical reads (labs,
@@ -49,37 +48,13 @@ function ComponentRow({ c }: { c: ScoredComponent }) {
   )
 }
 
-export function SofaCard({ patientId }: { patientId: string }) {
-  const now = useNow(60_000)
-  const [sofa, setSofa] = useState<SofaComputation | null>(null)
-  const [state, setState] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+/* PRESENTATIONAL since the score-derived-status build: the computation
+   arrives from the page's ONE usePatientScores fetch (the same inputs
+   this card used to fetch itself — labs, encounter-scoped observations,
+   orders, encounter weight) — the same object the digital twin derives
+   its organ statuses from, so the card and the twin can never disagree. */
+export function SofaCard({ state, sofa }: { state: ScoreState; sofa: SofaComputation | null }) {
   const [view, setView] = useState<'worst' | 'latest'>('worst')
-
-  useEffect(() => {
-    let stale = false
-    setState('loading'); setSofa(null)
-    if (!patientId) return
-    ;(async () => {
-      try {
-        const encs = await getEncounters({ patientId, status: 'open' })
-        const enc = encs[0]
-        const [labs, obs, orders] = await Promise.all([
-          getLabDraws(patientId),
-          getObservations(patientId, enc?.encounterId),
-          getPatientOrders(patientId),
-        ])
-        if (stale) return
-        if (obs === null) { setState('unavailable'); return } // real-only observations domain off-API
-        setSofa(computeSofa({ labs, observations: obs, orders, weightKg: enc?.weightKg ?? null, now }))
-        setState('ready')
-      } catch {
-        if (!stale) setState('unavailable')
-      }
-    })()
-    return () => { stale = true }
-    // `now` intentionally excluded: recompute on data/patient change, not every clock tick
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientId])
 
   const result = sofa ? (view === 'worst' ? sofa.worst : sofa.latest) : null
   const delta = sofa?.deltaFromPrevious ?? null

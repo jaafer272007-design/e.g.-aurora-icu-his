@@ -1,7 +1,7 @@
 import { Card } from '../../components/Card'
 import { Badge } from '../../components/Badge'
-import { useNews2 } from '../../hooks/useNews2'
-import type { ScoredComponent } from '../../lib/scoring'
+import type { ScoreState } from '../../hooks/usePatientScores'
+import type { News2Computation, ScoredComponent } from '../../lib/scoring'
 
 /* Standard NEWS2 v1 — the Clinical Scoring Engine's SECOND score, on the
    patient page. COMPUTED AT RENDER from the real observations — never
@@ -29,9 +29,11 @@ function ParamRow({ c }: { c: ScoredComponent }) {
   )
 }
 
-export function News2Card({ patientId }: { patientId: string }) {
-  const { state, news2 } = useNews2(patientId)
-
+/* PRESENTATIONAL since the score-derived-status build: the computation
+   arrives from the page's ONE usePatientScores fetch — the same object
+   the observation tiles and the severity derivation read, so the card
+   and the tiles can never disagree. */
+export function News2Card({ state, news2 }: { state: ScoreState; news2: News2Computation | null }) {
   return (
     <Card
       id="news2"

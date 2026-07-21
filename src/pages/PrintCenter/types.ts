@@ -1,5 +1,5 @@
 import type {
-  BedCardVitals, Encounter, ImagingStudy, LabDraw, MonitorVitals, Order, OrganName, OrganStatus, SupportFlag, TimelineEvent,
+  BedCardVitals, Encounter, ImagingStudy, LabDraw, MonitorVitals, Order, SupportFlag, TimelineEvent,
 } from '../../lib/api/types'
 
 /* ==================== Print Center view models ====================
@@ -80,7 +80,9 @@ export interface PrintVitals {
   monitor: MonitorVitals
   rhythm: string
   flags: SupportFlag[]
-  organs: Record<OrganName, OrganStatus>
+  /* organs RETIRED: a printed organ claim must be score-backed — the
+     Daily Progress problem list now derives from the computed SOFA
+     (no-reassuring-default rule), never a roster fixture */
 }
 
 /** REAL computed clinical scores for a printed document — from the

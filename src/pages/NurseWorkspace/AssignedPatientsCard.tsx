@@ -6,6 +6,7 @@ import { VitalTile } from '../../components/VitalTile'
 import { IconUsers } from '../../components/icons'
 import type { AssignedPatient } from '../../lib/api/types'
 import { resolveCodeStatus } from '../../lib/codeStatus'
+import { useDerivedSeverities } from '../../hooks/usePatientScores'
 
 /* §12 step 4: vitals are the latest charted observations — null = not
    charted → '—', threshold classes silent on a blank (same rule as the
@@ -26,6 +27,11 @@ const shown = (v: number | null) => (v === null ? '—' : v)
  *  never authority). Cards open Patient Mission Control. */
 export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[] }) {
   const navigate = useNavigate()
+  /* severity DERIVED from the real scores (worst of {NEWS2 band, SOFA} —
+     scoring/display.ts): the card accent + dot restate the computation,
+     never a wire/fixture claim (no-reassuring-default rule). Missing =
+     still loading -> the neutral unscored presentation. */
+  const derived = useDerivedSeverities(patients.map(p => p.patientId))
   return (
     <Card
       icon={<IconUsers size={15} stroke="var(--blue)" />}
@@ -44,13 +50,13 @@ export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[]
         {patients.map(p => (
           <button
             key={p.patientId}
-            className={`apcard sev-${p.severity}`}
+            className={`apcard sev-${derived[p.patientId]?.severity ?? 'unscored'}`}
             aria-label={`Open chart ${p.name}, bed ${p.bedId}`}
             onClick={() => navigate(`/patients/${p.patientId}`)}
           >
             <div className="apr1">
               <BedChip bedId={p.bedId} />
-              <SeverityDot sev={p.severity} />
+              <SeverityDot sev={derived[p.patientId]?.severity ?? 'unscored'} />
               <span className="apname">{p.name}<small>{p.age} · {p.sex}</small></span>
               {(() => { const cs = resolveCodeStatus(p); return (
                 <span className={`apcode ${cs.kind === 'none' ? 'none' : cs.full ? 'full' : 'dnr'}`}>

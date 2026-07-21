@@ -1,6 +1,104 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-21 · current through the OVERDUE-DOSE DELAY
+**Last updated: 2026-07-21 · current through SCORE-DERIVED STATUS
+COLOURS — the display-honesty fix (owner's three rulings + the binding
+rule, from the clinical-testing finding: the same patient showed HR 120
+in GREEN on the Mission Control tiles while NEWS2 scored 11/20 HIGH, and
+the Digital Twin said every organ green/"Stable" — including organs SOFA
+reported ND). VERIFY-FIRST FINDINGS (delivered as a report first): the
+tiles' colours were FIXED DECORATIVE CONSTANTS (HR = var(--green) at any
+value — no range, no score, nothing); the twin rendered the wire `organs`
+snapshot — seeded fixtures for demo patients and a hardcoded all-"ok"
+constant for EVERY fresh admission — never SOFA; the bed-board dot/accent
+rendered the static roster `severity` with a `?? "stable"` default; and
+the consumer sweep found the SAME class in three MORE places: the nurse
+worklist + doctor rounding card accents (same fixture severity) and the
+printed Daily Progress "active problems" list (built from the fixture
+organs — fabricated organ claims on PAPER). The scores themselves were
+already honest; the displays simply never read them. 🔴 THE BINDING RULE
+(recorded in 01, Design System): no clinical status surface may default
+an un-evaluated patient to a reassuring/green colour — green is EARNED
+from a real score computed from real data, or it does not appear; a
+patient with no score data shows neutral grey "not assessed"/"not
+scored" everywhere. The same class as the fabricated risk score deleted
+at the project's start and the F8 EWS tile — closed now in the most
+glanceable surfaces. THE BUILD (one bridge, one fetch): (1) observation
+tiles colour by the NEWS2 PARAMETER SCORE — 0 neutral · 1–2 amber · 3
+red — with the score shown as a chip (colour never the sole signal); the
+decorative per-metric colours are dead; tiles never render green (a
+single parameter cannot claim the patient is well — a scored 0 stays
+neutral with its "0" chip); only real, in-window readings score (demo
+snapshots and non-NEWS2 readings — arterial BP, MAP, EtCO₂, CVP, rhythm
+— stay plain); NIBP is the score-backed BP tile (NEWS2 reads the cuff
+sbp; the arterial line is not an input). (2) the Digital Twin derives
+each system from its SOFA sub-score (worst-24h, the card's primary
+view): 0 → Stable green EARNED · 1–2 → Watch · 3–4 → Critical · P1
+insufficient-data → grey "Not assessed", NEVER green — rendered as the
+six SOFA systems (Brain=CNS, Lungs=Respiratory, Heart & Circulation =
+Cardiovascular shared, Liver, Kidneys=Renal, Coagulation list-only) each
+wearing its n/4 sub-score chip, with a footer stating "N/6 systems
+scored". (3) severity = worst of {NEWS2 band, SOFA sub-scores}
+(scoring/display.ts deriveSeverity): band high or any sub-score ≥3 →
+crit; band medium/low-medium or sub-score 1–2 → high; 'stable' ONLY from
+a complete instrument (band low/none, or complete all-0 SOFA) — partial
+data can refuse reassurance, never grant it; else 'unscored' (new
+Severity member, grey ring dot "Not scored") — driving the bed board
+(dot, accent, sparkline, the Critical KPI and Critical filter — the
+recorded "unit-severity aggregate needs per-patient scoring lifted to
+board level" follow-up, now done), the nurse worklist and the doctor
+rounding cards. THE SCORE-LOCK: displays READ the locked engine outputs;
+no separate/editable range exists behind any safety colour
+(scoring/display.ts defines mappings only); SCORES BYTE-IDENTICAL —
+engine.ts/news2.ts/sofa.ts/sources.ts untouched (asserted against
+origin/main), and the consolidated fetch preserves each score's exact
+input scope (NEWS2 = full chart, the retired useNews2's input; SOFA =
+open-encounter chart + labs + orders + weight, the old SofaCard fetch
+verbatim). MECHANISM: usePatientScores (one fetch+compute per patient —
+NEWS2 card, SOFA card, tiles, twin and the latest-obs projection all
+read the SAME computation and can never disagree) +
+useDerivedSeverities (board fan-out; the AI score_ranking precedent);
+News2Pill/News2Card/SofaCard now presentational; server: RosterApi
+severity default → "unscored" (seeded demo rows keep their column value
+as INERT demo data — zero client readers; a follow-up column drop
+mirroring DropRosterSofaEws is available if wanted), `organs` REMOVED
+from the wire record + PatientRow + roster-seed.json (112 fixture lines
+deleted) + migration `DropRosterOrgans` drops the column (the
+DropRosterSofaEws precedent; hand-annotated); client: organs/OrganName/
+OrganStatus retired from types + roster.ts fixtures deleted (severity
+fixtures too); PrintCenter Daily Progress problems now derive from the
+COMPUTED SOFA (systems scored ≥1 with evidence; ND is NOT a problem
+line). THE DEMO-BOARD CONSEQUENCE (stated, intended): seeded demo
+patients mostly wear grey "Not scored" (their vitals are demo
+snapshots, not real observations) — EXCEPT where seeded REAL data
+exists: P-1001's seeded noradrenaline infusion derives SOFA
+cardiovascular 4 → a REAL red dot (real data → real red; the rendered
+tier asserts exactly ONE green dot board-wide — the control that earned
+it). Deferred (unchanged scope): alerts/push stay out (alarm fatigue
+needs its own design); display colours only. Verified: 9/9 headless
+(fresh SQLite: seeded wire carries no organs key; fresh admission
+severity=unscored + no organs; the directive's exact emergency patient
+charted — RR28/SpO₂88/air/SBP85/HR120/Alert/36.8 + MAP60 + GCS15;
+all-normal control; scoring files byte-identical to main) + 7/7
+(Postgres LIVE-UPGRADE: the OLD server REPRODUCED the bug on the wire —
+fresh admission = severity "stable" + all six organs "ok"; the NEW
+server on the SAME database: DropRosterOrgans applied, column gone,
+same patient unscored/no-organs, all 15 durable records intact) + 34/34
+rendered (NEWS2 card 11/20 HIGH — scores unchanged; HR 120 tile AMBER
+with chip 2 — THE BUG CASE dead; RR/SpO₂/NIBP red chip 3; MAP
+chip-less plain; ZERO green values on the observation card; twin Brain
+Stable 0/4 earned + Heart & Circulation Watch 1/4 (MAP 60) + four grey
+"Not assessed" + "2/6 systems scored" footer; fresh admit all-neutral
+everywhere — six grey systems, "No system scored"; bed board emergency
+sev-crit + pill 11 one-computation, fresh grey "Not scored" + honest
+Incomplete pill, control green EARNED + pill 0, exactly one green dot
+board-wide, Critical KPI == derived-crit count == the Critical filter
+set; nurse worklist + doctor rounding cards derived incl. pill 11;
+theme-token-resolved colour asserts). Suites: deployed-adt-e2e gains
+"NO REASSURING DEFAULT on the wire" — the run's fresh admission is
+severity "unscored" and carries no organs key (non-mutating, reads the
+step's existing roster fetch).**
+
+prior marker retained: current through the OVERDUE-DOSE DELAY
 REASON (medication-safety fix, the clinical validator's option a): a
 dose documented GIVEN more than TWO HOURS past its scheduled instant
 now REQUIRES a delay reason — the dose is never BLOCKED (the patient
@@ -72,7 +170,7 @@ a seeded 2h+ overdue instance on the durable staging DB
 administeredAt-future 400, administeredAt-on-held 400; nothing is
 ever written to the seeded record — the mutating with-reason legs
 are covered by the three local tiers above; the existing bare-given
-200 step doubles as the on-time single-click assertion).**
+200 step doubles as the on-time single-click assertion).
 
 prior marker retained: current through ORDER-SET AUTHORING —
 GOVERNANCE + INTERFACE (owner directive; the clinical model and the
@@ -4911,7 +5009,17 @@ a second score needed NO engine change.
   "Avg SOFA"). **Division of labour**: NEWS2 is the bedside/list
   early-warning score; SOFA is the patient-page organ-dysfunction score
   (not a list glance) — stated, not a silent drop. The F8 drift entry is
-  now CLOSED.
+  now CLOSED. *[Amendment, 2026-07-21 — the SAME CLASS survived this
+  sweep in three more glanceable surfaces and is closed by the
+  score-derived-status build (see the top marker): the roster `severity`
+  fixtures + the `?? "stable"` fresh-admit default (bed board / nurse
+  worklist / doctor rounding accents + dots), the `organs` fixtures + the
+  all-"ok" fresh-admit constant (the Digital Twin, and organ-derived
+  "problem" lines in the printed Daily Progress Note), and the
+  observation tiles' fixed decorative colours (HR rendered GREEN at any
+  value). All three now DERIVE from the computed NEWS2/SOFA under the
+  binding display-honesty rule recorded in 01: green is earned from a
+  real score on real data, or it does not appear.]*
 - **EXPLICIT EXCLUSION (flagged)**: the AI risk domain's SIMULATED
   narrative strings ("SOFA ↑2 in 24 h" in `ai.ts`/`ai-seed.json`, Screen 8)
   are advisory text in a wholesale-SIMULATED domain, NOT roster/bed/print/
@@ -9142,7 +9250,13 @@ instruction, source stated per the documentation rule.]*
   clinical scores that REPLACE the currently-fabricated bedside
   SOFA/EWS numbers (the F8-recorded drift — SOFA/EWS/severity/organs on
   the roster are still demo snapshots in staging / synthesized defaults
-  for fresh patients).
+  for fresh patients). *[Amendment, 2026-07-21 — the residue named here
+  is fully retired: SOFA/EWS died with NEWS2 v1 (F8 closed), and the
+  remaining severity/organs snapshots + synthesized fresh-patient
+  defaults died with the score-derived-status build (severity derived
+  worst-of {NEWS2 band, SOFA}; the twin derived per-system from SOFA;
+  OrgansJson dropped by migration DropRosterOrgans). Nothing of the
+  fabricated bedside acuity remains on any surface.]*
   - **The engine (not SOFA-specific code)**: a generic Clinical Scoring
     Engine with SOFA as its FIRST score; qSOFA / APACHE II / NEWS2 /
     SAPS II / custom scores plug in later as score *definitions*, not

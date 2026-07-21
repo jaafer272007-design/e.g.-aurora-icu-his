@@ -2,3 +2,6 @@
 .sevdot.sd-crit{color:var(--red);animation:blink 1.15s infinite}
 .sevdot.sd-high{color:var(--amber)}
 .sevdot.sd-stable{color:var(--green)}
+/* not scored — neutral, no glow: an unevaluated patient must never read
+   as reassuring (nor as alarming) */
+.sevdot.sd-unscored{color:var(--faint);box-shadow:none;background:transparent;border:1.5px solid var(--faint)}

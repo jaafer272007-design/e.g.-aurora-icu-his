@@ -521,7 +521,8 @@ const rosterToPatient = (r: RosterRecordDto): Patient => ({
   codeStatusLegacy: r.codeStatusLegacy,
   rhythm: r.rhythm,
   vitals: r.monitorVitals,
-  organs: r.organs,
+  /* organs is GONE from the wire — the digital twin derives organ status
+     from the computed SOFA (score-backed or not made) */
 })
 
 /** IDENTITY-ONLY patient read (Phase 3 PR 1 — the composite split): the
@@ -672,13 +673,13 @@ const toAssignedPatient = (r: RosterRecordDto): AssignedPatient => ({
   patientId: r.patientId, bedId: r.bedId, name: r.name, age: r.age, sex: r.sex,
   diagnosis: r.diagnosis, allergies: r.allergies, codeStatus: r.codeStatus,
   codeStatusCode: r.codeStatusCode, codeStatusLegacy: r.codeStatusLegacy,
-  flags: r.flags, isolation: r.isolation, severity: r.severity,
+  flags: r.flags, isolation: r.isolation,
   vitals: r.bedsideVitals,
 })
 
 const toRoundingPatient = (r: RosterRecordDto): RoundingPatient => ({
   patientId: r.patientId, bedId: r.bedId, name: r.name, diagnosis: r.diagnosis,
-  flags: r.flags, severity: r.severity,
+  flags: r.flags,
 })
 
 /** the roster records for the join (real read; mock fallback offline) */

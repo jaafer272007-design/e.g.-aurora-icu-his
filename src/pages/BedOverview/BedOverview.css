@@ -32,6 +32,8 @@
 .bo .sev-crit::before{background:var(--red);box-shadow:0 0 14px var(--red)}
 .bo .sev-high::before{background:var(--amber);box-shadow:0 0 12px var(--amber)}
 .bo .sev-stable::before{background:var(--green);box-shadow:0 0 10px rgba(var(--green-rgb),.7)}
+/* unscored — the honest neutral: no accent bar glow, never green */
+.bo .sev-unscored::before{background:rgba(var(--steel3-rgb),.5);box-shadow:none}
 .bo .sev-crit{border-color:rgba(var(--red-rgb),.3)}
 .bo .sev-crit:hover{border-color:rgba(var(--red-rgb),.55)}
 .bo .brow1{display:flex;align-items:center;gap:8px}

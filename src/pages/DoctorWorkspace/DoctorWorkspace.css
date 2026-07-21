@@ -12,6 +12,7 @@
 .dw .rcard.sev-crit::before{background:var(--red);box-shadow:0 0 12px var(--red)}
 .dw .rcard.sev-high::before{background:var(--amber)}
 .dw .rcard.sev-stable::before{background:var(--green)}
+.dw .rcard.sev-unscored::before{background:rgba(var(--steel3-rgb),.5)}
 .dw .rcard:hover,.dw .rcard:focus-visible{border-color:var(--stroke2);transform:translateX(2px)}
 .dw .rinfo .rn{font-size:13.5px;font-weight:700}
 .dw .rinfo .rd{font-size:11.5px;color:var(--dim);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

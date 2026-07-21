@@ -27,7 +27,8 @@ export const toBedPatient = (r: RosterRecordDto): BedPatient => ({
   vitals: r.bedsideVitals,
   alert: r.bedAlert,
   attending: r.attending,
-  severity: r.severity,
+  /* severity is NOT copied from the wire: the card DERIVES acuity from
+     the real scores (no-reassuring-default rule) */
   mapTrend: r.mapTrend,
 })
 
