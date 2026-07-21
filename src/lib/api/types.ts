@@ -3,7 +3,12 @@
    (field names + nesting). Swapping the mock adapters for real endpoints must
    be a data-layer change only — never touch the UI when doing so. */
 
-export type Severity = 'crit' | 'high' | 'stable'
+/** DERIVED patient acuity (scoring/display.ts deriveSeverity — worst of
+ *  {NEWS2 band, SOFA sub-scores}). 'unscored' is the honest neutral for a
+ *  patient with no computable score: green is EARNED from a real score on
+ *  real data, or it does not appear (the no-reassuring-default rule). The
+ *  old wire/fixture severity is retired — no display reads it. */
+export type Severity = 'crit' | 'high' | 'stable' | 'unscored'
 export type AlertSeverity = 'crit' | 'high' | 'med' | 'info'
 export type SupportFlag = 'vent' | 'pressor' | 'crrt' | 'ecmo'
 export type Sex = 'M' | 'F'
@@ -60,7 +65,9 @@ export interface BedPatient {
   vitals: BedCardVitals
   alert: BedAlert
   attending: string
-  severity: Severity
+  /* severity is NO LONGER carried here — the bed card DERIVES it from the
+     real scores (useDerivedSeverities); a wire/fixture acuity claim on a
+     display DTO was the reassuring-default bug */
   /** last 7 MAP samples for the footer sparkline */
   mapTrend: number[]
 }
@@ -160,13 +167,15 @@ export interface RosterRecordDto {
   isolation: boolean
   /** isolation type codes of the OPEN encounter (see the bed-board note) */
   isolationTypes?: string[]
-  severity: Severity
   flags: SupportFlag[]
   bedsideVitals: BedCardVitals
   bedAlert: BedAlert
   mapTrend: number[]
   monitorVitals: MonitorVitals
-  organs: Record<OrganName, OrganStatus>
+  /* the wire severity/organs snapshot is RETIRED from the client contract:
+     severity is derived from the real scores at render; organ status is
+     the digital twin's SOFA restatement. The server no longer emits
+     organs at all, and its severity field is unread here by design. */
   /** structured-identity tail (absent on legacy rows): the derived FULL
    *  legal name and the national ID — both feed the one-search-box rule
    *  (any name part or number finds the patient) */
@@ -218,8 +227,10 @@ export interface MonitorVitals {
   cvp: number | null
 }
 
-export type OrganName = 'Brain' | 'Heart' | 'Lungs' | 'Kidneys' | 'Liver' | 'Circulation'
-export type OrganStatus = 'ok' | 'watch' | 'crit'
+/* OrganName / OrganStatus are RETIRED: the digital twin's organ claims
+   are now a pure restatement of the SOFA per-system sub-scores
+   (scoring/display.ts systemStatusFromScore) — an organ status that was
+   not score-backed was the fabricated-reassurance bug. */
 
 export interface Patient extends PatientSummary {
   age: number
@@ -238,7 +249,6 @@ export interface Patient extends PatientSummary {
   codeStatusLegacy?: boolean
   rhythm: string
   vitals: MonitorVitals
-  organs: Record<OrganName, OrganStatus>
 }
 
 export interface VentTile {
@@ -374,7 +384,7 @@ export interface RoundingPatient {
   name: string
   diagnosis: string
   flags: SupportFlag[]
-  severity: Severity
+  /* severity retired — the rounding card derives it from the real scores */
 }
 
 /* RoundingListResponse is RETIRED (Patient Assignment & Responsibility):
@@ -537,7 +547,7 @@ export interface AssignedPatient {
   codeStatusLegacy?: boolean
   flags: SupportFlag[]
   isolation: boolean
-  severity: Severity
+  /* severity retired — the worklist card derives it from the real scores */
   vitals: BedCardVitals
 }
 

@@ -51,14 +51,6 @@
       "temp": 38.4,
       "etco2": 34,
       "cvp": 12
-    },
-    "organs": {
-      "Brain": "watch",
-      "Heart": "watch",
-      "Lungs": "crit",
-      "Kidneys": "watch",
-      "Liver": "ok",
-      "Circulation": "crit"
     }
   },
   {
@@ -113,14 +105,6 @@
       "temp": 37.2,
       "etco2": 31,
       "cvp": 10
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "ok",
-      "Lungs": "crit",
-      "Kidneys": "ok",
-      "Liver": "ok",
-      "Circulation": "watch"
     }
   },
   {
@@ -174,14 +158,6 @@
       "temp": 36.8,
       "etco2": 35,
       "cvp": 8
-    },
-    "organs": {
-      "Brain": "crit",
-      "Heart": "ok",
-      "Lungs": "ok",
-      "Kidneys": "ok",
-      "Liver": "ok",
-      "Circulation": "ok"
     }
   },
   {
@@ -235,14 +211,6 @@
       "temp": 36.9,
       "etco2": 33,
       "cvp": 14
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "watch",
-      "Lungs": "ok",
-      "Kidneys": "crit",
-      "Liver": "ok",
-      "Circulation": "ok"
     }
   },
   {
@@ -296,14 +264,6 @@
       "temp": 36.2,
       "etco2": 36,
       "cvp": 11
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "watch",
-      "Lungs": "ok",
-      "Kidneys": "ok",
-      "Liver": "ok",
-      "Circulation": "watch"
     }
   },
   {
@@ -355,14 +315,6 @@
       "temp": 37,
       "etco2": 38,
       "cvp": 6
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "ok",
-      "Lungs": "ok",
-      "Kidneys": "watch",
-      "Liver": "ok",
-      "Circulation": "ok"
     }
   },
   {
@@ -416,14 +368,6 @@
       "temp": 38.1,
       "etco2": 30,
       "cvp": 9
-    },
-    "organs": {
-      "Brain": "watch",
-      "Heart": "watch",
-      "Lungs": "crit",
-      "Kidneys": "ok",
-      "Liver": "ok",
-      "Circulation": "watch"
     }
   },
   {
@@ -475,14 +419,6 @@
       "temp": 36.6,
       "etco2": 37,
       "cvp": 5
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "ok",
-      "Lungs": "ok",
-      "Kidneys": "ok",
-      "Liver": "watch",
-      "Circulation": "watch"
     }
   },
   {
@@ -536,14 +472,6 @@
       "temp": 36.4,
       "etco2": 32,
       "cvp": 15
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "crit",
-      "Lungs": "watch",
-      "Kidneys": "watch",
-      "Liver": "ok",
-      "Circulation": "crit"
     }
   },
   {
@@ -595,14 +523,6 @@
       "temp": 37.1,
       "etco2": 37,
       "cvp": 6
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "ok",
-      "Lungs": "ok",
-      "Kidneys": "ok",
-      "Liver": "ok",
-      "Circulation": "watch"
     }
   },
   {
@@ -654,14 +574,6 @@
       "temp": 36.7,
       "etco2": 52,
       "cvp": 8
-    },
-    "organs": {
-      "Brain": "watch",
-      "Heart": "watch",
-      "Lungs": "crit",
-      "Kidneys": "ok",
-      "Liver": "ok",
-      "Circulation": "ok"
     }
   },
   {
@@ -716,14 +628,6 @@
       "temp": 38.6,
       "etco2": 33,
       "cvp": 13
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "watch",
-      "Lungs": "watch",
-      "Kidneys": "watch",
-      "Liver": "watch",
-      "Circulation": "crit"
     }
   },
   {
@@ -775,14 +679,6 @@
       "temp": 36.9,
       "etco2": 39,
       "cvp": 7
-    },
-    "organs": {
-      "Brain": "watch",
-      "Heart": "ok",
-      "Lungs": "ok",
-      "Kidneys": "ok",
-      "Liver": "ok",
-      "Circulation": "ok"
     }
   },
   {
@@ -834,14 +730,6 @@
       "temp": 37,
       "etco2": 30,
       "cvp": 12
-    },
-    "organs": {
-      "Brain": "ok",
-      "Heart": "watch",
-      "Lungs": "watch",
-      "Kidneys": "ok",
-      "Liver": "ok",
-      "Circulation": "watch"
     }
   }
 ]

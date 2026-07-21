@@ -53,7 +53,6 @@ const toBedPatient = (r: UnitPatientRecord): BedPatient => ({
   vitals: r.bedsideVitals,
   alert: r.bedAlert,
   attending: r.attending,
-  severity: r.severity,
   mapTrend: r.mapTrend,
 })
 

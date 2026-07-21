@@ -12,6 +12,7 @@
 .nw .apcard.sev-crit::before{background:var(--red);box-shadow:0 0 14px var(--red)}
 .nw .apcard.sev-high::before{background:var(--amber);box-shadow:0 0 12px var(--amber)}
 .nw .apcard.sev-stable::before{background:var(--green)}
+.nw .apcard.sev-unscored::before{background:rgba(var(--steel3-rgb),.5)}
 .nw .apcard:hover,.nw .apcard:focus-visible{border-color:var(--stroke2);transform:translateY(-2px)}
 .nw .apr1{display:flex;align-items:center;gap:8px}
 .nw .apname{font-size:14.5px;font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

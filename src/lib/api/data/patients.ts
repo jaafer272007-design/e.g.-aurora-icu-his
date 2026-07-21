@@ -38,7 +38,6 @@ const toPatient = (r: UnitPatientRecord): Patient => ({
   codeStatusLegacy: r.codeStatusLegacy,
   rhythm: r.rhythm,
   vitals: r.monitorVitals,
-  organs: r.organs,
 })
 
 /** computed per call so acknowledgments move the counts live */

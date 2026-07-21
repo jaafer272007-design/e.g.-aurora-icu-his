@@ -9,6 +9,7 @@ import { BedChip, TagList } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconFlask, IconNote, IconPencil, IconUsers } from '../../components/icons'
 import { News2Pill } from '../../components/News2Pill'
+import { useDerivedSeverities } from '../../hooks/usePatientScores'
 import {
   acknowledgeResult, getActionQueues, getConsults, getPendingOrders,
   getResultInbox, getRoundingWorklist, signOrder,
@@ -45,6 +46,11 @@ export function DoctorWorkspace() {
      have NO assignment concept — every doctor covers every patient, so
      the list is simply all open admissions. */
   const [rounding, setRounding] = useState<{ mine: MineWorklist; patients: RoundingPatient[] } | null>(null)
+  /* score-DERIVED severity + NEWS2 for every rounding card (worst of
+     {NEWS2 band, SOFA} — scoring/display.ts): one computation per patient
+     feeds the card accent AND the pill; the wire/fixture severity is
+     retired (no-reassuring-default rule) */
+  const derived = useDerivedSeverities((rounding?.patients ?? []).map(p => p.patientId))
   /* "Orders to Sign" is a derived view over the canonical Order model
      (Screen 5, status === 'pending'); "Results to Acknowledge" over the
      canonical results store (Screen 6). Only "notes" remains workspace-local. */
@@ -131,7 +137,7 @@ export function DoctorWorkspace() {
                 {rounding?.patients.map(p => (
                   <div
                     key={p.patientId}
-                    className={`rcard sev-${p.severity}`}
+                    className={`rcard sev-${derived[p.patientId]?.severity ?? 'unscored'}`}
                     role="listitem"
                     tabIndex={0}
                     aria-label={`Open chart ${p.name}, bed ${p.bedId}`}
@@ -147,7 +153,7 @@ export function DoctorWorkspace() {
                     <div className="ract">
                       {/* real computed NEWS2 (early-warning) — replaces the
                           fabricated SOFA; display-only, no alerts */}
-                      <News2Pill patientId={p.patientId} />
+                      <News2Pill state={derived[p.patientId]?.state ?? 'loading'} news2={derived[p.patientId]?.news2 ?? null} />
                       {/* REAL ordering only: this navigates to the canonical
                           Orders & Meds screen for this patient. The former
                           "+ Order" quick-action opened a toast-only demo

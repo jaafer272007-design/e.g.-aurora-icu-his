@@ -668,6 +668,20 @@ Dark medical theme, glassmorphism, background `#060b13`.
 Colors: blue `#4da3ff`, cyan `#35e0d0`, green `#3de8a0`, amber `#ffb454`,
 red `#ff5d6c`, violet `#a78bfa`. Severity mapping is fixed system-wide:
 red = critical, amber = high, green = stable — never reassign.
+
+*[Amendment, 2026-07-21 — the display-honesty rule (binding; owner's
+ruling with the score-derived-status build):* **no clinical status
+surface may default an un-evaluated patient to a reassuring/green
+colour.** *Green is EARNED by a real score computed from real data — or
+it does not appear; a patient with no score data shows a neutral grey
+"not assessed"/"not scored" state on every surface. Status colours on
+glanceable surfaces (severity dots/accents, observation tiles, the
+digital twin) are pure restatements of the locked Clinical Scoring
+Engine outputs (NEWS2 bands, SOFA sub-scores — the score-lock): no
+display defines a separate editable range behind a safety colour.
+Warning-direction accents (amber/red on a raw out-of-range value) may
+exist without a score; reassurance may not. The canonical statement and
+the one derivation live in `src/lib/scoring/display.ts`.]*
 Fonts: sans `-apple-system,"SF Pro Display","Segoe UI",Inter,Roboto,Arial`;
 mono for all clinical/numeric values `"SF Mono","Cascadia Mono","JetBrains Mono",ui-monospace`.
 Card radius 18px, `1px solid rgba(130,170,230,.13)` border, blur 14–18px,

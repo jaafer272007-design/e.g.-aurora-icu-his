@@ -11,7 +11,8 @@ namespace Aurora.Core.Adt;
    on the durable database. A Patient is a person and persists across visits;
    an Encounter is one admission carrying location (bed), attending,
    admission time, status and the discharge/transfer event history. The ICU
-   bedside snapshot (SOFA, EWS, rhythm, vitals, organ map) deliberately stays
+   bedside snapshot (rhythm, vitals — the fabricated SOFA/EWS and the organ
+   map are RETIRED: scores and organ status are computed at render) stays
    in Modules/Icu/Roster until Stage 11 Observations absorb it.
 
    Seeding: AdtPatients + Encounters are derived at boot from the SAME

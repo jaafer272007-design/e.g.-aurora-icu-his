@@ -1,14 +1,22 @@
-import { useNews2 } from '../hooks/useNews2'
+import type { News2Computation } from '../lib/scoring'
+import type { ScoreState } from '../hooks/usePatientScores'
 import './News2Pill.css'
 
-/* Compact real-NEWS2 pill for list/glance surfaces (bed board, roster,
-   rounding list). DISPLAY ONLY — the standard NEWS2 band colour, no
+/* Compact real-NEWS2 pill for list/glance surfaces (bed board, rounding
+   list). DISPLAY ONLY — the standard NEWS2 band colour, no
    notification/paging (D6). Honest states: a computable score shows the
    total + band; an incomplete one shows "Incomplete" (never a fabricated
-   number); off-API shows "—". This REPLACES the fabricated EWS tile. */
-export function News2Pill({ patientId, showLabel = true }: { patientId: string; showLabel?: boolean }) {
-  const { state, news2 } = useNews2(patientId)
+   number); off-API shows "—". This REPLACES the fabricated EWS tile.
 
+   PRESENTATIONAL since the score-derived-status build: the computation
+   arrives from the shared usePatientScores / useDerivedSeverities fetch
+   (one chart read feeds the pill, the severity dot and the card accent —
+   they can never disagree). */
+export function News2Pill({ state, news2, showLabel = true }: {
+  state: ScoreState
+  news2: News2Computation | null
+  showLabel?: boolean
+}) {
   if (state === 'loading') return <span className="news2pill loading" aria-label="NEWS2 loading">{showLabel && <b>NEWS2</b>}<span className="n2v">…</span></span>
   if (state === 'unavailable' || !news2) return <span className="news2pill na" aria-label="NEWS2 unavailable">{showLabel && <b>NEWS2</b>}<span className="n2v">—</span></span>
 

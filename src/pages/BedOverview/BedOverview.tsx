@@ -9,7 +9,8 @@ import { VitalTile } from '../../components/VitalTile'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAlertTriangle, IconBed, IconSearch, IconVent } from '../../components/icons'
 import { getBeds, getUnitSummary, getUnitSummaryDerived } from '../../lib/api'
-import type { Bed, BedsResponse, DerivedUnitSummary, UnitSummaryResponse } from '../../lib/api/types'
+import type { Bed, BedsResponse, DerivedUnitSummary, Severity, UnitSummaryResponse } from '../../lib/api/types'
+import { useDerivedSeverities } from '../../hooks/usePatientScores'
 import { BedCard } from './BedCard'
 import { useHospitalIdentity } from '../../lib/hospitalIdentity'
 
@@ -24,7 +25,10 @@ interface Filters {
 
 const RING_CIRC = 169.6
 
-function visible(b: Bed, f: Filters): boolean {
+/* the Critical filter matches the DERIVED severity (worst of {NEWS2 band,
+   SOFA} — the same computation behind the dot); a bed whose scores are
+   still loading is not yet critical-by-evidence and does not match */
+function visible(b: Bed, f: Filters, sev: Severity): boolean {
   const p = b.patient
   if (!p) return !f.q && !f.doc && !f.vent && !f.iso && !f.crit && (!f.area || b.area === f.area)
   if (f.q && !(p.name + b.bedId + p.diagnosis).toLowerCase().includes(f.q)) return false
@@ -32,7 +36,7 @@ function visible(b: Bed, f: Filters): boolean {
   if (f.area && b.area !== f.area) return false
   if (f.vent && !p.flags.includes('vent')) return false
   if (f.iso && !p.isolation) return false
-  if (f.crit && p.severity !== 'crit') return false
+  if (f.crit && sev !== 'crit') return false
   return true
 }
 
@@ -69,13 +73,28 @@ export function BedOverview() {
      presentation tracks the real source; jitter fabricated a stream). */
 
   const occupied = useMemo(() => (data ? data.beds.filter(b => b.patient) : []), [data])
+
+  /* per-patient DERIVED severity for the whole board (worst of {NEWS2
+     band, SOFA} — scoring/display.ts): drives every card's dot/accent,
+     the Critical filter and the Critical KPI from ONE computation per
+     patient. The fabricated roster severity is retired — the follow-up
+     recorded when the fabricated Avg-SOFA KPI was removed ("a real
+     unit-severity aggregate needs per-patient scoring lifted to this
+     level") is exactly this. */
+  const patientIds = useMemo(() => occupied.map(b => b.patient!.patientId), [occupied])
+  const scoresById = useDerivedSeverities(patientIds)
+  const sevOf = (patientId: string): Severity => scoresById[patientId]?.severity ?? 'unscored'
+  /* the Critical count is honest only once every occupied bed has
+     resolved (ready or unavailable) — a partial count reads as a total */
+  const sevLoading = occupied.some(b => !scoresById[b.patient!.patientId])
+  const critCount = occupied.filter(b => sevOf(b.patient!.patientId) === 'crit').length
+
   const stats = useMemo(() => {
     if (!data || occupied.length === 0) return null
     const n = occupied.length
     return {
       n,
       avail: data.capacity - n,
-      crit: occupied.filter(b => b.patient!.severity === 'crit').length,
       vent: occupied.filter(b => b.patient!.flags.includes('vent')).length,
       /* unit-average MAP over beds with a CHARTED (or demo-fallback) MAP —
          null vitals are "not charted" and never count as zero */
@@ -96,7 +115,7 @@ export function BedOverview() {
     return () => cancelAnimationFrame(raf)
   }, [stats])
 
-  const visibleBeds = data ? data.beds.filter(b => visible(b, filters)) : []
+  const visibleBeds = data ? data.beds.filter(b => visible(b, filters, b.patient ? sevOf(b.patient.patientId) : 'unscored')) : []
   const critAlerts = summary ? summary.highPriorityAlerts.filter(a => a.severity === 'crit').length : 0
 
   const kpis: KpiSpec[] = [
@@ -105,12 +124,14 @@ export function BedOverview() {
       icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>,
       iconBg: 'rgba(var(--green-rgb),.13)', value: stats ? stats.avail : '—', label: 'Available',
     },
-    { icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)', value: stats ? stats.crit : '—', label: 'Critical', valueStyle: { color: 'var(--red)' } },
+    /* Critical = the DERIVED severity count (score-backed); '—' until
+       every occupied bed has resolved — a partial count reads as a total */
+    { icon: <IconAlertTriangle size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.14)', value: stats && !sevLoading ? critCount : '—', label: 'Critical', valueStyle: { color: 'var(--red)' } },
     { icon: <IconVent size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: stats ? stats.vent : '—', label: 'Ventilated' },
     /* the fabricated "Avg SOFA" KPI is RETIRED — per-bed real NEWS2 is on
-       each bed card; a real unit-severity aggregate (needs per-patient
-       scoring lifted to this level) is a recorded follow-up, not a
-       fabricated number. */
+       each bed card; the recorded follow-up ("a real unit-severity
+       aggregate needs per-patient scoring lifted to this level") is DONE:
+       the Critical KPI above counts the score-derived severities. */
   ]
 
   const toggle = (k: 'vent' | 'iso' | 'crit') => setFilters(f => ({ ...f, [k]: !f[k] }))
@@ -173,7 +194,7 @@ export function BedOverview() {
                 : visibleBeds.length === 0
                   ? <div className="nomatch">No beds match the current filters.</div>
                   : visibleBeds.map((b, i) => (
-                      <BedCard key={b.bedId} bed={b} index={i} onOpen={id => navigate(`/patients/${id}`)} />
+                      <BedCard key={b.bedId} bed={b} index={i} scores={b.patient ? scoresById[b.patient.patientId] : undefined} onOpen={id => navigate(`/patients/${id}`)} />
                     ))}
             </div>
           </div>

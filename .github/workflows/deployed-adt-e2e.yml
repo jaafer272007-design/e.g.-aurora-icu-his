@@ -217,6 +217,23 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/adt/patients/$PID?verbose=1")
           echo "unknown query param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
 
+      - name: NO REASSURING DEFAULT on the wire (display-honesty rule) — a fresh admission is severity "unscored", and the fabricated organs snapshot is GONE
+        run: |
+          # THIS RUN's fresh admission on the roster wire: the retired
+          # `?? "stable"` default painted every fresh patient green while
+          # NEWS2/SOFA could be flagging them — the honest wire value is
+          # "unscored" (no display reads it; every surface derives from
+          # the real scores at render). The organs key must be ABSENT
+          # entirely: the all-"ok" fresh-admit constant and the seeded
+          # fixtures are retired — the digital twin derives organ status
+          # from the computed SOFA (score-backed or not made).
+          PID="$PID" python3 -c '
+          import json, os
+          r = [x for x in json.load(open("/tmp/roster.json")) if x["patientId"] == os.environ["PID"]][0]
+          assert r["severity"] == "unscored", ("fresh admission must be unscored, not a fabricated acuity", r["severity"])
+          assert "organs" not in r, ("the fabricated organs snapshot must be off the wire", sorted(r))
+          print("fresh admission: severity=unscored, no organs key — no reassuring default on the wire")'
+
       - name: STRUCTURED IDENTITY — retired name field 400; unknown patients admit (no ID, names not unique); duplicate national ID 409; AUDITED identity correction (office Administrator) incl. the MRN (typed canonical / regenerate — the #116 flag resolved)
         run: |
           # office Administrator token (huda.nasser, Receptionist) — the

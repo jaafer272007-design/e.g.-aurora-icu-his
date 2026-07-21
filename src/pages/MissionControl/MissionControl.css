@@ -101,6 +101,19 @@
 .mc .o-ok{fill:rgba(var(--green-rgb),.75);filter:drop-shadow(0 0 5px rgba(var(--green-rgb),.8))}
 .mc .o-watch{fill:rgba(var(--amber-rgb),.85);filter:drop-shadow(0 0 6px rgba(var(--amber-rgb),.9))}
 .mc .o-crit{fill:rgba(var(--red-rgb),.9);filter:drop-shadow(0 0 8px rgba(var(--red-rgb),1));animation:blink 1.2s infinite}
+/* not assessed — SOFA insufficient-data (P1): flat grey, no glow; the
+   honest state for an unscored system is neutral, never green */
+.mc .o-nd{fill:rgba(var(--steel3-rgb),.35)}
+.mc .orow.st-nd .odot{background:transparent;box-shadow:none;border:1.5px solid var(--faint)}
+.mc .orow.st-nd .on,.mc .orow.st-nd .os{color:var(--faint)}
+/* per-system SOFA sub-score chip (colour never the sole signal) */
+.mc .osc{font-family:var(--mono);font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:999px;border:1px solid var(--stroke)}
+.mc .osc.s-ok{color:var(--green);border-color:rgba(var(--green-rgb),.4)}
+.mc .osc.s-watch{color:var(--amber);border-color:rgba(var(--amber-rgb),.4)}
+.mc .osc.s-crit{color:var(--red);border-color:rgba(var(--red-rgb),.45)}
+.mc .osc.nd{color:var(--faint)}
+.mc .twinempty{font-size:11px;color:var(--dim);padding:10px 6px;line-height:1.5}
+.mc .twinfoot{font-size:9.5px;color:var(--faint);padding-top:6px;line-height:1.45;border-top:1px dashed var(--stroke);margin-top:2px}
 
 /* generic tile grids */
 .mc #vent,.mc #hemo,.mc #meds{grid-column:span 4}
@@ -214,6 +227,13 @@
 .mc .obval .u{font-size:10px;color:var(--faint);font-style:normal;margin-left:4px}
 .mc .obmeta{font-size:9.5px;color:var(--faint)}
 .mc .obmeta.demo{color:var(--amber);letter-spacing:.4px;text-transform:uppercase;font-size:8.5px}
+/* NEWS2-parameter score chip on a tile (0 neutral · 1-2 amber · 3 red) —
+   the score is shown, never colour alone */
+.mc .obscore{display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;
+ margin-left:6px;padding:0 4px;border-radius:999px;font-family:var(--mono);font-size:10px;font-weight:800;
+ vertical-align:2px;border:1px solid var(--stroke);color:var(--dim)}
+.mc .obscore.t-amber{color:var(--amber);border-color:rgba(var(--amber-rgb),.5);background:rgba(var(--amber-rgb),.08)}
+.mc .obscore.t-red{color:var(--red);border-color:rgba(var(--red-rgb),.55);background:rgba(var(--red-rgb),.1)}
 .mc .obcfoot{display:flex;align-items:center;gap:10px;justify-content:space-between;
  font-size:10px;color:var(--faint);margin-top:10px;flex-wrap:wrap}
 .mc .obclink{font-size:10.5px;color:var(--blue);border:1px solid rgba(var(--blue-rgb),.35);

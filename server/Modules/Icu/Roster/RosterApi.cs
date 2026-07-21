@@ -107,7 +107,7 @@ static class RosterApi
 }
 
 /* One row per patient. Scalar roster fields are real columns; nested
-   value objects (vitals, alert, trend, organs, flags) are stored as JSON
+   value objects (vitals, alert, trend, flags) are stored as JSON
    text — fine for SQLite now and portable to SQL Server later. */
 class PatientRow
 {
@@ -131,7 +131,6 @@ class PatientRow
     public string BedAlertJson { get; set; } = "{}";
     public string MapTrendJson { get; set; } = "[]";
     public string MonitorVitalsJson { get; set; } = "{}";
-    public string OrgansJson { get; set; } = "{}";
 
     public static PatientRow FromDto(RosterRecordDto d) => new()
     {
@@ -144,7 +143,6 @@ class PatientRow
         BedAlertJson = JsonSerializer.Serialize(d.BedAlert, JsonOpts.Web),
         MapTrendJson = JsonSerializer.Serialize(d.MapTrend, JsonOpts.Web),
         MonitorVitalsJson = JsonSerializer.Serialize(d.MonitorVitals, JsonOpts.Web),
-        OrgansJson = JsonSerializer.Serialize(d.Organs, JsonOpts.Web),
     };
 
     /* ---- §12 step 4 — the tile→observation MAP (F7, validator-confirmed):
@@ -162,8 +160,10 @@ class PatientRow
     /* One composition for BOTH the demo-seeded and the fresh patient
        (Layer 2 supplies identity/encounter fields; the fabricated SOFA/EWS
        columns are GONE — real SOFA + NEWS2 are computed at render by the
-       Clinical Scoring Engine; the organ snapshot remains a demo view for a
-       later piece — while the VITALS are the step-4 read-swap):
+       Clinical Scoring Engine; the organ snapshot is RETIRED from the wire —
+       the digital twin derives organ status from the computed SOFA, so the
+       "later piece" it was waiting for arrived — while the VITALS are the
+       step-4 read-swap):
        real observation → demo snapshot value (demo rows exist only in
        demo-seeded environments) → honest null. Rhythm is chartable
        (cardiac_rhythm) → real, else demo, else an honest "—" (the old
@@ -201,16 +201,20 @@ class PatientRow
             patientId, bedId, name, mrn, age, sex, diagnosis, b?.Los ?? 0, allergies,
             attending, codeStatus,
             latest.Text("cardiac_rhythm") ?? b?.Rhythm ?? "—",
-            isolationTypes is { Count: > 0 }, b?.Severity ?? "stable",
+            /* 🔴 NO REASSURING DEFAULT (the display-honesty rule,
+               01_ARCHITECTURE.md): a patient this server has no acuity
+               claim for is "unscored" — never "stable". No display reads
+               this field any more (every surface DERIVES severity from
+               the real NEWS2/SOFA at render); seeded rows keep their
+               demo column value as inert demo data. The old `?? "stable"`
+               painted every fresh admission green. The all-"ok" organs
+               constant that lived here is retired with the field. */
+            isolationTypes is { Count: > 0 }, b?.Severity ?? "unscored",
             b is null ? [] : JsonSerializer.Deserialize<List<string>>(b.FlagsJson, JsonOpts.Web)!,
             MergeVitals(BedCardMap, latest, demoBedCard),
             alert,
             b is null ? [] : JsonSerializer.Deserialize<List<double>>(b.MapTrendJson, JsonOpts.Web)!,
             MergeVitals(MonitorMap, latest, demoMonitor),
-            b is not null
-                ? JsonSerializer.Deserialize<JsonElement>(b.OrgansJson, JsonOpts.Web)
-                : JsonSerializer.Deserialize<JsonElement>(
-                    """{"Brain":"ok","Heart":"ok","Lungs":"ok","Kidneys":"ok","Liver":"ok","Circulation":"ok"}""", JsonOpts.Web),
             fullName, nationalId, codeStatusCode, codeStatusLegacy ? true : null,
             isolationTypes is { Count: > 0 } ? isolationTypes : null,
             fileNumber);
@@ -253,7 +257,14 @@ record RosterRecordDto(
     string Diagnosis, int Los, string Allergies, string Attending, string CodeStatus,
     string Rhythm, bool Isolation, string Severity,
     List<string> Flags, JsonElement BedsideVitals, JsonElement BedAlert,
-    List<double> MapTrend, JsonElement MonitorVitals, JsonElement Organs,
+    List<double> MapTrend, JsonElement MonitorVitals,
+    /* Organs is RETIRED from the wire (score-derived-status build): the
+       digital twin derives organ status from the computed SOFA — an organ
+       claim that was not score-backed (seeded fixtures; an all-"ok"
+       constant for fresh admissions) was the fabricated-reassurance bug.
+       The OrgansJson column is dropped by DropRosterOrgans (the
+       DropRosterSofaEws precedent: fabricated display columns die once
+       the real computation exists). */
     /* STRUCTURED IDENTITY (additive nullable tail — legacy rows keep
        their pre-feature wire bytes): fullName = the derived full legal
        name (all present parts) on structured rows; nationalId as on the

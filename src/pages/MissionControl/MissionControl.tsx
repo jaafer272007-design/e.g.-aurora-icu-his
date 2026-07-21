@@ -12,7 +12,8 @@ import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
 import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
-import { getCoverage, getCodeStatuses, getEncounters, getIsolationTypes, getObservations, getPatientDetail, getPatientIdentity, getPatients, isolationTypeLabel, setEncounterCodeStatus, setEncounterIsolation } from '../../lib/api'
+import { getCoverage, getCodeStatuses, getEncounters, getIsolationTypes, getPatientDetail, getPatientIdentity, getPatients, isolationTypeLabel, setEncounterCodeStatus, setEncounterIsolation } from '../../lib/api'
+import { usePatientScores } from '../../hooks/usePatientScores'
 import { unitSuffix, useHospitalIdentity } from '../../lib/hospitalIdentity'
 import { resolveCodeStatus } from '../../lib/codeStatus'
 import { Toast, useToast } from '../../components/Toast'
@@ -205,15 +206,15 @@ export function MissionControl() {
      the roster confirms the id resolves) */
   useRememberPatient(patientId, patients)
 
+  /* ONE fetch+compute for every score-derived surface on this page:
+     NEWS2 + SOFA cards, the observation tiles' score colours, the
+     SOFA-derived digital twin — and the latest-observations map, which
+     projects from the SAME full-chart read NEWS2 consumes (no second
+     observation fetch, no possible disagreement). */
+  const scores = usePatientScores(patientId)
   useEffect(() => {
-    let stale = false
-    setLatestObs(new Map())
-    if (!patientId) return
-    getObservations(patientId)
-      .then(obs => { if (!stale && obs) setLatestObs(latestObservations(obs)) })
-      .catch(() => {})
-    return () => { stale = true }
-  }, [patientId])
+    setLatestObs(scores.observations ? latestObservations(scores.observations) : new Map())
+  }, [scores.observations])
 
   useEffect(() => {
     let stale = false
@@ -488,12 +489,16 @@ export function MissionControl() {
               vitals={detail.patient.vitals}
               rhythm={detail.patient.rhythm}
               patientId={detail.patient.patientId}
+              news2={scores.news2}
             />
           )}
 
           {detail && (
             <div className="colR">
-              <DigitalTwin organs={detail.patient.organs} />
+              {/* organ status DERIVED from the computed SOFA — the wire
+                  organs snapshot (fixtures + all-"ok" fresh-admit default)
+                  is retired (no-reassuring-default rule) */}
+              <DigitalTwin state={scores.state} sofa={scores.sofa} />
             </div>
           )}
 
@@ -506,12 +511,12 @@ export function MissionControl() {
               Clinical Scoring Engine's first score), computed at render from
               the canonical reads; the honest replacement for the fabricated
               bedside SOFA. Decision-support pending clinical validation. */}
-          {detail && <SofaCard patientId={patientId} />}
+          {detail && <SofaCard state={scores.state} sofa={scores.sofa} />}
 
           {/* Standard NEWS2 v1 — the engine's second real score, the honest
               replacement for the fabricated bedside/roster EWS. Display-only
               band/colour, no automated alerts. Decision-support. */}
-          {detail && <News2Card patientId={patientId} />}
+          {detail && <News2Card state={scores.state} news2={scores.news2} />}
 
           {detail && (
             <Card id="vent" icon={<IconVent size={15} stroke="var(--blue)" />} title="Ventilator"
