@@ -12,13 +12,17 @@ interface OrderSetsCardProps {
   formulary: FormularyDrug[]
   rules: InteractionRule[]
   orders: Order[]
-  /** adds the expandable items as individual PENDING orders (blocked items skipped) */
+  /** the applier's orders.sign entitlement — applied orders INHERIT it
+   *  exactly like a manual order (signer → signed & active, non-signer →
+   *  pending); the button label states which */
+  canSign: boolean
+  /** adds the expandable items as individual orders (blocked items skipped) */
   onExpand: (set: OrderSetDef, items: OrderSetItemTemplate[], skipped: string[]) => void
 }
 
 /** Order sets — each expands into individual orders, safety-checked per item
  *  against the selected patient before anything is added. */
-export function OrderSetsCard({ sets, patient, formulary, rules, orders, onExpand }: OrderSetsCardProps) {
+export function OrderSetsCard({ sets, patient, formulary, rules, orders, canSign, onExpand }: OrderSetsCardProps) {
   const [open, setOpen] = useState<string | null>(null)
 
   const itemSafety = useMemo(() => {
@@ -84,7 +88,7 @@ export function OrderSetsCard({ sets, patient, formulary, rules, orders, onExpan
                   )
                 })}
                 <button className="btn primary ossetadd" onClick={() => expand(s)} disabled={s.items.length === blockedCount}>
-                  Add {s.items.length - blockedCount} order{s.items.length - blockedCount === 1 ? '' : 's'} as pending
+                  Add {s.items.length - blockedCount} order{s.items.length - blockedCount === 1 ? '' : 's'} {canSign ? 'signed & active' : 'as pending'}
                   {blockedCount > 0 && ` (${blockedCount} blocked, skipped)`}
                 </button>
               </div>
