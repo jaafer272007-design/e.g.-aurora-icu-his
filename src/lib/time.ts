@@ -109,6 +109,30 @@ export type DueState = 'overdue' | 'due' | 'upcoming'
 /** a pending item counts as "due" this far ahead of its scheduled time */
 export const DUE_SOON_MINUTES = 30
 
+/* LATE-ADMINISTRATION THRESHOLD (overdue delay reason — validator
+   option a): a dose given more than this long after its scheduled
+   instant requires a documented DELAY REASON. Mirrors the server's
+   MarSchedule.LateThresholdHours — the server enforces, this drives
+   the dialog and the LATE marker. Deliberately distinct from the
+   display state above (a row shows OVERDUE the moment it passes);
+   this is the clinical-significance line. */
+export const LATE_THRESHOLD_MINUTES = 120
+
+/** minutes NOW is past a DATED stamp ("yyyy-MM-dd HH:mm" UTC); null
+ *  for undated/absent stamps — lateness needs a real instant */
+export function minutesPastStamp(stamp: string | undefined, now: Date): number | null {
+  if (!stamp) return null
+  const ms = datedEpoch(stamp)
+  return ms === null ? null : (now.getTime() - ms) / 60_000
+}
+
+/** minutes between two DATED stamps (b − a); null unless both parse */
+export function stampDiffMinutes(a: string | undefined, b: string | undefined): number | null {
+  if (!a || !b) return null
+  const ea = datedEpoch(a); const eb = datedEpoch(b)
+  return ea === null || eb === null ? null : (eb - ea) / 60_000
+}
+
 export const toMinutes = (hm: string): number => {
   const [h, m] = hm.split(':').map(Number)
   return h * 60 + m

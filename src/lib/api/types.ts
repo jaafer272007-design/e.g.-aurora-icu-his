@@ -927,6 +927,10 @@ export interface MarRow {
   missedEarlier?: number
   /** only on the honest underivable row: why no schedule is derived */
   scheduleNote?: string
+  /** documented facts only: the held/refused reason, or the DELAY
+   *  reason on a dose given more than LATE_THRESHOLD_MINUTES past its
+   *  scheduled instant (the overdue-delay-reason safety fix) */
+  reason?: string
 }
 
 /* ==================== Laboratory & Imaging domain (Screen 6) ====================

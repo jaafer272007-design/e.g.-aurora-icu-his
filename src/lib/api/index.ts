@@ -1376,15 +1376,21 @@ export async function completeImplementation(orderId: string, actor: string, job
 
 /** POST /api/icu/mar/:orderId/administrations/:adminId — document a dose
  *  (Given/Held/Refused; nurse RBAC — checked client-side AND re-enforced
- *  server-side). Held/Refused require a reason. REAL endpoint; mock
- *  fallback only when offline. Returns the updated Order. */
+ *  server-side). Held/Refused require a reason; GIVEN requires a DELAY
+ *  reason when the dose is more than LATE_THRESHOLD_MINUTES past its
+ *  scheduled instant (server-enforced — the overdue-delay-reason safety
+ *  fix). administeredAt (given only, UTC wire stamp) records the actual
+ *  administration time when it differs from the documenting moment (the
+ *  #145 editable-timestamp pattern). REAL endpoint; mock fallback only
+ *  when offline. Returns the updated Order. */
 export async function documentAdministration(
-  orderId: string, adminId: string, action: AdministrationAction, actor: string, jobTitle: JobTitle, reason?: string,
+  orderId: string, adminId: string, action: AdministrationAction, actor: string, jobTitle: JobTitle,
+  reason?: string, administeredAt?: string,
 ): Promise<Order | null> {
   if (!hasPermission(jobTitle, 'meds.administer')) return respond(null, 120)
   const r = await apiPost<Order>(
     `/api/icu/mar/${encodeURIComponent(orderId)}/administrations/${encodeURIComponent(adminId)}`,
-    'administer', { action, ...(reason ? { reason } : {}) })
+    'administer', { action, ...(reason ? { reason } : {}), ...(administeredAt ? { administeredAt } : {}) })
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyAdministration(orderId, adminId, action, actor, reason), 120)

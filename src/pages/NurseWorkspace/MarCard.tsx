@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
-import { displayStamp, dueStateFor, useNow } from '../../lib/time'
+import {
+  LATE_THRESHOLD_MINUTES, displayStamp, dueStateFor, localStamp, minutesPastStamp,
+  stampDiffMinutes, useNow, wireStampOfLocal,
+} from '../../lib/time'
 import type { AdministrationAction, AssignedPatient, MarRow } from '../../lib/api/types'
 
 const DOCUMENTED_META: Record<AdministrationAction, { label: string; cls: string }> = {
@@ -28,16 +31,28 @@ const MISSED_META = { label: 'MISSED', cls: 'st-overdue' }
 interface MarCardProps {
   rows: MarRow[]
   patients: AssignedPatient[]
-  onDocument: (orderId: string, adminId: string, action: AdministrationAction, reason?: string) => void
+  onDocument: (orderId: string, adminId: string, action: AdministrationAction, reason?: string, administeredAt?: string) => void
 }
 
+type ReasonAction = 'held' | 'refused' | 'given-late'
+
 /* Held/Refused require a documented reason (validated server-side like a
-   discontinue). Given is one click; held/refused open this prompt. */
+   discontinue). Given is one click ON TIME; a dose more than
+   LATE_THRESHOLD_MINUTES past its scheduled instant opens this prompt in
+   'given-late' mode instead (the overdue-delay-reason safety fix,
+   server-enforced): the SAME reason pattern held/refused already use,
+   plus the actual administration time — auto-filled with the current
+   wall-clock time, editable (the #145 editable-timestamp pattern),
+   converted to the UTC wire on confirm. The dose is never blocked. */
 function MarReasonDialog(
-  { row, action, onCancel, onConfirm }:
-  { row: MarRow; action: 'held' | 'refused'; onCancel: () => void; onConfirm: (reason: string) => void },
+  { row, action, lateLabel, onCancel, onConfirm }:
+  {
+    row: MarRow; action: ReasonAction; lateLabel?: string
+    onCancel: () => void; onConfirm: (reason: string, administeredAt?: string) => void
+  },
 ) {
   const [reason, setReason] = useState('')
+  const [givenAt, setGivenAt] = useState(() => localStamp(Date.now()))
   const taRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
     taRef.current?.focus()
@@ -45,22 +60,45 @@ function MarReasonDialog(
     document.addEventListener('keydown', esc)
     return () => document.removeEventListener('keydown', esc)
   }, [onCancel])
+  const title = action === 'held' ? 'Hold dose' : action === 'refused' ? 'Refuse dose' : 'Give overdue dose'
   return (
     <div className="marscrim" onClick={onCancel}>
       <div className="mardialog" role="dialog" aria-modal="true" aria-labelledby="marRTitle" onClick={e => e.stopPropagation()}>
-        <h2 id="marRTitle">{action === 'held' ? 'Hold' : 'Refuse'} dose · <span className="num">{row.medication} {row.dose}</span></h2>
+        <h2 id="marRTitle">{title} · <span className="num">{row.medication} {row.dose}</span></h2>
+        {action === 'given-late' && (
+          <p className="marlatehint" role="note">
+            Scheduled <span className="num">{displayStamp(row.scheduledTime)}</span> — {lateLabel} overdue.
+            The dose can still be given; document why it is late.
+          </p>
+        )}
         <div className="field">
-          <label htmlFor="marReason">Reason (required)</label>
+          <label htmlFor="marReason">{action === 'given-late' ? 'Reason for the delay (required)' : 'Reason (required)'}</label>
           <textarea
             ref={taRef} id="marReason" value={reason}
-            placeholder={action === 'held' ? 'e.g. SBP 82 — holding per parameters…' : 'e.g. Patient declined — nausea…'}
+            placeholder={action === 'held' ? 'e.g. SBP 82 — holding per parameters…'
+              : action === 'refused' ? 'e.g. Patient declined — nausea…'
+              : 'e.g. Patient off the floor for CT — given on return…'}
             onChange={e => setReason(e.target.value)}
           />
         </div>
+        {action === 'given-late' && (
+          <div className="field">
+            <label htmlFor="marGivenAt">Actual administration time (editable)</label>
+            <input
+              id="marGivenAt" className="num" value={givenAt}
+              onChange={e => setGivenAt(e.target.value)}
+            />
+          </div>
+        )}
         <div className="mardfoot">
           <button className="btn ghost" onClick={onCancel}>Cancel</button>
-          <button className={`btn ${action === 'refused' ? 'danger' : 'primary'}`} disabled={!reason.trim()} onClick={() => onConfirm(reason.trim())}>
-            {action === 'held' ? '⊘ Hold dose' : '✕ Refuse dose'}
+          <button className={`btn ${action === 'refused' ? 'danger' : 'primary'}`} disabled={!reason.trim()}
+            onClick={() => onConfirm(reason.trim(),
+              /* typed as WALL TIME on the display clock; the wire stays
+                 UTC — a malformed shape passes through raw so the
+                 server's validation message stays the messenger */
+              action === 'given-late' ? (wireStampOfLocal(givenAt.trim()) ?? givenAt.trim()) : undefined)}>
+            {action === 'held' ? '⊘ Hold dose' : action === 'refused' ? '✕ Refuse dose' : '✓ Give dose (late)'}
           </button>
         </div>
       </div>
@@ -74,7 +112,13 @@ function MarReasonDialog(
  *  order's audit history. Due states are computed against the clock. */
 export function MarCard({ rows, patients, onDocument }: MarCardProps) {
   const now = useNow()
-  const [pending, setPending] = useState<{ row: MarRow; action: 'held' | 'refused' } | null>(null)
+  const [pending, setPending] = useState<{ row: MarRow; action: ReasonAction } | null>(null)
+  /* the delay-reason trigger — minutes a DATED scheduled instance is past
+     its instant (PRN/on-demand rows have no schedule and are never late);
+     mirrors the server's enforcement threshold exactly */
+  const lateMinutes = (r: MarRow): number =>
+    r.prn || r.scheduleNote ? 0 : (minutesPastStamp(r.scheduledTime, now) ?? 0)
+  const lateLabelOf = (mins: number) => `${Math.floor(mins / 60)}h ${String(Math.floor(mins % 60)).padStart(2, '0')}m`
   const stateOf = (r: MarRow) =>
     r.status === 'missed-earlier'
       ? MISSED_META
@@ -124,12 +168,30 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
                   <span className={`marstate ${meta.cls}`}>{meta.label}</span>
                   {r.status === 'scheduled' ? (
                     <div className="maracts" role="group" aria-label={`Document ${r.medication} for ${p.name}`}>
-                      <button className="mab given" onClick={() => onDocument(r.orderId, r.adminId, 'given')} aria-label={`${r.medication}: given`}>✓ Given</button>
+                      {/* ON TIME: one click. Past the late threshold the
+                          SAME button opens the delay-reason prompt — the
+                          dose is never blocked, the lateness gets a
+                          documented reason (server-enforced) */}
+                      <button className="mab given"
+                        onClick={() => lateMinutes(r) > LATE_THRESHOLD_MINUTES
+                          ? setPending({ row: r, action: 'given-late' })
+                          : onDocument(r.orderId, r.adminId, 'given')}
+                        aria-label={`${r.medication}: given`}>✓ Given</button>
                       <button className="mab held" onClick={() => setPending({ row: r, action: 'held' })} aria-label={`${r.medication}: held`}>⊘ Held</button>
                       <button className="mab refused" onClick={() => setPending({ row: r, action: 'refused' })} aria-label={`${r.medication}: refused`}>✕ Refused</button>
                     </div>
                   ) : (
-                    <span className="mardoc num">documented {displayStamp(r.documentedTime)}</span>
+                    <span className="mardoc num">
+                      documented {displayStamp(r.documentedTime)}
+                      {/* the record shows lateness out loud: a given fact
+                          beyond the threshold wears LATE, and any
+                          documented reason (delay / held / refused)
+                          renders on the row */}
+                      {r.status === 'given'
+                        && (stampDiffMinutes(r.scheduledTime, r.documentedTime) ?? 0) > LATE_THRESHOLD_MINUTES
+                        && <span className="marlate">LATE</span>}
+                      {r.reason && <span className="marreason">— {r.reason}</span>}
+                    </span>
                   )}
                 </div>
               )
@@ -141,8 +203,13 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
         <MarReasonDialog
           row={pending.row}
           action={pending.action}
+          lateLabel={pending.action === 'given-late' ? lateLabelOf(lateMinutes(pending.row)) : undefined}
           onCancel={() => setPending(null)}
-          onConfirm={reason => { onDocument(pending.row.orderId, pending.row.adminId, pending.action, reason); setPending(null) }}
+          onConfirm={(reason, administeredAt) => {
+            onDocument(pending.row.orderId, pending.row.adminId,
+              pending.action === 'given-late' ? 'given' : pending.action, reason, administeredAt)
+            setPending(null)
+          }}
         />
       )}
     </Card>

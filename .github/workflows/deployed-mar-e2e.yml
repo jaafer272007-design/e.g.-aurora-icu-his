@@ -236,6 +236,51 @@ jobs:
             -d '{"action":"held","reason":"SBP 82 — holding per parameters"}' "$API/api/icu/mar/$OID/administrations/$A2" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); a=[x for x in d["administrations"] if x["status"]=="held"][0]; assert a["reason"]=="SBP 82 — holding per parameters" and a["documentedBy"]=="RN Maya Chen", a; print("held with reason:", a["reason"])'
 
+      - name: OVERDUE DELAY REASON (option a) — a 2h+ overdue dose cannot be given WITHOUT a reason (non-mutating probes on a seeded instance)
+        run: |
+          # A run-created order can never be overdue in-run (its therapy
+          # anchor is the server-stamped signing time), so the ENFORCEMENT
+          # probes use a SEEDED overdue instance — staging's demo orders
+          # are old, their last-24h instances render undocumented and are
+          # far past the 2-hour threshold. Every probe here is a REFUSED
+          # request: nothing is written to the durable record.
+          # (The mutating give-with-reason legs are covered by the PR's
+          # local three-tier verification — see the 02 record.)
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" > /tmp/mar.json
+          vals=$(python3 - <<'PY'
+          import json, datetime
+          rows = json.load(open('/tmp/mar.json'))
+          now = datetime.datetime.utcnow()
+          pick = None
+          for r in rows:
+              if r.get('status') != 'scheduled' or 'T' not in r.get('adminId', ''):
+                  continue
+              t = datetime.datetime.strptime(r['scheduledTime'], '%Y-%m-%d %H:%M')
+              if (now - t).total_seconds() > 125 * 60:
+                  pick = r
+                  break
+          assert pick, 'no seeded 2h+ overdue scheduled instance found on staging — the enforcement probe needs one (seeded demo orders should always provide it)'
+          print(pick['orderId'], pick['adminId'])
+          PY
+          )
+          set -- $vals; SOID=$1; SAID=$2
+          echo "seeded overdue instance: $SOID / $SAID"
+          # given WITHOUT a reason -> 400 naming the delay reason
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"given"}' "$API/api/icu/mar/$SOID/administrations/$SAID")
+          code=$(echo "$out" | tail -1); echo "overdue given w/o reason -> HTTP $code"; [ "$code" = "400" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "delay reason" in e and "overdue" in e, e; print("refusal:", e)'
+          # administeredAt shape rules (still non-mutating): future -> 400; held+administeredAt -> 400
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"given","reason":"probe","administeredAt":"2030-01-01 00:00"}' "$API/api/icu/mar/$SOID/administrations/$SAID")
+          echo "administeredAt in the future -> HTTP $code"; [ "$code" = "400" ] || exit 1
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"held","reason":"probe","administeredAt":"2026-01-01 00:00"}' "$API/api/icu/mar/$SOID/administrations/$SAID")
+          echo "administeredAt on held -> HTTP $code"; [ "$code" = "400" ] || exit 1
+          # the run order's ON-TIME instance needed no reason (asserted in
+          # the RBAC step above: given with a bare {"action":"given"} was
+          # 200) — the single-click flow is unchanged.
+
       - name: Cleanup — discharge the run encounter (runs on failure/cancel too)
         if: always()
         run: |
