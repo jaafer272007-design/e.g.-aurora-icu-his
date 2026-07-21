@@ -42,6 +42,10 @@ export function OrdersMedication() {
      control renders for task orders here too, not only on the Nurse
      Workspace queue */
   const canImplement = hasPermission(session.jobTitle, 'orders.implement')
+  /* applied order sets inherit the signing status the applier is entitled
+     to — the SAME orders.sign atom the manual-order guard uses
+     (createOrders refuses sign without it; the server 403s it again) */
+  const canSign = hasPermission(session.jobTitle, 'orders.sign')
   const { patientId = '' } = useParams()
   const navigate = useNavigate()
   const { toast, showToast } = useToast()
@@ -214,11 +218,11 @@ export function OrdersMedication() {
       priority: it.priority,
       requiresImplementation: it.requiresImplementation,
     }))
-    createOrders(drafts, session.name, false, session.jobTitle).then(created => {
+    createOrders(drafts, session.name, canSign, session.jobTitle).then(created => {
       refresh()
       showToast(
         `${set.name} expanded`,
-        `${created.length} pending order${created.length === 1 ? '' : 's'}${skipped.length ? ` · skipped (blocked): ${skipped.join(', ')}` : ''}`,
+        `${created.length} ${canSign ? 'signed & active' : 'pending'} order${created.length === 1 ? '' : 's'}${skipped.length ? ` · skipped (blocked): ${skipped.join(', ')}` : ''}`,
         3400,
       )
     })
@@ -316,6 +320,7 @@ export function OrdersMedication() {
                     formulary={formulary}
                     rules={rules}
                     orders={orders}
+                    canSign={canSign}
                     onExpand={handleExpandSet}
                   />
                 )}
