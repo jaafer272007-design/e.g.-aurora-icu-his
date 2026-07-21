@@ -1,6 +1,41 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-21 · current through THE TWO-THEME CONTRAST
+**Last updated: 2026-07-21 · current through THE ≥13-INCH RESPONSIVE
+RENDER-SWEEP. THE BUG (clinical testing): on smaller (still laptop/tablet)
+screens the layout broke — words cut off, content clipped, and 'the
+patient disappears' on observations. SCOPE (owner): the floor is 13" (the
+sweep tested 1280 / 1366×768 / 1366×1024 / 1440 / 1536); below ~1180px is
+a future mobile decision, out of scope. VERIFY-FIRST (rendered sweep of
+all 26 routes × 5 viewports + a sub-floor observations scan, an in-page
+detector for horizontal overflow, off-viewport/clipped elements, nowrap
+truncation, and VERTICAL clipping): the reported symptoms mapped to THREE
+real defects and two red herrings. FIX 1 — the real 'content clipped' bug
+was PATIENT HISTORY (/patients/:id/history): `.ph main` was MISSING the
+inner-scroll region (`overflow-y:auto; min-height:0`) every other screen
+has, and `.ph .shell` used `align-items:start`, so the page overflowed the
+fixed-height `.app-frame` (overflow:hidden) and 350–600px of history was
+CLIPPED UNREACHABLE at every width 1280–1536 — no scrollbar (the
+task-#61-class fix, missed on this one screen). Now `.ph main` scrolls
+itself (proven: scrollHeight 1329 > clientHeight 698, the app-frame no
+longer clips; PREVIOUS LABS + PREVIOUS IMAGING, formerly below the fold,
+now reachable). FIX 2 — labcatalog analyte labels ('Reference low/high',
+'Critical high') were `white-space:nowrap` and clipped at ≥1500px (a
+bad-breakpoint artifact: >1500px restores the full 198px nav, squeezing
+the 6-col grid MORE than 1440px does); labels now wrap. FIX 3 — the Orders
+order-set `.ossetdesc` preview ellipsis-clipped 20–70px on one line; it now
+wraps (the set still expands for the full list). THE 'PATIENT DISAPPEARS'
+red herring: the patient NAME is ALWAYS visible (PatientBar header) at every
+width; only the patient RAIL (list/switcher) hides via
+`@media(max-width:1180px){.obs .ptrail{display:none}}` — the threshold is
+1180–1200px, BELOW the 13" floor, and the identity persists in the header.
+The MissionControl 'timeline off-viewport' red herring is an intentional
+`overflow-x:auto` horizontal scroller (reachable). RESULT: rendered sweep
+went from 14 flagged route×width combos to **0 (ALL_RESPONSIVE_PASS)** — no
+clipped/hidden/cut-off/overlapping content at any width ≥1280, patient
+always visible on observations. CSS-only (3 files); no engine/API/score
+change; no migration.**
+
+prior marker retained: current through THE TWO-THEME CONTRAST
 RENDER-SWEEP (the held item 3 from the polish batch). THE BUG (clinical
 testing): despite the token-based system and the AA-verified light theme
 (#103), hands-on testing found real INVISIBLE controls — the
