@@ -4,11 +4,13 @@ One command brings up the full AURORA HIS — API + frontend at one origin,
 PostgreSQL persistence, and the local AI model — in the same topology a
 hospital will run: **the server on the premises, devices on the network.**
 
-> **⚠ NOT HOSPITAL-READY (design §2.4).** This appliance **seeds demo
-> data**. There is no first-run wizard, no production seed split, no
-> backup — those are Phases 3–4. It is the clinical validator's testbed
-> in the hospital *topology*, not a hospital *product*. **A hospital must
-> not receive this build.**
+> **⚠ DEMO BY DEFAULT (design §2.4).** A plain `./run.sh` **seeds demo
+> data** — the clinical validator's testbed in the hospital *topology*.
+> **Do not hand a hospital a demo build.** For a real deployment run the
+> **production install** (below): `AURORA_MODE=production ./run.sh` boots
+> with catalogues + configuration + one bootstrap administrator and **zero
+> patients, zero demo credentials**. A turnkey *product* — a first-run UI
+> wizard and backup tooling — is still Phase 3–4.
 
 ## Target machine
 
@@ -48,6 +50,44 @@ URLs.
 Open `http://localhost:8080` on the server, or `http://<server-ip>:8080`
 from any device on the network — iPad included. Demo sign-in:
 `sara.rahman / Aurora2026!` (demo data; see the warning above).
+
+## Production install (a real hospital — no demo data)
+
+A hospital deployment is a **production install**: run it once with
+
+```bash
+AURORA_MODE=production ./run.sh          # Linux / macOS
+```
+```powershell
+$env:AURORA_MODE="production"; .\run.ps1   # Windows
+```
+
+The script collects the three install decisions the server refuses to boot
+without and writes them to `appliance/.env`, so every later `./run.sh`
+reboots the same way with no prompts:
+
+- **Bootstrap admin password** (`ADMIN_BOOTSTRAP_PASSWORD`) — the first
+  account (`admin`, a System Administrator). Entered hidden, cannot be the
+  demo password, and you are **forced to change it at first login**. Every
+  other account is created from the Users screen afterwards.
+- **Formulary policy** (`FORMULARY_SEED`) — `starter` seeds a reference
+  drug list **deactivated** (pharmacy reactivates each drug after review),
+  or `empty` to build it from scratch.
+- **Access URL** (`CORS_ORIGINS`) — the LAN address clinicians open (e.g.
+  `http://192.168.1.50:8080`); the appliance is one origin, so this is
+  belt-and-suspenders, but production refuses a missing or localhost value.
+
+Then the server seeds **catalogues + configuration only** (beds, the lab and
+imaging catalogues, every vocabulary, interaction rules, order sets) with
+**zero patients** and **zero demo credentials**. The boot tripwires make the
+shared demo password and demo config *structurally impossible* under
+`APP_ENV=production` (T1/T2 — a refusing instance is a config error to fix,
+never a silent degradation). An automated CI job (`production-seed` in
+`ci.yml`) boots this exact mode on every change and asserts the clean slate.
+
+> A data volume that already holds **demo** data cannot be served in
+> production — T1 refuses the demo credential. Start from a clean volume:
+> `docker compose down -v`, then run the production install.
 
 ## The AI and the GPU (design §2.3 — warn and disable, never refuse)
 
@@ -91,13 +131,13 @@ holds, and the image stays small enough to rebuild and update freely.
 
 `APPLIANCE_ENV` defaults to **staging**: demo seed, the staging banner,
 and the staging bundle — bundle and server environment must always match
-(the EnvironmentGate refuses a mismatch, by design). A **production**
-flavor preview exists (`APPLIANCE_ENV=production` plus the extra env vars
-the boot tripwires demand) and boots honestly — but the production bundle
-carries **no mock layer**, so the screens whose domains are still
-Stage-11 scope refuse with a full-screen overlay, and the seed contains
-no demo data at all. The complete refusal inventory is recorded in
-02_PROJECT_STATUS.md; Phase 3+ closes it.
+(the EnvironmentGate refuses a mismatch, by design). The **production
+install** above sets `APPLIANCE_ENV=production` (persisted in
+`appliance/.env`) and moves bundle and server together. The production
+bundle carries **no mock layer**, so the few screens whose domains are
+still Stage-11 scope degrade honestly, and the seed contains no demo data
+at all. The complete refusal inventory is recorded in 02_PROJECT_STATUS.md;
+a turnkey first-run wizard and backup tooling are Phase 3+.
 
 ## Recorded hospital decisions (for later phases, not this one)
 

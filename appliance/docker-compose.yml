@@ -1,13 +1,19 @@
 # AURORA ON-PREMISES APPLIANCE — Phase 2 (design §2.2)
 #
-# THE VALIDATOR'S TESTBED, NOT A HOSPITAL PRODUCT (design §2.4): this
-# compose still seeds DEMO data (APPLIANCE_ENV defaults to staging — the
-# locked seed rules make demo data structurally impossible under
-# APP_ENV=production, and Phase 2 explicitly ships no first-run wizard,
-# no production seed split and no backup). A hospital must not receive
-# this build. What Phase 2 proves is the TOPOLOGY hospitals will run:
-# one server, one origin, Postgres persistence, a local model, devices
-# on the network.
+# DEMO TESTBED BY DEFAULT (design §2.4): APPLIANCE_ENV defaults to staging,
+# so a plain `./run.sh` seeds DEMO data — the validator's testbed in the
+# hospital topology (one server, one origin, Postgres persistence, a local
+# model, devices on the network).
+#
+# PRODUCTION INSTALL (the seed-split turn): `AURORA_MODE=production ./run.sh`
+# sets APPLIANCE_ENV=production and collects the install decisions the server
+# refuses to boot without (ADMIN_BOOTSTRAP_PASSWORD, FORMULARY_SEED, a
+# non-local CORS/access origin), then boots the PRODUCTION seed —
+# catalogues + configuration + ONE bootstrap admin, ZERO patients, ZERO demo
+# credentials. The locked seed rules + boot tripwires make demo data and the
+# shared demo password STRUCTURALLY IMPOSSIBLE under APP_ENV=production. Still
+# pending for a turnkey hospital product (later phases): a first-run UI wizard
+# and backup tooling.
 #
 # One command brings it up: ./run.sh (Linux/macOS) or .\run.ps1
 # (Windows). The run script generates secrets into appliance/.env
@@ -81,7 +87,9 @@ services:
       AI_MODEL: ${AI_MODEL:-qwen2.5-7b-instruct-q4_k_m}
       AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-120}
       AI_UNAVAILABLE_REASON: ${AI_UNAVAILABLE_REASON:-}
-      # production-flavor preview only (see README — known-refusing):
+      # production install decisions — empty in demo mode, filled by the run
+      # script (from appliance/.env) when AURORA_MODE=production. The server
+      # refuses to boot in production without them (BootGuards T2 / bootstrap).
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       FORMULARY_SEED: ${FORMULARY_SEED:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}

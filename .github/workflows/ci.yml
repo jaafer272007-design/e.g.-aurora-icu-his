@@ -40,3 +40,98 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - run: dotnet build server --nologo
+
+  # production-seed — the install guarantee, protected on every change: a
+  # PRODUCTION boot must seed catalogues + configuration + ONE bootstrap
+  # admin and ZERO patients / ZERO demo credentials, and the boot tripwires
+  # must refuse the demo credential (T1) and a missing install decision (T2).
+  # This is what keeps a hospital install from ever inheriting demo patients
+  # or the shared demo password — asserted, not assumed.
+  production-seed:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: aurora
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: aurora
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U aurora -d aurora"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DLL: server/bin/Debug/net8.0/AuroraIcu.Api.dll
+      JWT_SECRET: ci-production-seed-guard-secret-0123456789abcdef
+      CORS_ORIGINS: https://hospital.aurora.example
+      ASPNETCORE_URLS: http://localhost:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: dotnet build server --nologo
+
+      - name: A production boot seeds catalogues + bootstrap admin, ZERO patients / demo creds
+        run: |
+          export APP_ENV=production
+          export DATABASE_URL="postgres://aurora:ci@localhost:5432/aurora"
+          export FORMULARY_SEED=starter
+          export ADMIN_BOOTSTRAP_PASSWORD='CI-Bootstrap-Xk-2026'
+          dotnet "$DLL" > boot.log 2>&1 &
+          SRV=$!
+          up=""; for i in $(seq 1 90); do
+            if curl -sf -m2 http://localhost:8080/healthz >/dev/null; then up=1; break; fi
+            kill -0 $SRV 2>/dev/null || { echo "server exited during boot"; cat boot.log; exit 1; }
+            sleep 2
+          done
+          [ -n "$up" ] || { echo "no healthz after 180s"; tail -30 boot.log; exit 1; }
+          curl -s http://localhost:8080/healthz | grep -q '"environment":"production"' \
+            || { echo "healthz did not report environment=production"; curl -s http://localhost:8080/healthz; exit 1; }
+          PSQL() { PGPASSWORD=ci psql -h localhost -U aurora -d aurora -tAc "$1"; }
+          fail=0
+          check0() { local n; n=$(PSQL "select count(*) from \"$1\""); [ "$n" = "0" ] && echo "  ok  $1=0" || { echo "  FAIL $1=$n (expected 0)"; fail=1; }; }
+          checkpos() { local n; n=$(PSQL "select count(*) from \"$1\""); [ "$n" -gt 0 ] 2>/dev/null && echo "  ok  $1=$n" || { echo "  FAIL $1=$n (expected > 0)"; fail=1; }; }
+          echo "clinical tables must be EMPTY:"
+          for t in AdtPatients Encounters Orders Observations LabDraws Handoffs Patients; do check0 "$t"; done
+          echo "catalogues/config must be PRESENT:"
+          for t in Beds LabTests OrderSets CodeStatuses Dispositions IsolationTypes Shifts NamedFrequencies InteractionRules ImagingCatalog ObservationTypes; do checkpos "$t"; done
+          echo "users must be exactly admin + system:"
+          USERS=$(PSQL "select string_agg(\"Username\",',' order by \"Username\") from \"Users\"")
+          [ "$USERS" = "admin,system" ] && echo "  ok  users=[$USERS]" || { echo "  FAIL users=[$USERS] (expected admin,system)"; fail=1; }
+          echo "hospital identity must be UNSET (no demo hospital on a real install):"
+          check0 HospitalIdentity
+          echo "formulary must be seeded but ALL DEACTIVATED:"
+          ACT=$(PSQL "select count(*) from \"FormularyDrugs\" where \"Active\"=true")
+          INACT=$(PSQL "select count(*) from \"FormularyDrugs\" where \"Active\"=false")
+          { [ "$ACT" = "0" ] && [ "$INACT" -gt 0 ]; } && echo "  ok  formulary active=0 inactive=$INACT" || { echo "  FAIL formulary active=$ACT inactive=$INACT"; fail=1; }
+          echo "NO active account may verify against the demo password (T1 scan clean at boot):"
+          grep -q "T1 demo-credential scan: clean" boot.log && echo "  ok  T1 scan clean" || { echo "  FAIL T1 scan line missing"; fail=1; }
+          kill $SRV 2>/dev/null || true
+          [ "$fail" = 0 ] || exit 1
+
+      - name: T1 refuses the shared demo password as the bootstrap credential
+        run: |
+          PGPASSWORD=ci createdb -h localhost -U aurora aurora_t1
+          set +e
+          APP_ENV=production DATABASE_URL="postgres://aurora:ci@localhost:5432/aurora_t1" \
+            FORMULARY_SEED=starter ADMIN_BOOTSTRAP_PASSWORD='Aurora2026!' \
+            timeout 90 dotnet "$DLL" > t1.log 2>&1
+          rc=$?
+          set -e
+          echo "exit=$rc"
+          grep -q "T1 — DEMO CREDENTIAL IN PRODUCTION" t1.log && [ "$rc" != 0 ] \
+            && echo "  ok  refused (T1)" || { echo "  FAIL — did not refuse the demo bootstrap password"; tail -20 t1.log; exit 1; }
+
+      - name: T2 refuses a missing install decision (FORMULARY_SEED)
+        run: |
+          set +e
+          APP_ENV=production DATABASE_URL="postgres://aurora:ci@localhost:5432/aurora" \
+            ADMIN_BOOTSTRAP_PASSWORD='CI-Bootstrap-Xk-2026' \
+            timeout 60 dotnet "$DLL" > t2.log 2>&1
+          rc=$?
+          set -e
+          echo "exit=$rc"
+          grep -q "T2 — MISSING INSTALL DECISION" t2.log && [ "$rc" != 0 ] \
+            && echo "  ok  refused (T2)" || { echo "  FAIL — did not refuse the missing FORMULARY_SEED"; tail -20 t2.log; exit 1; }

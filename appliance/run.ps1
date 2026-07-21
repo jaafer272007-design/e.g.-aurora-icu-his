@@ -33,6 +33,78 @@ if (-not (Test-Path ".env")) {
   ) | Set-Content -Encoding ascii ".env"
 }
 
+# ---- install mode: demo testbed (default) vs a real hospital ----
+# A hospital install is a PRODUCTION install (APP_ENV=production): the server
+# seeds catalogues + config + ONE bootstrap admin, ZERO patients, ZERO demo
+# credentials, and the boot tripwires enforce it. Demo (staging) is default.
+#
+#   .\run.ps1                                  -> demo testbed
+#   $env:AURORA_MODE="production"; .\run.ps1   -> a real hospital install
+#     (once; the choice persists in appliance\.env for later reboots)
+function Get-EnvVal([string]$key) {
+  $line = Select-String -Path ".env" -Pattern "^$key=" -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($line) { return ($line.Line -replace "^$key=", "") } else { return "" }
+}
+function Set-EnvVal([string]$key, [string]$val) {
+  $lines = @()
+  if (Test-Path ".env") { $lines = Get-Content ".env" | Where-Object { $_ -notmatch "^$key=" } }
+  $lines += "$key=$val"
+  Set-Content -Encoding ascii ".env" $lines
+}
+$DemoPw = "Aurora2026!"   # the shared demo password — forbidden in production
+$Mode = if ($env:AURORA_MODE) { $env:AURORA_MODE } elseif ((Get-EnvVal "APPLIANCE_ENV") -eq "production") { "production" } else { "staging" }
+if ($Mode -eq "production") {
+  Write-Host "PRODUCTION install mode - a real hospital deployment (no demo data)."
+  Set-EnvVal "APPLIANCE_ENV" "production"
+  $env:DEMO_PASSWORD = $null   # must never reach a production environment (T2 refuses it)
+  # -- formulary install policy (server refuses an unset/unknown value) --
+  $fs = Get-EnvVal "FORMULARY_SEED"
+  if ($fs -ne "starter" -and $fs -ne "empty") {
+    if ($env:FORMULARY_SEED) { $fs = $env:FORMULARY_SEED }
+    else {
+      Write-Host "Formulary at install: [starter] seeds a reference drug list DEACTIVATED"
+      Write-Host "(pharmacy reactivates each drug after review), or [empty] to build from scratch."
+      $fs = Read-Host "  FORMULARY_SEED (starter/empty) [starter]"
+      if (-not $fs) { $fs = "starter" }
+    }
+    if ($fs -ne "starter" -and $fs -ne "empty") { Write-Error "FORMULARY_SEED must be 'starter' or 'empty'." }
+  }
+  Set-EnvVal "FORMULARY_SEED" $fs
+  # -- same-origin access URL -> CORS_ORIGINS (belt-and-suspenders; the server
+  #    still requires it explicit and non-local in production) --
+  if (-not (Get-EnvVal "CORS_ORIGINS")) {
+    $co = $env:CORS_ORIGINS
+    if (-not $co) {
+      Write-Host "The URL clinicians open in their browser (this server's address on the LAN),"
+      Write-Host "e.g. http://192.168.1.50:8080 - not localhost."
+      $co = Read-Host "  Access URL"
+    }
+    if (-not $co -or $co -match "localhost" -or $co -match "127\.0\.0\.1") {
+      Write-Error "A non-local access URL is required in production (the server refuses localhost)."
+    }
+    Set-EnvVal "CORS_ORIGINS" $co
+  }
+  # -- the first administrator's credential (provision-time, shown once,
+  #    rotated after first login; never the demo password) --
+  if (-not (Get-EnvVal "ADMIN_BOOTSTRAP_PASSWORD")) {
+    $bp = $env:ADMIN_BOOTSTRAP_PASSWORD
+    if (-not $bp) {
+      Write-Host "Set the first administrator's password (user 'admin'; you MUST change it at first login)."
+      $s1 = Read-Host "  Bootstrap admin password" -AsSecureString
+      $s2 = Read-Host "  Confirm" -AsSecureString
+      $bp  = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s1))
+      $bp2 = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s2))
+      if ($bp -ne $bp2) { Write-Error "Passwords did not match. Re-run." }
+    }
+    if (-not $bp) { Write-Error "ADMIN_BOOTSTRAP_PASSWORD is required for a production install." }
+    if ($bp -eq $DemoPw) { Write-Error "The bootstrap password cannot be the shared demo password. Choose a real one." }
+    Set-EnvVal "ADMIN_BOOTSTRAP_PASSWORD" $bp
+    Write-Host "Recorded the bootstrap admin credential in appliance\.env (delete that line after you rotate it post-login)."
+  }
+  Write-Host "Note: a data volume that already holds DEMO data cannot be served in production"
+  Write-Host "      (the T1 tripwire refuses the demo credential). Start clean: docker compose down -v."
+}
+
 # ---- the hospital's timezone (Locale/Timezone design §1.3) ----
 # The app stores UTC and DISPLAYS the server's local time; the container
 # defaults to UTC, so the HOST's zone must be handed in as an IANA id.
@@ -147,5 +219,13 @@ Write-Host "AURORA is up:"
 Write-Host "  this machine : http://localhost:$port"
 if ($ip) { Write-Host "  on the LAN   : http://${ip}:$port   (other devices on the network - iPad included)" }
 Write-Host ""
-Write-Host "NOT HOSPITAL-READY (design 2.4): this appliance seeds DEMO data - it is the"
-Write-Host "validator's testbed in the hospital topology. Demo sign-in: sara.rahman / Aurora2026!"
+if ($Mode -eq "production") {
+  Write-Host "PRODUCTION install - NO demo data: catalogues + configuration are seeded, the"
+  Write-Host "unit starts with ZERO patients, and there are NO demo credentials."
+  Write-Host "Sign in as the bootstrap administrator (user 'admin') with the password you set;"
+  Write-Host "you will be required to change it, then create the clinical accounts from Users."
+} else {
+  Write-Host "NOT HOSPITAL-READY (design 2.4): this appliance seeds DEMO data - it is the"
+  Write-Host "validator's testbed in the hospital topology. Demo sign-in: sara.rahman / Aurora2026!"
+  Write-Host "For a real hospital install (no demo data): `$env:AURORA_MODE='production'; .\run.ps1"
+}
