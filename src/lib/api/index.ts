@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignedPatient, Assignment, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CoverageRow, CoverageStaff, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignedPatient, Assignment, AttendingOption, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CoverageRow, CoverageStaff, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, FormularyEvent, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType, Order, OrderSetDef,
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
@@ -2030,6 +2030,26 @@ export async function getUsers(): Promise<UserAccount[]> {
     return respond(offline, 120)
   }
   throw apiUnavailable('user accounts')
+}
+
+/** GET /api/icu/adt/attendings — the admission form's Attending picker:
+ *  the ACTIVE accounts holding a SeniorDoctor-profile role (the
+ *  consultants who attend), gated on adt.admit. This is the clinician-
+ *  readable staff read the free-text-attending SAFETY FIX needs — the
+ *  user directory (/api/icu/users) is System-Administrator-only by design
+ *  and never clinical, so it can never feed a doctor's admission form.
+ *  Offline fallback: SAMPLE_STAFF filtered to the SeniorDoctor profile. */
+export async function getAttendings(): Promise<AttendingOption[]> {
+  const real = await apiGet<AttendingOption[]>('/api/icu/adt/attendings', 'attendings')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') {
+    const offline = SAMPLE_STAFF
+      .filter(s => profileOf(s.jobTitle as JobTitle) === 'SeniorDoctor')
+      .map((s): AttendingOption => ({ username: usernameOf(s.name), name: s.name, jobTitle: s.jobTitle }))
+      .sort((a, b) => (a.name < b.name ? -1 : 1))
+    return respond(offline, 120)
+  }
+  throw apiUnavailable('attendings')
 }
 
 /** POST /api/icu/users — create an account (admin-set initial password;

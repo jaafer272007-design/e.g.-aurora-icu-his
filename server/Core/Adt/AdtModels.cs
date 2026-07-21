@@ -508,3 +508,9 @@ record DischargeRequest(string? Disposition);
    (server-validated) */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record MeasureRequest(double? WeightKg, double? HeightCm);
+
+/* GET /adt/attendings — one option in the admission form's Attending
+   picker: an ACTIVE account holding a SeniorDoctor-profile role (the
+   consultants who attend). The picker replaced free-text attending, so
+   the encounter binds to a real senior doctor instead of a typed string. */
+record AttendingDto(string Username, string Name, string JobTitle);

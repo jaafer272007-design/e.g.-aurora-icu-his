@@ -41,6 +41,30 @@ static class AdtApi
             return Results.Json(beds, JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* GET /api/icu/adt/attendings — the admission form's Attending
+           picker: the ACTIVE accounts holding a SeniorDoctor-profile role
+           (the consultants who attend), ordered by name. Gated on
+           adt.admit — you read the list only to record an admission, and
+           both Doctor and SeniorDoctor tokens hold that atom. This is the
+           SAFETY FIX for the free-text attending: a typo used to write a
+           ghost attending onto the encounter; the picker binds it to a
+           real senior doctor. (The user directory /api/icu/users is
+           System-Administrator-only by design and NEVER clinical, so it
+           cannot feed a clinician's admission form — hence a dedicated
+           clinician-readable read here, mirroring assignments/staff.) */
+        app.MapGet("/api/icu/adt/attendings", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "adt.admit") is IResult denied) return denied;
+            foreach (var key in ctx.Request.Query.Keys)
+                return ApiError.BadRequest($"unknown query parameter '{key}'");
+            var attendings = db.Users.AsNoTracking().Where(u => u.Active)
+                .AsEnumerable()
+                .Where(u => UserLogic.RolesOf(u).Any(t => Rbac.ProfileOf(t) == "SeniorDoctor"))
+                .OrderBy(u => u.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(u => new AttendingDto(u.Username, u.Name, u.JobTitle));
+            return Results.Json(attendings, JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* GET /api/icu/adt/encounters?patientId&status — encounter list
            (open census, discharge history, per-patient lookup). Both roles. */
         app.MapGet("/api/icu/adt/encounters", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>

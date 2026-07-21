@@ -455,6 +455,16 @@ export interface CoverageStaff {
   jobTitle: string
 }
 
+/* ATTENDING picker option (admission form) — an active SeniorDoctor-
+   profile account from GET /adt/attendings. The dropdown replaced the
+   free-text attending, so the encounter binds to a real consultant
+   selected by name rather than a typed (and mistypable) string. */
+export interface AttendingOption {
+  username: string
+  name: string
+  jobTitle: string
+}
+
 /* ---- the LEGACY #114 shape (history read only — /assignments/history;
    no new rows are ever created) ---- */
 export type AssignmentKind = 'nurse' | 'doctor'

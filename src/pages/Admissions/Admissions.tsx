@@ -7,8 +7,8 @@ import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
 import { Toast, useToast } from '../../components/Toast'
 import { IconAdmit, IconBed, IconUsers } from '../../components/icons'
-import { admitPatient, getAdtBeds, getCodeStatuses, getEncounters, getPatientIdentity, matchPatient } from '../../lib/api'
-import type { AdmitDraft, CodeStatusEntry, AdtBed, Encounter, MatchPatientResponse, Sex } from '../../lib/api/types'
+import { admitPatient, getAdtBeds, getAttendings, getCodeStatuses, getEncounters, getPatientIdentity, matchPatient } from '../../lib/api'
+import type { AdmitDraft, CodeStatusEntry, AdtBed, AttendingOption, Encounter, MatchPatientResponse, Sex } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
 import { MatchDialog } from './MatchDialog'
 
@@ -74,7 +74,13 @@ export function Admissions() {
   const [sex, setSex] = useState<Sex>('M')
   const [allergies, setAllergies] = useState('None documented')
   const [diagnosis, setDiagnosis] = useState('')
+  /* ATTENDING CONSULTANT (the safety fix): SELECTED from the staff
+     directory, never free-typed. A typo used to create a wrong/ghost
+     attending on the encounter; now the value is a real senior doctor
+     picked from the roster. Filtered to the SeniorDoctor profile
+     (Consultant / Senior Registrar) — the clinicians who attend. */
   const [attending, setAttending] = useState('')
+  const [consultants, setConsultants] = useState<AttendingOption[] | null>(null)
   const [bedId, setBedId] = useState('')
   /* Weight & Height capture (kg/cm) — OPTIONAL at admission by design:
      if omitted, a clinician adds them later on the patient record
@@ -94,6 +100,7 @@ export function Admissions() {
     getAdtBeds().then(setBeds)
     getEncounters({ status: 'open' }).then(setOpenEncounters)
     getCodeStatuses().then(setCodeStatuses).catch(() => setCodeStatuses([]))
+    getAttendings().then(setConsultants).catch(() => setConsultants([]))
   }, [])
   useEffect(() => { reload() }, [reload])
 
@@ -370,8 +377,21 @@ export function Admissions() {
                   <label className="admwide">Admission diagnosis
                     <input value={diagnosis} onChange={e => setDiagnosis(e.target.value)} placeholder="e.g. Septic shock — pneumonia" disabled={!canAdmit} required />
                   </label>
+                  {/* ATTENDING — SELECTED from the staff directory (senior
+                      doctors), never typed. A free-text attending could be
+                      mistyped into a wrong/ghost name; the roster picker
+                      binds the encounter to a real consultant. */}
                   <label>Attending
-                    <input value={attending} onChange={e => setAttending(e.target.value)} placeholder="Dr. …" disabled={!canAdmit} required />
+                    <select value={attending} onChange={e => setAttending(e.target.value)} disabled={!canAdmit || !consultants} required
+                      aria-label="Attending consultant, selected from the staff directory">
+                      <option value="" disabled>{consultants ? 'Select a consultant…' : 'Loading…'}</option>
+                      {(consultants ?? []).map(u => (
+                        <option key={u.username} value={u.name}>{u.name}</option>
+                      ))}
+                      {attending && !(consultants ?? []).some(u => u.name === attending) && (
+                        <option value={attending}>{attending}</option>
+                      )}
+                    </select>
                   </label>
                   <label>Bed (free only)
                     <select value={bedId} onChange={e => setBedId(e.target.value)} disabled={!canAdmit} required>
