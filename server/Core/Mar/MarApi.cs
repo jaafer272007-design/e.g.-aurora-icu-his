@@ -21,8 +21,16 @@ namespace Aurora.Core.Mar;
    day. RBAC polarity FLIPS vs the prescriber mutations: administering a
    dose requires the NURSE's meds.administer, so a doctor token is 403'd
    here (mirroring implement). The administering actor is always the
-   token's name claim. Given needs no reason; Held/Refused require one
-   (validated like discontinue). */
+   token's name claim. Held/Refused require a reason (validated like
+   discontinue). GIVEN needs no reason ON TIME — but a dose given more
+   than MarSchedule.LateThresholdHours past its scheduled instant
+   requires a DELAY REASON (the overdue-delay-reason safety fix,
+   validator option a): the dose is never blocked, the lateness and its
+   reason are captured on the fact, the MAR row and the audit trail. A
+   given dose may also carry an explicit administeredAt (the #145
+   editable-timestamp pattern — auto-filled now client-side, editable),
+   recorded as the fact's documentedTime; the audit event then records
+   both times. */
 static class MarApi
 {
     public static void Map(WebApplication app)
@@ -57,11 +65,16 @@ static class MarApi
 
         /* POST /api/icu/mar/{orderId}/administrations/{adminId} — document a dose
            (Given/Held/Refused). Nurse RBAC (meds.administer); doctor → 403.
-           Body: { action, reason? }; reason required for held/refused.
-           adminId is the DERIVED instance identity: dated "yyyy-MM-ddTHH:mm"
-           for a scheduled instance, "prn" for a PRN availability, "ondemand"
-           for an order whose frequency has no derivable grid. Documentation
-           APPENDS an administration fact — nothing stored is consumed. */
+           Body: { action, reason?, administeredAt? }; reason required for
+           held/refused AND for a given dose more than LateThresholdHours
+           past its scheduled instant (the overdue delay reason);
+           administeredAt (given only, "yyyy-MM-dd HH:mm" UTC) records the
+           actual administration time when it differs from the documenting
+           moment. adminId is the DERIVED instance identity: dated
+           "yyyy-MM-ddTHH:mm" for a scheduled instance, "prn" for a PRN
+           availability, "ondemand" for an order whose frequency has no
+           derivable grid. Documentation APPENDS an administration fact —
+           nothing stored is consumed. */
         app.MapPost("/api/icu/mar/{orderId}/administrations/{adminId}",
             (string orderId, string adminId, AdministerRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
@@ -73,6 +86,26 @@ static class MarApi
                 return ApiError.BadRequest($"reason is required when a dose is {req.Action}");
             if (req.Reason is not null && req.Reason.Length > OrderLogic.MaxTextLength)
                 return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
+            /* administeredAt — the actual administration time (#145
+               editable-timestamp pattern): GIVEN only (a held/refused dose
+               was not administered), UTC wire form, bounded to the render
+               horizon and never in the future (a dose cannot honestly have
+               been given at a time that has not happened). */
+            DateTime? administeredAt = null;
+            if (req.AdministeredAt is not null)
+            {
+                if (req.Action != "given")
+                    return ApiError.BadRequest("administeredAt applies only when a dose is given — a held or refused dose has no administration time");
+                if (!DateTime.TryParseExact(req.AdministeredAt, "yyyy-MM-dd HH:mm", null,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                        out var at))
+                    return ApiError.BadRequest("administeredAt must be 'yyyy-MM-dd HH:mm'");
+                if (at > DateTime.UtcNow.AddMinutes(1))
+                    return ApiError.BadRequest("administeredAt cannot be in the future");
+                if (at < DateTime.UtcNow.AddHours(-MarSchedule.PastWindowHours))
+                    return ApiError.BadRequest($"administeredAt is more than {MarSchedule.PastWindowHours} hours ago — outside the documentable window");
+                administeredAt = at;
+            }
 
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null || row.MedicationJson is null)
@@ -110,6 +143,10 @@ static class MarApi
             var now = DateTime.UtcNow;
             var parsed = MarSchedule.Parse(med);
             string scheduledStamp;
+            /* the dated instance's instant — set only on the scheduled-grid
+               branch; PRN/on-demand doses have no schedule, so the
+               late-administration rule can never apply to them */
+            DateTime? scheduledInstant = null;
             if (adminId == "prn")
             {
                 if (parsed.Kind != MarSchedule.Kind.Prn)
@@ -149,6 +186,7 @@ static class MarApi
                     : instant >= first && (instant - first).Ticks % TimeSpan.FromHours(parsed.IntervalHours).Ticks == 0;
                 if (!onGrid) return ApiError.NotFound();   // not an expected dose instance of this order
                 scheduledStamp = MarSchedule.StampOf(instant);
+                scheduledInstant = instant;
                 /* the duplicate check comes BEFORE the render-window check:
                    a re-documented instance has left the renderable set by
                    definition, and a racing second nurse must still see
@@ -174,14 +212,34 @@ static class MarApi
                 return ApiError.NotFound();   // neither a fact, a derived identity, prn, nor ondemand
             }
 
+            /* 🔴 THE OVERDUE DELAY REASON (validator option a): a dose
+               given more than LateThresholdHours past its scheduled
+               instant is clinically significant lateness — it can still
+               be given (the patient needs the drug; never blocked), but
+               the delay must be documented. Lateness is judged against
+               NOW (the documenting moment), never a client-supplied time
+               — a backdated administeredAt cannot dodge the rule. */
+            var lateBy = req.Action == "given" && scheduledInstant is not null
+                ? now - scheduledInstant.Value : TimeSpan.Zero;
+            var isLate = lateBy > TimeSpan.FromHours(MarSchedule.LateThresholdHours);
+            if (isLate && string.IsNullOrWhiteSpace(req.Reason))
+                return ApiError.BadRequest(
+                    $"this dose was scheduled at {scheduledStamp} and is {(int)lateBy.TotalHours}h {lateBy.Minutes:D2}m overdue — a delay reason is required to document it given");
+
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var time = now.ToString("yyyy-MM-dd HH:mm");
-            var reason = needsReason ? req.Reason!.Trim() : null;
+            /* the recorded administration time: the explicit actual time
+               when supplied (#145 editable), else the documenting moment */
+            var adminTime = administeredAt?.ToString("yyyy-MM-dd HH:mm") ?? time;
+            /* a volunteered reason is documentation — never dropped */
+            var reason = string.IsNullOrWhiteSpace(req.Reason) ? null : req.Reason.Trim();
             admins.Add(new AdminDto(OrderLogic.NextAdminId(), scheduledStamp, req.Action!,
-                time, actor, reason));
+                adminTime, actor, reason));
             row.AdministrationsJson = JsonSerializer.Serialize(admins, JsonOpts.Web);
-            var verb = req.Action == "given" ? "administered" : req.Action;
-            var detail = $"{(scheduledStamp.Length > 0 ? scheduledStamp : adminId == "prn" ? "PRN" : $"unscheduled ({med.Frequency})")} dose {req.Action} at {time}"
+            var verb = req.Action == "given" ? "administered" : req.Action!;
+            var detail = $"{(scheduledStamp.Length > 0 ? scheduledStamp : adminId == "prn" ? "PRN" : $"unscheduled ({med.Frequency})")} dose {req.Action} at {adminTime}"
+                + (adminTime != time ? $" (documented {time})" : "")
+                + (isLate ? $" — LATE: {(int)lateBy.TotalHours}h {lateBy.Minutes:D2}m after the scheduled time" : "")
                 + (reason is not null ? $" — {reason}" : "");
             row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, verb, detail));
             db.SaveChanges();
@@ -206,9 +264,10 @@ static class MarLogic
         var m = JsonSerializer.Deserialize<MedicationDto>(o.MedicationJson!, JsonOpts.Web)!;
         var route = $"{m.Route} · {(m.Prn ? $"PRN — {m.PrnIndication ?? "as required"}" : m.Frequency)}";
         MarRowDto Row(string adminId, string scheduledTime, string status,
-            string? documentedTime = null, int? missedEarlier = null, string? scheduleNote = null) =>
+            string? documentedTime = null, int? missedEarlier = null, string? scheduleNote = null,
+            string? reason = null) =>
             new(o.OrderId, adminId, o.PatientId, o.BedId, m.Drug, m.Dose, route,
-                scheduledTime, m.Prn, status, documentedTime, missedEarlier, scheduleNote);
+                scheduledTime, m.Prn, status, documentedTime, missedEarlier, scheduleNote, reason);
 
         var admins = o.AdministrationsJson is null
             ? new List<AdminDto>()
@@ -218,7 +277,9 @@ static class MarLogic
         foreach (var a in facts)
             rows.Add((MarSchedule.ParseStamp(a.ScheduledTime, nowUtc)
                       ?? MarSchedule.ParseStamp(a.DocumentedTime, nowUtc) ?? nowUtc,
-                Row(a.AdminId, a.ScheduledTime, a.Status, a.DocumentedTime)));
+                /* the documented reason rides the row — held/refused reasons
+                   and the overdue DELAY reason are part of the record */
+                Row(a.AdminId, a.ScheduledTime, a.Status, a.DocumentedTime, reason: a.Reason)));
 
         if (o.Status == "active")
         {
@@ -281,10 +342,11 @@ static class MarLogic
 record MarRowDto(
     string OrderId, string AdminId, string PatientId, string BedId, string Medication,
     string Dose, string Route, string ScheduledTime, bool Prn, string Status,
-    string? DocumentedTime, int? MissedEarlier = null, string? ScheduleNote = null);
+    string? DocumentedTime, int? MissedEarlier = null, string? ScheduleNote = null,
+    string? Reason = null);
 
 /* MAR administration action request (Stage 10 Phase 3) — Disallow rejects
    any unrecognized field; action/reason validated explicitly in the
    endpoint (reason required for held/refused, like discontinue). */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record AdministerRequest(string? Action, string? Reason);
+record AdministerRequest(string? Action, string? Reason, string? AdministeredAt = null);

@@ -75,9 +75,9 @@ export function NurseWorkspace() {
   /* MAR: documentation APPENDS an administration fact on the canonical
      order (derived schedule — nothing stored is consumed), so the honest
      next state is a fresh derivation: re-fetch rather than patch rows */
-  const documentMar = (orderId: string, adminId: string, action: AdministrationAction, reason?: string) => {
+  const documentMar = (orderId: string, adminId: string, action: AdministrationAction, reason?: string, administeredAt?: string) => {
     const row = mar?.find(r => r.orderId === orderId && r.adminId === adminId)
-    documentAdministration(orderId, adminId, action, session.name, session.jobTitle, reason).then(updated => {
+    documentAdministration(orderId, adminId, action, session.name, session.jobTitle, reason, administeredAt).then(updated => {
       if (!updated) return
       const facts = updated.administrations?.filter(a => a.status === action) ?? []
       const fact = facts[facts.length - 1]

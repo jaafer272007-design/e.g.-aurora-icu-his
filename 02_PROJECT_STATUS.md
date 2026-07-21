@@ -1,6 +1,80 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-20 · current through ORDER-SET AUTHORING —
+**Last updated: 2026-07-21 · current through the OVERDUE-DOSE DELAY
+REASON (medication-safety fix, the clinical validator's option a): a
+dose documented GIVEN more than TWO HOURS past its scheduled instant
+now REQUIRES a delay reason — the dose is never BLOCKED (the patient
+still needs the drug); the lateness and its documented reason become
+part of the record. VERIFY-FIRST FINDINGS (the directive's premise
+corrected): before this fix an overdue dose marked given was
+INDISTINGUISHABLE at a glance from an on-time one — the fact stored
+scheduledTime + the server-stamped documentedTime (lateness
+computable but never flagged), no reason was captured (a volunteered
+one was silently DROPPED), and the audit read identically; the
+2-HOUR THRESHOLD THE DIRECTIVE NAMED DID NOT EXIST IN CODE — the
+only prior "overdue" was the client display state (dueStateFor,
+src/lib/time.ts) which flips the INSTANT a dose passes; instances
+sit on full-hour grid points and real documentation lands minutes
+after, so enforcing at that boundary would have ended the
+single-click flow entirely. THE STATED RESOLUTION (the recommended
+option, proceeded on the owner's continue): the 2-hour line is
+INTRODUCED as ONE named constant — MarSchedule.LateThresholdHours
+(server, ENFORCED at the documentation endpoint) mirrored by
+LATE_THRESHOLD_MINUTES (src/lib/time.ts, drives the dialog + the
+LATE marker) — while the instant-overdue DISPLAY state is untouched:
+a row still turns OVERDUE the moment it passes; the REASON
+requirement starts at 2h. Lateness is judged against NOW (the
+documenting moment), never a client-supplied time — a backdated
+administeredAt cannot dodge the rule; PRN and on-demand doses have
+no schedule and can never be late. THE MECHANISM (held-with-reason
+REUSED, per the directive): the same AdminDto.Reason field, the same
+validation shape, the same MarReasonDialog — extended with a
+'given-late' mode; free text per #145 (no format rules, 2000
+bound). NEW: administeredAt (given only, the #145
+editable-timestamp pattern — the dialog prefills the current wall
+clock, editable, wall→UTC on submit; the server validates exact
+form, never future, within the 24h render horizon, 400 on
+held/refused) recorded as the fact's documentedTime, with the audit
+event carrying BOTH times ("given at X (documented Y)"); the audit
+detail on a late give says "LATE: Nh NNm after the scheduled time —
+{reason}"; the MAR row now carries the documented reason (additive
+`reason` key, null-omitted — unaffected reads byte-identical) and
+the UI wears a LATE chip on given facts beyond the threshold plus
+the reason text on every documented row (held/refused reasons are
+now visible on the MAR too, not only in the audit); a volunteered
+reason on any given is STORED, never dropped. ON TIME stays ONE
+CLICK — asserted at every tier, including the BOUNDARY: a dose past
+due but UNDER 2h is still a single click (display-overdue ≠
+reason-required). NO migration, NO new endpoint; the wire deltas
+are additive (request administeredAt?, row reason?). Verified:
+17/17 headless (fresh SQLite; overdue instances created HONESTLY by
+backdating the therapy anchor in the DB and re-deriving — the real
+schedule, no second definition; on-time single-click control; 400
+without reason naming the schedule + how late, blank-reason 400;
+with-reason 200 + fact + LATE audit; reason on the MAR wire; the
+boundary check; administeredAt round-trip + its four 400 rules;
+held/refused unchanged; PRN never late; duplicate 409, doctor 403,
+doses-never-run-out all unchanged) + 5/5 (Postgres LIVE-UPGRADE:
+the OLD server gave a 4h-overdue dose with a bare {"action":"given"}
+→ 200, the exact clinical-testing finding REPRODUCED; the NEW
+server on the SAME database renders that legacy reasonless fact
+honestly, then 400s the same request and 200s it with a reason +
+LATE audit on the same durable rows) + 11/11 rendered (staging
+appliance: 11 seeded overdue rows; the on-time control documented
+with ONE CLICK and no dialog; the overdue ✓ Given opened the
+delay-reason dialog — lateness stated, confirm disabled until a
+reason exists, actual time prefilled and editable; given → the row
+wears GIVEN + LATE + the reason; the audit event verified; HELD
+unchanged with no time field). Suites: deployed-mar-e2e gains the
+OVERDUE DELAY REASON step — NON-MUTATING enforcement probes against
+a seeded 2h+ overdue instance on the durable staging DB
+(given-without-reason 400 naming the delay reason,
+administeredAt-future 400, administeredAt-on-held 400; nothing is
+ever written to the seeded record — the mutating with-reason legs
+are covered by the three local tiers above; the existing bare-given
+200 step doubles as the on-time single-click assertion).**
+
+prior marker retained: current through ORDER-SET AUTHORING —
 GOVERNANCE + INTERFACE (owner directive; the clinical model and the
 safety behaviour are UNCHANGED — apply still composes drafts through
 the ONE shared OrdersApi.Create path, so every generated order is an
@@ -84,7 +158,7 @@ actor assert, the DENIED direction now PHA+SPC+NUR+ADM+LAB, a
 Pharmacist-apply 403 and a Specialist-apply 200 (authoring ≠
 applying, both directions), cleanup tokens moved to the new holder.
 Seeded sets untouched (their Pharmacist-era audit histories stand
-as history).**
+as history).
 
 prior marker retained: current through PRINT CENTER BRANDING +
 THE DOCUMENT-LEVEL FORMAT ENGINE (Option A — the owner's directive is
@@ -1687,6 +1761,13 @@ Timeline and AI remain mock until their own phases.
   404). Malformed
   payloads → 400 (unknown fields fail binding; reason bounded) per the
   request-validation rule.
+  *[Amended 2026-07-20 — the overdue-delay-reason safety fix (validator
+  option a): "Given needs none" now holds ON TIME ONLY — a dose given
+  more than MarSchedule.LateThresholdHours (2h) past its scheduled
+  instant requires a DELAY REASON (400 without; the dose is never
+  blocked); the reason is stored on the fact, the MAR row and the audit
+  trail, and a given fact may carry an explicit administeredAt. Full
+  record: the top marker.]*
 - **Frontend**: only the MAR adapters swapped
   (`getMarRows`/`documentAdministration`) with the proven read/write
   fallback semantics (server 403/404/400 = real denial never applied

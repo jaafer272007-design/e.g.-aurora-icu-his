@@ -117,6 +117,23 @@ static class MarSchedule
          always shown. */
     public const int PastWindowHours = 24;
 
+    /* LATE-ADMINISTRATION THRESHOLD (overdue delay reason — the clinical
+       validator's option a): a dose documented GIVEN more than this long
+       after its scheduled instant requires a DELAY REASON — late
+       administration is clinically significant (patient off the floor,
+       pharmacy delay, refusal) and must be documented, never silent. The
+       dose is never BLOCKED — the patient still needs the drug. This is
+       the single definition of "late enough to require a reason",
+       enforced at the documentation endpoint and mirrored by the client
+       dialog (LATE_THRESHOLD_MINUTES in src/lib/time.ts). It is
+       deliberately DISTINCT from the display state that turns a row
+       OVERDUE the moment it passes (dueStateFor) — instances sit on
+       full-hour grid points and real documentation lands minutes after,
+       so an instant-threshold reason requirement would end the
+       single-click on-time flow. PRN and on-demand doses have no
+       schedule and can never be late. */
+    public const int LateThresholdHours = 2;
+
     /** every grid instant for an interval order from therapy start through
         the next undocumented instance after nowUtc, split into
         (aggregatedMissed, renderable). Pure arithmetic on the anchor grid —
