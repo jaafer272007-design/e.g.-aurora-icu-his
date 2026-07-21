@@ -37,6 +37,87 @@ if [ ! -f .env ]; then
   } > .env
 fi
 
+# ---- 2a. install mode: demo testbed (default) vs a real hospital ----
+# A hospital install is a PRODUCTION install: APP_ENV=production, which the
+# server's seed split turns into "catalogues + config + ONE bootstrap admin,
+# ZERO patients, ZERO demo credentials" and the boot tripwires enforce. The
+# demo testbed (staging) is the default so nothing changes for validators.
+#
+#   ./run.sh                        -> demo testbed (staging seed)
+#   AURORA_MODE=production ./run.sh -> a real hospital install (once; the
+#                                      choice persists in appliance/.env)
+#
+# In production mode this script COLLECTS the install decisions the server
+# refuses to boot without, and writes them to appliance/.env so every later
+# `./run.sh` reboots non-interactively. Nothing is guessed and nothing demo
+# ever reaches the image.
+env_get() { grep -E "^$1=" .env 2>/dev/null | head -1 | cut -d= -f2- || true; }
+env_set() { # key value — replace-or-append in .env
+  [ -f .env ] && grep -qE "^$1=" .env && { grep -vE "^$1=" .env > .env.tmp && mv .env.tmp .env; }
+  printf '%s=%s\n' "$1" "$2" >> .env
+}
+DEMO_PW='Aurora2026!'   # the shared demo password — forbidden in production
+# resolve the mode: explicit AURORA_MODE wins; else whatever .env remembers;
+# else the demo default
+MODE="${AURORA_MODE:-$( [ "$(env_get APPLIANCE_ENV)" = production ] && echo production || echo staging )}"
+if [ "$MODE" = "production" ]; then
+  echo "PRODUCTION install mode — a real hospital deployment (no demo data)."
+  env_set APPLIANCE_ENV production
+  # DEMO_PASSWORD must never be in a production environment (T2 refuses it)
+  unset DEMO_PASSWORD || true
+  # -- formulary install policy (the server refuses an unset/unknown value) --
+  FS="$(env_get FORMULARY_SEED)"
+  if [ "$FS" != "starter" ] && [ "$FS" != "empty" ]; then
+    if [ -t 0 ]; then
+      echo "Formulary at install: [starter] seeds a reference drug list DEACTIVATED"
+      echo "(pharmacy reactivates each drug after review), or [empty] to build it from scratch."
+      read -r -p "  FORMULARY_SEED (starter/empty) [starter]: " FS || true
+      FS="${FS:-starter}"
+    else
+      FS="${FORMULARY_SEED:-}"
+    fi
+    [ "$FS" = "starter" ] || [ "$FS" = "empty" ] || {
+      echo "FORMULARY_SEED must be 'starter' or 'empty'. Set it and re-run."; exit 1; }
+  fi
+  env_set FORMULARY_SEED "$FS"
+  # -- same-origin access origin -> CORS_ORIGINS (the appliance is one origin,
+  #    so this is belt-and-suspenders; the server still requires it explicit
+  #    and non-local in production) --
+  CO="$(env_get CORS_ORIGINS)"
+  if [ -z "$CO" ]; then
+    GUESS_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
+    DEFAULT_CO="http://${GUESS_IP:-your-server}:${AURORA_PORT:-8080}"
+    if [ -t 0 ]; then
+      echo "The URL clinicians open in their browser (this server's address on the LAN)."
+      read -r -p "  Access URL [${DEFAULT_CO}]: " CO || true
+      CO="${CO:-$DEFAULT_CO}"
+    else
+      CO="${CORS_ORIGINS:-$DEFAULT_CO}"
+    fi
+    case "$CO" in
+      *localhost*|*127.0.0.1*) echo "Access URL cannot be localhost in production (the server refuses it). Use the LAN address."; exit 1;;
+    esac
+    env_set CORS_ORIGINS "$CO"
+  fi
+  # -- the first administrator's credential (supplied at provision time,
+  #    shown once, rotated after first login; never the demo password) --
+  if [ -z "$(env_get ADMIN_BOOTSTRAP_PASSWORD)" ]; then
+    BP="${ADMIN_BOOTSTRAP_PASSWORD:-}"
+    if [ -z "$BP" ] && [ -t 0 ]; then
+      echo "Set the first administrator's password (user 'admin'; you MUST change it at first login)."
+      read -r -s -p "  Bootstrap admin password: " BP; echo
+      read -r -s -p "  Confirm: " BP2; echo
+      [ "$BP" = "$BP2" ] || { echo "Passwords did not match. Re-run."; exit 1; }
+    fi
+    [ -n "$BP" ] || { echo "ADMIN_BOOTSTRAP_PASSWORD is required for a production install (supply it in the environment for an unattended install)."; exit 1; }
+    [ "$BP" != "$DEMO_PW" ] || { echo "The bootstrap password cannot be the shared demo password. Choose a real one."; exit 1; }
+    env_set ADMIN_BOOTSTRAP_PASSWORD "$BP"
+    echo "Recorded the bootstrap admin credential in appliance/.env (delete that line after you rotate it post-login)."
+  fi
+  echo "Note: a data volume that already holds DEMO data cannot be served in production"
+  echo "      (the T1 tripwire refuses the demo credential). Start clean: docker compose down -v."
+fi
+
 # ---- 2b. the hospital's timezone (Locale/Timezone design §1.3) ----
 # The app stores UTC and DISPLAYS the server's local time; the container
 # defaults to UTC, so the HOST's zone must be handed in. Detect the IANA
@@ -117,5 +198,13 @@ echo "  this machine : http://localhost:${AURORA_PORT:-8080}"
 [ -n "${IP:-}" ] && echo "  on the LAN   : http://${IP}:${AURORA_PORT:-8080}   (other devices on the network)"
 curl -s "http://localhost:${AURORA_PORT:-8080}/build.txt" | sed 's/^/  build: /'
 echo
-echo "NOT HOSPITAL-READY (design §2.4): this appliance seeds DEMO data — it is the"
-echo "validator's testbed in the hospital topology. Demo sign-in: sara.rahman / Aurora2026!"
+if [ "$MODE" = "production" ]; then
+  echo "PRODUCTION install — NO demo data: catalogues + configuration are seeded, the"
+  echo "unit starts with ZERO patients, and there are NO demo credentials."
+  echo "Sign in as the bootstrap administrator (user 'admin') with the password you set;"
+  echo "you will be required to change it, then create the clinical accounts from Users."
+else
+  echo "NOT HOSPITAL-READY (design §2.4): this appliance seeds DEMO data — it is the"
+  echo "validator's testbed in the hospital topology. Demo sign-in: sara.rahman / Aurora2026!"
+  echo "For a real hospital install (no demo data): AURORA_MODE=production ./run.sh"
+fi
