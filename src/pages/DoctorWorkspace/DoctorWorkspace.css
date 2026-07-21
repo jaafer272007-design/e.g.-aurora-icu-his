@@ -55,7 +55,7 @@
    ordering lives in Orders & Meds; the rounding row's "Orders →" button
    navigates there) */
 
-@media(max-width:1500px){.dw .shell{grid-template-columns:64px 1fr}}
+@media(max-width:1180px){.dw .shell{grid-template-columns:64px 1fr}}
 @media(max-width:1180px){.dw main{grid-template-columns:1fr;overflow:visible}.dw.app-frame{height:auto;overflow:visible}}
 
 /* honest zero-assignment state (Patient Assignment & Responsibility) */

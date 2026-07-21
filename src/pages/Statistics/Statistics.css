@@ -8,7 +8,7 @@
    without it `.shell` computes to display:block, the sidebar goes
    full-width and main is pushed below the viewport and clipped). */
 .st .shell { display: grid; grid-template-columns: 198px 1fr; min-height: 0; }
-@media (max-width: 1500px) { .st .shell { grid-template-columns: 64px 1fr; } }
+@media (max-width: 1180px) { .st .shell { grid-template-columns: 64px 1fr; } }
 
 .st main.st-main {
   display: flex;

@@ -12,7 +12,11 @@
 .ua .anblock{border:1px solid var(--stroke);border-radius:11px;padding:9px 10px;
  display:grid;grid-template-columns:repeat(6,1fr);gap:7px 9px;background:rgba(var(--lift-rgb),.015);position:relative}
 .ua .anblock .anfield{display:flex;flex-direction:column;gap:3px;min-width:0}
-.ua .anblock .anfield label{font-size:9px;letter-spacing:.5px;color:var(--dim);text-transform:uppercase;white-space:nowrap}
+/* labels WRAP rather than clip: the narrow single-column analyte fields
+   ("Reference low/high", "Critical high") were nowrap and got cut off at
+   ≥1500px (where the full-width nav squeezes the 6-col grid). Wrapping to
+   two lines keeps every label fully readable at all widths. */
+.ua .anblock .anfield label{font-size:9px;letter-spacing:.5px;color:var(--dim);text-transform:uppercase;line-height:1.25}
 .ua .anblock .anfield label i{color:var(--faint);text-transform:none;font-style:italic;letter-spacing:0}
 .ua .anblock .anfield input{width:100%;min-width:0;min-height:34px;padding:6px 8px;border-radius:8px;font-size:11.5px;
  background:rgba(var(--well-rgb),.55);border:1px solid var(--stroke2);outline:none}

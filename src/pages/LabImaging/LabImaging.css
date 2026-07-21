@@ -123,7 +123,6 @@
 .li .liintext span{color:var(--dim)}
 .li .liintext small{display:block;color:var(--faint);font-size:10px;margin-top:3px}
 
-@media(max-width:1500px){.li .shell{grid-template-columns:64px 220px 1fr}}
 @media(max-width:1280px){.li .licols{grid-template-columns:1fr}}
 @media(max-width:1180px){
  .li .shell{grid-template-columns:64px 1fr}

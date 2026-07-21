@@ -1,6 +1,58 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-21 · current through THE TWO-THEME CONTRAST
+**Last updated: 2026-07-21 · current through THE ≥13-INCH RESPONSIVE
+RENDER-SWEEP. THE BUG (clinical testing): on smaller (still laptop/tablet)
+screens the layout broke — words cut off, content clipped, and 'the
+patient disappears' on observations. SCOPE (owner): the floor is 13" (the
+sweep tested 1280 / 1366×768 / 1366×1024 / 1440 / 1536); below ~1180px is
+a future mobile decision, out of scope. VERIFY-FIRST (rendered sweep of
+all 26 routes × 5 viewports + a sub-floor observations scan, an in-page
+detector for horizontal overflow, off-viewport/clipped elements, nowrap
+truncation, and VERTICAL clipping): the reported symptoms mapped to FOUR
+real defects and two red herrings. FIX 1 — the real 'content clipped' bug
+was PATIENT HISTORY (/patients/:id/history): `.ph main` was MISSING the
+inner-scroll region (`overflow-y:auto; min-height:0`) every other screen
+has, and `.ph .shell` used `align-items:start`, so the page overflowed the
+fixed-height `.app-frame` (overflow:hidden) and 350–600px of history was
+CLIPPED UNREACHABLE at every width 1280–1536 — no scrollbar (the
+task-#61-class fix, missed on this one screen). Now `.ph main` scrolls
+itself (proven: scrollHeight 1329 > clientHeight 698, the app-frame no
+longer clips; PREVIOUS LABS + PREVIOUS IMAGING, formerly below the fold,
+now reachable). FIX 2 — labcatalog analyte labels ('Reference low/high',
+'Critical high') were `white-space:nowrap` and clipped at ≥1500px (a
+bad-breakpoint artifact: >1500px restores the full 198px nav, squeezing
+the 6-col grid MORE than 1440px does); labels now wrap. FIX 3 — the Orders
+order-set `.ossetdesc` preview ellipsis-clipped 20–70px on one line; it now
+wraps (the set still expands for the full list). FIX 4 (the validator's
+clarified 'the words disappear' bug, the one the owner flagged by name —
+'Dashboard / Labs / AI / Settings' vanished on a 13" screen leaving bare
+icons) — the PRIMARY NAV collapsed to ICON-ONLY (labels `display:none`, the
+198px rail shrunk to 64px) at ≤1500px, so EVERY in-scope 13" width (1280 /
+1366 / 1440) landed in icon-only mode and lost its nav text — the SAME
+1500px bad-breakpoint artifact as FIX 2. The collapse threshold moved
+1500px→1180px IN LOCKSTEP across NavSidebar.css and all 16 per-page shell
+grids: full labels now show at every width ≥1181px (proven 17/17 labels
+visible + a 198px rail at 1280/1366/1440/1500/1536), and the nav only goes
+icon-only BELOW the 13" floor (≤1180). For that sub-floor icon-only mode
+every nav button gained `aria-label` + `title` (screen-reader name + hover
+tooltip) so no bare unlabeled icon exists (proven: all 17 accessible names
+present at 1180/1100/1024). The now-wider 198px nav (−134px content at
+1280–1500) was RE-SWEPT for regressions and introduced ZERO new clipping
+(the whole 26-route × 5-width sweep stayed at 0). THE 'PATIENT DISAPPEARS'
+red herring: the patient NAME is ALWAYS visible (PatientBar header) at every
+width; only the patient RAIL (list/switcher) hides via
+`@media(max-width:1180px){.obs .ptrail{display:none}}` — the threshold is
+1180–1200px, BELOW the 13" floor, and the identity persists in the header.
+The MissionControl 'timeline off-viewport' red herring is an intentional
+`overflow-x:auto` horizontal scroller (reachable). RESULT: rendered sweep
+went from 14 flagged route×width combos to **0 (ALL_RESPONSIVE_PASS)** — no
+clipped/hidden/cut-off/overlapping content at any width ≥1280, patient
+always visible on observations, and FULL NAV LABELS at every width ≥1280.
+CSS across 18 files + one behavior-neutral TSX edit (NavSidebar.tsx:
+`aria-label`/`title` only, no logic change); no engine/API/score change; no
+migration.**
+
+prior marker retained: current through THE TWO-THEME CONTRAST
 RENDER-SWEEP (the held item 3 from the polish batch). THE BUG (clinical
 testing): despite the token-based system and the AA-verified light theme
 (#103), hands-on testing found real INVISIBLE controls — the
