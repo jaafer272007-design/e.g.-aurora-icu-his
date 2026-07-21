@@ -498,7 +498,7 @@ export function MissionControl() {
               {/* organ status DERIVED from the computed SOFA — the wire
                   organs snapshot (fixtures + all-"ok" fresh-admit default)
                   is retired (no-reassuring-default rule) */}
-              <DigitalTwin state={scores.state} sofa={scores.sofa} />
+              <DigitalTwin />
             </div>
           )}
 

@@ -1,6 +1,54 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-21 · current through THE SEED SPLIT MADE
+**Last updated: 2026-07-21 · current through THE DIGITAL TWIN MADE
+PURELY DECORATIVE (safety) + the score-pipeline diagnostic. THE FINDING
+(clinical testing): the Patient Digital Twin coloured each organ from a
+SOFA sub-score (the score-derived design shipped in PR #154), and that
+was DANGEROUS — SOFA cardiovascular is MAP + vasopressors ONLY, so a
+clinically-bad heart with a normal MAP scored 0 and the twin rendered a
+green "Heart: Stable" glyph, a whole-organ wellness claim SOFA never
+makes; and the lungs stayed grey because respiratory SOFA is the
+PaO₂/FiO₂ ratio (a lab ABG PaO₂ + a charted FiO₂), which a bedside SpO₂
+does not feed. A status display that can show a WRONG colour is worse
+than none. VALIDATOR'S DECISION: remove ALL clinical status colour from
+the twin — it becomes a purely DECORATIVE anatomical figure that makes
+no clinical claim and so cannot mislead. THE BUILD (client-only, no
+score/engine change): DigitalTwin.tsx no longer takes props, imports no
+scoring, and reads no SOFA — it is an attractive anatomical illustration
+in ONE cohesive aesthetic palette (the card's own cyan / steel tokens —
+NOT the green/amber/red clinical-status family), theme-aware in light
+and dark, with a reduced-motion-respecting decorative ring, a neutral
+organ legend, and an explicit caption: "Anatomical illustration — not a
+clinical status display. Read the patient's condition from the NEWS2 and
+SOFA cards, the observation tiles, and the labs." The MissionControl
+call site drops the state/sofa props; the twin's status-colour CSS
+(o-ok/o-watch/o-crit/o-nd, st-*, s-*, osc/orow/odot) is deleted. THE
+HONEST clinical status is unchanged and lives where it states its own
+definition and contributors: the SOFA card, the NEWS2 card, the
+observation tiles, and the severity dot. THE DIAGNOSTIC (reported
+separately, no score change): the scores are NOT broken and this is NOT
+a whole-layer false-reassurance emergency. The engines read their
+charted in-scope inputs correctly (NEWS2 = rr/spo2/o2/sbp/hr/acvpu/temp;
+SOFA = map + fio2 + GCS + urine + labs + vasopressor ORDERS), and
+Mission Control re-fetches on open (charting is on a separate
+/observations screen), so the severity dot and the SOFA/NEWS2 cards
+reflect a chart when the patient is opened. The green heart was the
+twin's mapping turning a narrow, spec-defined SOFA-CV 0 into a
+whole-organ claim — not a broken score and not a broken key mapping;
+the grey lungs were the honest ND state of respiratory SOFA with no ABG
+PaO₂/FiO₂ charted. TWO CAVEATS for the score surfaces we KEEP (real,
+not fabrication): (1) usePatientScores recomputes only on patientId
+change — no live refetch, so charting while already on Mission Control
+needs a re-open to update (a documented freshness gap, recorded as a
+later refinement); (2) SOFA/NEWS2 are narrow by definition, but the
+CARDS show their contributors and explicit ND reasons, so — unlike the
+twin's organ glyph — they don't over-claim. Verified (item 1): 6/6
+rendered on the one-origin stack — twin card present, ZERO
+clinical-status elements in the DOM, honest caption present, no organ
+fill resolves to any clinical green/amber/red token, both light and
+dark screenshots delivered.**
+
+prior marker retained: current through THE SEED SPLIT MADE
 INSTALLABLE — the appliance production install path + a production-seed
 CI guard. VERIFY-FIRST FINDING (reported and owner-confirmed before
 building): the server-side seed split the "editable → installable"
@@ -50,7 +98,7 @@ refused on a fresh DB) and T2 (missing FORMULARY_SEED refused). NO
 server code changed — the split already shipped; this makes it
 installable and keeps it honest by construction. Deferred to later
 phases (turnkey product, not this): a first-run UI wizard and backup
-tooling.**
+tooling.
 
 prior marker retained: current through APPLIED ORDER-SET SIGNING
 INHERITANCE (order-workflow fix, the validator's option A with the role
