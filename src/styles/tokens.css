@@ -4,7 +4,7 @@
   --bg:#060b13; --bg2:#0a1220;
   --panel:linear-gradient(160deg,rgba(20,31,50,.82),rgba(11,17,29,.78));
   --stroke:rgba(130,170,230,.13); --stroke2:rgba(130,170,230,.22);
-  --text:#e9f1fb; --dim:#8fa3bc; --faint:#5d7089;
+  --text:#e9f1fb; --dim:#8fa3bc; --faint:#7889a2;
   --blue:#4da3ff; --cyan:#35e0d0; --green:#3de8a0; --amber:#ffb454; --red:#ff5d6c; --violet:#a78bfa;
   --mono:"SF Mono","Cascadia Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
   --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
@@ -43,6 +43,11 @@
   --dlg:#0b1322; --dlg-a:#0d1626; --dlg-b:#0a0f1c;  /* dialog surfaces */
   --pinktx:#ff8fb0; --tealtx:#79cfc6;    /* order / io tag text */
   --yellowtx:#ffe07a;                    /* medium-severity text (between amber and green) */
+  /* count/alert badge fill — a DEEPER red than the bright severity --red
+     so WHITE badge numbers meet WCAG AA (the bright --red gives white only
+     ~3:1; #c62436 gives ~5.4:1). The badge still reads clearly red; the
+     locked severity --red is unchanged. */
+  --badge:#c62436;
 }
 
 /* ---- LIGHT THEME (Settings → Theme; Follow system honours the device).
@@ -77,6 +82,7 @@
   --dlg:#ffffff; --dlg-a:#ffffff; --dlg-b:#f2f6fc;
   --pinktx:#8f1e4b; --tealtx:#07615a;
   --yellowtx:#6d6400; /* olive, NOT amber — medium severity stays hue-distinct from high in light */
+  --badge:#a51a2c;    /* light theme: the dark severity red already gives white ~7.7:1 */
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html,body,#root{height:100%}

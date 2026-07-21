@@ -21,9 +21,9 @@
 
 .st .st-note {
   padding: 14px 16px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--stroke);
   border-radius: 10px;
-  color: var(--txt-2);
+  color: var(--txt2);
   font-size: 13px;
 }
 
@@ -33,7 +33,7 @@
   border: 1px solid rgba(var(--amber-rgb),.35);
   background: rgba(var(--amber-rgb),.07);
   border-radius: 10px;
-  color: var(--txt-2);
+  color: var(--txt2);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -45,7 +45,7 @@
 }
 
 .st .st-tile {
-  border: 1px solid var(--line);
+  border: 1px solid var(--stroke);
   border-radius: 10px;
   padding: 12px 14px;
   display: flex;
@@ -63,19 +63,19 @@
 .st .st-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--txt-2);
+  color: var(--txt2);
   text-transform: uppercase;
   letter-spacing: .5px;
 }
 
 .st .st-sub {
   font-size: 11px;
-  color: var(--txt-3);
+  color: var(--txt3);
   line-height: 1.45;
 }
 
 /* insufficient data — a dimmed dash + the reason; distinct from a real 0 */
-.st .st-insufficient .st-value { color: var(--txt-3); }
+.st .st-insufficient .st-value { color: var(--txt3); }
 
 /* NOT TRACKED YET — the design's explicit placeholder state: dashed border,
    muted amber text label instead of a number (§2) */
@@ -96,7 +96,7 @@
 .st .st-foot {
   margin: 10px 2px 0;
   font-size: 11px;
-  color: var(--txt-3);
+  color: var(--txt3);
 }
 
 /* discharge-outcome chips */
@@ -110,20 +110,20 @@
 .st .st-bh {
   font-size: 11px;
   font-weight: 700;
-  color: var(--txt-2);
+  color: var(--txt2);
   text-transform: uppercase;
   letter-spacing: .5px;
   margin-right: 4px;
 }
 .st .st-chip {
-  border: 1px solid var(--line);
+  border: 1px solid var(--stroke);
   border-radius: 999px;
   padding: 3px 10px;
   font-size: 12px;
-  color: var(--txt-2);
+  color: var(--txt2);
 }
-.st .st-chip b { color: var(--txt-1); margin-right: 2px; }
-.st .st-chip-na { border-style: dashed; color: var(--txt-3); }
+.st .st-chip b { color: var(--text); margin-right: 2px; }
+.st .st-chip-na { border-style: dashed; color: var(--txt3); }
 
 /* trends */
 .st .st-trends {
@@ -135,14 +135,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--stroke);
   border-radius: 10px;
   padding: 12px 14px;
 }
 .st .st-th {
   font-size: 12px;
   font-weight: 600;
-  color: var(--txt-2);
+  color: var(--txt2);
   text-transform: uppercase;
   letter-spacing: .5px;
 }
@@ -167,5 +167,5 @@
   background: rgba(var(--blue-rgb),.55);
   border-radius: 3px 3px 0 0;
 }
-.st .st-barval { font-size: 10px; color: var(--txt-2); }
-.st .st-barlab { font-size: 9px; color: var(--txt-3); white-space: nowrap; }
+.st .st-barval { font-size: 10px; color: var(--txt2); }
+.st .st-barlab { font-size: 9px; color: var(--txt3); white-space: nowrap; }

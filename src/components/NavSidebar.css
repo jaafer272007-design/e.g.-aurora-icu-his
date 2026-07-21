@@ -14,7 +14,7 @@
 .nv:hover{color:var(--text);background:rgba(var(--lift-rgb),.04)}
 .nv.on{color:var(--text);background:linear-gradient(135deg,rgba(var(--blue-rgb),.16),rgba(var(--cyan-rgb),.08));
  border-color:rgba(var(--blue-rgb),.4);box-shadow:0 4px 16px rgba(20,80,160,.25)}
-.nv .nbdg{margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#fff;
+.nv .nbdg{margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:var(--badge);color:#fff;
  font-size:10px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
 .navfoot{margin-top:auto;font-size:10px;color:var(--faint);padding:0 13px;line-height:1.6}
 
