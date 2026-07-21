@@ -1,6 +1,14 @@
 /* AURORA ICU — master design tokens (see docs/design-system.md)
    Single source for colors, type, radii, shadows shared by every screen. */
 :root{
+  /* native-widget scheme (the dark-dropdown fix): the browser paints the
+     parts CSS can't reach — the OPEN <select> option popup's frame, its
+     scrollbar, and on macOS the entire native popup — from color-scheme,
+     not from page styles. Without it Chromium treats the page as a LIGHT
+     document even in dark theme and paints a white popup behind
+     var(--text) (near-white) option text: invisible options. Declared
+     per theme (light block below overrides). */
+  color-scheme:dark;
   --bg:#060b13; --bg2:#0a1220;
   --panel:linear-gradient(160deg,rgba(20,31,50,.82),rgba(11,17,29,.78));
   --stroke:rgba(130,170,230,.13); --stroke2:rgba(130,170,230,.22);
@@ -57,6 +65,7 @@
    surfaces (accents darken, glass panels whiten, white-lift overlays
    become subtle dark tints). */
 :root[data-theme="light"]{
+  color-scheme:light;
   --bg:#eef2f8; --bg2:#e4eaf3;
   --panel:linear-gradient(160deg,rgba(255,255,255,.92),rgba(247,250,254,.88));
   --stroke:rgba(30,70,140,.16); --stroke2:rgba(30,70,140,.3);
@@ -91,6 +100,16 @@ body{font-family:var(--sans);color:var(--text);-webkit-font-smoothing:antialiase
  radial-gradient(900px 650px at -6% 112%,rgba(24,120,110,.11),transparent 60%),var(--bg)}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 input,select,textarea{font:inherit;color:var(--text)}
+/* EVERY native <select>'s option list, one global rule (the dark-dropdown
+   fix): both colours EXPLICIT and SOLID — an option list painted by the
+   browser composites option styles over its own popup surface, so an
+   unset background falls through to the scheme default (white on a
+   light-scheme page) behind inherited near-white text. Only three
+   screens had a page-scoped copy of this rule before; the other 13
+   files' selects were unstyled. Chromium/Firefox (Windows/Linux) honour
+   these option colours; macOS ignores them and paints the popup from
+   color-scheme above — readable either way. */
+select option,select optgroup{background:var(--optbg);color:var(--text)}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:rgba(var(--steel-rgb),.18);border-radius:8px}

@@ -1,6 +1,68 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-21 · current through THE ≥13-INCH RESPONSIVE
+**Last updated: 2026-07-21 · current through POLISH BATCH 2 (clinical
+testing): DARK-THEME DROPDOWN OPTIONS + THE 12h/24h CLOCK. FIX 1 — 🔴
+dropdown option text invisible in DARK theme (e.g. the MODALITY select on
+the imaging-report entry). ROOT CAUSE, two halves: (a) the app never
+declared `color-scheme`, so Chromium treated the page as a LIGHT document
+even in dark theme and painted the native option popup's surface WHITE
+behind option text inheriting `var(--text)` (near-white) — invisible; (b)
+the `--optbg` option-background token existed but was applied by only
+THREE page-scoped rules (NurseWorkspace/BedOverview/OrdersMedication) —
+the other 13 files' selects (42 total across 16 files) had NO option
+styling at all. THE FIX: `color-scheme:dark` on `:root` +
+`color-scheme:light` on the light block (the browser's own signal for the
+popup frame, its scrollbar, and the whole macOS native popup), plus ONE
+global `select option,select optgroup{background:var(--optbg);
+color:var(--text)}` in tokens.css — both colours EXPLICIT and SOLID in
+both themes — with the three page-scoped copies removed (one source).
+Cross-browser story stated honestly: Chromium/Firefox on Windows/Linux
+honour the option colours; macOS ignores per-option styling and paints
+the popup from color-scheme — readable either way; the two native
+date-input calendar popups (DOB fields) are themed by color-scheme too.
+WHY #159's AUDITOR MISSED IT (the sweep's recorded blind spot): its
+element filter skips zero-size elements — `<option>`s inside a CLOSED
+select report zero-size rects, so no option text was ever measured — and
+its effective-background walk composites DOM ancestors, but the popup
+surface the browser actually paints behind options IS NOT IN THE DOM;
+native popups are also OS-drawn, so no screenshot shows them. Verified
+RENDERED both themes: every select on every reachable route as
+SeniorDoctor + nurse + admins (16 selects/87 options per theme in the
+route sweep + the NAMED modality select #lei-mod 7 options — dark
+contrast 16.04:1 on rgb(13,21,36), light 15.51:1 — + the discharge
+disposition dialog + the config obs-catalogue editor), each option
+asserted SOLID background + AA contrast + the root color-scheme; the
+print-document format selects (route param not reached in the audit) are
+covered by the same single global rule. FIX 2 — the clock ignored the
+12-hour/24-hour Setting. ROOT CAUSE: useClock (the AppHeader clock on
+EVERY screen + Mission Control's clock and "Last Updated") rendered
+`Date.toLocaleTimeString('en-GB')` directly — a hard-24h locale that
+bypassed formatHm AND the browser's own zone instead of the display
+clock (the same leak class the #140 Locale work audited, on the most
+visible clock in the app). THE FIX: time.ts gains clockDisplayNow()
+(localParts + the 12h/24h preference; seconds from the device — every
+IANA offset is whole-minute, so seconds are zone-invariant; the date
+line renders the display clock's calendar day) and useClock consumes it;
+the 1-second tick re-reads the preference so a Settings change shows on
+the next tick. THREE same-class raw-render misses found by the 12h-ON
+sweep and fixed: Timeline event times (hmOf → formatHm(hmOf)) and
+PatientHistory's previous-medications/labs/imaging stamps (raw →
+displayStamp). Verified RENDERED against a TZ=Asia/Baghdad server with a
+UTC browser: 24h default "00:11:17" at UTC 21:11 (server hour AND the
+date line flipped to Jul 22 — zone-aware calendar proven); the Settings
+radio switch → "12:11:21 AM" within one tick; MC "Last Updated"
+"12:11 AM"; timeline events "11:00 AM"; switch back → "HH:mm:ss"
+restored. SURFACES HONORING THE PREFERENCE (the consistency report):
+both header clocks, MC Last Updated, and every displayStamp/agoLabel/
+nowHm surface (MAR scheduled+given times, orders, labs/imaging stamps,
+timeline, patient history, alerts ages). DELIBERATELY 24h: official/print
+full stamps (displayFullStamp "yyyy-MM-dd HH:mm" document form) and
+clinician-TYPED narrative text containing times ("Hgb recheck 14:00" —
+data, never rewritten). Client-only (tokens.css + 3 page CSS + time.ts +
+useClock.ts + Timeline.tsx + PatientHistory.tsx); no engine/API/score
+change; no migration.**
+
+prior marker retained: current through THE ≥13-INCH RESPONSIVE
 RENDER-SWEEP. THE BUG (clinical testing): on smaller (still laptop/tablet)
 screens the layout broke — words cut off, content clipped, and 'the
 patient disappears' on observations. SCOPE (owner): the floor is 13" (the

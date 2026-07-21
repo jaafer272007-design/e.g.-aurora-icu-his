@@ -114,7 +114,7 @@
 .nw .field select,.nw .field input,.nw .field textarea{width:100%;padding:10px 12px;border-radius:10px;background:rgba(var(--lift-rgb),.04);
  border:1px solid var(--stroke);outline:none;transition:.15s;min-height:44px}
 .nw .field select:focus,.nw .field input:focus,.nw .field textarea:focus{border-color:var(--blue)}
-.nw .field select option{background:var(--optbg)}
+/* option colours now global — tokens.css `select option` (the dark-dropdown fix) */
 .nw .field{margin-bottom:0}
 .nw .btn{padding:12px;border-radius:11px;font-size:13px;font-weight:600;transition:.18s;min-height:46px}
 .nw .btn.primary{background:linear-gradient(135deg,var(--grad-a),var(--cyan));color:var(--ink)}

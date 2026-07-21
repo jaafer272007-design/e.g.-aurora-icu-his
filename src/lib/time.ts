@@ -293,6 +293,27 @@ export const wireStampOfLocal = (t: string): string | null => {
  *  One clock now (localParts), on every surface. */
 export const nowHm = () => formatHm(localParts(Date.now()).hm)
 
+/** The HEADER CLOCK's source (useClock) — the last surface that still
+ *  rendered `Date.toLocaleTimeString('en-GB')` directly: browser zone
+ *  (the same leak class nowHm had) AND a hard-24h locale that ignored
+ *  the 12h/24h preference. Now the display clock (localParts) + the
+ *  preference, like every other rendered time. Seconds come from the
+ *  device Date — every IANA offset is whole-minute, so seconds are
+ *  zone-invariant. The date line renders the display clock's CALENDAR
+ *  day (weekday shifts with the server zone, not the browser's). */
+export function clockDisplayNow(): { time: string; shortTime: string; date: string } {
+  const now = new Date()
+  const { y, mo, d, hm } = localParts(now.getTime())
+  const ss = String(now.getSeconds()).padStart(2, '0')
+  const withSeconds = `${hm}:${ss}`
+  const time = prefers12h()
+    ? formatHm(hm).replace(' ', `:${ss} `) // "2:05 PM" → "2:05:16 PM"
+    : withSeconds
+  const date = new Date(Date.UTC(y, mo - 1, d)).toLocaleDateString('en-GB',
+    { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  return { time, shortTime: formatHm(hm), date }
+}
+
 /** epoch ms whose DISPLAY-CLOCK wall time equals the given
  *  "yyyy-MM-dd HH:mm" — the WRITE side of the one conversion path: what
  *  a user types into a datetime field is wall time (what the clock on

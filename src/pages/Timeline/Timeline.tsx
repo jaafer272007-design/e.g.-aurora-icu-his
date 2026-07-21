@@ -12,7 +12,7 @@ import { getRosterPatient, getPatients, getTimeline } from '../../lib/api'
 import { defaultPatientId, useRememberPatient } from '../../lib/patientContext'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import type { Patient, PatientSummary, TimelineCategory, TimelineEvent } from '../../lib/api/types'
-import { dayOffsetOf, hmOf, toMinutes } from '../../lib/time'
+import { dayOffsetOf, formatHm, hmOf, toMinutes } from '../../lib/time'
 
 const CATEGORIES: { key: TimelineCategory; label: string }[] = [
   { key: 'order', label: 'Orders' }, { key: 'med', label: 'Meds' }, { key: 'lab', label: 'Labs' },
@@ -228,7 +228,11 @@ export function Timeline() {
                     <div className="tmlist">
                       {g.events.map(ev => (
                         <article className={`tmrow${ev.flag === 'critical' ? ' crit' : ''}`} key={ev.id}>
-                          <span className="tmtime num">{hmOf(ev.time)}</span>
+                          {/* formatHm — the event time honors the 12h/24h
+                              preference like every displayed time (the day
+                              grouping above carries the date, so only the
+                              wall time renders here) */}
+                          <span className="tmtime num">{formatHm(hmOf(ev.time))}</span>
                           <span className={`tc ${ev.category}`}>{ev.categoryLabel}</span>
                           <div className="tmbody">
                             <b>{ev.title}</b>
