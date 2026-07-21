@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { clockDisplayNow } from '../lib/time'
 
 export interface ClockState {
   time: string
@@ -6,13 +7,16 @@ export interface ClockState {
   shortTime: string
 }
 
+/* The header clock (AppHeader + Mission Control's clock / "Last Updated").
+   Renders through lib/time's display clock — the server's zone once
+   primed, honoring the 12h/24h Settings preference — instead of the old
+   direct `Date.toLocaleTimeString('en-GB')`, which used the BROWSER's
+   zone (the audited one-conversion-path leak, on the most visible clock
+   in the app) and a hard-24h locale that ignored the preference. The
+   1-second tick re-reads the preference, so a Settings change shows on
+   the very next tick with no extra wiring. */
 function read(): ClockState {
-  const d = new Date()
-  return {
-    time: d.toLocaleTimeString('en-GB'),
-    date: d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }),
-    shortTime: d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-  }
+  return clockDisplayNow()
 }
 
 export function useClock(): ClockState {

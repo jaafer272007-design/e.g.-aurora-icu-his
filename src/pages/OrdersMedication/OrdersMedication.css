@@ -93,7 +93,7 @@
 .om .field select,.om .field input,.om .field textarea{width:100%;padding:10px 12px;border-radius:10px;background:rgba(var(--lift-rgb),.04);
  border:1px solid var(--stroke);outline:none;transition:.15s;min-height:44px}
 .om .field select:focus,.om .field input:focus,.om .field textarea:focus{border-color:var(--blue)}
-.om .field select option{background:var(--optbg)}
+/* option colours now global — tokens.css `select option` (the dark-dropdown fix) */
 .om .field textarea{min-height:64px;resize:vertical}
 .om .omprn{display:flex;flex-direction:column}
 .om .omdfoot{display:flex;gap:10px;margin-top:14px}

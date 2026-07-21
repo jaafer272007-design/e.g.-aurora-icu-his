@@ -222,7 +222,7 @@ export function PatientHistory() {
                 <div className="phrow" key={o.orderId}>
                   <span className="phdrug">{o.medication!.drug}</span>
                   <span>{o.medication!.dose} · {o.medication!.route} · {o.medication!.frequency}</span>
-                  <span className="phmuted">{o.status} · <span className="num">{o.orderedTime}</span></span>
+                  <span className="phmuted">{o.status} · <span className="num">{displayStamp(o.orderedTime)}</span></span>
                 </div>
               ))}
             </Card>
@@ -236,7 +236,9 @@ export function PatientHistory() {
                 <span className="phdrug">{r.analyte}</span>
                 <span className="num">{r.value} {r.unit}</span>
                 <span className={`phflag ${r.flag}`}>{r.flag}</span>
-                <span className="phmuted num">{r.time}</span>
+                {/* displayStamp — honors the 12h/24h preference like the
+                    admission stamps above (was the one raw time render) */}
+                <span className="phmuted num">{displayStamp(r.time)}</span>
               </div>
             ))}
           </Card>
@@ -249,7 +251,7 @@ export function PatientHistory() {
                 <span className="phdrug">{s.modality}</span>
                 <span>{s.description}</span>
                 <span className="phmuted">{s.status}{s.impression ? ` — ${s.impression}` : ''}</span>
-                <span className="phmuted num">{s.reportedAt ?? s.performedAt ?? s.orderedAt}</span>
+                <span className="phmuted num">{displayStamp(s.reportedAt ?? s.performedAt ?? s.orderedAt)}</span>
               </div>
             ))}
           </Card>
