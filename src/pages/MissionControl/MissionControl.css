@@ -86,34 +86,26 @@
 /* right column */
 .mc .colR{grid-column:span 4;display:flex;flex-direction:column;gap:14px;min-width:0}
 
-/* digital twin */
-.mc .twin{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center}
-.mc .twin svg{width:100%;height:auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.4))}
-.mc .organlist{display:flex;flex-direction:column;gap:7px}
-.mc .orow{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:11px;border:1px solid var(--stroke);
- background:rgba(var(--lift-rgb),.02);transition:.15s}
-.mc .orow:hover{border-color:var(--stroke2)}
-.mc .odot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 8px currentColor;background:currentColor}
-.mc .orow .on{font-size:12px;font-weight:600;flex:1;color:var(--text)}
-.mc .orow .os{font-size:10.5px;color:var(--dim)}
-.mc .st-ok{color:var(--green)} .mc .st-watch{color:var(--amber)} .mc .st-crit{color:var(--red)}
-.mc .organ{transition:fill .5s, filter .5s}
-.mc .o-ok{fill:rgba(var(--green-rgb),.75);filter:drop-shadow(0 0 5px rgba(var(--green-rgb),.8))}
-.mc .o-watch{fill:rgba(var(--amber-rgb),.85);filter:drop-shadow(0 0 6px rgba(var(--amber-rgb),.9))}
-.mc .o-crit{fill:rgba(var(--red-rgb),.9);filter:drop-shadow(0 0 8px rgba(var(--red-rgb),1));animation:blink 1.2s infinite}
-/* not assessed — SOFA insufficient-data (P1): flat grey, no glow; the
-   honest state for an unscored system is neutral, never green */
-.mc .o-nd{fill:rgba(var(--steel3-rgb),.35)}
-.mc .orow.st-nd .odot{background:transparent;box-shadow:none;border:1.5px solid var(--faint)}
-.mc .orow.st-nd .on,.mc .orow.st-nd .os{color:var(--faint)}
-/* per-system SOFA sub-score chip (colour never the sole signal) */
-.mc .osc{font-family:var(--mono);font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:999px;border:1px solid var(--stroke)}
-.mc .osc.s-ok{color:var(--green);border-color:rgba(var(--green-rgb),.4)}
-.mc .osc.s-watch{color:var(--amber);border-color:rgba(var(--amber-rgb),.4)}
-.mc .osc.s-crit{color:var(--red);border-color:rgba(var(--red-rgb),.45)}
-.mc .osc.nd{color:var(--faint)}
-.mc .twinempty{font-size:11px;color:var(--dim);padding:10px 6px;line-height:1.5}
-.mc .twinfoot{font-size:9.5px;color:var(--faint);padding-top:6px;line-height:1.45;border-top:1px dashed var(--stroke);margin-top:2px}
+/* digital twin — a purely DECORATIVE anatomical figure (no clinical
+   status colour; the honest status lives on the NEWS2/SOFA cards, the
+   observation tiles and the severity dot). One aesthetic accent (cyan /
+   steel tokens), theme-aware. */
+.mc .twin{display:grid;grid-template-columns:140px 1fr;gap:14px;align-items:center}
+.mc .twinfig{width:100%;height:auto;filter:drop-shadow(0 6px 18px rgba(0,0,0,.28))}
+/* organ glyphs share ONE illustrative treatment — a soft cyan-tinted
+   fill with a gentle glow; no per-organ colour, nothing to mislead */
+.mc .twinorgans{filter:drop-shadow(0 0 5px rgba(var(--cyan-rgb),.28))}
+/* the circulation ring drifts slowly — decoration only, reduced-motion off */
+.mc .twinring{transform-origin:60px 118px;animation:twinpulse 6s ease-in-out infinite}
+@keyframes twinpulse{0%,100%{opacity:.55}50%{opacity:.9;transform:scale(1.015)}}
+@media (prefers-reduced-motion: reduce){.mc .twinring{animation:none}}
+.mc .twinaside{display:flex;flex-direction:column;gap:12px}
+.mc .twinlabels{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.mc .twinlabels li{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--text)}
+.mc .tldot{width:7px;height:7px;border-radius:50%;background:rgba(var(--cyan-rgb),.55);
+ box-shadow:0 0 6px rgba(var(--cyan-rgb),.5);flex:none}
+.mc .twinnote{font-size:10.5px;color:var(--dim);line-height:1.5;margin:0;padding-top:10px;
+ border-top:1px dashed var(--stroke)}
 
 /* generic tile grids */
 .mc #vent,.mc #hemo,.mc #meds{grid-column:span 4}
