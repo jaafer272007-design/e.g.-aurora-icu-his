@@ -100,6 +100,13 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
           key={it.key}
           className={`nv${it.key === active ? ' on' : ''}`}
           aria-current={it.key === active ? 'page' : undefined}
+          /* aria-label + title so the item stays identifiable when the
+             sidebar is icon-only (below the 13" floor, where the label
+             span is display:none): screen readers get the name, and a
+             hover tooltip names each bare icon. Harmless when the label
+             text is visible (≥1180px). */
+          aria-label={it.label}
+          title={it.label}
           onClick={it.to ? () => navigate(it.to!) : undefined}
         >
           {it.icon}

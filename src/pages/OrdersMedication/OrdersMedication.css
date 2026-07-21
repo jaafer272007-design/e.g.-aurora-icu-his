@@ -152,7 +152,6 @@
 .omdialog .btn:disabled{opacity:.45;cursor:not-allowed}
 .omhint{font-size:10.5px;color:var(--faint);margin-top:8px;text-align:center}
 
-@media(max-width:1500px){.om .shell{grid-template-columns:64px 220px 1fr}}
 @media(max-width:1280px){.om .omcols{grid-template-columns:1fr}}
 @media(max-width:1180px){
  .om .shell{grid-template-columns:64px 1fr}

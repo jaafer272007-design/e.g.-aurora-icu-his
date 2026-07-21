@@ -28,7 +28,7 @@
 /* PR 3 — production derived-summary additions */
 .ad .adnone{color:var(--faint);font-size:11px}
 .ad .adstatlink{margin-top:12px}
-@media(max-width:1500px){.ad .shell{grid-template-columns:64px 1fr}}
+@media(max-width:1180px){.ad .shell{grid-template-columns:64px 1fr}}
 @media(max-width:1180px){.ad.app-frame{height:auto;overflow:visible}.ad main{overflow:visible}}
 
 /* Layer 3 — link to /admin/users, inline with the admin note */

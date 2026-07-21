@@ -127,7 +127,7 @@
 .nw .field + .field{margin-top:12px}
 .nw .sbarsave{margin-top:14px}
 
-@media(max-width:1500px){.nw .shell{grid-template-columns:64px 1fr}}
+@media(max-width:1180px){.nw .shell{grid-template-columns:64px 1fr}}
 @media(max-width:1180px){
  .nw main{grid-template-columns:1fr;overflow:visible}
  .nw.app-frame{height:auto;overflow:visible}

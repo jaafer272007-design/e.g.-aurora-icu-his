@@ -99,7 +99,6 @@
 .obs .obsselfnote{font-size:10px;color:var(--green)}
 .obs .obseditbtns{display:flex;gap:8px;justify-content:flex-end}
 
-@media(max-width:1500px){.obs .shell{grid-template-columns:64px 220px 1fr}}
 @media(max-width:1180px){
  .obs .shell{grid-template-columns:64px 1fr}
  .obs .ptrail{display:none}

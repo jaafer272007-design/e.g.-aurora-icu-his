@@ -5,9 +5,9 @@
    back to display:block and the full-width nav-sidebar stacked ABOVE the
    content, pushing the picker to the bottom of the viewport. Matches the
    single-rail screens (Discharges / Doctor Workspace / Admin), including
-   the ≤1500px rail collapse that pairs with NavSidebar.css hiding labels. */
+   the ≤1180px rail collapse that pairs with NavSidebar.css hiding labels. */
 .pc .shell { display: grid; grid-template-columns: 198px 1fr; min-height: 0; }
-@media (max-width: 1500px) { .pc .shell { grid-template-columns: 64px 1fr; } }
+@media (max-width: 1180px) { .pc .shell { grid-template-columns: 64px 1fr; } }
 
 .pc-body {
   display: grid;
