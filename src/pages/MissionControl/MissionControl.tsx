@@ -104,6 +104,11 @@ export function MissionControl() {
      every clinical profile and by NEITHER administrator (the locked
      rule: the office Administrator never sees clinical data) */
   const canHistory = session ? hasPermission(session.jobTitle, 'results.view') : false
+  /* ORDER shortcut — jumps straight to Orders & Meds scoped to THIS
+     patient (real navigation, not a fabricated drawer — the fake
+     "+ Order" drawer was retired in #93). Gated on orders.view, the same
+     permission the /orders/:patientId route requires. */
+  const canOrder = session ? hasPermission(session.jobTitle, 'orders.view') : false
 
   /* NURSE COVERAGE (Assignment Simplification — the opt-out model):
      everyone with patients.view SEES who is covering; carving/restoring
@@ -314,6 +319,9 @@ export function MissionControl() {
                 )}
                 {canHistory && (
                   <> · <button className="idbtn" onClick={() => navigate(`/patients/${patientId}/history`)} aria-label="Open the patient history overview">🕘 History</button></>
+                )}
+                {canOrder && patientId && (
+                  <> · <button className="idbtn" onClick={() => navigate(`/orders/${patientId}`)} aria-label={`Place an order for ${pid?.fullName ?? pid?.name ?? 'this patient'}`}>💊 Order</button></>
                 )}
               </div>
             </div>

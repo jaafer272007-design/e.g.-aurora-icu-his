@@ -1,6 +1,44 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-21 · current through THE DIGITAL TWIN MADE
+**Last updated: 2026-07-21 · current through TWO CLINICAL-TESTING POLISH
+FIXES — the Attending consultant dropdown + the patient-chart Order
+shortcut (item 3, the two-theme contrast pass, is HELD as its own
+separate PR by the owner's "stack now, split theme pass" decision). FIX
+1 — ATTENDING IS NOW SELECTED, NOT TYPED (safety): the admission form's
+Attending field was a free-text `<input>` (Admissions.tsx), so a typo
+wrote a ghost/wrong attending onto the encounter. It is now a `<select>`
+populated from a NEW clinician-readable staff read — GET
+`/api/icu/adt/attendings` (AdtApi.cs) — returning the ACTIVE
+SeniorDoctor-profile accounts (the consultants who attend), ordered by
+name, gated on `adt.admit` (both Doctor and SeniorDoctor tokens hold
+it). THE KEY DESIGN POINT: the existing user directory (`/api/icu/users`)
+is System-Administrator-ONLY by design and NEVER clinical, so it can
+never feed a doctor's admission form — a dedicated clinician-readable
+endpoint was required (mirroring `/assignments/staff`, which is
+nurses-only). The client `getAttendings()` replaces the getUsers-based
+draft; the placeholder option is disabled (forces a real pick); an
+out-of-list pre-filled attending (e.g. a re-admission) is preserved as
+its own option so nothing is silently dropped. FIX 2 — ORDER SHORTCUT IN
+THE CHART: Mission Control's identity row now carries a "💊 Order"
+`.idbtn` next to History that navigates to `/orders/:patientId` — REAL
+routing to the patient-scoped Orders & Meds screen, gated on
+`orders.view` (the same atom the route requires). NOT the fake "+ Order"
+drawer retired in #93 — no fabricated ordering surface returns. Verified
+12/12 rendered on the one-origin SQLite stack (Attending is a `<select>`
+not an `<input>`, lists the seeded Consultant, placeholder disabled and
+selectable; chart has the 💊 Order idbtn, clicking it lands on
+`/orders/P-1001` — the real screen, no drawer overlay; both light and
+dark screenshots delivered) + API RBAC proven (doctor 200 / nurse 403 /
+unauth 401 / unknown-param 400) + the consultants-only FILTER proven
+(20 seeded users incl. 4 other doctor-tier titles → the endpoint returns
+ONLY the 1 Consultant; maya.chen the nurse absent). A new
+deployed-adt-e2e leg locks the endpoint (RBAC + consultants-only). No
+migration; no engine/score change; the theme pass is deferred to its own
+PR. flagged: the demo seed carries exactly ONE Consultant, so the live
+dropdown shows a single option until more consultant accounts exist —
+honest, not a bug.**
+
+prior marker retained: current through THE DIGITAL TWIN MADE
 PURELY DECORATIVE (safety) + the score-pipeline diagnostic. THE FINDING
 (clinical testing): the Patient Digital Twin coloured each organ from a
 SOFA sub-score (the score-derived design shipped in PR #154), and that

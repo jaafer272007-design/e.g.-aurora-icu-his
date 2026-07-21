@@ -146,6 +146,36 @@ jobs:
           echo "using free beds $B1, $B2"
           { echo "B1=$B1"; echo "B2=$B2"; } >> "$GITHUB_ENV"
 
+      - name: Attending picker — consultants only, doctor-readable, RBAC
+        run: |
+          # GET /adt/attendings feeds the admission form's Attending
+          # dropdown (the free-text-attending SAFETY FIX). It returns the
+          # ACTIVE SeniorDoctor-profile accounts, is gated on adt.admit,
+          # and — unlike the System-Administrator-only /users directory —
+          # is readable by an admitting clinician.
+          rc=$(curl -s -o /tmp/att.json -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/adt/attendings")
+          echo "doctor reads attendings -> HTTP $rc"; [ "$rc" = "200" ] || { cat /tmp/att.json; exit 1; }
+          python3 - <<'PY'
+          import json
+          rows = json.load(open('/tmp/att.json'))
+          assert isinstance(rows, list) and len(rows) >= 1, rows
+          names = {r['username'] for r in rows}
+          # the seeded Consultant is present (a real selectable attending)…
+          assert 'sara.rahman' in names, sorted(names)
+          # …and a NURSE account is absent (the picker is consultants-only,
+          # never the free-text string it replaced)
+          assert 'maya.chen' not in names, sorted(names)
+          print(f"attendings: {len(rows)} consultant option(s); sara.rahman present, maya.chen absent")
+          PY
+          # a nurse token has no adt.admit → 403 (cannot read the picker)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR" "$API/api/icu/adt/attendings")
+          echo "nurse reads attendings -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          # unauth → 401; unknown query param → 400 (four-code discipline)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/adt/attendings")
+          echo "unauth attendings -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/adt/attendings?foo=1")
+          echo "unknown param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
       - name: RBAC — NURSE admit → 403; unauth → 401; unknown field → 400
         run: |
           body='{"nameFirst":"E2E","nameSecond":"ADT","nameFamily":"Patient","age":49,"sex":"F","allergies":"None documented","diagnosis":"deployed ADT E2E","attending":"Dr. E2E","bedId":"'$B1'"}'
