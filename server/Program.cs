@@ -41,6 +41,17 @@ using Microsoft.IdentityModel.Tokens;
    every boot must name its environment, and production refuses the
    SQLite fallback outright (BootGuards T2). See Core/Persistence. */
 
+/* ---- MACHINE CONFIG PARITY (native Windows Service host, Option B —
+   HOSPITAL_INSTALLER_RUNTIME_DESIGN.md). FIRST statement: load a KEY=VALUE
+   machine config file (the installer writes it; AURORA_ENV_FILE or
+   `aurora.env` beside the binary) INTO THE PROCESS ENVIRONMENT before the
+   backup CLI and the boot gates below read the environment directly. Docker
+   / dev / CI are UNCHANGED — a variable already set in the real environment
+   is never overwritten, and a missing file is a silent no-op (those paths
+   set env vars via compose / the shell / the CI job). The service, which has
+   no compose, gets its identical config from the file. See AuroraEnvFile. */
+Aurora.Core.Shared.AuroraEnvFile.LoadIntoProcess();
+
 /* ---- BACKUP/DR CLI (BACKUP_DR_DESIGN.md) — dispatched BEFORE the boot
    gates because these are one-shot OPERATOR commands, not the serving
    process: the nightly Task Scheduler job runs
@@ -95,6 +106,18 @@ Environment.SetEnvironmentVariable("DOTNET_hostBuilder__reloadConfigOnChange", "
 Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "true");
 
 var builder = WebApplication.CreateBuilder(args);
+
+/* ---- NATIVE WINDOWS SERVICE HOST (Option B). No-op everywhere except when
+   the process was actually started by the Windows Service Control Manager
+   (WindowsServiceHelpers.IsWindowsService()): on Docker/Render/dev/CI this
+   changes nothing. Under the SCM it installs the Windows-service lifetime
+   (so Start/Stop are honoured) and roots the content path at the binary
+   directory (a service's working directory is System32) — which is why the
+   installer supplies ABSOLUTE paths (DATABASE_URL, BACKUP_DIR, BACKUP_KEY_FILE)
+   in aurora.env. Auto-start-on-boot and restart-on-crash are the service's
+   SCM configuration (startup type Automatic + Recovery actions), set by the
+   installer (PR B), not here. */
+builder.Host.UseWindowsService();
 
 /* Render (and most PaaS) inject PORT; default 8080 for local Docker runs. */
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";

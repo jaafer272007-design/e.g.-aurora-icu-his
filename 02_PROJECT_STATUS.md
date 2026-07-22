@@ -1,6 +1,48 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-22 · current through BACKUP USABILITY — TWO
+**Last updated: 2026-07-22 · current through HOSPITAL INSTALLER + ALWAYS-ON
+RUNTIME — DESIGN + PR A. The complete "double-click install, runs itself
+24/7" story. Owner CONFIRMED the verify-first recommendation: adopt native
+Windows Services (Option B) and DROP Docker from production (Docker stays the
+dev/validator testbed only, as the README always planned). Why Option A
+(installer bundles Docker) was rejected — verified: Docker Desktop needs the
+internet + WSL2 to install and a paid per-user Business licence at hospital
+size, and — fatally — it is a per-user app that does NOT run without a
+logged-in user, so an unattended hospital server at the login screen would
+not be running Aurora. Native Windows Services solve all three: startup type
+Automatic starts them at boot BEFORE login, SCM Recovery restarts them on
+crash, they run headless, and CUDA is native (no container GPU passthrough).
+Design doc: HOSPITAL_INSTALLER_RUNTIME_DESIGN.md (the full install → run →
+daily-use flow; installer = Inno Setup recommended; PostgreSQL + a
+self-contained .NET service + a native llama.cpp service, all Automatic +
+SCM-recovery + dependency-ordered; the wizard collects admin password /
+access URL / formulary / timezone / GPU, inits + seeds the DB, runs the
+backup-key ceremony, registers the #164 nightly backup, opens the firewall).
+🔴 PR A BUILT — service-host parity (the small, Linux-testable slice): (1)
+`builder.Host.UseWindowsService()` (Microsoft.Extensions.Hosting.
+WindowsServices) — a NO-OP unless the process is started by the Windows SCM,
+so Docker/Render/dev/CI are byte-unchanged; under the SCM it installs the
+service lifetime + roots the content path at the binary dir (why the
+installer supplies ABSOLUTE paths). (2) AuroraEnvFile.LoadIntoProcess() as
+the FIRST statement in Program.cs — loads a KEY=VALUE machine config
+(AURORA_ENV_FILE or `aurora.env` beside the binary) into the PROCESS
+ENVIRONMENT before the backup CLI + boot gates read it, so a native service
+(no compose) is configured identically to Docker; the real environment
+ALWAYS WINS (fills gaps only) and a missing file is a silent no-op, so every
+existing deployment is unchanged. VERIFIED on Linux (proves parity without
+Windows): server config sourced ENTIRELY from aurora.env (PORT 8091 + APP_ENV
+development + SQLite DB_PATH all from the file; port 8080 down) · real env
+PORT=8092 WINS over the file's 8091 (Docker/dev/CI untouched) · a missing
+AURORA_ENV_FILE is a no-op (env-only boot works) · the backup CLI reads the
+file too (status → the file's BACKUP_DIR). Server build clean (0 errors; 1
+pre-existing BootGuards warning). CODE-REVIEWED-ONLY (needs the owner's real
+Windows machine): the SCM lifetime activation, Automatic-start-before-login,
+and SCM crash-recovery — these are Windows-only and are what PR B's installer
+configures. NEXT: PR B (Inno installer — Windows-verified on the owner's
+second machine alongside the backup-restore test) + PR C (native AI
+service).**
+
+Prior work through BACKUP USABILITY — TWO
 "NEVER TOUCH POWERSHELL" FIXES (so a hospital's IT admin runs backups from
 the app, and a "next-next-finish" install ends with automatic nightly
 backups ON). Changes only HOW a backup is TRIGGERED, never what a backup IS
