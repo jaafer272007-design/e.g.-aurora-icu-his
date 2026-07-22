@@ -10,6 +10,11 @@
   <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.8" />
+    <!-- Native Windows Service host (installer Option B). Cross-platform
+         package; builder.Host.UseWindowsService() is a no-op unless the
+         process was started by the Windows SCM, so Docker/Render/dev/CI are
+         unaffected. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
     <!-- Postgres is THE persistence provider (Render database + migrations +
          durable writes). Sqlite remains ONLY for the explicitly-logged
          EPHEMERAL demo fallback when DATABASE_URL is unset (plain local
