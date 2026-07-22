@@ -229,6 +229,33 @@ if (-not (Test-Path "secrets\backup.key")) {
   } catch { Write-Host "NOTE: set the ACL on secrets\backup.key so only the Task Scheduler account can read it." -ForegroundColor Yellow }
 }
 
+# ---- Backup & Disaster Recovery: the nightly schedule (design §1) ----
+# A hospital install ends with automatic nightly backups ON — the schedule is
+# registered HERE, as PART OF THE INSTALL, not as a separate command a
+# hospital must remember (a forgotten -Install left backups OFF). Reuses the
+# ONE registration in backup.ps1 -Install (same task name, same trigger from
+# BACKUP_SCHEDULE, same principal), so the scheduled time and the dashboard's
+# "next scheduled" stay in lockstep. Idempotent — a reboot confirms and skips.
+# NEVER fatal: registering a task needs elevation, and a HIS that comes up
+# beats one blocked on an unelevated Task Scheduler call, so we warn with the
+# one manual line and continue (mirrors the init-key handling above).
+if ($Mode -eq "production") {
+  $existing = Get-ScheduledTask -TaskName "AuroraBackup" -ErrorAction SilentlyContinue
+  if ($existing) {
+    Write-Host "Automatic nightly backup already registered (Task Scheduler 'AuroraBackup')."
+  } else {
+    Write-Host "Registering the automatic nightly backup (Windows Task Scheduler)..."
+    try {
+      & (Join-Path $PSScriptRoot "backup.ps1") -Install
+      Write-Host "Automatic nightly backup is ON — it runs every night with no further action." -ForegroundColor Green
+    } catch {
+      Write-Host "WARNING: could not register the nightly backup task automatically ($($_.Exception.Message))." -ForegroundColor Yellow
+      Write-Host "         Backups are NOT yet scheduled. Run this ONCE in an ELEVATED PowerShell to turn them on:" -ForegroundColor Yellow
+      Write-Host "         .\backup.ps1 -Install" -ForegroundColor Yellow
+    }
+  }
+}
+
 # The LAN address other devices can reach is the one on the adapter that
 # carries the DEFAULT ROUTE — "first non-loopback IPv4" is wrong on
 # Docker-Desktop machines, where it lands on the WSL/Hyper-V virtual
@@ -250,10 +277,16 @@ Write-Host "  this machine : http://localhost:$port"
 if ($ip) { Write-Host "  on the LAN   : http://${ip}:$port   (other devices on the network - iPad included)" }
 Write-Host ""
 Write-Host "BACKUP & DISASTER RECOVERY (the go-live gate):"
-Write-Host "  Register the automatic nightly backup (Windows Task Scheduler):"
-Write-Host "     .\backup.ps1 -Install"
-Write-Host "  It runs the encrypted daily backup, copies it to the off-site USB (set BACKUP_USB in"
-Write-Host "  appliance\.env), and the System Administrator watches health at  /backup  in the app."
+if ($Mode -eq "production") {
+  Write-Host "  Automatic nightly backup: REGISTERED at install (Task Scheduler 'AuroraBackup') - it"
+  Write-Host "  runs the encrypted, restore-verified daily backup every night with no further action."
+  Write-Host "  Set BACKUP_USB in appliance\.env for the off-site copy. The System Administrator can also"
+  Write-Host "  click 'Backup now' and watch health at  /backup  in the app - no PowerShell needed."
+} else {
+  Write-Host "  A PRODUCTION install registers the nightly backup AUTOMATICALLY. On this demo testbed,"
+  Write-Host "  register it manually if you want it:  .\backup.ps1 -Install"
+  Write-Host "  The System Administrator manages backups (incl. 'Backup now') at  /backup  in the app."
+}
 Write-Host "  Before go-live: prove a restore on a DIFFERENT clean machine with  .\restore.ps1  (the"
 Write-Host "  non-negotiable acceptance test - a backup that has never been restored is only a hope)."
 Write-Host ""
