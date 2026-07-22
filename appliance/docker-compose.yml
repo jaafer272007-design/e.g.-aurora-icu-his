@@ -93,6 +93,34 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       FORMULARY_SEED: ${FORMULARY_SEED:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      # BACKUP & DISASTER RECOVERY (the hard go-live gate). The nightly
+      # Windows Task Scheduler job runs `docker exec aurora dotnet
+      # AuroraIcu.Api.dll backup`, which encrypts the pg_dump with
+      # AES-256-GCM using the ACL-restricted key file and writes to the
+      # on-server primary target below; backup.ps1 then copies to the
+      # off-site USB. Both directories are HOST-mounted so the backups and
+      # the key survive the container (a backup inside an ephemeral
+      # container is no backup) and the operator can rotate the USB.
+      BACKUP_DIR: /backups
+      BACKUP_KEY_FILE: /secrets/backup.key
+      # "daily HH:mm" in the HOSPITAL timezone (TZ above) — the dashboard's
+      # next-run is computed from this; the actual trigger is Task Scheduler
+      # (backup.ps1 -Install), so this string and the scheduled task must
+      # agree (the installer sets both).
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-daily 02:00}
+      # GFS retention (design §1: 30 daily / 12 weekly / 12 monthly),
+      # auto-pruned after every backup. Overridable per hospital policy.
+      BACKUP_KEEP_DAILY: ${BACKUP_KEEP_DAILY:-30}
+      BACKUP_KEEP_WEEKLY: ${BACKUP_KEEP_WEEKLY:-12}
+      BACKUP_KEEP_MONTHLY: ${BACKUP_KEEP_MONTHLY:-12}
+    volumes:
+      # PRIMARY on-server backup target + the encryption key, both on the
+      # HOST filesystem (never a named volume the container owns): backups
+      # and the key must outlive any container, and the operator/Task
+      # Scheduler reach them from the host. The key directory is ACL-locked
+      # by the installer; git ignores ./backups and ./secrets.
+      - ./backups:/backups
+      - ./secrets:/secrets
     healthcheck:
       # the aspnet runtime image ships no curl/wget — a bash /dev/tcp
       # probe checks the listener without touching the image; the run

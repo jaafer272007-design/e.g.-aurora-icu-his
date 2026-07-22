@@ -80,6 +80,12 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
     public DbSet<DispositionRow> Dispositions => Set<DispositionRow>();
     public DbSet<IsolationTypeRow> IsolationTypes => Set<IsolationTypeRow>();
     public DbSet<ShiftRow> Shifts => Set<ShiftRow>();
+    /* Backup & DR (the hard go-live gate): the immutable audit of every
+       backup/restore/verify/key-rotation/prune event — append-only by
+       construction (insert + read only; no update/delete surface exists).
+       Lives in this same database ON PURPOSE: every backup captures its
+       own audit trail (design §5). */
+    public DbSet<Aurora.Core.Backup.BackupEventRow> BackupEvents => Set<Aurora.Core.Backup.BackupEventRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {

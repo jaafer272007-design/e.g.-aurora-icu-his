@@ -112,6 +112,7 @@ export type Permission =
   | 'isolation.manage'     // Configuration Vocabularies: maintain the IPC isolation-type vocabulary (CLINICAL governance — SeniorDoctor ONLY; never office admin). Setting a PATIENT's isolation rides observations.record, exactly the codestatus.set split.
   | 'shifts.manage'        // Configuration Vocabularies: maintain the working-shift vocabulary (OPERATIONAL/clinical governance — SeniorDoctor ONLY; never office admin). Since the Assignment Simplification nothing references shifts at assignment time (the opt-out model has no per-assignment shift); the vocabulary remains hospital data and historical #114 rows keep resolving their stored codes.
   | 'frequencies.manage'   // Configuration Vocabularies: maintain the NAMED medication-frequency vocabulary (PHARMACY governance — Pharmacist ONLY, the formulary.manage precedent). The structured q<n>h pattern stays code, never a hospital list.
+  | 'backup.manage'        // Backup & DR (the hard go-live gate): the Backup & Recovery area — run/verify/test-restore backups, rotate the key, read the immutable audit (IT OPERATIONS — System Administrator ONLY per the design's §1 owner decision; every clinical profile 403s). Backups are opaque encrypted blobs: managing them never reads patient data, so the profile's clinical exclusion is untouched.
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -169,8 +170,10 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
      hold it — accounts, not identity. */
   Administrator: ['admin.view', 'patients.view', 'identity.correct', 'hospital.configure', 'beds.manage'],
   /* the highest-privilege authority: controls who can reach patient data
-     while never reaching it (no clinical atoms, not even patients.view) */
-  SystemAdministrator: ['users.manage', 'users.view'],
+     while never reaching it (no clinical atoms, not even patients.view).
+     backup.manage: backup/restore is IT operations (design §1) — and an
+     encrypted backup is opaque, so the exclusion above still holds. */
+  SystemAdministrator: ['users.manage', 'users.view', 'backup.manage'],
   /* medication-chart review + Layer 4: maintaining the formulary is
      PHARMACY's authority (the same polarity flip as results.create on
      Ancillary — doctors/nurses/administrators are 403'd on mutations) */

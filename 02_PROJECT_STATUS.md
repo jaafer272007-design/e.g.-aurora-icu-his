@@ -1,6 +1,78 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-21 · current through POLISH BATCH 2 (clinical
+**Last updated: 2026-07-22 · current through BACKUP & DISASTER RECOVERY —
+THE HARD GO-LIVE GATE (BACKUP_DR_DESIGN.md). Built from the owner's design
+in full: ONE C# backup engine (server/Core/Backup) shared by three
+callers — the nightly Windows Task Scheduler job (CLI verbs via `docker
+exec`), the System-Administrator Backup area (`/api/backup/*`), and the
+bare-machine `restore.ps1` (decrypt/verify verbs via `docker run`). 🔴 THE
+CENTERPIECE, kept and extended from PR #62: every backup is BORN
+RESTORE-VERIFIED — the `pg_dump --format=custom` is restored into a
+scratch database before the backup is declared successful, and the
+manifest's per-table record counts + content digests are taken FROM THAT
+RESTORED COPY, so restorability is proven on every single run, not just at
+go-live. ENCRYPTION: AES-256-GCM (design §1/§4) — authenticated; a
+tampered/truncated/wrong-key backup fails the 16-byte tag with a LOUD
+error naming the needed key id, structurally incapable of silent garbage
+(file format `AURBK1\0`·8-hex keyId·12-byte nonce·16-byte tag·ciphertext).
+KEY MECHANISM (§4): generated at install into the ACL-restricted host file
+`appliance/secrets/backup.key` for unattended nightly encryption AND
+shown EXACTLY ONCE by run.ps1/run.sh for the operator to record into the
+sealed envelope + password manager + hospital-management copies — never
+only on-server (the server's death loses its copy); a human supplies the
+key on restore. COMPLETE CAPTURE (§3): one dump captures all 26 tables +
+the new BackupEvents audit table; audit logs (Users.EventsJson,
+Orders.HistoryJson/AdministrationsJson, Encounters.*Json) and the hospital
+logo (HospitalIdentity.LogoBase64) ride inside by construction; ./models
+and appliance/.env excluded EXCEPT TZ, which travels in the UNENCRYPTED
+manifest so the restored machine keeps the hospital clock. RETENTION:
+GFS 30 daily / 12 weekly / 12 monthly, auto-pruned after every backup,
+the pruned list audited. 🔴 IMMUTABLE AUDIT (§5): BackupEvents is
+append-only BY CONSTRUCTION (insert + read only; no update/delete surface
+anywhere) and lives in the same DB, so every backup captures its own audit
+trail; every backup/verify/test-restore/restore/prune/key-rotation/usb-
+copy/failure writes one event. RBAC: `backup.manage` on the
+SystemAdministrator profile ONLY (server Rbac + client session) — clinical
+roles get the generic 403. THE BACKUP AREA (`/backup`, §6, both themes,
+System-Administrator-gated): Dashboard (health, next scheduled in hospital
+TZ, retention held/kept, honest external-USB status from the audit trail,
+key id) with a 🔴 LOUD PERSISTENT red alert when no backup has succeeded
+in 24h / ever / last attempt failed; Backup History (per-row Verify,
+Verify-with-recorded-key, Test Restore); Verify (integrity without a
+restore); Test Restore (isolated scratch DB — live data never touched);
+the Restore Wizard disaster runbook; and the immutable audit trail.
+APPLIANCE: docker-compose mounts host `./backups` + `./secrets` and sets
+BACKUP_DIR/KEY_FILE/SCHEDULE + the 30/12/12 knobs; server/Dockerfile adds
+PostgreSQL 16 client tools (PGDG) so pg_dump/pg_restore run inside the
+container; `appliance/backup.ps1 -Install` registers the daily Task
+Scheduler job (encrypted backup → off-site USB robocopy → audited usb-copy
+outcome); `appliance/restore.ps1` is the bare-machine recovery
+(Docker check → fresh .env with TZ from the manifest → postgres alone →
+human-key decrypt → pg_restore → aurora up → the §8 acceptance
+comparison). 🔴 THE PRE-GO-LIVE ACCEPTANCE TEST (§8, the definition of
+done) — PROVEN in this window: a backup taken on machine A was restored on
+a DIFFERENT clean machine B (two isolated Postgres 16 containers) and the
+`verify-restored` comparison PASSED — source-vs-restored record counts AND
+per-table content digests IDENTICAL across ALL 28 tables (patients 14,
+users 21, orders 19, observations 3, lab draws 73, imaging 7, catalogues,
+configuration, audit) with the hospital logo bytes intact. Edge cases all
+proven: wrong key → loud GCM failure naming key id 618ca601; missing key
+→ loud refusal; corruption → caught by BOTH sha256 AND the GCM tag; verify
+→ 6 checks pass; test-restore → isolated scratch, live untouched, zero
+scratch-DB leaks; GFS prune → same-day dedup + ancient pruned + monthly-
+window kept; 24h-stale + none health → loud messages; RBAC → 200 sysadmin
+/ 403 clinical / 401 anon; the immutable audit recorded all 7 operations.
+UI verified RENDERED both themes (dashboard, history, audit trail, Restore
+Wizard runbook, and the LOUD "NO BACKUP EXISTS" red persistent alert).
+dotnet build + tsc + vite build all clean. NOTE (honest): restore.ps1 /
+backup.ps1 Task-Scheduler registration require the validator's Windows +
+Docker Desktop to exercise end-to-end (the engine they drive is proven
+here on Linux against real Postgres 16); the server/Dockerfile PGDG layer
+is proven by Package CI (the sandbox proxy blocks some apt repos). No
+change to any clinical behaviour, score, or lifecycle — backups are opaque
+encrypted blobs. Migration AddBackupEvents adds one append-only table.**
+
+**prior marker retained: current through POLISH BATCH 2 (clinical
 testing): DARK-THEME DROPDOWN OPTIONS + THE 12h/24h CLOCK. FIX 1 — 🔴
 dropdown option text invisible in DARK theme (e.g. the MODALITY select on
 the imaging-report entry). ROOT CAUSE, two halves: (a) the app never

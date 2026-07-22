@@ -1903,3 +1903,112 @@ export interface EditHospitalIdentityDraft {
   headerText: string
   footerText: string
 }
+
+/* ---------------- Backup & Disaster Recovery (the hard go-live gate) ----------------
+   Wire shapes of /api/backup/* (System-Administrator-gated; REAL-ONLY —
+   there is no mock backup: a pretend backup would be the exact disaster
+   the design exists to prevent). Mirrors server/Core/Backup DTOs. */
+
+export interface BackupRetention {
+  dailyKeep: number
+  weeklyKeep: number
+  monthlyKeep: number
+  dailyHeld: number
+  weeklyHeld: number
+  monthlyHeld: number
+}
+
+/** external USB disk status — HONEST, from the audit trail the host-side
+ *  scheduled task records (the container cannot probe the host's disk) */
+export interface BackupExternalDisk {
+  lastCopyAt?: string | null
+  lastOutcome?: string | null
+  detail?: string | null
+}
+
+export interface BackupStatus {
+  /** ok | stale (>24h — the LOUD persistent alert) | failed | none */
+  health: 'ok' | 'stale' | 'failed' | 'none'
+  healthDetail: string
+  lastSuccessAt?: string | null
+  lastOutcome?: string | null
+  nextScheduled?: string | null
+  schedule: string
+  backupCount: number
+  totalBytes: number
+  retention: BackupRetention
+  externalDisk: BackupExternalDisk
+  keyId: string
+  backupDir: string
+}
+
+export interface BackupHistoryEntry {
+  file: string
+  createdAtUtc: string
+  sizeBytes: number
+  keyId: string
+  timeZone: string
+  tableCount: number
+  rowTotal: number
+  lastVerifiedAt?: string | null
+  /** "verify:success" | "test-restore:failed" | … */
+  lastVerifyKind?: string | null
+}
+
+/** one immutable audit row (append-only — no mutation endpoint exists) */
+export interface BackupEvent {
+  id: number
+  at: string
+  kind: string
+  outcome: string
+  actor: string
+  file: string
+  detailJson: string
+}
+
+export interface BackupCheck {
+  check: string
+  ok: boolean
+  detail: string
+}
+
+export interface BackupVerifyResult {
+  file: string
+  ok: boolean
+  checks: BackupCheck[]
+}
+
+export interface BackupTableComparison {
+  table: string
+  sourceCount: number
+  restoredCount: number
+  countMatch: boolean
+  digestMatch: boolean
+}
+
+export interface BackupTestRestoreResult {
+  file: string
+  ok: boolean
+  scratchDb: string
+  tables: BackupTableComparison[]
+  checks: BackupCheck[]
+  summary: string
+}
+
+/** the manifest facts /api/backup/run answers with (born restore-verified) */
+export interface BackupManifestSummary {
+  file: string
+  createdAtUtc: string
+  timeZone: string
+  keyId: string
+  encryptedSizeBytes: number
+  tableCounts: Record<string, number>
+  logoSha256: string
+}
+
+export interface BackupRotateKeyResult {
+  newKeyId: string
+  oldKeyId: string
+  /** shown EXACTLY ONCE — never retrievable again through any endpoint */
+  keyHexShownOnce: string
+}

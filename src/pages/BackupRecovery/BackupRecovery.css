@@ -1,0 +1,112 @@
+/* Backup & Recovery (/backup) — System Administrator area. All colours
+   come from the theme tokens so both themes hold contrast; the health
+   alert is DELIBERATELY the loudest element on the page (design §6: a
+   silently-stopped backup is the classic disaster — the alert persists
+   until a backup succeeds inside the 24h RPO). */
+
+.bk .shell{display:grid;grid-template-columns:var(--navw,220px) 1fr;gap:14px;min-height:0}
+.bk main{min-width:0;display:flex;flex-direction:column;gap:12px;overflow-y:auto;padding-bottom:18px}
+
+.bkcols{display:flex;flex-direction:column;gap:12px}
+
+/* 🔴 the loud persistent health alert */
+.bkalert{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--red);
+  background:rgba(var(--red-rgb),.14);border-radius:12px;padding:12px 14px;color:var(--text)}
+.bkalert svg{flex:none;margin-top:2px;color:var(--red)}
+.bkalert b{display:block;color:var(--red);letter-spacing:.4px;margin-bottom:2px}
+.bkalert span{font-size:.86rem;line-height:1.45}
+
+.bkerror{border:1px solid var(--red);background:rgba(var(--red-rgb),.1);color:var(--text);
+  border-radius:10px;padding:9px 12px;font-size:.86rem}
+
+/* show-once key ceremony */
+.bkkey{border:2px solid var(--amber);background:rgba(var(--amber-rgb),.12);border-radius:12px;
+  padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.bkkey>b{color:var(--amber);letter-spacing:.4px}
+.bkkeyrow{display:flex;gap:10px;align-items:baseline;font-size:.9rem}
+.bkkeyrow span{color:var(--dim);min-width:52px}
+.bkkeyrow code{background:rgba(var(--text-rgb),.08);border-radius:6px;padding:2px 8px}
+.bkkeyhex{word-break:break-all;font-size:.92rem}
+.bkkey p{font-size:.85rem;line-height:1.5;margin:0}
+
+/* dashboard facts */
+.bkfacts{display:flex;flex-direction:column;gap:7px;margin-bottom:12px}
+.bkfacts>div{display:grid;grid-template-columns:minmax(180px,240px) 1fr;gap:10px;
+  font-size:.88rem;align-items:baseline}
+.bkfacts span{color:var(--dim)}
+.bkfacts b{font-weight:600;overflow-wrap:anywhere}
+
+.bkactions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.bkconfirm{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:.82rem;color:var(--amber)}
+.bkconfirm>span{max-width:420px;line-height:1.4}
+
+.bkbtn{border:1px solid var(--blue);background:rgba(var(--blue-rgb),.16);color:var(--text);
+  border-radius:8px;padding:7px 14px;font:inherit;font-size:.86rem;cursor:pointer}
+.bkbtn:hover:not(:disabled){background:rgba(var(--blue-rgb),.3)}
+.bkbtn:disabled{opacity:.45;cursor:default}
+.bkbtn.ghost{border-color:rgba(var(--text-rgb),.25);background:transparent}
+.bkbtn.ghost:hover:not(:disabled){background:rgba(var(--text-rgb),.08)}
+.bkbtn.warn{border-color:var(--amber);background:rgba(var(--amber-rgb),.16)}
+.bkbtn.warn:hover:not(:disabled){background:rgba(var(--amber-rgb),.3)}
+.bkbtn.sm{padding:4px 10px;font-size:.8rem}
+
+.bknote{font-size:.8rem;color:var(--dim);line-height:1.5;margin:10px 0 0}
+.bknote b{color:var(--text);font-weight:600}
+.bkempty{color:var(--dim);font-size:.86rem;padding:6px 0}
+
+/* restore wizard runbook */
+.bkwizard{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;
+  font-size:.87rem;line-height:1.55}
+.bkwizard code{background:rgba(var(--text-rgb),.08);border-radius:5px;padding:1px 6px;
+  font-family:var(--mono,ui-monospace,monospace);font-size:.82rem}
+
+/* verify / test-restore result */
+.bksummary{border-radius:10px;padding:9px 12px;font-size:.88rem;font-weight:600;margin-bottom:10px}
+.bksummary.ok{border:1px solid var(--green);background:rgba(61,232,160,.12);color:var(--text)}
+.bksummary.bad{border:1px solid var(--red);background:rgba(var(--red-rgb),.12);color:var(--text)}
+.bkchecks{display:flex;flex-direction:column;gap:6px}
+.bkcheck{display:grid;grid-template-columns:130px 1fr;gap:10px;font-size:.84rem;line-height:1.45}
+.bkcheck .bkcheckname{font-weight:600;white-space:nowrap}
+.bkcheck.ok .bkcheckname{color:var(--green)}
+.bkcheck.bad .bkcheckname{color:var(--red)}
+
+.bktablewrap{overflow-x:auto;margin-top:12px}
+.bktable{border-collapse:collapse;width:100%;font-size:.8rem}
+.bktable th{text-align:left;color:var(--dim);font-weight:600;padding:4px 10px 4px 0;
+  border-bottom:1px solid rgba(var(--text-rgb),.15)}
+.bktable td{padding:3px 10px 3px 0;border-bottom:1px solid rgba(var(--text-rgb),.07)}
+.bktable .bktname{font-family:inherit}
+.bktable tr.bad td{color:var(--red);font-weight:600}
+
+/* history rows */
+.bkrows{display:flex;flex-direction:column;gap:8px}
+.bkrow{border:1px solid rgba(var(--text-rgb),.12);border-radius:10px;padding:9px 12px}
+.bkmain{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center}
+.bkfile{display:flex;flex-direction:column;gap:2px;min-width:0}
+.bkfile b{font-size:.88rem;overflow-wrap:anywhere}
+.bkfile small{color:var(--dim);font-size:.76rem}
+.bkverified small{font-size:.76rem;color:var(--dim)}
+.bkverified .good{color:var(--green)}
+.bkverified .badtx{color:var(--red)}
+.bkacts{display:flex;gap:6px;flex-wrap:wrap}
+.bkkeyentry{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding-top:10px;
+  border-top:1px dashed rgba(var(--text-rgb),.18);font-size:.82rem}
+.bkkeyentry label{color:var(--dim);line-height:1.45}
+.bkkeyentry input{border:1px solid rgba(var(--text-rgb),.25);background:transparent;
+  border-radius:8px;padding:7px 10px;max-width:560px}
+.bkkeyentry .bkbtn{align-self:flex-start}
+
+/* audit events */
+.bkevents{display:flex;flex-direction:column;gap:5px;max-height:340px;overflow-y:auto}
+.bkevent{display:grid;grid-template-columns:150px 1fr auto;gap:10px;font-size:.82rem;
+  padding:4px 0;border-bottom:1px solid rgba(var(--text-rgb),.06);align-items:baseline}
+.bkevent>span:first-child{color:var(--dim);font-size:.76rem}
+.bkevent small{color:var(--dim)}
+.bkevent.bad b{color:var(--red)}
+
+/* below the 13" floor the shell collapses like every page (nav icon-only) */
+@media (max-width:1180px){
+  .bkmain{grid-template-columns:1fr}
+  .bkevent{grid-template-columns:1fr;gap:2px}
+  .bkfacts>div{grid-template-columns:1fr;gap:2px}
+}

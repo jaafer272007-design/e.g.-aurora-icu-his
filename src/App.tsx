@@ -14,6 +14,7 @@ import { Settings } from './pages/Settings/Settings'
 import { AiChat } from './pages/AiChat/AiChat'
 import { AdminHome } from './pages/AdminHome/AdminHome'
 import { UsersAdmin } from './pages/UsersAdmin/UsersAdmin'
+import { BackupRecovery } from './pages/BackupRecovery/BackupRecovery'
 import { Formulary } from './pages/Formulary/Formulary'
 import { Configuration } from './pages/Configuration/Configuration'
 import { LabCatalog } from './pages/LabCatalog/LabCatalog'
@@ -76,6 +77,11 @@ export default function App() {
         <Route path="/nurse" element={<RequireSession permission="meds.administer"><NurseWorkspace /></RequireSession>} />
         <Route path="/admin" element={<RequireSession permission="admin.view"><AdminHome /></RequireSession>} />
         <Route path="/admin/users" element={<RequireSession permission="users.manage"><UsersAdmin /></RequireSession>} />
+        {/* Backup & Recovery (the hard go-live gate) — IT operations, so
+            backup.manage: held ONLY by the System Administrator profile
+            (design §1). Every clinical profile renders Access Restricted;
+            the server re-enforces it on every /api/backup endpoint. */}
+        <Route path="/backup" element={<RequireSession permission="backup.manage"><BackupRecovery /></RequireSession>} />
         <Route path="/formulary" element={<RequireSession permission="formulary.manage"><Formulary /></RequireSession>} />
         <Route path="/lab-catalog" element={<RequireSession permission="labcatalog.manage"><LabCatalog /></RequireSession>} />
         <Route path="/order-sets" element={<RequireSession permission="ordersets.manage"><OrderSetsAdmin /></RequireSession>} />

@@ -199,6 +199,36 @@ for ($i = 0; $i -lt 60; $i++) {
 }
 Write-Host ""
 
+# ---- Backup & Disaster Recovery: the encryption key (design §4) ----
+# The key is generated at install into the ACL-restricted host file
+# secrets\backup.key (mounted read-only into the container as the source
+# of unattended nightly encryption) AND DISPLAYED EXACTLY ONCE here for
+# the operator to record off-server. It is never shown again — the
+# server's copy dies with the server, so the recorded copies ARE disaster
+# recovery. init-key inside the container writes the file and prints the
+# ceremony; we only trigger it when the key does not yet exist.
+New-Item -ItemType Directory -Force -Path secrets | Out-Null
+if (-not (Test-Path "secrets\backup.key")) {
+  Write-Host ""
+  Write-Host "Generating the backup encryption key (shown ONCE - have pen and the sealed envelope ready)..." -ForegroundColor Yellow
+  docker compose @composeArgs exec -T aurora dotnet AuroraIcu.Api.dll init-key --actor "installer"
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARNING: could not initialise the backup key automatically. Run it yourself once Aurora is up:" -ForegroundColor Yellow
+    Write-Host "         docker compose exec aurora dotnet AuroraIcu.Api.dll init-key" -ForegroundColor Yellow
+  }
+  # lock the key file down to the current user (best-effort; the operator
+  # should confirm the ACL matches hospital policy)
+  try {
+    $acl = Get-Acl "secrets\backup.key"
+    $acl.SetAccessRuleProtection($true, $false)
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+      [System.Security.Principal.WindowsIdentity]::GetCurrent().Name, "FullControl", "Allow")
+    $acl.AddAccessRule($rule)
+    Set-Acl "secrets\backup.key" $acl
+    Write-Host "Locked secrets\backup.key to $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) (confirm this matches hospital policy)."
+  } catch { Write-Host "NOTE: set the ACL on secrets\backup.key so only the Task Scheduler account can read it." -ForegroundColor Yellow }
+}
+
 # The LAN address other devices can reach is the one on the adapter that
 # carries the DEFAULT ROUTE — "first non-loopback IPv4" is wrong on
 # Docker-Desktop machines, where it lands on the WSL/Hyper-V virtual
@@ -218,6 +248,14 @@ Write-Host ""
 Write-Host "AURORA is up:"
 Write-Host "  this machine : http://localhost:$port"
 if ($ip) { Write-Host "  on the LAN   : http://${ip}:$port   (other devices on the network - iPad included)" }
+Write-Host ""
+Write-Host "BACKUP & DISASTER RECOVERY (the go-live gate):"
+Write-Host "  Register the automatic nightly backup (Windows Task Scheduler):"
+Write-Host "     .\backup.ps1 -Install"
+Write-Host "  It runs the encrypted daily backup, copies it to the off-site USB (set BACKUP_USB in"
+Write-Host "  appliance\.env), and the System Administrator watches health at  /backup  in the app."
+Write-Host "  Before go-live: prove a restore on a DIFFERENT clean machine with  .\restore.ps1  (the"
+Write-Host "  non-negotiable acceptance test - a backup that has never been restored is only a hope)."
 Write-Host ""
 if ($Mode -eq "production") {
   Write-Host "PRODUCTION install - NO demo data: catalogues + configuration are seeded, the"

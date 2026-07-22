@@ -17,4 +17,9 @@ server/wwwroot/
 # appliance — local secrets and the model payload (shipped alongside, never committed)
 appliance/.env
 appliance/models/*.gguf
+# Backup & DR (the hard go-live gate): the encryption key and the backup
+# files are hospital data / the second-most-important secret after the
+# patients — they live on the host, NEVER in the repo or a Docker layer.
+appliance/secrets/
+appliance/backups/
 .local-ca.crt

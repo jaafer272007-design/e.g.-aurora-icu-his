@@ -191,12 +191,35 @@ for _ in $(seq 1 60); do
   echo -n "."; sleep 2
 done; echo
 
+# ---- Backup & Disaster Recovery: the encryption key (design §4) ----
+# Generated at install into the ACL-restricted host file secrets/backup.key
+# (mounted into the container for unattended nightly encryption) AND shown
+# EXACTLY ONCE here for the operator to record off-server — the server's
+# copy dies with the server, so the recorded copies ARE disaster recovery.
+mkdir -p secrets
+if [ ! -f secrets/backup.key ]; then
+  echo
+  echo "Generating the backup encryption key (shown ONCE — record it now)…"
+  docker compose "${OVERRIDES[@]}" exec -T aurora dotnet AuroraIcu.Api.dll init-key --actor "installer" \
+    || { echo "WARNING: could not initialise the backup key automatically. Once Aurora is up, run:"; \
+         echo "         docker compose exec aurora dotnet AuroraIcu.Api.dll init-key"; }
+  # tighten the key file down to the owner (best-effort; confirm vs policy)
+  [ -f secrets/backup.key ] && chmod 600 secrets/backup.key 2>/dev/null || true
+fi
+
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo
 echo "AURORA is up:"
 echo "  this machine : http://localhost:${AURORA_PORT:-8080}"
 [ -n "${IP:-}" ] && echo "  on the LAN   : http://${IP}:${AURORA_PORT:-8080}   (other devices on the network)"
 curl -s "http://localhost:${AURORA_PORT:-8080}/build.txt" | sed 's/^/  build: /'
+echo
+echo "BACKUP & DISASTER RECOVERY (the go-live gate):"
+echo "  The System Administrator manages backups at  /backup  in the app. On Windows the"
+echo "  nightly automatic backup is registered with  .\\backup.ps1 -Install  (Task Scheduler);"
+echo "  on this host, schedule  docker compose exec -T aurora dotnet AuroraIcu.Api.dll backup  via cron."
+echo "  Before go-live: prove a restore on a DIFFERENT clean machine (restore.ps1) — a backup that"
+echo "  has never been restored is only a hope."
 echo
 if [ "$MODE" = "production" ]; then
   echo "PRODUCTION install — NO demo data: catalogues + configuration are seeded, the"
