@@ -24,6 +24,11 @@ export function Discharges() {
   const session = getSession()!
   const canDischarge = hasPermission(session.jobTitle, 'adt.discharge')
   const canTransfer = hasPermission(session.jobTitle, 'adt.transfer')
+  /* opening a discharged patient's record is CLINICAL history (results.view
+     — every clinical profile; the office Administrator is locked out of
+     clinical data). Gates both the row click-through and the "all
+     discharged" records entry so we never offer a link that 403s. */
+  const canHistory = hasPermission(session.jobTitle, 'results.view')
 
   const [open, setOpen] = useState<Encounter[] | null>(null)
   /* the MANAGED disposition vocabulary (Configuration Vocabularies):
@@ -192,16 +197,30 @@ export function Discharges() {
               </div>
             </Card>
 
-            <Card icon={<IconDischarge size={15} stroke="var(--amber)" />} title="Recently Discharged" aside="closed encounters — durable record">
+            <Card icon={<IconDischarge size={15} stroke="var(--amber)" />} title="Recently Discharged"
+              aside={canHistory
+                ? <button className="disact" onClick={() => navigate('/discharged')}>View all discharged patients →</button>
+                : 'closed encounters — durable record'}>
               <div className="disrows">
                 {recentlyDischarged.slice(0, 12).map(e => (
                   <div className="disrow done" key={e.encounterId}>
                     <div className="dismain">
                       <BedChip bedId={e.bedId} />
-                      <span className="diswho asplain">
-                        <b>{e.patientName}</b>
-                        <small>{e.diagnosis}</small>
-                      </span>
+                      {/* the record opens at /history (patient-scoped, loads
+                          discharged patients) — NOT Mission Control, which is
+                          roster-scoped and 404s a discharged patient. When the
+                          viewer lacks results.view the name stays plain. */}
+                      {canHistory ? (
+                        <button className="diswho" onClick={() => navigate(`/patients/${e.patientId}/history`)} aria-label={`Open record: ${e.patientName}`}>
+                          <b>{e.patientName}</b>
+                          <small>{e.diagnosis}</small>
+                        </button>
+                      ) : (
+                        <span className="diswho asplain">
+                          <b>{e.patientName}</b>
+                          <small>{e.diagnosis}</small>
+                        </span>
+                      )}
                       <span className="dismeta">
                         <span className="num">{e.encounterId}</span>
                         <small>{e.dischargedAt ? `discharged ${displayStamp(e.dischargedAt)} · ${e.dischargedBy}` : 'discharged'}</small>

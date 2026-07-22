@@ -22,6 +22,7 @@ import { OrderSetsAdmin } from './pages/OrderSetsAdmin/OrderSetsAdmin'
 import { Admissions } from './pages/Admissions/Admissions'
 import { PatientHistory } from './pages/PatientHistory/PatientHistory'
 import { Discharges } from './pages/Discharges/Discharges'
+import { DischargedRecords } from './pages/DischargedRecords/DischargedRecords'
 import { PrintCenter } from './pages/PrintCenter/PrintCenter'
 import { PrintDocument } from './pages/PrintCenter/PrintDocument'
 import { Login } from './pages/Login/Login'
@@ -51,6 +52,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /ai(/:patientId)        AI Assistant — grounded query chat   ai.view (route patient = chat context only)
    /admissions             ADT — admit                patients.view (admit button needs adt.admit)
    /discharges             ADT — discharge/transfer   patients.view (actions need adt.discharge / adt.transfer)
+   /discharged             Discharged Patients — records retrieval   results.view (browse+search all discharged; opens /history)
    /print                  Print Center hub           patients.view (read-only document rendering)
    /print/:templateId/:patientId  Printable document  patients.view */
 /* Vite injects BASE_URL from the build's --base flag ('/' locally,
@@ -97,6 +99,11 @@ export default function App() {
         <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />
+        {/* Discharged Patients — records retrieval (the go-live gap fix):
+            browse + partial-search ALL discharged patients, each opening the
+            durable record at /history. CLINICAL history, so results.view —
+            every clinical profile; the office Administrator is locked out. */}
+        <Route path="/discharged" element={<RequireSession permission="results.view"><DischargedRecords /></RequireSession>} />
         <Route path="/print" element={<RequireSession permission="patients.view"><PrintCenter /></RequireSession>} />
         <Route path="/print/:templateId/:patientId" element={<RequireSession permission="patients.view"><PrintDocument /></RequireSession>} />
         <Route path="/patients/:patientId" element={<RequireSession permission="patients.view"><MissionControl /></RequireSession>} />

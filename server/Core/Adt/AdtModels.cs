@@ -489,7 +489,11 @@ record MatchCardDto(
        hospital's own chart label, not state PII like the national ID —
        verifying "same chart?" against the paper record is this card's
        whole job, and a masked chart number cannot do it */
-    string? FileNumber = null);
+    string? FileNumber = null,
+    /* newest closed encounter's discharge stamp ("" when never
+       discharged) — the partial-search retrieval view lists + sorts
+       discharged patients by it */
+    string? LastDischargedAt = null);
 
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record TransferRequest(string? BedId);
