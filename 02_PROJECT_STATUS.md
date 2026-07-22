@@ -37,8 +37,21 @@ with nobody logged in), 🔴 **auto-restart on crash** (sc stop → SCM restarts
 the seed on first boot, the key ceremony, the nightly task registration, the
 firewall (port reachable; 5432 not exposed), and a restore from the native
 install. NO server/client code changed (installer-only; PR A's hooks are what
-it relies on). Docker stays the dev/validator testbed. NEXT: PR C (native
-llama-server AI service + GPU-native path).**
+it relies on). Docker stays the dev/validator testbed. ALSO on this branch
+(docs-only, no code): `HOSPITAL_INSTALLER_RUNTIME_DESIGN.md` gains **§5 GPU
+capacity & AI concurrency** — the RTX 4060 + Qwen2.5-7B analysis recorded
+BEFORE PR C in answer to the owner's go-live capacity question. Key facts:
+connecting ≠ GPU load (charting/labs/orders/viewing = zero GPU; the GPU is hit
+only on an actual AI query); `llama-server` **queues** concurrent requests
+(continuous batching over `--parallel` slots) rather than failing; the real
+ceiling on the 4060 + 7B is **~4 concurrent** generations (VRAM/KV-cache
+bound), and 20 machines realistically peak at **1–3** simultaneous AI calls;
+the **four guardrails PR C bakes in** — `--parallel 3–4`, per-user
+single-in-flight, streaming, a "please wait / queued" UI; the **GQA model
+requirement already met** (Qwen2.5-7B); the **`llama-bench`** second-machine
+verification step; and the **16 GB/24 GB upgrade path**. §3's PR C bullet now
+points to §5 and lists the guardrails as PR C scope. NEXT: PR C (native
+llama-server AI service + GPU-native path — implements the §5.4 guardrails).**
 
 Prior work through HOSPITAL INSTALLER + ALWAYS-ON
 RUNTIME — DESIGN + PR A. The complete "double-click install, runs itself
