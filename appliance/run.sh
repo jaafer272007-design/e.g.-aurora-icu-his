@@ -215,9 +215,11 @@ echo "  this machine : http://localhost:${AURORA_PORT:-8080}"
 curl -s "http://localhost:${AURORA_PORT:-8080}/build.txt" | sed 's/^/  build: /'
 echo
 echo "BACKUP & DISASTER RECOVERY (the go-live gate):"
-echo "  The System Administrator manages backups at  /backup  in the app. On Windows the"
-echo "  nightly automatic backup is registered with  .\\backup.ps1 -Install  (Task Scheduler);"
-echo "  on this host, schedule  docker compose exec -T aurora dotnet AuroraIcu.Api.dll backup  via cron."
+echo "  The System Administrator manages backups at  /backup  in the app — including a"
+echo "  'Backup now' button (no terminal needed). On Windows (the hospital OS) a PRODUCTION"
+echo "  install registers the nightly automatic backup AUTOMATICALLY at install time (Task"
+echo "  Scheduler 'AuroraBackup'); on this non-Windows testbed, schedule"
+echo "  docker compose exec -T aurora dotnet AuroraIcu.Api.dll backup  via cron."
 echo "  Before go-live: prove a restore on a DIFFERENT clean machine (restore.ps1) — a backup that"
 echo "  has never been restored is only a hope."
 echo

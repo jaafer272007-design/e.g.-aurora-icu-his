@@ -1,6 +1,53 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-22 · current through DISCHARGED-PATIENT RETRIEVAL —
+**Last updated: 2026-07-22 · current through BACKUP USABILITY — TWO
+"NEVER TOUCH POWERSHELL" FIXES (so a hospital's IT admin runs backups from
+the app, and a "next-next-finish" install ends with automatic nightly
+backups ON). Changes only HOW a backup is TRIGGERED, never what a backup IS
+— both paths call the ONE engine (BackupService.RunBackup), same
+AES-256-GCM encryption, same key, same born-restore-verified manifest, same
+primary target. 🔴 FIX 1 (the real gap) — AUTOMATIC NIGHTLY BACKUP IS
+REGISTERED AS PART OF THE PRODUCTION INSTALL. Previously run.ps1 only
+PRINTED a reminder to run `.\backup.ps1 -Install` separately — a step a
+hospital could forget, leaving backups OFF. Now the production install
+(`AURORA_MODE=production`, appliance/run.ps1) auto-registers the "AuroraBackup"
+Windows Task Scheduler job itself, after Aurora is up + the key ceremony:
+it reuses the ONE registration in `backup.ps1 -Install` (same task name,
+same trigger from BACKUP_SCHEDULE default `daily 02:00`, same S4U/Highest
+principal) so the scheduled time and the dashboard's "next scheduled" stay
+in lockstep; IDEMPOTENT (a reboot confirms via Get-ScheduledTask and skips);
+and NEVER fatal (registering a task needs elevation — on failure it WARNS
+with the one manual line and continues, because a HIS that comes up beats
+one blocked on Task Scheduler, mirroring the init-key handling). The closing
+guidance no longer lists `-Install` as a required to-do in production. FIX 2
+— "BACKUP NOW" BUTTON: already built (this work CONFIRMED + verified it, no
+code change) — POST /api/backup/run (backup.manage-gated) → the dashboard's
+"Backup now" button (BackupRecovery.tsx), synchronous, progress text
+"Backing up + restore-verifying…", a success toast (file · tables · rows ·
+key id), errors in the red bar, and the "last backup" KPI refreshes — the
+SAME engine + born-verified backup the nightly job runs, no terminal.
+SCOPE FLAGS (stated): run.sh (Linux/macOS testbed; hospital OS is Windows)
+keeps the honest cron note, reworded to say Windows auto-registers at
+install — a Linux systemd-timer auto-register is deliberately deferred;
+staging/demo keeps the manual hint (auto-register is production-only, a
+one-line guard change if wanted). USB copy is the scheduled task's host-side
+robocopy step (a container can't reach a host USB); a manual dashboard
+backup lands on the primary target and the next nightly `robocopy /E`
+mirrors it off-site — unchanged. Verified: (server, Postgres 16) POST
+/api/backup/run RBAC 200 (SystemAdministrator) / 403 (Consultant) / 401
+(anon), and the button-triggered backup produced a real 28-table,
+born-restore-verified AES-256-GCM artifact + manifest + sha256 on disk with
+key id matching the installed key; (rendered, both themes) the System
+Administrator opens /backup and clicks "Backup now" with NO PowerShell → a
+real backup, success toast, HEALTHY + timestamp, the "next scheduled
+2026-07-23 02:00 · Windows Task Scheduler" line, and the immutable audit
+capturing the button backup "by alex.novak" — a clinical role is Access
+Restricted from /backup — 8/8. Fix 1's Task Scheduler registration is
+Windows-only, verified by code review + the reused, proven `backup.ps1
+-Install` path (the Linux sandbox cannot execute Windows Task Scheduler).
+Client tsc+vite + server builds clean.**
+
+Prior work through DISCHARGED-PATIENT RETRIEVAL —
 THE GO-LIVE GAP (a hospital must be able to find and open ANY past patient
 at any time, and print documents for discharged patients who return). The
 clinical validator found the "Recently Discharged" list showed only the
