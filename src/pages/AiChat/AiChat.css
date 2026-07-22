@@ -27,6 +27,8 @@
 .ac .acq p{margin:2px 0 0;font-size:13.5px;font-weight:600}
 
 .ac .acpending{font-size:12px;color:var(--faint);padding-left:35px}
+/* queued/waiting hint (AI-concurrency guardrail 4) — quieter than the label */
+.ac .acqueue{font-size:11px;opacity:.7;font-style:italic}
 
 /* THE VISIBLE QUERY — the model's entire output, shown with every answer */
 .ac .acquery{display:flex;align-items:center;gap:8px;margin-left:35px;font-size:11.5px}

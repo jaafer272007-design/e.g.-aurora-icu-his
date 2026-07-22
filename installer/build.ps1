@@ -17,7 +17,9 @@
 [CmdletBinding()]
 param(
   [string]$PgZip   = '',   # path to a PostgreSQL Windows binaries zip (EDB "binaries only"); required
-  [string]$ModelDir = '',  # folder containing the .gguf model file(s); optional (AI is PR C)
+  [string]$ModelDir = '',  # folder with the .gguf model file(s); needed for the AI (else AI ships disabled)
+  [string]$LlamaDir = '',  # folder with the Windows llama-server build (llama-server.exe + its DLLs, CUDA);
+                           # needed for the AI (else AI ships disabled). See installer/README.md for the build.
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
 $ErrorActionPreference = 'Stop'
@@ -59,12 +61,27 @@ foreach ($d in @('bin','share','lib')) {
 }
 Remove-Item -Recurse -Force $pgTmp -ErrorAction SilentlyContinue
 
-Write-Host '== 4. AI model (optional; the AI service itself is PR C) =='
+Write-Host '== 4. AI model + llama-server (the native AI service — PR C) =='
+# The AI is the native AuroraAI Windows service: llama-server serving the
+# OpenAI-compatible endpoint AiApi.cs already speaks to. Both the model (GGUF)
+# and the llama-server Windows build ship ALONGSIDE the payload; the installer
+# registers the service only when the target machine has an NVIDIA GPU.
 New-Item -ItemType Directory -Force -Path (Join-Path $payload 'model') | Out-Null
-if ($ModelDir -and (Test-Path $ModelDir)) {
-  Copy-Item -Recurse -Force (Join-Path $ModelDir '*') (Join-Path $payload 'model')
-} else {
-  Write-Host '  (no -ModelDir given — AI stays disabled; PR C bundles the model + native llama-server service)'
+New-Item -ItemType Directory -Force -Path (Join-Path $payload 'llama') | Out-Null
+$aiModel = $ModelDir -and (Test-Path $ModelDir)
+$aiLlama = $LlamaDir -and (Test-Path $LlamaDir)
+if ($aiModel) { Copy-Item -Recurse -Force (Join-Path $ModelDir '*') (Join-Path $payload 'model') }
+else { Write-Host '  (no -ModelDir — the model is not bundled; AI ships DISABLED)' }
+if ($aiLlama) {
+  Copy-Item -Recurse -Force (Join-Path $LlamaDir '*') (Join-Path $payload 'llama')
+  foreach ($need in @('llama-server.exe','nssm.exe')) {
+    if (-not (Test-Path (Join-Path $payload "llama\$need"))) {
+      throw "-LlamaDir must contain $need. It needs the Windows llama.cpp server build (llama-server.exe + its CUDA DLLs) AND nssm.exe (the service host). See installer/README.md."
+    }
+  }
+} else { Write-Host '  (no -LlamaDir — llama-server is not bundled; AI ships DISABLED)' }
+if ($aiModel -xor $aiLlama) {
+  Write-Host '  WARNING: only one of -ModelDir / -LlamaDir was given. The AI needs BOTH — it will ship DISABLED.'
 }
 
 Write-Host '== 5. compile the installer =='

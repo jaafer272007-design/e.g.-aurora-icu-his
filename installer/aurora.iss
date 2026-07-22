@@ -41,6 +41,9 @@ CloseApplications=yes
 Source: "payload\server\*";  DestDir: "{app}\server";        Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "payload\pgsql\*";   DestDir: "{app}\pgsql";         Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "payload\model\*";   DestDir: "{app}\model";         Flags: recursesubdirs createallsubdirs ignoreversion skipifsourcedoesntexist
+;   payload\llama\  = the native AI runtime: llama-server.exe (+ CUDA DLLs) + nssm.exe (PR C).
+;   Absent when the build had no -LlamaDir/-ModelDir; then provisioning leaves the AI disabled.
+Source: "payload\llama\*";   DestDir: "{app}\llama";         Flags: recursesubdirs createallsubdirs ignoreversion skipifsourcedoesntexist
 Source: "aurora-provision.ps1"; DestDir: "{app}\server\scripts"; Flags: ignoreversion
 Source: "aurora-backup.ps1";    DestDir: "{app}\server\scripts"; Flags: ignoreversion
 
@@ -188,6 +191,8 @@ end;
 
 [UninstallRun]
 ; stop + remove the services on uninstall (data is left in place deliberately)
+Filename: "sc.exe"; Parameters: "stop AuroraAI";       Flags: runhidden; RunOnceId: "stopai"
+Filename: "sc.exe"; Parameters: "delete AuroraAI";      Flags: runhidden; RunOnceId: "delai"
 Filename: "sc.exe"; Parameters: "stop AuroraServer";   Flags: runhidden; RunOnceId: "stopsrv"
 Filename: "sc.exe"; Parameters: "delete AuroraServer";  Flags: runhidden; RunOnceId: "delsrv"
 Filename: "sc.exe"; Parameters: "stop AuroraPostgres";  Flags: runhidden; RunOnceId: "stoppg"
