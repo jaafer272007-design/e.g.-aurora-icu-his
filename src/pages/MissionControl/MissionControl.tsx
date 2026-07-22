@@ -75,6 +75,16 @@ export function MissionControl() {
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [detail, setDetail] = useState<PatientDetailResponse | null>(null)
   const [missing, setMissing] = useState(false)
+  /* ADT disposition of the routed patient, from a REAL encounter read —
+     Mission Control is the OPEN-CENSUS view, so a discharged patient does
+     not belong here: it redirects to their durable record at /history. This
+     also closes the masking bug — in staging a discharged SEEDED patient
+     would otherwise fall back to the mock store and render here as if still
+     admitted; the real read redirects them instead. 'checking' suppresses
+     the body until the read resolves (no mock flash); 'present' = admitted
+     (real OR pure-mock demo, where a known patient still has a synthetic
+     open encounter) or a truly-unknown id (→ the existing NotFound card). */
+  const [adt, setAdt] = useState<'checking' | 'present' | 'redirecting'>('checking')
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [alerts, setAlerts] = useState<LiveAlert[]>([])
@@ -220,6 +230,31 @@ export function MissionControl() {
   useEffect(() => {
     setLatestObs(scores.observations ? latestObservations(scores.observations) : new Map())
   }, [scores.observations])
+
+  /* REAL open-encounter check drives the discharged→history redirect. ONE
+     read of the patient's encounters: an OPEN one → admitted, render Mission
+     Control; NO open but the patient EXISTS (a closed encounter) → discharged
+     → redirect to the durable /history record (replace, so Back skips the
+     dead census view); NO encounters at all → unknown id, fall through to the
+     existing NotFound path. In pure-mock/offline mode getEncounters
+     synthesizes an open encounter for a KNOWN patient, so the demo still
+     opens here — only a real server ever reports zero open encounters. */
+  useEffect(() => {
+    let stale = false
+    setAdt('checking')
+    if (!patientId) { setAdt('present'); return }
+    getEncounters({ patientId }).then(list => {
+      if (stale) return
+      if (list.some(e => e.status === 'open')) { setAdt('present'); return }
+      if (list.length > 0) {
+        setAdt('redirecting')
+        navigate(`/patients/${patientId}/history`, { replace: true })
+        return
+      }
+      setAdt('present')
+    }).catch(() => { if (!stale) setAdt('present') })
+    return () => { stale = true }
+  }, [patientId, navigate])
 
   useEffect(() => {
     let stale = false
@@ -489,6 +524,12 @@ export function MissionControl() {
         </aside>
 
         <main>
+          {/* Suppress the body until the ADT check resolves: a discharged
+              patient redirects to /history and must never flash the (possibly
+              mock-backed) Mission Control body first — that flash IS the
+              masking bug. 'checking'/'redirecting' → a busy placeholder. */}
+          {adt !== 'present' && <div style={{ gridColumn: '1/-1' }} aria-busy="true" />}
+          {adt === 'present' && <>
           {missing && <NotFoundCard />}
 
           {detail && (
@@ -650,6 +691,7 @@ export function MissionControl() {
             </Card>
           )}
           {!detail && !missing && <div style={{ gridColumn: '1/-1' }} aria-busy="true" />}
+          </>}
         </main>
       </div>
       <Toast state={toast} accent="cyan" />

@@ -185,6 +185,86 @@ static class AdtApi
             }, JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* GET /api/icu/adt/patients/search?q=&scope=all|discharged&limit=
+           — PARTIAL patient lookup for RETRIEVAL (the discharged-record
+           go-live gap: a hospital must be able to find ANY past patient).
+           Unlike /patients/match (EXACT id or COMPLETE name+DOB, bound to
+           admission de-duplication), this is case-insensitive SUBSTRING
+           matching across the display name, the structured name parts,
+           MRN, file number, national ID, and patientId — over ALL
+           patients INCLUDING the discharged (a Patient row persists
+           whatever its encounter state). Identity-class data only (the
+           national ID rides MASKED to last-4 through the same ToMatchCard
+           the match endpoint uses), so patients.view; the clinical record
+           it leads to (/patients/:id/history) is separately results.view-
+           gated. scope=discharged lists patients who have a closed
+           encounter and NO open one (q optional = BROWSE all discharged —
+           the fix for the Recently-Discharged 12-cap); scope=all requires
+           q (never dumps the whole table). FOUR-CODE: unknown param /
+           bad scope / missing-or-short q on scope=all → 400; an empty
+           result is a 200 RESULT, never a 404. Results are capped and
+           `truncated` names the overflow (03: no silent truncation). */
+        app.MapGet("/api/icu/adt/patients/search",
+            (HttpContext ctx, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "patients.view") is IResult denied) return denied;
+            foreach (var key in ctx.Request.Query.Keys)
+                if (key is not ("q" or "scope" or "limit"))
+                    return ApiError.BadRequest($"unknown query parameter '{key}'");
+            var q = ctx.Request.Query["q"].ToString().Trim();
+            var scope = ctx.Request.Query["scope"].ToString().Trim().ToLowerInvariant();
+            if (scope.Length == 0) scope = "all";
+            if (scope is not ("all" or "discharged"))
+                return ApiError.BadRequest("scope must be one of: all, discharged");
+            var limit = int.TryParse(ctx.Request.Query["limit"], out var n)
+                ? Math.Clamp(n, 1, 100) : 50;
+            if (scope == "all" && q.Length < 2)
+                return ApiError.BadRequest("provide a search term of at least 2 characters (q)");
+
+            var patients = db.AdtPatients.AsNoTracking().AsEnumerable().ToList();
+            var encByPatient = db.Encounters.AsNoTracking().AsEnumerable()
+                .GroupBy(e => e.PatientId).ToDictionary(g => g.Key, g => g.ToList());
+            /* "discharged" = has ≥1 encounter and NONE open (currently-
+               admitted excluded; a registered-but-never-admitted row is
+               not a discharged patient, so it is excluded too) */
+            bool NotAdmitted(Patient p) =>
+                encByPatient.TryGetValue(p.PatientId, out var es)
+                && es.Count > 0 && es.All(e => e.Status != "open");
+
+            var ql = q.ToLowerInvariant();
+            bool Matches(Patient p)
+            {
+                if (ql.Length == 0) return true;
+                var dto = p.ToDto();
+                bool Has(string? s) => s is not null && s.ToLowerInvariant().Contains(ql);
+                return Has(dto.Name) || Has(dto.FullName)
+                    || Has(p.NameFirst) || Has(p.NameSecond) || Has(p.NameThird)
+                    || Has(p.NameFourth) || Has(p.NameFamily)
+                    || Has(p.Mrn) || Has(p.PatientFileNumber) || Has(p.NationalId)
+                    || Has(p.PatientId);
+            }
+
+            string LastDisch(Patient p) => encByPatient.TryGetValue(p.PatientId, out var es)
+                ? es.Where(e => e.Status != "open").Select(e => e.DischargedAt ?? "")
+                     .DefaultIfEmpty("").Max()! : "";
+            string SortName(Patient p) { var d = p.ToDto(); return d.FullName ?? d.Name; }
+
+            var pool = scope == "discharged" ? patients.Where(NotAdmitted) : patients;
+            var hits = pool.Where(Matches).ToList();
+            var total = hits.Count;
+            var ordered = scope == "discharged"
+                ? hits.OrderByDescending(LastDisch).ThenBy(SortName)
+                : hits.OrderBy(SortName);
+            var page = ordered.Take(limit).Select(p => AdtLogic.ToMatchCard(p, db)).ToList();
+
+            return Results.Json(new
+            {
+                results = page,
+                total,
+                truncated = total > page.Count,
+            }, JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* PUT /api/icu/adt/patients/{patientId}/identity — IDENTITY
            CORRECTION (the validator's design §3 — REQUIRED by the
            unknown-patient decision: the family arrives and the patient
@@ -1001,12 +1081,15 @@ static class AdtLogic
            null (nothing recorded) stays null. */
         var last4 = p.NationalId is null ? null
             : p.NationalId is { Length: > 4 } full ? full[^4..] : "";
+        var lastDischargedAt = encs
+            .Where(e => e.Status != "open" && !string.IsNullOrEmpty(e.DischargedAt))
+            .OrderByDescending(e => e.DischargedAt).Select(e => e.DischargedAt).FirstOrDefault() ?? "";
         return new MatchCardDto(
             p.PatientId, dto.FullName ?? dto.Name, p.Mrn, last4,
             dto.Age, dto.AgeSource, p.Sex,
             latest?.AdmittedAt ?? "", encs.Count, status,
             open?.BedId, open?.EncounterId,
-            p.PatientFileNumber);
+            p.PatientFileNumber, lastDischargedAt);
     }
 
     public static string NextMrn(AuroraDb db)

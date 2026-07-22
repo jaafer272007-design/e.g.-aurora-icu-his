@@ -4,8 +4,8 @@ import './PrintCenter.css'
 import { AppHeader } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Card } from '../../components/Card'
-import { getEncounters, getPatients } from '../../lib/api'
-import type { Encounter, PatientSummary } from '../../lib/api/types'
+import { getEncounters, getPatients, searchPatients } from '../../lib/api'
+import type { Encounter, PatientSearchResponse, PatientSummary } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { PRINT_TEMPLATES } from './registry'
 import { displayStamp } from '../../lib/time'
@@ -14,22 +14,17 @@ import { displayStamp } from '../../lib/time'
  *  template allows historical ones, and a document. Strictly read-only:
  *  the only action leads to the printable document route. */
 
-/* one picker row per DISCHARGED patient (not on the active roster),
- * derived from the real closed-encounter read — never the mock store */
-interface DischargedPick {
-  patientId: string
-  name: string
-  lastDischargedAt: string
-  lastEncounterId: string
-  encounterCount: number
-}
-
 export function PrintCenter() {
   const navigate = useNavigate()
   const session = getSession()!
   const [patients, setPatients] = useState<PatientSummary[]>([])
   const [rosterLoaded, setRosterLoaded] = useState(false)
-  const [closedEncounters, setClosedEncounters] = useState<Encounter[]>([])
+  /* the DISCHARGED picker is served by the real partial-search endpoint
+     (scope=discharged) — a returning patient is found by name, MRN, file
+     number OR national ID, not just the recent handful the closed-encounter
+     read surfaced. Real-only: an unreachable server yields no discharged
+     rows, never a fabricated one. */
+  const [dischargedResp, setDischargedResp] = useState<PatientSearchResponse | null>(null)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string | null>(null)
   const [encounters, setEncounters] = useState<Encounter[]>([])
@@ -37,8 +32,16 @@ export function PrintCenter() {
 
   useEffect(() => {
     getPatients().then(p => { setPatients(p); setRosterLoaded(true) })
-    getEncounters({ status: 'discharged' }).then(setClosedEncounters)
   }, [])
+
+  /* debounced partial search across ALL discharged patients as the clerk
+     types; empty query browses all discharged (newest first). The endpoint
+     excludes anyone with an OPEN encounter, so a readmitted patient never
+     appears here — they are on the active roster above. */
+  useEffect(() => {
+    const t = setTimeout(() => { void searchPatients(query, 'discharged', 50).then(setDischargedResp) }, 200)
+    return () => clearTimeout(t)
+  }, [query])
   useEffect(() => {
     if (!selected) return
     setEncounters([])
@@ -62,37 +65,17 @@ export function PrintCenter() {
       || (p.nationalId ?? '').startsWith(q))
   }, [patients, query])
 
-  /* discharged patients = distinct patients across closed encounters,
-   * EXCLUDING anyone currently on the roster (a readmitted patient is
-   * found under the roster group; their past encounters are already
-   * listed in step 2). Gated on the roster having loaded so an admitted
-   * patient is never momentarily presented as discharged. */
+  /* discharged picks = the endpoint's matches MINUS anyone on the active
+   * roster (the endpoint already excludes open encounters; this is
+   * belt-and-suspenders so a readmitted patient never doubles up — their
+   * past encounters already list under the roster group in step 2). Gated
+   * on the roster having loaded so an admitted patient is never momentarily
+   * presented as discharged. The server orders discharged newest-first. */
   const dischargedShown = useMemo(() => {
     if (!rosterLoaded) return []
     const onRoster = new Set(patients.map(p => p.patientId))
-    const byPatient = new Map<string, DischargedPick>()
-    for (const e of closedEncounters) {
-      if (onRoster.has(e.patientId)) continue
-      const cur = byPatient.get(e.patientId)
-      if (!cur) {
-        byPatient.set(e.patientId, {
-          patientId: e.patientId, name: e.patientName,
-          lastDischargedAt: e.dischargedAt ?? '', lastEncounterId: e.encounterId, encounterCount: 1,
-        })
-      } else {
-        cur.encounterCount++
-        if (e.encounterId > cur.lastEncounterId) {
-          cur.lastEncounterId = e.encounterId
-          cur.lastDischargedAt = e.dischargedAt ?? ''
-          if (e.patientName) cur.name = e.patientName
-        }
-      }
-    }
-    const q = query.trim().toLowerCase()
-    return [...byPatient.values()]
-      .filter(d => !q || d.name.toLowerCase().includes(q) || d.patientId.toLowerCase().includes(q))
-      .sort((a, b) => b.lastEncounterId.localeCompare(a.lastEncounterId))
-  }, [rosterLoaded, patients, closedEncounters, query])
+    return (dischargedResp?.results ?? []).filter(d => !onRoster.has(d.patientId))
+  }, [rosterLoaded, patients, dischargedResp])
 
   const chosenEncounter = encounters.find(e => e.encounterId === encounterId)
 
@@ -142,15 +125,24 @@ export function PrintCenter() {
                       onClick={() => setSelected(d.patientId)}
                     >
                       <span className="pc-pname">
-                        {d.name || d.patientId} <span className="pc-dtag">Discharged</span>
+                        {d.fullName || d.patientId}{' '}
+                        <span className={`pc-dtag${d.status === 'deceased' ? ' dead' : ''}`}>
+                          {d.status === 'deceased' ? 'Deceased' : 'Discharged'}
+                        </span>
                       </span>
                       <span className="pc-pmeta">
-                        {d.patientId} · discharged {displayStamp(d.lastDischargedAt) || '—'} ·{' '}
-                        {d.encounterCount} closed encounter{d.encounterCount === 1 ? '' : 's'}
+                        {d.mrn}
+                        {d.fileNumber ? ` · file ${d.fileNumber}` : ''}
+                        {d.nationalIdLast4 ? ` · ID ••••${d.nationalIdLast4}` : ''}
+                        {' · '}discharged {displayStamp(d.lastDischargedAt) || '—'}
+                        {d.admissionCount > 1 ? ` · ${d.admissionCount} encounters` : ''}
                       </span>
                     </button>
                   ))}
                 </div>
+                {dischargedResp?.truncated && (
+                  <p className="pc-dmore">Showing {dischargedShown.length} of {dischargedResp.total} discharged — refine your search.</p>
+                )}
               </>
             )}
           </Card>

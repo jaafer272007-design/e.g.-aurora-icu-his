@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignedPatient, Assignment, AttendingOption, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CoverageRow, CoverageStaff, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignedPatient, Assignment, AttendingOption, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CoverageRow, CoverageStaff, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, PatientSearchResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, FormularyEvent, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType, Order, OrderSetDef,
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
@@ -1816,6 +1816,21 @@ export function admitPatient(draft: AdmitDraft): Promise<AdtWriteResult<AdmitRes
  *  itself could not proceed either, so nothing is created. */
 export function matchPatient(draft: MatchPatientDraft): Promise<AdtWriteResult<MatchPatientResponse>> {
   return adtPost<MatchPatientResponse>('/api/icu/adt/patients/match', 'patient match', draft)
+}
+
+/** GET /api/icu/adt/patients/search — PARTIAL patient lookup for
+ *  retrieval (the discharged-record go-live gap). scope='discharged'
+ *  browses/searches all NOT-currently-admitted patients (q optional);
+ *  scope='all' requires q ≥ 2 chars. Substring across name / MRN / file
+ *  number / national ID. REAL-ONLY: retrieval reads the durable record,
+ *  never a mock — null = the live server is unreachable (rendered
+ *  honestly, never a fabricated result). */
+export async function searchPatients(
+  q: string, scope: 'all' | 'discharged' = 'all', limit = 50,
+): Promise<PatientSearchResponse | null> {
+  const params = new URLSearchParams({ scope, limit: String(limit) })
+  if (q.trim()) params.set('q', q.trim())
+  return apiGet<PatientSearchResponse>(`/api/icu/adt/patients/search?${params.toString()}`, 'patient search')
 }
 
 /** PUT /api/icu/adt/patients/:patientId/identity — the AUDITED identity

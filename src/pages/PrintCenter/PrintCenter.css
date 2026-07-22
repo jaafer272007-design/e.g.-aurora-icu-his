@@ -114,6 +114,10 @@
   text-transform: uppercase;
   color: var(--txt3);
 }
+.pc-dtag.dead { color: var(--red); border-color: rgba(var(--red-rgb),.5); }
+/* honest cap notice — the endpoint returns "showing N of total"; never a
+   silent truncation (no-silent-truncation rule) */
+.pc-dmore { margin: 6px 0 0; font-size: 11px; color: var(--txt3); }
 
 .pc-warn { color: var(--amber); font-size: 11px; }
 .pc-empty { color: var(--txt3); font-size: 12px; }

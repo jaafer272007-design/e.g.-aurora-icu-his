@@ -7,7 +7,7 @@ import { lastPatientId } from '../lib/patientContext'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 import { APP_VERSION } from '../lib/version'
 
-export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'print' | 'users' | 'backup' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'discharged' | 'print' | 'users' | 'backup' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
 
 interface NavItem {
   key: NavKey
@@ -62,6 +62,11 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: withPatient('/ai'), perm: 'ai.view' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge />, to: '/discharges', perm: 'patients.view' },
+    /* Discharged Patients — the records-retrieval view (browse + search ALL
+       discharged, each opening the durable /history record). CLINICAL
+       history, so results.view (the office Administrator is locked out) —
+       matches the /discharged route gate and the Discharges row wiring. */
+    { key: 'discharged', label: 'Discharged Patients', icon: <IconClock />, to: '/discharged', perm: 'results.view' },
     { key: 'print', label: 'Print Center', icon: <IconPrinter />, to: '/print', perm: 'patients.view' },
     { key: 'users', label: 'User Accounts', icon: <IconUsers size={16} />, to: '/admin/users', perm: 'users.manage' },
     { key: 'backup', label: 'Backup & Recovery', icon: <IconShield size={16} />, to: '/backup', perm: 'backup.manage' },

@@ -1664,6 +1664,21 @@ export interface MatchCard {
    *  PII) — verifying "same chart?" against the paper record is this
    *  card's whole job */
   fileNumber?: string | null
+  /** newest closed encounter's discharge stamp ('' when never discharged)
+   *  — the partial-search retrieval view lists + sorts discharged patients
+   *  by it */
+  lastDischargedAt?: string | null
+}
+
+/** GET /api/icu/adt/patients/search — the partial-match retrieval result
+ *  (a distinct primitive from MatchPatientResponse's exact/complete tiers) */
+export interface PatientSearchResponse {
+  results: MatchCard[]
+  /** total matched BEFORE the cap — the UI says "showing N of total" */
+  total: number
+  /** true when total exceeded the cap — the UI prompts to refine, never
+   *  silently truncates */
+  truncated: boolean
 }
 
 export interface MatchPatientResponse {

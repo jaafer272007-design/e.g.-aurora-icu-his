@@ -1,6 +1,65 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-22 · current through BACKUP & DISASTER RECOVERY —
+**Last updated: 2026-07-22 · current through DISCHARGED-PATIENT RETRIEVAL —
+THE GO-LIVE GAP (a hospital must be able to find and open ANY past patient
+at any time, and print documents for discharged patients who return). The
+clinical validator found the "Recently Discharged" list showed only the
+newest 12 and its rows were DEAD `<span>`s — no discharged patient beyond
+the recent handful was reachable at all, and the durable record was
+effectively lost even though it was backed up. Root cause (traced
+verify-first): Mission Control is ROSTER-SCOPED (the open census) and 404s
+a discharged patient; the ONLY retrieval path was the 12-row panel, whose
+rows navigated nowhere; and the exact-match admission-bound `patients/match`
+endpoint could not do partial search across closed encounters. Built THREE
+things sharing ONE new endpoint. 🔴 NEW ENDPOINT `GET
+/api/icu/adt/patients/search?q=&scope=all|discharged&limit=` (AdtApi.cs) —
+CASE-INSENSITIVE SUBSTRING across name / structured name parts (first–fourth
++ family) / MRN / patient file number / national ID / patientId; `scope=all`
+requires q≥2 chars (else 400), `scope=discharged` = patients with a closed
+encounter and NO open one (q optional = browse all, newest-discharged
+first); returns `{results, total, truncated}` — NO silent truncation (the
+UI says "showing N of total — refine"). Gated `patients.view` (identity-class
+read; national ID MASKED to last-4, file number unmasked = the chart label
+the desk verifies against). Reuses ToMatchCard + a NEW `LastDischargedAt`
+field on MatchCardDto (newest closed encounter's discharge stamp). PART 1 —
+`/discharged` "Discharged Patients · Records" VIEW (new page
+DischargedRecords.tsx, results.view-gated, nav entry + Discharges-area
+button): browse + debounced partial-search ALL discharged patients, each
+row opening the durable record at `/patients/:id/history` (the
+patient-scoped screen that loads discharged patients — NOT Mission Control).
+PART 2 — the "Recently Discharged" rows (Discharges.tsx) now OPEN
+`/patients/:id/history` on click (dead `<span>`s → buttons, gated
+results.view). PART 3 — the Print Center discharged picker now searches via
+the new endpoint, so a returning patient is found by name / MRN / file# /
+national ID (not just the recent closed-encounter derivation), then any
+document prints. PART 4 (the masking-bug ROOT FIX) — Mission Control does a
+REAL open-encounter read and REDIRECTS a discharged patient to `/history`
+(replace) instead of 404-ing OR, in staging, falling back to the mock
+fixture and rendering the discharged SEEDED patient as if still admitted
+(the flash that HID the real behaviour); a pure-mock/offline demo still
+opens normally (a known patient keeps a synthetic open encounter). RBAC
+BOUNDARY (flagged + confirmed): search endpoint = `patients.view` (every
+clinical profile AND the office Administrator — identity-class); the
+`/discharged` VIEW + row-open + nav = `results.view` (CLINICAL history — the
+office Administrator is LOCKED OUT, the locked no-clinical-data rule); Print
+Center unchanged at `patients.view`. VERIFIED END-TO-END WITH A GENUINELY
+ADMITTED-THEN-DISCHARGED PATIENT (NOT a mock): admitted P-1015 (Zainab
+Kareem Testerson, MRN-528522, file FN-VERIFY-77, national ID 199001015555)
+through ADT, discharged home, then — server (curl): found by name / MRN /
+file# / national ID / browse, RBAC 200 (Consultant) / 200 (office
+Administrator) / 403 (SystemAdministrator, no patients.view) / 401
+(anon), param validation 400 (q<2, no-q on all, bad scope) / 200 (valid),
+and the masking driver (encounters=[discharged], has_open=false); browser
+(Playwright, both themes): /discharged lists + searches P-1015 and clicking
+opens the full `/history` record (real identity + the closed Septic-shock
+→ Home encounter), the Recently Discharged row opens the record, Print
+Center finds by national ID + MRN and prints the face sheet, and Mission
+Control for P-1015 REDIRECTS to /history (no NotFound, no masked mock) while
+an admitted control stays on Mission Control, office Administrator gets
+Access Restricted on /discharged — 21/21 UI checks. Client `tsc -b` + vite
+build clean; server build clean (0 warnings/errors).**
+
+Prior work through BACKUP & DISASTER RECOVERY —
 THE HARD GO-LIVE GATE (BACKUP_DR_DESIGN.md). Built from the owner's design
 in full: ONE C# backup engine (server/Core/Backup) shared by three
 callers — the nightly Windows Task Scheduler job (CLI verbs via `docker
