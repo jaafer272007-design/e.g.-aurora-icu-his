@@ -164,8 +164,13 @@ static class Rbac
            controls who can reach patient data — while never reaching it
            themselves (NO clinical atoms, not even patients.view; the
            locked office-Administrator clinical exclusion applies a
-           fortiori here) */
-        ["SystemAdministrator"] = ["users.manage", "users.view"],
+           fortiori here).
+           backup.manage (Backup & DR, the hard go-live gate): the design's
+           §1 owner decision — backup/restore is IT OPERATIONS, on this
+           profile ONLY; every clinical profile 403s on the Backup area.
+           Consistent with the exclusion above: backups are opaque
+           encrypted blobs — managing them never reads patient data. */
+        ["SystemAdministrator"] = ["users.manage", "users.view", "backup.manage"],
         /* formulary.manage (Layer 4): maintaining the drug formulary is
            PHARMACY's authority — the same polarity flip as results.create
            on Ancillary (doctor/nurse/administrator tokens are 403'd on

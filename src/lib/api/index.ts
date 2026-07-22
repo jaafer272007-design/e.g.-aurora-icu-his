@@ -2157,3 +2157,90 @@ export function correctObservation(observationId: string, value: ObsEntryValue, 
     'observation correction',
     { value, ...(reason !== undefined && reason.trim() !== '' ? { reason } : {}) })
 }
+
+/* ---------------- Backup & Disaster Recovery (the hard go-live gate) ----------------
+   REAL-ONLY end to end — reads AND writes. There is deliberately no mock
+   backup state: a pretend "backup succeeded" in an offline demo is the
+   exact false comfort the design forbids (a backup that has never been
+   restored is a hope; one that never ran is not even that). Offline /
+   demo mode renders the honest "server unavailable" state instead.
+   All endpoints are System-Administrator-gated server-side
+   (backup.manage); a clinical token gets the generic 403. */
+
+import type {
+  BackupEvent, BackupHistoryEntry, BackupManifestSummary,
+  BackupRotateKeyResult, BackupStatus, BackupTestRestoreResult,
+  BackupVerifyResult,
+} from './types'
+
+/** backup operations run pg_dump + a scratch-database restore server-side
+ *  — minutes on a real hospital DB, far beyond the interactive 8s budget */
+const BACKUP_TIMEOUT_MS = 300000
+
+async function backupPost<T>(path: string, what: string, body?: unknown): Promise<AdtWriteResult<T>> {
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return { kind: 'offline' }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), BACKUP_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { ...authHeaders(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+    clearTimeout(timer)
+    if (res.ok) return { kind: 'ok', data: (await res.json()) as T }
+    if (res.status === 401) {
+      console.info(`[aurora] ${what} API responded 401 — backup operations require the live server`)
+      return { kind: 'offline' }
+    }
+    const err = (await res.json().catch(() => null)) as { error?: string } | null
+    console.info(`[aurora] ${what} API rejected the action (${res.status})`)
+    return { kind: 'rejected', error: err?.error ?? `Rejected (${res.status})` }
+  } catch {
+    console.info(`[aurora] ${what} API unreachable — backup operations require the live server`)
+    return { kind: 'offline' }
+  }
+}
+
+/** GET /api/backup/status — dashboard health/schedule/retention/key.
+ *  Null = server unreachable or demo mode (rendered honestly, never ok). */
+export function getBackupStatus(): Promise<BackupStatus | null> {
+  return apiGet<BackupStatus>('/api/backup/status', 'backup status')
+}
+
+/** GET /api/backup/history — every held backup, newest first. */
+export function getBackupHistory(): Promise<BackupHistoryEntry[] | null> {
+  return apiGet<BackupHistoryEntry[]>('/api/backup/history', 'backup history')
+}
+
+/** GET /api/backup/events — the immutable audit trail, newest first. */
+export function getBackupEvents(limit = 200): Promise<BackupEvent[] | null> {
+  return apiGet<BackupEvent[]>(`/api/backup/events?limit=${limit}`, 'backup events')
+}
+
+/** POST /api/backup/run — "Backup now": synchronous; the response is the
+ *  born-restore-verified manifest. */
+export function runBackupNow(): Promise<AdtWriteResult<BackupManifestSummary>> {
+  return backupPost<BackupManifestSummary>('/api/backup/run', 'backup run')
+}
+
+/** POST /api/backup/verify — integrity without a restore. Supplying key
+ *  (hex) proves a RECORDED off-server copy decrypts (the envelope drill). */
+export function verifyBackup(file: string, key?: string): Promise<AdtWriteResult<BackupVerifyResult>> {
+  return backupPost<BackupVerifyResult>('/api/backup/verify', 'backup verify',
+    { file, ...(key && key.trim() !== '' ? { key: key.trim() } : {}) })
+}
+
+/** POST /api/backup/test-restore — full reconstruction into an ISOLATED
+ *  scratch database; source-vs-restored counts + digests; live data
+ *  untouched. */
+export function testRestoreBackup(file: string): Promise<AdtWriteResult<BackupTestRestoreResult>> {
+  return backupPost<BackupTestRestoreResult>('/api/backup/test-restore', 'backup test-restore', { file })
+}
+
+/** POST /api/backup/rotate-key — the response carries the NEW key exactly
+ *  once for the envelope ceremony; nothing can read it back later. */
+export function rotateBackupKey(): Promise<AdtWriteResult<BackupRotateKeyResult>> {
+  return backupPost<BackupRotateKeyResult>('/api/backup/rotate-key', 'backup rotate-key')
+}

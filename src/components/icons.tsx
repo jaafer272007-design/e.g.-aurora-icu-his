@@ -188,3 +188,13 @@ export function IconPrinter({ size = 16, stroke = 'currentColor', strokeWidth = 
     </svg>
   )
 }
+
+/** Backup & Recovery (the Backup area) — a shield: protection of the record */
+export function IconShield({ size = 16, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
+  return (
+    <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
+      <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6l7-3z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  )
+}

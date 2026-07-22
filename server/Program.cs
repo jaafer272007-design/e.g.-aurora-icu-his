@@ -41,6 +41,17 @@ using Microsoft.IdentityModel.Tokens;
    every boot must name its environment, and production refuses the
    SQLite fallback outright (BootGuards T2). See Core/Persistence. */
 
+/* ---- BACKUP/DR CLI (BACKUP_DR_DESIGN.md) — dispatched BEFORE the boot
+   gates because these are one-shot OPERATOR commands, not the serving
+   process: the nightly Task Scheduler job runs
+   `docker exec aurora dotnet AuroraIcu.Api.dll backup`, and restore.ps1
+   runs `decrypt`/`verify-restored` on a BURNED-DOWN machine where
+   APP_ENV/JWT_SECRET may not exist yet. Each verb enforces its own
+   requirements (see BackupCli.cs) and the process exits without ever
+   binding a port. */
+if (Aurora.Core.Backup.BackupCli.IsBackupVerb(args))
+    return Aurora.Core.Backup.BackupCli.Run(args);
+
 /* ---- BOOT GATES (environment-separation §11 step 2) — BEFORE anything
    binds: an unknown or missing APP_ENV refuses to boot in every tier
    (the boot/seed-layer escalation of the aud rider, whose fail-closed
@@ -255,6 +266,7 @@ VocabApi.Map(app);
 Aurora.Core.Observations.ObservationsApi.Map(app);
 Aurora.Core.Observations.ObservationCatalogApi.Map(app);
 Aurora.Core.Nursing.HandoffApi.Map(app);
+Aurora.Core.Backup.BackupApi.Map(app);
 
 /* SPA fallback (only when this service carries the frontend): unmatched
    non-API routes serve index.html so the router owns deep links — but
@@ -299,3 +311,4 @@ if (servesFrontend)
 }
 
 app.Run();
+return 0; // the CLI dispatch above makes Main int-returning; the web path exits via app.Run()

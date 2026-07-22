@@ -36,6 +36,24 @@ RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
+# PostgreSQL 16 client tools (Backup & DR — the hard go-live gate).
+# The backup CLI (`docker exec aurora dotnet AuroraIcu.Api.dll backup`)
+# shells out to pg_dump/pg_restore; they must be version >= the
+# postgres:16-alpine server, and the base aspnet image (Debian bookworm)
+# ships only client 15 by default. Add the official PGDG repo and pull
+# client 16 — postgresql-client-common installs version-dispatching
+# /usr/bin/pg_dump + pg_restore wrappers, so they land on PATH.
+# (On-prem the appliance host has no Postgres install; these tools live
+# inside the container, exactly like the nightly dump does — design §2.)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl gnupg ca-certificates \
+ && install -d /usr/share/postgresql-common/pgdg \
+ && curl -sSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+ && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client-16 \
+ && apt-get purge -y --auto-remove gnupg \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/publish .
 # the same-origin frontend: Program.cs detects wwwroot/index.html and
 # serves it with the guarded SPA fallback (/api, /healthz, /build.txt
