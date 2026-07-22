@@ -1,6 +1,59 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-22 · current through HOSPITAL INSTALLER + ALWAYS-ON
+**Last updated: 2026-07-22 · current through HOSPITAL INSTALLER — PR B (the
+native Windows installer). The "double-click → next → finish → runs itself
+24/7" installer, Docker-free, per the confirmed Option B design. NEW folder
+`installer/`: (1) `aurora.iss` — the Inno Setup wizard: collects the five
+production decisions (data location, access URL [LAN, refuses localhost],
+admin password [confirmed, ≠ demo], formulary starter/empty; timezone + GPU
+auto-detected), lays down the payload, invokes provisioning, shows the
+backup key ONCE in a scrollable dialog (then deletes the relay file), and the
+Finished page states the access URL + always-on; uninstall stops/removes the
+services (data left in place). (2) `aurora-provision.ps1` — the Docker-free
+engine: initdb a PRIVATE Postgres cluster (local-only, scram) → register +
+start the **AuroraPostgres** service (Automatic + SCM recovery) → create the
+aurora role/db → write the ACL-locked `server\aurora.env` (absolute paths;
+the PR-A AuroraEnvFile loader reads it) → register + start **AuroraServer**
+(Automatic, depends-on AuroraPostgres, SCM recovery restart/5s/10s/30s; first
+boot migrates + seeds catalogues + the bootstrap admin, zero patients) → the
+init-key ceremony → register the nightly backup → open the firewall for the
+API port only. (3) `aurora-backup.ps1` — the NATIVE nightly backup: runs
+`AuroraIcu.Api.exe backup` directly (the Docker-free sibling of #164's
+compose-based backup.ps1; IDENTICAL engine — same AES-256-GCM, same
+born-restore-verified manifest — only the trigger changes) + the USB mirror
++ audit. (4) `build.ps1` — builds the React production bundle → wwwroot,
+`dotnet publish` self-contained win-x64 (no .NET install on the hospital
+box), stages a private PostgreSQL + the model, compiles the .iss → one
+`AuroraSetup.exe`. (5) `installer/README.md` — build + the explicit
+tested-vs-code-reviewed split. ✅ VERIFIED on Linux (what CI/the sandbox can
+prove): the **self-contained win-x64 publish** emits a standalone PE32+
+`AuroraIcu.Api.exe` (CLR bundled — no .NET install) with the SPA in wwwroot;
+PR-A config parity (aurora.env drives the server) already proven; the backup
+engine `.exe backup` already proven born-verified in #164. 🔎
+CODE-REVIEWED-ONLY (Windows-only — the owner's SECOND-MACHINE verification,
+alongside the backup-restore drill): the Inno wizard, initdb+services coming
+up, 🔴 **auto-start before login** (reboot → open the URL from another device
+with nobody logged in), 🔴 **auto-restart on crash** (sc stop → SCM restarts),
+the seed on first boot, the key ceremony, the nightly task registration, the
+firewall (port reachable; 5432 not exposed), and a restore from the native
+install. NO server/client code changed (installer-only; PR A's hooks are what
+it relies on). Docker stays the dev/validator testbed. ALSO on this branch
+(docs-only, no code): `HOSPITAL_INSTALLER_RUNTIME_DESIGN.md` gains **§5 GPU
+capacity & AI concurrency** — the RTX 4060 + Qwen2.5-7B analysis recorded
+BEFORE PR C in answer to the owner's go-live capacity question. Key facts:
+connecting ≠ GPU load (charting/labs/orders/viewing = zero GPU; the GPU is hit
+only on an actual AI query); `llama-server` **queues** concurrent requests
+(continuous batching over `--parallel` slots) rather than failing; the real
+ceiling on the 4060 + 7B is **~4 concurrent** generations (VRAM/KV-cache
+bound), and 20 machines realistically peak at **1–3** simultaneous AI calls;
+the **four guardrails PR C bakes in** — `--parallel 3–4`, per-user
+single-in-flight, streaming, a "please wait / queued" UI; the **GQA model
+requirement already met** (Qwen2.5-7B); the **`llama-bench`** second-machine
+verification step; and the **16 GB/24 GB upgrade path**. §3's PR C bullet now
+points to §5 and lists the guardrails as PR C scope. NEXT: PR C (native
+llama-server AI service + GPU-native path — implements the §5.4 guardrails).**
+
+Prior work through HOSPITAL INSTALLER + ALWAYS-ON
 RUNTIME — DESIGN + PR A. The complete "double-click install, runs itself
 24/7" story. Owner CONFIRMED the verify-first recommendation: adopt native
 Windows Services (Option B) and DROP Docker from production (Docker stays the
