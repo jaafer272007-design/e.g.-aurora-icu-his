@@ -47,6 +47,7 @@ Because Windows services, the SCM, `initdb`-for-Windows, and Inno Setup **cannot
 - The **self-contained `win-x64` publish** produces a standalone `AuroraIcu.Api.exe` (PE32+) with the CLR bundled (no .NET install needed) and the SPA in `wwwroot`.
 - **Config parity** (PR A): the server reads `aurora.env` for everything (PORT/APP_ENV/DATABASE_URL/BACKUP_DIR…); the real env wins; a missing file is a no-op; the backup CLI reads it too.
 - The **backup engine** (`AuroraIcu.Api.exe backup`) produces a real born-restore-verified AES-256-GCM backup (proven against Postgres in the #164 verification) — `aurora-backup.ps1` calls exactly that.
+- **The two PowerShell scripts parse syntax-clean.** `aurora-provision.ps1` and `aurora-backup.ps1` were run through the PowerShell engine's own parser (`System.Management.Automation.Language.Parser.ParseFile`) — **zero syntax errors** (no unbalanced braces/quotes, no malformed `param`/pipelines). This is a syntax gate only: it catches typos so the installer will not face-plant on a bracket error, but it does **not** validate the Windows-only cmdlets or any behavior (those stay in the list below). `aurora.iss` is not machine-checkable off Windows (no Linux Inno compiler) — it remains code-reviewed.
 
 **🔎 Code-reviewed only — VERIFY ON THE WINDOWS MACHINE (your second-laptop run):**
 1. **The wizard** runs and collects the five decisions (double-click → next → finish).
