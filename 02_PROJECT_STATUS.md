@@ -1,6 +1,46 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-23 · current through ON-BOOT AI AUTO-WIRE — the "just
+**Last updated: 2026-07-23 · current through APP-ONLY UPDATER — `aurora-update` +
+`server/version.json` (§1–§2 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`; PR 2
+of the delivery-updates design). Delivers a new application build WITHOUT
+re-running the 5 GB installer, DATA-SAFELY. NEW `server/version.json` (emitted by
+`build.ps1` from aurora.iss AppVer + the newest EF migration id + git commit) is
+the version/migration-set identity the updater reasons about (nothing reads it at
+runtime). NEW `installer/aurora-update.ps1` engine + `aurora-update.iss`
+(self-extracting `AuroraUpdate-<ver>.exe`, `build.ps1 -UpdateOnly`): verify
+package checksums → **version-skew guard** (refuse downgrade / same-version /
+DB-ahead / cross-major-without-`-AllowMajor` / non-production, 0-change) →
+**born-verified DB backup as the restore point** → stop AuroraServer (Postgres +
+AuroraAI stay up) → `server\`→`server.prev\` swap **carrying aurora.env + every
+secret across verbatim** → start → verify `/healthz` status=ok AND
+build==packageCommit. 🔴 **ROLLBACK CONTRACT (§2.5)**: forward-only migrations, so
+`migrationWillRun` is computed up front; on failure restore `server.prev\`, and if
+the schema advanced ALSO restore the pre-update DB snapshot, returning to EXACTLY
+the pre-update state; if automation can't finish, a loud `installer\update.log`
+block gives the exact manual one-command restore. THE DESIGN-VS-CODE CORRECTION:
+§2.5 assumed a `restore` verb that did NOT exist — PR 2 BUILT it. NEW
+`BackupService.RestoreInPlace` + `restore` CLI verb (`--yes`-guarded, DESTRUCTIVE):
+decrypt → **born-verify the dump into a scratch DB FIRST** (live DB untouched until
+the backup is proven restorable) → **DROP+CREATE** the live DB (not `--clean`, so a
+failed-migration orphan can't survive to break the next replay) → pg_restore →
+compare every table's count AND content digest to the manifest (the comparison, not
+pg_restore's exit, is ground truth). Needs `aurora` `CREATEDB` → NEW `ALTER ROLE
+aurora CREATEDB` in `aurora-provision.ps1` (minimal capability), which ALSO repairs
+a LATENT bug: the backup born-verify's `CREATE DATABASE scratch` as `aurora` would
+have failed on a native install (worked in Docker/CI only because compose's
+`POSTGRES_USER=aurora` is a superuser). ✅ VERIFIED: server builds; all installer
+`.ps1` syntax-clean; 🔴 the `restore` verb EXECUTED END-TO-END against REAL
+PostgreSQL 16 with `aurora` as **CREATEDB-but-NOT-superuser** — born-verified
+backup, live DB wiped (catalogue emptied + planted orphan table) then restored to
+EXACTLY the snapshot: 28 tables + `__EFMigrationsHistory`, counts AND digests
+match, catalogue rows back, orphan GONE; the version-skew guard EXECUTED in a
+runspace (19/19: numeric semver + all five refusals). 🔎 CODE-REVIEWED-ONLY
+(Windows second machine, README verify items 16–17): the live service stop/swap/
+start, the ISS self-extractor, and the full ROLLBACK drill (fail health → restore
+server.prev + DB snapshot). NEXT: none queued — the delivery-updates design (§1/§2/
+§3/§3.5) is fully BUILT. **
+
+Prior: ON-BOOT AI AUTO-WIRE — the "just
 works" path (§3.5 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`). The validator
 wanted full auto-detection, not a command: a hospital fits an NVIDIA GPU, powers
 the server on, and the AI just works — nothing typed. On EVERY boot AuroraServer
@@ -38,7 +78,7 @@ untouched. 🔎 CODE-REVIEWED-ONLY (Windows/GPU second machine, README verify it
 coming up that same boot, and the fail-safe-with-broken-probe check. enable-ai
 (PR 1) stays shipped as the manual escape hatch, now redundant on a normal
 install. NEXT: PR 2 = `aurora-update` + `server/version.json` (§2, the rollback
-contract). **
+contract).
 
 Prior: ENABLE-AI-LATER — PR 1 of the
 delivery-updates design (§3 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`; §2
