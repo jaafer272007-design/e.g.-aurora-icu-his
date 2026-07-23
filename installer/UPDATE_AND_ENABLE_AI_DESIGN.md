@@ -1,8 +1,9 @@
 # Design note — `aurora-update` + `aurora-enable-ai` (surgical, data-safe installer operations)
 
-**Status: DESIGN — not built yet.** This note is for the owner to read before
-the build. It designs two small `installer/` operations that replace *re-running
-the 5 GB `AuroraSetup.exe`* for two routine tasks. Both follow one discipline.
+**Status: §3 `aurora-enable-ai` (+ the message fix) is BUILT (PR 1). §2
+`aurora-update` (+ `version.json`) remains DESIGN — the next build (PR 2).**
+This note designs two small `installer/` operations that replace *re-running the
+5 GB `AuroraSetup.exe`* for two routine tasks. Both follow one discipline.
 
 Read alongside: `installer/README.md`, `HOSPITAL_INSTALLER_RUNTIME_DESIGN.md`
 (§2 the always-on runtime, §5 the AI service), `BACKUP_DR_DESIGN.md` (the backup
