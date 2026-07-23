@@ -1,7 +1,9 @@
 # Design note — `aurora-update` + `aurora-enable-ai` (surgical, data-safe installer operations)
 
-**Status: §3 `aurora-enable-ai` (+ the message fix) is BUILT (PR 1). §2
-`aurora-update` (+ `version.json`) remains DESIGN — the next build (PR 2).**
+**Status: §3 `aurora-enable-ai` (+ the message fix) is BUILT (PR 1). §3.5
+on-boot AI self-wiring — the "just works" path that supersedes needing to run
+enable-ai by hand — is BUILT (the auto-wire PR). §2 `aurora-update` (+
+`version.json`) remains DESIGN — the next build (PR 2).**
 This note designs two small `installer/` operations that replace *re-running the
 5 GB `AuroraSetup.exe`* for two routine tasks. Both follow one discipline.
 
@@ -314,6 +316,64 @@ is added but before enable-ai runs. Two-part fix:
    This is honest whether or not a GPU is later fitted (it speaks to *setup*, not
    *now*), and it tells the operator exactly how to enable it. (The AI screen
    already surfaces this reason verbatim.)
+
+### 3.5 On-boot AI self-wiring — the "just works" path (BUILT, the auto-wire PR)
+
+The validator asked for the step above to disappear: a hospital fits an NVIDIA
+GPU, **powers the server on, and the AI just works — no command, no script,
+nothing typed.** This is `aurora-enable-ai`'s exact wiring, but driven by a
+**decision at boot** instead of by an operator.
+
+**Where it runs.** `AuroraServer` calls it on **every** boot, before the config is
+read — `server/Core/Ai/AiAutoWire.cs` (hooked in `Program.cs` right after the boot
+gates, *before* `CreateBuilder`, so this boot's `AiConfig`, which latches at
+`AiApi.Map` after `builder.Build()`, sees the freshly-wired state — **no restart
+needed**). The C# hook runs **only under the native Windows Service Control Manager**
+(`WindowsServiceHelpers.IsWindowsService()`) — it is a **no-op on Docker / Render /
+dev / CI**, which never touch a GPU or the SCM. It invokes
+`installer/aurora-autowire.ps1`, which **dot-sources `aurora-ai-service.ps1` and
+reuses the same `Register-AuroraAI` / `Update-AiEnvLines` / `Set-AiDisabledEnvLines`
+helpers** — no wiring logic is duplicated.
+
+**The decision (probe → reconcile).** The script probes for (a) an NVIDIA GPU and
+(b) the on-disk AI payload, and compares against `aurora.env`'s current
+`AI_PROVIDER`:
+
+| Machine state | `aurora.env` | Action |
+|---|---|---|
+| GPU **+** payload present | AI **off** | **ENABLE** — register `AuroraAI`, flip `none→openai`, drop the stale reason |
+| GPU **or** payload gone | AI **on** | **DISABLE** — stop/remove `AuroraAI`, flip `openai→none` with an honest reason |
+| already matches (on-with-GPU / off-without) | — | **NO-OP** — touch nothing |
+
+The DISABLE direction is the honesty half: if a GPU is later *removed*, the AI does
+not silently pretend to work — it turns itself off with
+`AI_UNAVAILABLE_REASON="AI is turned off on this install — the NVIDIA GPU is no
+longer detected. It turns back on by itself when the GPU is present at boot."`
+
+**🔴 Zero database state.** Identical to §3.3 — the script runs no `initdb`, no role
+change, no re-seed, no schema change, no secret rotation, no forced logout. It only
+registers/removes the `AuroraAI` *service* and makes the **execution-proven surgical
+edit** to the AI\_\* lines of `aurora.env` (every other line preserved byte-for-byte).
+Patient data cannot be touched.
+
+**🔴 Fail-safe is paramount.** *The AI turning itself on must never be able to stop
+the hospital system from running.* Guarantees: the C# hook runs the script in a
+**time-bounded child process** (killed if it hangs) with the **entire body wrapped
+in a catch-all**; the script sets `ErrorActionPreference='Continue'`, wraps its
+engine, and **always `exit 0`**; ENABLE registers the service **first**, so if
+registration throws, `aurora.env` is left untouched and the boot proceeds with the
+AI still off (retried next boot). Any failure anywhere ends with **Aurora booting
+normally, AI in its prior state, honest message** — never a blocked HIS.
+
+**The C# ⇆ script contract.** The script prints the managed AI\_\* set it wants this
+boot as `AUTOWIRE-ENV: KEY=VALUE` lines. If it prints **≥1** line (ENABLE/DISABLE)
+the hook reconciles all managed keys onto the process (sets emitted, clears the
+rest); if it prints **0** lines (NO-OP) the hook leaves the environment exactly as
+`aurora.env` loaded it. Silence = "no change."
+
+`aurora-enable-ai` (§3) **stays shipped** as the manual escape hatch (an operator
+can still force it, or run it on a box whose SCM path is bypassed), but on a normal
+native install it is now **redundant** — the boot does it.
 
 ---
 

@@ -73,6 +73,18 @@ if (Aurora.Core.Backup.BackupCli.IsBackupVerb(args))
 BootGuards.RefuseUnknownEnvironment();
 BootGuards.ProductionConfigTripwire();
 
+/* ---- ON-BOOT AI SELF-WIRING (the "just works" path). On every boot — under
+   the native Windows Service Control Manager ONLY, a no-op on Docker/Render/
+   dev/CI — probe for an NVIDIA GPU + the on-disk AI payload and reconcile the
+   AuroraAI service + aurora.env to match the hardware: turn the AI on by itself
+   when a GPU is fitted, off honestly when it is removed. Placed HERE, after the
+   config file loaded (line 53) and BEFORE CreateBuilder, so this boot's AiConfig
+   (which latches at AiApi.Map, after builder.Build()) sees the freshly-wired
+   state — no restart needed. 🔴 It touches ZERO database state, and it FAILS
+   SAFE: the whole thing is wrapped and time-bounded so it can only ever cost the
+   AI, never stop the HIS from booting. See Core/Ai/AiAutoWire.cs. */
+Aurora.Core.Ai.AiAutoWire.RunAtBoot();
+
 /* THE RECURRING RENDER "139" — ROOT CAUSE (diagnosed 2026-07-20 from the
    crashed deploy's log, ending the transient-marked history: #137's
    first-attempt 139, #142's failed auto AND manual deploys):

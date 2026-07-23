@@ -1,6 +1,46 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-23 · current through ENABLE-AI-LATER — PR 1 of the
+**Last updated: 2026-07-23 · current through ON-BOOT AI AUTO-WIRE — the "just
+works" path (§3.5 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`). The validator
+wanted full auto-detection, not a command: a hospital fits an NVIDIA GPU, powers
+the server on, and the AI just works — nothing typed. On EVERY boot AuroraServer
+now runs `installer/aurora-autowire.ps1` (NEW), which probes for (a) an NVIDIA
+GPU and (b) the on-disk AI payload and RECONCILES the AuroraAI service +
+`aurora.env` to the hardware: **ENABLE** (GPU+payload, AI off) registers AuroraAI
++ flips `none→openai` + drops the stale reason; **DISABLE** (GPU/payload gone, AI
+on) stops AuroraAI + flips `openai→none` with an honest "GPU is no longer
+detected" reason; **NO-OP** when state already matches. It REUSES the #170
+helpers (`Register-AuroraAI` / `Update-AiEnvLines` / new `Set-AiDisabledEnvLines`,
+all in `aurora-ai-service.ps1`) — no wiring duplicated. NEW
+`server/Core/Ai/AiAutoWire.cs` is the boot hook (`Program.cs`, after the boot
+gates, BEFORE `CreateBuilder`, so THIS boot's `AiConfig` — latched at
+`AiApi.Map` — sees the wired state, NO restart). 🔴 **ZERO DATABASE STATE**
+(same as enable-ai: no initdb/role/seed/secret-rotation/forced-logout — only the
+service + the execution-proven surgical `aurora.env` edit). 🔴 **FAILS SAFE — the
+paramount constraint**: gated to the **native Windows SCM ONLY** (no-op on
+Docker/Render/dev/CI via `IsWindowsService()`), run in a **time-bounded child
+process wrapped in a catch-all**, script sets `ErrorActionPreference=Continue` +
+always `exit 0`, ENABLE registers the service FIRST (config untouched if it
+throws) — any failure ⇒ Aurora boots normally, AI in its prior state, honest
+message; the AI turning itself on can NEVER stop the HIS. C#⇆script contract:
+script prints `AUTOWIRE-ENV: KEY=VALUE`; ≥1 line ⇒ hook reconciles all managed
+keys, 0 lines ⇒ leave env as `aurora.env` loaded it. `aurora.iss` ships the new
+script to `server\scripts`. ✅ VERIFIED on Linux: ALL `.ps1` syntax-clean
+(Parser.ParseFile incl. the new one); server BUILDS with the hook (inert off
+Windows via the OS/SCM gate); 🔴 the auto-wire **EXECUTED** through a real
+PowerShell runspace (Microsoft.PowerShell.SDK) — **22/22**: pure
+`Set-AiDisabledEnvLines` preserves secrets/config byte-for-byte + flips to none +
+honest reason; the **DISABLE** decision really rewrote a temp `aurora.env` to
+none (JWT_SECRET/DATABASE_URL intact) + emitted the none+reason lines and no
+endpoint/model; the **NO-OP** decision emitted zero lines + left the file
+untouched. 🔎 CODE-REVIEWED-ONLY (Windows/GPU second machine, README verify item
+15): the live GPU auto-detect ENABLE at boot, AuroraAI self-registration, the AI
+coming up that same boot, and the fail-safe-with-broken-probe check. enable-ai
+(PR 1) stays shipped as the manual escape hatch, now redundant on a normal
+install. NEXT: PR 2 = `aurora-update` + `server/version.json` (§2, the rollback
+contract). **
+
+Prior: ENABLE-AI-LATER — PR 1 of the
 delivery-updates design (§3 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`; §2
 `aurora-update` is PR 2, still to build). Turns the AI on after a GPU is fitted
 later, DATA-SAFELY, replacing a 5 GB installer re-run (which rotates JWT_SECRET
@@ -28,7 +68,7 @@ byte-preserved; AI flipped to openai; stale reason removed). 🔎
 CODE-REVIEWED-ONLY (Windows/GPU second machine, README verify item 14): the live
 GPU probe, AuroraAI registration, the restart + AI coming up. No server C#
 changed. NEXT: PR 2 = `aurora-update` + `server/version.json` (§2, the rollback
-contract). **
+contract).
 
 Prior: UPDATE + ENABLE-AI DESIGN NOTE
 (docs-only). `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`
