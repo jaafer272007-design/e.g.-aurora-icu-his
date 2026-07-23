@@ -24,7 +24,10 @@ DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 ; services + firewall + SCM require elevation
 PrivilegesRequired=admin
-ArchitecturesInstall64Bit=x64compatible
+; only 64-bit Windows (the payload — .NET win-x64, Postgres x64 — is 64-bit);
+; Setup runs in 64-bit install mode automatically on a matching OS. (Inno 6.4+
+; removed the old ArchitecturesInstall64Bit directive in favour of this one.)
+ArchitecturesAllowed=x64compatible
 OutputBaseFilename=AuroraSetup-{#AppVer}
 Compression=lzma2/max
 SolidCompression=yes

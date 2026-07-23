@@ -25,7 +25,8 @@ DisableProgramGroupPage=yes
 Uninstallable=no
 ; stop/start of the service + the DB restore need elevation
 PrivilegesRequired=admin
-ArchitecturesInstall64Bit=x64compatible
+; only 64-bit Windows (Inno 6.4+ replaced ArchitecturesInstall64Bit with this)
+ArchitecturesAllowed=x64compatible
 OutputBaseFilename=AuroraUpdate-{#AppVer}
 Compression=lzma2/max
 SolidCompression=yes
