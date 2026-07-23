@@ -48,6 +48,7 @@ Source: "aurora-provision.ps1"; DestDir: "{app}\server\scripts"; Flags: ignoreve
 Source: "aurora-backup.ps1";    DestDir: "{app}\server\scripts"; Flags: ignoreversion
 Source: "aurora-ai-service.ps1"; DestDir: "{app}\server\scripts"; Flags: ignoreversion
 Source: "aurora-enable-ai.ps1";  DestDir: "{app}\server\scripts"; Flags: ignoreversion
+Source: "aurora-autowire.ps1";   DestDir: "{app}\server\scripts"; Flags: ignoreversion
 
 [Code]
 var

@@ -55,6 +55,19 @@ function Update-AiEnvLines {
   )
 }
 
+function Set-AiDisabledEnvLines {
+  # The DISABLE direction (auto-wire, when a GPU is removed). Returns $lines with
+  # the managed AI_* keys removed and AI OFF + an honest reason appended. Every
+  # other line preserved verbatim. Pure — mirrors Update-AiEnvLines; unit-tested.
+  param([Parameter(Mandatory)][string[]]$lines, [Parameter(Mandatory)][string]$reason)
+  $managed = @('AI_PROVIDER','AI_ENDPOINT','AI_MODEL','AI_TIMEOUT_SECONDS','AI_UNAVAILABLE_REASON')
+  $kept = @($lines | Where-Object {
+    $key = (($_ -split '=', 2)[0]).Trim()
+    -not ($managed -contains $key)
+  })
+  return $kept + @('AI_PROVIDER=none', "AI_UNAVAILABLE_REASON=$reason")
+}
+
 function Register-AuroraAI {
   # Register + start the AuroraAI Windows service = llama-server run under NSSM
   # (a thin service host, since llama-server is a console exe): Automatic start
