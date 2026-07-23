@@ -1,6 +1,38 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-22 · current through HOSPITAL INSTALLER — BUILD RUNBOOK
+**Last updated: 2026-07-23 · current through UPDATE + ENABLE-AI DESIGN NOTE
+(docs-only; nothing built yet). `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`
+designs two small, surgical, data-safe `installer/` operations that replace
+re-running the 5 GB installer: (1) **`aurora-update`** — a ~150 MB app-only
+package (self-extracting `AuroraUpdate-<ver>.exe`, engine =
+`aurora-update.ps1`) that verifies the bundle → version-skew guard (refuse
+downgrade / same-version / DB-ahead / cross-major / non-production) → takes a
+born-verified DB backup as the restore point → stops AuroraServer (Postgres +
+AuroraAI left running) → swaps `server\` (keeping `server.prev\`, preserving
+`aurora.env` so NO secret rotates and NO forced logout) → starts → boot-time
+`db.Database.Migrate()` auto-applies → polls `/healthz` for the NEW build.
+🔴 THE ROLLBACK CONTRACT (forward-only migrations): a pre-computed
+`migrationWillRun` (package `migrationHead` vs the live `__EFMigrationsHistory`
+head) decides the restore set — binary-only if no migration ran, **binary AND
+the pre-update DB snapshot** if it did; the server is down through the swap so
+nothing is lost; if the rollback itself fails, `server.prev\` + a verified
+backup + the exact one-command restore remain on disk — worst case is a
+documented manual restore to the pre-update state, never an unrecoverable
+system. (2) **`aurora-enable-ai`** — turns the AI on after a GPU is added later:
+GPU + on-disk payload check → register AuroraAI (shared step-5b helper) →
+**surgical `aurora.env` edit** (flip AI_PROVIDER none→openai, add endpoint/
+model/timeout, drop the stale reason) → restart. TOUCHES ZERO DATABASE STATE
+(unchanged binary → boot-migrate is a no-op), so no backup/rollback needed.
+Also FIXES the stale `AI_UNAVAILABLE_REASON="no GPU on this server"` (false once
+a GPU is fitted) → an actionable "AI turned off at setup — add a GPU and run
+aurora-enable-ai" wording + enable-ai removes the line. Needs one server-side
+addition: `server/version.json` (semver + commit + migrationHead) emitted by
+build.ps1. Reuses boot-migrate, the backup engine, and the release-bundle +
+verify-release-bundle machinery. Two PR-sized builds (enable-ai first, then the
+updater); five owner decisions flagged in §6. NEXT: owner reads the note, then
+build. **
+
+Prior work through HOSPITAL INSTALLER — BUILD RUNBOOK
 (docs + build tooling, no product code). Two additions under `installer/` so the
 owner can produce `AuroraSetup.exe` on a Windows laptop without babysitting ten
 copy-pastes: (1) `build-all.ps1` — a ONE-SHOT wrapper that optionally
@@ -17,7 +49,7 @@ llama.cpp-commit parity caveat, the output path + ~5 GB (with model) / ~150 MB
 actual Windows build run is the owner's (needs the SDK/Node/Inno toolchain + a
 GPU-target machine) — the runbook drives it. NEXT: the owner builds
 `AuroraSetup.exe` and runs the second-machine verification (installer + AI +
-backup-restore).**
+backup-restore). (Delivery-updates design is the current marker above.)
 
 Prior work through HOSPITAL INSTALLER — PR C (the
 native AI service + GPU-native path). The final piece of the Docker-free
