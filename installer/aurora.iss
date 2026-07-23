@@ -107,10 +107,23 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
-var url: String;
+var url, dir: String;
 begin
   Result := True;
-  if CurPageID = UrlPage.ID then begin
+  if CurPageID = wpSelectDir then begin
+    { Refuse to install ON TOP of a source/development checkout of Aurora. Setup
+      defaults to C:\Aurora, which on a BUILD machine is the git clone (from
+      'git clone … aurora'); installing there would overwrite the source tree and
+      collide the payload's server\ with the source server\. Empty folder only. }
+    dir := WizardDirValue;
+    if FileExists(AddBackslash(dir) + 'package.json') or DirExists(AddBackslash(dir) + '.git') then begin
+      MsgBox('That folder looks like a source-code / development copy of Aurora' + #13#10 +
+             '(it contains package.json or a .git folder). Installing here would' + #13#10 +
+             'overwrite your source tree.' + #13#10#13#10 +
+             'Pick an EMPTY folder for the hospital install — for example C:\AuroraICU.', mbError, MB_OK);
+      Result := False;
+    end;
+  end else if CurPageID = UrlPage.ID then begin
     url := Lowercase(Trim(UrlPage.Values[0]));
     if (url = '') or (Pos('localhost', url) > 0) or (Pos('127.0.0.1', url) > 0) then begin
       MsgBox('Enter a real network address (not localhost) — this is what other devices connect to.', mbError, MB_OK);
@@ -170,9 +183,17 @@ begin
   if GpuPresent then args := args + ' -AiEnabled';
 
   WizardForm.StatusLabel.Caption := 'Setting up Aurora (database, services, first backup)…';
-  if not Exec('powershell.exe', args, '', SW_HIDE, ewWaitUntilTerminated, rc) or (rc <> 0) then begin
+  { SW_SHOW (not SW_HIDE): provisioning runs in a VISIBLE console. A hidden
+    window turned any stall (e.g. antivirus vetting initdb.exe on first launch)
+    into a frozen wizard with no console to close — the operator saw progress
+    lines nowhere and could not cancel. Visible: they see each step, any AV
+    prompt is answerable, and closing the console releases Setup. A full log is
+    also written to {app}\provision.log regardless. }
+  if not Exec('powershell.exe', args, '', SW_SHOW, ewWaitUntilTerminated, rc) or (rc <> 0) then begin
     DeleteFile(pwFile);
-    MsgBox('Setup could not finish (code ' + IntToStr(rc) + '). See the Windows Event Log and installer\README.md.', mbCriticalError, MB_OK);
+    MsgBox('Setup could not finish (code ' + IntToStr(rc) + ').'#13#10#13#10 +
+           'A full log is at ' + ExpandConstant('{app}\provision.log') + ' — open it to see the last step, or send it for support.'#13#10 +
+           'If it stopped at the database step, add ' + ExpandConstant('{app}') + ' to the machine''s antivirus exclusions and run Setup again.', mbCriticalError, MB_OK);
     Abort;
   end;
   DeleteFile(pwFile);

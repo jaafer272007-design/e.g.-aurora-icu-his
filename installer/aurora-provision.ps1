@@ -57,7 +57,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 function Say([string]$m) { Write-Host "[aurora-provision] $m" }
-function Fail([string]$m) { Write-Error "[aurora-provision] $m"; exit 1 }
+function Fail([string]$m) { try { Stop-Transcript | Out-Null } catch {}; Write-Error "[aurora-provision] $m"; exit 1 }
 . (Join-Path $PSScriptRoot 'aurora-ai-service.ps1')   # shared AI helpers (Register-AuroraAI, Find-AiModelGguf, …)
 
 $server   = Join-Path $InstallDir 'server'
@@ -68,6 +68,13 @@ $secrets  = Join-Path $DataDir 'secrets'
 $envFile  = Join-Path $server 'aurora.env'          # AuroraEnvFile default path = beside the exe
 $exe      = Join-Path $server 'AuroraIcu.Api.exe'
 $pgPort   = 5432                                     # local-only; never exposed on the LAN
+
+# ---- 0. always-on diagnostics — a hidden-window hang used to leave NO trace ----
+# The installer runs us with SW_HIDE by default, so before this there was no
+# record of WHERE provisioning stalled. Always leave a readable log beside the
+# app; Fail/exit both flush it.
+try { Start-Transcript -Path (Join-Path $InstallDir 'provision.log') -Append -Force | Out-Null } catch {}
+Say "aurora-provision starting — InstallDir=$InstallDir DataDir=$DataDir Port=$Port AiEnabled=$AiEnabled"
 
 foreach ($p in @($DataDir,$pgdata,$backups,$secrets)) { New-Item -ItemType Directory -Force -Path $p | Out-Null }
 foreach ($f in @($exe, (Join-Path $pgbin 'initdb.exe'), (Join-Path $pgbin 'pg_ctl.exe'), (Join-Path $pgbin 'psql.exe'))) {
@@ -82,6 +89,24 @@ function New-Secret([int]$bytes) {
 }
 $jwt   = New-Secret 48
 $pgpw  = New-Secret 24     # the aurora DB role's password (local scram)
+
+# ---- 0b. antivirus posture (fixes the classic "frozen at Setting up Aurora" hang) ----
+# Windows Defender (block-at-first-sight / cloud verdict) can stall a freshly
+# extracted initdb.exe / postgres.exe / AuroraIcu.Api.exe the FIRST time it runs.
+# Inside the installer's hidden window that appears only as a frozen wizard with
+# no way to close it. Excluding the Aurora install + data folders removes the
+# stall AND is standard practice for a database server (live AV scanning of a
+# Postgres data directory is a well-known performance problem). Best-effort:
+# never fail the install if AV is locked down (Tamper Protection / 3rd-party AV).
+try {
+  Add-MpPreference -ExclusionPath $InstallDir -ErrorAction Stop
+  Add-MpPreference -ExclusionPath $DataDir    -ErrorAction Stop
+  Add-MpPreference -ExclusionProcess 'initdb.exe','postgres.exe','pg_ctl.exe','psql.exe','createdb.exe','pg_isready.exe','AuroraIcu.Api.exe','llama-server.exe' -ErrorAction Stop
+  Say "added Windows Defender exclusions for $InstallDir and $DataDir"
+} catch {
+  Say "NOTE: could not set Windows Defender exclusions ($($_.Exception.Message))."
+  Say "      If setup stalls at the database step, add $InstallDir and $DataDir to the machine's antivirus exclusions, then re-run."
+}
 
 # ---- 1. initialise the private PostgreSQL cluster (once) ----
 if (-not (Test-Path (Join-Path $pgdata 'PG_VERSION'))) {
@@ -261,4 +286,5 @@ if (-not (Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyCon
 
 Say "PROVISIONING COMPLETE — Aurora is running as a Windows service and will start on every boot."
 Say "Access URL: $AccessUrl"
+try { Stop-Transcript | Out-Null } catch {}
 exit 0

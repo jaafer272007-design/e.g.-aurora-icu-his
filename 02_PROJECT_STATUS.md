@@ -1,6 +1,35 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-23 · current through APP-ONLY UPDATER — `aurora-update` +
+**Last updated: 2026-07-23 · current through INSTALLER PROVISIONING HARDENING —
+the FIRST real-Windows run of `AuroraSetup.exe` (no-AI, `AuroraSetup-1.0.0.exe`,
+59.5 MB, built after the aurora.iss compile fixes landed on the real ISCC 6.7.3)
+hung INVISIBLY at "Setting up Aurora (database, services, first backup)…" with no
+way to close the wizard. Root cause: `aurora.iss` `ssPostInstall` runs
+`aurora-provision.ps1` via `Exec(... SW_HIDE, ewWaitUntilTerminated ...)` — a
+**hidden** window; on the test machine Windows Defender (Task-Manager evidence:
+Antimalware Service Executable busy at 4.4% while EVERY Aurora process sat at 0%
+CPU / 0 disk) was vetting a freshly-extracted `initdb.exe` / `AuroraIcu.Api.exe`
+on first launch, and a hidden window turns that stall into a frozen, uncloseable
+wizard that leaves NO log. FOUR fixes (all in `installer/`, CODE-REVIEWED-ONLY —
+verify on the Windows second machine): (1) `aurora-provision.ps1` step 0b
+`Add-MpPreference` exclusions for the install + data dirs and the pg/server/llama
+exe names — removes the AV stall AND is standard practice for a database server
+(live AV scanning of a Postgres data dir is a known problem); best-effort
+(try/catch, honest NOTE + AV-exclusion instructions on failure, NEVER fails the
+install). (2) `aurora-provision.ps1` step 0 always-on `Start-Transcript` →
+`{app}\provision.log` (+ `Stop-Transcript` in `Fail` and at `exit 0`) so a hidden
+hang always leaves a readable trail. (3) `aurora.iss` `SW_HIDE`→`SW_SHOW`:
+provisioning now runs in a VISIBLE console (operator sees each step, any AV prompt
+is answerable, closing it releases Setup) and the failure `MsgBox` now points at
+`provision.log` + the AV-exclusion remedy. (4) `aurora.iss` source-folder guard on
+`wpSelectDir` — refuses to install onto a git clone (`package.json`/`.git`
+present), preventing the `C:\Aurora` clone-collision when the installer is run on
+the BUILD machine (Setup's default dir `C:\Aurora` IS the clone from
+`git clone … aurora`). NEXT: rebuild the no-AI `AuroraSetup.exe` and re-run on a
+CLEAN Windows machine per `installer/README.md` items 1–13 + the backup-restore
+drill. **
+
+Prior: APP-ONLY UPDATER — `aurora-update` +
 `server/version.json` (§1–§2 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`; PR 2
 of the delivery-updates design). Delivers a new application build WITHOUT
 re-running the 5 GB installer, DATA-SAFELY. NEW `server/version.json` (emitted by
@@ -38,7 +67,7 @@ runspace (19/19: numeric semver + all five refusals). 🔎 CODE-REVIEWED-ONLY
 (Windows second machine, README verify items 16–17): the live service stop/swap/
 start, the ISS self-extractor, and the full ROLLBACK drill (fail health → restore
 server.prev + DB snapshot). NEXT: none queued — the delivery-updates design (§1/§2/
-§3/§3.5) is fully BUILT. **
+§3/§3.5) is fully BUILT.
 
 Prior: ON-BOOT AI AUTO-WIRE — the "just
 works" path (§3.5 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`). The validator
