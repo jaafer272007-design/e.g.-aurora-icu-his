@@ -60,7 +60,7 @@ begin
   WizardForm.StatusLabel.Caption := 'Updating Aurora (backup → swap → verify)…';
   if not Exec('powershell.exe', args, '', SW_HIDE, ewWaitUntilTerminated, rc) then begin
     MsgBox('Could not launch the updater. Aurora was not changed.', mbCriticalError, MB_OK);
-    Abort();
+    Abort;
   end;
 
   { rc: 0 = updated (or a no-op skip); 1 = failed but ROLLED BACK to the prior

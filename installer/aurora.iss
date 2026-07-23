@@ -135,7 +135,7 @@ begin
   body := '';
   for i := 0 to GetArrayLength(lines)-1 do body := body + lines[i] + #13#10;
   DeleteFile(keyFile);   { never persists off the ACL-locked server copy }
-  f := CreateCustomForm();
+  f := CreateCustomForm;
   try
     f.Caption := 'BACKUP ENCRYPTION KEY — RECORD IT NOW (shown only once)';
     f.ClientWidth := ScaleX(560); f.ClientHeight := ScaleY(320); f.Position := poScreenCenter;
@@ -149,7 +149,7 @@ begin
               'copy for nightly backups, but the server''s death loses that copy.';
     b := TNewButton.Create(f); b.Parent := f; b.Caption := 'I have recorded the key';
     b.SetBounds(ScaleX(420), ScaleY(255), ScaleX(128), ScaleY(28)); b.ModalResult := mrOk;
-    f.ShowModal();
+    f.ShowModal;
   finally f.Free; end;
 end;
 
@@ -180,7 +180,7 @@ begin
   if not Exec('powershell.exe', args, '', SW_HIDE, ewWaitUntilTerminated, rc) or (rc <> 0) then begin
     DeleteFile(pwFile);
     MsgBox('Setup could not finish (code ' + IntToStr(rc) + '). See the Windows Event Log and installer\README.md.', mbCriticalError, MB_OK);
-    Abort();
+    Abort;
   end;
   DeleteFile(pwFile);
   if FileExists(keyFile) then ShowKeyOnce(keyFile);
