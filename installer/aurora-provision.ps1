@@ -45,7 +45,15 @@ param(
   [string]$TimeZone = '',                         # IANA id; '' = server displays UTC (operator can edit)
   [Parameter(Mandatory)][string]$AdminPasswordFile, # temp file holding the bootstrap admin password
   [Parameter(Mandatory)][string]$KeyOutFile,     # where to write the show-once backup key for the wizard
-  [switch]$AiEnabled                              # GPU present → PR C wires the AI service; here informational
+  [switch]$AiEnabled,                             # GPU present → register the native AuroraAI (llama-server) service
+  # ---- AI concurrency knobs (HOSPITAL_INSTALLER_RUNTIME_DESIGN.md §5). The
+  #      defaults match the RTX 4060 + Qwen2.5-7B analysis; the owner's
+  #      llama-bench run (§5.6) validates them on the real card and can retune
+  #      by re-running this script (or editing the AuroraAI service). ----
+  [int]$AiPort     = 8081,        # llama-server port — 127.0.0.1 ONLY, never on the LAN
+  [int]$AiParallel = 4,           # --parallel: concurrent AI slots (§5.4 guardrail 1; the ~4 ceiling on a 4060)
+  [int]$AiCtxSize  = 16384,       # --ctx-size TOTAL; per slot = ctx/parallel (16384/4 = 4096 per slot, §5.3)
+  [string]$AiModel = 'qwen2.5-7b-instruct-q4_k_m'  # AI_MODEL the server sends (Qwen2.5-7B — GQA, §5.5)
 )
 $ErrorActionPreference = 'Stop'
 function Say([string]$m) { Write-Host "[aurora-provision] $m" }
@@ -149,10 +157,31 @@ $lines = @(
   'BACKUP_SCHEDULE=daily 02:00'
 )
 if ($TimeZone) { $lines += "TZ=$TimeZone" }
-# AI stays disabled until PR C wires the native llama-server service. The GPU
-# probe result is recorded so PR C / the operator knows the machine can run it.
-if ($AiEnabled) { $lines += 'AI_PROVIDER=none'; $lines += '# GPU detected — AI service is installed by the AI component (PR C)' }
-else            { $lines += 'AI_PROVIDER=none'; $lines += 'AI_UNAVAILABLE_REASON=no GPU on this server' }
+
+# ---- AI wiring (§5). The native AI is the AuroraAI Windows service
+#      (llama-server, registered in step 5b) — ENABLED only when the machine
+#      has a GPU AND the AI payload (llama-server.exe + nssm.exe + a .gguf
+#      model) actually shipped in this build. The HIS never depends on it:
+#      any absence → AI_PROVIDER=none + an HONEST reason the AI screen shows,
+#      never a fault (§2.3 "warn and disable, never refuse"). ----
+$aiLlamaExe = Join-Path $InstallDir 'llama\llama-server.exe'
+$aiNssmExe  = Join-Path $InstallDir 'llama\nssm.exe'
+$gguf = Get-ChildItem (Join-Path $InstallDir 'model') -Filter '*.gguf' -ErrorAction SilentlyContinue | Sort-Object Name
+$aiModelGguf = ($gguf | Where-Object { $_.Name -like '*-00001-of-*' } | Select-Object -First 1)
+if (-not $aiModelGguf) { $aiModelGguf = ($gguf | Select-Object -First 1) }   # single (non-split) file
+$aiReady = $AiEnabled -and (Test-Path $aiLlamaExe) -and (Test-Path $aiNssmExe) -and $aiModelGguf
+if ($aiReady) {
+  $lines += 'AI_PROVIDER=openai'
+  $lines += "AI_ENDPOINT=http://127.0.0.1:$AiPort/v1"   # local only — never on the LAN
+  $lines += "AI_MODEL=$AiModel"
+  $lines += 'AI_TIMEOUT_SECONDS=120'
+} elseif ($AiEnabled) {
+  $lines += 'AI_PROVIDER=none'
+  $lines += 'AI_UNAVAILABLE_REASON=the AI runtime was not included in this build'
+} else {
+  $lines += 'AI_PROVIDER=none'
+  $lines += 'AI_UNAVAILABLE_REASON=no GPU on this server'
+}
 Set-Content -Encoding ascii -Path $envFile -Value $lines
 # lock it to SYSTEM + Administrators only (contains the bootstrap + DB + JWT secrets)
 & icacls.exe $envFile /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
@@ -172,6 +201,39 @@ for ($i = 0; $i -lt 90; $i++) {
   Start-Sleep 2
 }
 if (-not $healthy) { Fail "AuroraServer did not become healthy — check the Windows Event Log (source AuroraServer)" }
+
+# ---- 5b. register + start the native AI service (AuroraAI = llama-server) ----
+# The GPU-native path (§5). llama-server is a console exe, so it runs under
+# NSSM (a thin, battle-tested service host): Automatic start (BEFORE login) +
+# restart-on-crash, exactly like AuroraServer/AuroraPostgres. Bound to
+# 127.0.0.1 — ONLY AuroraServer (same box) calls it; it is NEVER on the LAN and
+# the firewall never opens $AiPort. AuroraServer does NOT depend on it: the HIS
+# runs with or without the AI, and the AI screen stays honest until it is ready.
+# The --parallel / --ctx-size guardrails (§5.4) are set here and are tunable
+# (re-run this script) once llama-bench measures the real card (§5.6).
+if ($aiReady) {
+  Say "registering the AuroraAI service (llama-server, --parallel $AiParallel, 127.0.0.1:$AiPort)"
+  $aiArgs = "--model `"$($aiModelGguf.FullName)`" --host 127.0.0.1 --port $AiPort " +
+            "--parallel $AiParallel --ctx-size $AiCtxSize --temp 0 --jinja"
+  & $aiNssmExe stop AuroraAI 2>$null | Out-Null                  # idempotent: drop any prior registration
+  & $aiNssmExe remove AuroraAI confirm 2>$null | Out-Null
+  & $aiNssmExe install AuroraAI $aiLlamaExe | Out-Null
+  & $aiNssmExe set AuroraAI AppParameters $aiArgs | Out-Null
+  & $aiNssmExe set AuroraAI AppDirectory (Split-Path $aiLlamaExe) | Out-Null   # DLLs load beside the exe
+  & $aiNssmExe set AuroraAI DisplayName 'Aurora ICU AI (llama-server)' | Out-Null
+  & $aiNssmExe set AuroraAI Description 'Aurora ICU local AI model runtime (llama.cpp llama-server, GPU). Serves 127.0.0.1 only; the HIS runs without it.' | Out-Null
+  & $aiNssmExe set AuroraAI Start SERVICE_AUTO_START | Out-Null
+  & $aiNssmExe set AuroraAI AppStdout (Join-Path $DataDir 'ai.log') | Out-Null
+  & $aiNssmExe set AuroraAI AppStderr (Join-Path $DataDir 'ai.log') | Out-Null
+  & $aiNssmExe set AuroraAI AppRestartDelay 5000 | Out-Null
+  & sc.exe failure AuroraAI reset= 300 actions= restart/5000/restart/10000/restart/30000 | Out-Null
+  & $aiNssmExe start AuroraAI 2>$null | Out-Null
+  # the model loads in tens of seconds — do NOT block the install on it; the AI
+  # screen is honest (server 503/502) until llama-server answers /health
+  Say "AuroraAI starting — the model loads in the background; Aurora is already usable."
+} elseif ($AiEnabled) {
+  Say "GPU present but the AI runtime was not bundled in this build — AI stays disabled; the HIS is unaffected."
+}
 
 # ---- 6. backup-key ceremony (init-key) — write the key ONCE for the wizard to show ----
 Say "generating the backup encryption key (shown once by the installer)"

@@ -1,6 +1,49 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-22 · current through HOSPITAL INSTALLER — PR B (the
+**Last updated: 2026-07-22 · current through HOSPITAL INSTALLER — PR C (the
+native AI service + GPU-native path). The final piece of the Docker-free
+Option B deployment: the installer now stands up the AI locally as a Windows
+service, and the design §5.4 AI-concurrency guardrails are baked in. WHAT
+CHANGED: (1) `installer/aurora-provision.ps1` — new step 5b registers the
+native **AuroraAI** service = `llama.cpp` `llama-server` (CUDA) run under
+**NSSM** (a thin service host, since llama-server is a console exe), Automatic
++ SCM-recovery, bound to **127.0.0.1 ONLY** (only AuroraServer calls it; never
+on the LAN, the firewall never opens its port). AuroraServer does NOT depend on
+it — the HIS runs with or without the AI (the AI screen stays honest until the
+model loads). aurora.env now gets `AI_PROVIDER=openai` + `AI_ENDPOINT` +
+`AI_MODEL` when a GPU + the AI payload are present; else `AI_PROVIDER=none` +
+an honest reason. New tunable knobs `-AiPort/-AiParallel/-AiCtxSize/-AiModel`
+(defaults 8081/4/16384/qwen2.5-7b, per §5). (2) `installer/build.ps1` — new
+`-LlamaDir` stages the Windows llama-server build (llama-server.exe + CUDA DLLs
++ nssm.exe) into `payload\llama`; `-ModelDir` stages the GGUF; the AI ships
+DISABLED unless BOTH are given. (3) `installer/aurora.iss` — stages
+`payload\llama`, and uninstall stops/deletes **AuroraAI**. (4) THE FOUR §5.4
+GUARDRAILS: **--parallel** (default 4, env-tunable) added to BOTH the native
+service and the appliance compose (`LLAMA_PARALLEL`/`LLAMA_CTX`); **per-user
+single-in-flight** already enforced client-side (the `busy` guard in
+AiChat.tsx) — kept + documented; **streaming = the existing staged progressive
+rendering is KEPT** (translating→query→data card→interpreting→labeled
+commentary), which is what §5.4's parenthetical specified — the merged
+`/interpret` clinical feature is NOT rewritten into token-SSE (the real patient
+data is already fully on screen before the secondary AI block; token-SSE is a
+clean follow-up if wanted); **queued/waiting UI** — the pending text now
+acknowledges llama-server's queue under load (`.acqueue`). NO server C#
+changed (the AI adapter was already OpenAI-compatible/provider-agnostic — only
+the launcher/config). (5) `installer/README.md` + `HOSPITAL_INSTALLER_RUNTIME_
+DESIGN.md` §3 — the native-AI section, the build inputs, the **llama-bench**
+§5.6 step (measure the real 4060, retune --parallel/ctx/KV-quant without a
+rebuild), and the extended tested-vs-code-reviewed split (verify items 10–13:
+AuroraAI comes up, concurrency queues, GPU-absent honest, 127.0.0.1-only +
+uninstall). ✅ VERIFIED on Linux: all three .ps1 syntax-clean (Parser.ParseFile),
+the AI client `tsc --noEmit` clean, the compose `--parallel` change. 🔎
+CODE-REVIEWED-ONLY (Windows/GPU, the owner's second-machine run): the AuroraAI
+service + auto-start-before-login + crash-restart, the real GPU inference +
+concurrency curve (llama-bench), the GPU-absent honest path, 127.0.0.1-only,
+and uninstall. This completes the native-Windows Option B arc (PR A service
+host + config parity → PR B installer → PR C AI service). NEXT: owner's
+second-machine verification (installer + AI + backup-restore drill).**
+
+Prior work through HOSPITAL INSTALLER — PR B (the
 native Windows installer). The "double-click → next → finish → runs itself
 24/7" installer, Docker-free, per the confirmed Option B design. NEW folder
 `installer/`: (1) `aurora.iss` — the Inno Setup wizard: collects the five
@@ -50,8 +93,8 @@ the **four guardrails PR C bakes in** — `--parallel 3–4`, per-user
 single-in-flight, streaming, a "please wait / queued" UI; the **GQA model
 requirement already met** (Qwen2.5-7B); the **`llama-bench`** second-machine
 verification step; and the **16 GB/24 GB upgrade path**. §3's PR C bullet now
-points to §5 and lists the guardrails as PR C scope. NEXT: PR C (native
-llama-server AI service + GPU-native path — implements the §5.4 guardrails).**
+points to §5 and lists the guardrails as PR C scope. (PR C is now BUILT — see
+the current marker above.)
 
 Prior work through HOSPITAL INSTALLER + ALWAYS-ON
 RUNTIME — DESIGN + PR A. The complete "double-click install, runs itself

@@ -93,6 +93,11 @@ export function AiChat() {
 
   async function ask(text: string) {
     const question = text.trim()
+    /* PER-USER SINGLE-IN-FLIGHT (AI-concurrency guardrail 2, design §5.4):
+       one outstanding AI request per clinician — a second submit is ignored
+       while `busy`, and the composer + examples are disabled. This keeps a
+       single user from consuming every llama-server slot; the server queues
+       genuinely-concurrent users across the --parallel slots (guardrail 1). */
     if (!question || busy) return
     setDraft('')
     setBusy(true)
@@ -204,7 +209,9 @@ export function AiChat() {
             {entries.map(e => (
               <div key={e.id} className="acturn">
                 <div className="acq"><span className="acwho">{initialsOf(session.name)}</span><p>{e.question}</p></div>
-                {e.state === 'pending' && <div className="acpending">translating…</div>}
+                {/* queued/waiting state (guardrail 4, §5.4): under load a request
+                    waits in llama-server's queue rather than failing — say so. */}
+                {e.state === 'pending' && <div className="acpending">translating…<span className="acqueue"> a moment longer if the AI is busy</span></div>}
                 {e.tool && (
                   <div className="acquery" title="The exact query the model asked — Aurora executed it with your permissions">
                     <span>QUERY</span>
@@ -218,7 +225,7 @@ export function AiChat() {
                 )}
                 {e.error !== null && <div className="acerror">{e.error}</div>}
                 {e.result && <ResultBlock r={e.result} />}
-                {e.interp === 'pending' && <div className="acpending">interpreting the fetched data…</div>}
+                {e.interp === 'pending' && <div className="acpending">interpreting the fetched data…<span className="acqueue"> a moment longer if the AI is busy</span></div>}
                 {e.interpText !== null && (
                   <div className="acinterp">
                     <div className="acinterphead">

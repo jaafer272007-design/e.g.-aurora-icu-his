@@ -252,16 +252,26 @@ provider-agnostic AI). The work is additive and stages cleanly:
   installer artifact, but true auto-start-before-login is provable only on a
   Windows host/VM — flag this as a Windows-runner/VM verification item (the
   Package CI already builds Windows-facing artifacts).
-- **PR C — native AI service + GPU-native path.** Package `llama-server`
-  (CUDA) as a Windows service; keep the CPU fallback. The AI adapter is
-  already provider-agnostic — only the endpoint/launcher changes. **Bakes in
-  the four AI-concurrency guardrails** (`--parallel 3–4`, per-user
-  single-in-flight, streaming responses, a "please wait / queued" UI state),
-  keeps the **GQA model** (Qwen2.5-7B — the KV-cache requirement is already
-  met), and ships the `llama-bench` verification step for the second machine.
-  See **§5** for the full GPU-capacity analysis (the ~4-concurrent 4060
-  ceiling, why 20 machines stays at a 1–3 realistic peak, and the 16 GB/24 GB
-  upgrade path).
+- **PR C — native AI service + GPU-native path. ✅ BUILT.** The installer
+  registers a native **AuroraAI** Windows service — `llama-server` (CUDA) run
+  under NSSM (a thin service host, because llama-server is a console exe),
+  Automatic + SCM-recovery, bound to `127.0.0.1` only (never on the LAN; the
+  firewall never opens its port). AuroraServer does **not** depend on it — the
+  HIS runs with or without the AI, and the AI screen stays honest until the
+  model loads (§2.3). The AI adapter was already provider-agnostic, so **no
+  server C# changed** — only the launcher + config. The **four §5.4 guardrails**
+  as built: (1) `--parallel` (default 4, env-tunable) on both the native
+  service and the appliance compose; (2) per-user single-in-flight — already
+  enforced client-side (`busy` guard), kept + documented; (3) **streaming =
+  the existing staged progressive rendering is kept** (translating → the query
+  → the data card → interpreting → the labeled commentary), which is what
+  §5.4's own parenthetical specified — the merged `/interpret` clinical feature
+  is NOT rewritten into token-SSE (the real patient data is already fully on
+  screen before the secondary AI block; token-SSE remains a clean follow-up if
+  the owner wants it); (4) the "please wait / queued" waiting text acknowledges
+  llama-server's queue under load. Keeps the **GQA model** (Qwen2.5-7B), and
+  the `llama-bench` verification step + the tunable knobs ship in
+  `installer/README.md`. See **§5** for the capacity analysis.
 - **Docs.** Supersede the README's "no Docker (Phase 3+)" placeholder with
   this design; keep `appliance/` compose as the explicitly-labelled
   dev/validator testbed.
