@@ -24,7 +24,10 @@ DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 ; services + firewall + SCM require elevation
 PrivilegesRequired=admin
-ArchitecturesInstall64Bit=x64compatible
+; only 64-bit Windows (the payload — .NET win-x64, Postgres x64 — is 64-bit);
+; Setup runs in 64-bit install mode automatically on a matching OS. (Inno 6.4+
+; removed the old ArchitecturesInstall64Bit directive in favour of this one.)
+ArchitecturesAllowed=x64compatible
 OutputBaseFilename=AuroraSetup-{#AppVer}
 Compression=lzma2/max
 SolidCompression=yes
@@ -124,30 +127,23 @@ begin
   end;
 end;
 
-{ show the backup key EXACTLY ONCE in a scrollable, copyable dialog }
+{ show the backup key EXACTLY ONCE (a standard message box — copyable with Ctrl+C) }
 procedure ShowKeyOnce(keyFile: String);
-var f: TForm; m: TNewMemo; b: TNewButton; lines: TArrayOfString; body: String; i: Integer;
+var lines: TArrayOfString; body: String; i: Integer;
 begin
   if not LoadStringsFromFile(keyFile, lines) then Exit;
   body := '';
   for i := 0 to GetArrayLength(lines)-1 do body := body + lines[i] + #13#10;
   DeleteFile(keyFile);   { never persists off the ACL-locked server copy }
-  f := CreateCustomForm();
-  try
-    f.Caption := 'BACKUP ENCRYPTION KEY — RECORD IT NOW (shown only once)';
-    f.ClientWidth := ScaleX(560); f.ClientHeight := ScaleY(320); f.Position := poScreenCenter;
-    m := TNewMemo.Create(f); m.Parent := f; m.ReadOnly := True; m.ScrollBars := ssVertical;
-    m.SetBounds(ScaleX(12), ScaleY(12), ScaleX(536), ScaleY(230));
-    m.Text := 'Record this key in ALL THREE places before continuing:'#13#10 +
-              '  1. a sealed envelope in the hospital safe'#13#10 +
-              '  2. the enterprise password manager'#13#10 +
-              '  3. the hospital-management copy'#13#10#13#10 + body +
-              #13#10'Without this key a backup cannot be restored. The server keeps its own'#13#10 +
-              'copy for nightly backups, but the server''s death loses that copy.';
-    b := TNewButton.Create(f); b.Parent := f; b.Caption := 'I have recorded the key';
-    b.SetBounds(ScaleX(420), ScaleY(255), ScaleX(128), ScaleY(28)); b.ModalResult := mrOk;
-    f.ShowModal();
-  finally f.Free; end;
+  MsgBox('BACKUP ENCRYPTION KEY — RECORD IT NOW (shown only once).'#13#10#13#10 +
+         'Record this key in ALL THREE places before continuing:'#13#10 +
+         '  1. a sealed envelope in the hospital safe'#13#10 +
+         '  2. the enterprise password manager'#13#10 +
+         '  3. the hospital-management copy'#13#10#13#10 +
+         body + #13#10 +
+         'Without this key a backup cannot be restored. The server keeps its own'#13#10 +
+         'copy for nightly backups, but the server''s death loses that copy.'#13#10#13#10 +
+         '(Press Ctrl+C to copy this window''s text.)', mbInformation, MB_OK);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
@@ -177,7 +173,7 @@ begin
   if not Exec('powershell.exe', args, '', SW_HIDE, ewWaitUntilTerminated, rc) or (rc <> 0) then begin
     DeleteFile(pwFile);
     MsgBox('Setup could not finish (code ' + IntToStr(rc) + '). See the Windows Event Log and installer\README.md.', mbCriticalError, MB_OK);
-    Abort();
+    Abort;
   end;
   DeleteFile(pwFile);
   if FileExists(keyFile) then ShowKeyOnce(keyFile);
