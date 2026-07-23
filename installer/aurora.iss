@@ -141,8 +141,8 @@ begin
     m.Text := 'Record this key in ALL THREE places before continuing:'#13#10 +
               '  1. a sealed envelope in the hospital safe'#13#10 +
               '  2. the enterprise password manager'#13#10 +
-              '  3. the hospital-management copy'#13#10#13#10 + body +
-              #13#10'Without this key a backup cannot be restored. The server keeps its own'#13#10 +
+              '  3. the hospital-management copy'#13#10#13#10 + body + #13#10 +
+              'Without this key a backup cannot be restored. The server keeps its own'#13#10 +
               'copy for nightly backups, but the server''s death loses that copy.';
     b := TNewButton.Create(f); b.Parent := f; b.Caption := 'I have recorded the key';
     b.SetBounds(ScaleX(420), ScaleY(255), ScaleX(128), ScaleY(28)); b.ModalResult := mrOk;
