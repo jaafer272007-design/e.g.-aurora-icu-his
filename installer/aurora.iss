@@ -46,6 +46,8 @@ Source: "payload\model\*";   DestDir: "{app}\model";         Flags: recursesubdi
 Source: "payload\llama\*";   DestDir: "{app}\llama";         Flags: recursesubdirs createallsubdirs ignoreversion skipifsourcedoesntexist
 Source: "aurora-provision.ps1"; DestDir: "{app}\server\scripts"; Flags: ignoreversion
 Source: "aurora-backup.ps1";    DestDir: "{app}\server\scripts"; Flags: ignoreversion
+Source: "aurora-ai-service.ps1"; DestDir: "{app}\server\scripts"; Flags: ignoreversion
+Source: "aurora-enable-ai.ps1";  DestDir: "{app}\server\scripts"; Flags: ignoreversion
 
 [Code]
 var

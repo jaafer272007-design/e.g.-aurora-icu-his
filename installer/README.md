@@ -17,11 +17,23 @@ no internet. This implements Option B of
 | `aurora.iss` | the Inno Setup wizard (UI + file layout + invokes provisioning + show-once key) |
 | `aurora-provision.ps1` | the Docker-free provisioning engine (DB, services, config, backup, firewall) |
 | `aurora-backup.ps1` | the **native** nightly backup (runs the `.exe` directly — the Docker-free sibling of `../appliance/backup.ps1`) |
+| `aurora-ai-service.ps1` | shared AI helpers (`Register-AuroraAI` + the surgical `aurora.env` edit) — dot-sourced by provisioning **and** enable-AI |
+| `aurora-enable-ai.ps1` | **turn the AI on after a GPU is added later** — data-safe, one command (see below) |
 | `build.ps1` | builds the payload (React + self-contained server + private Postgres + model + llama-server) and compiles the installer |
 | `build-all.ps1` | **one-shot** wrapper — optionally `winget`-installs the toolchain, preflight-checks, runs `build.ps1`, and reports the finished `.exe` + size |
 | `BUILD_WINDOWS.md` | **step-by-step build guide** for a Windows laptop (written for someone who has never compiled an installer) |
 
 The **native AI** (PR C): when the target machine has an NVIDIA GPU and the AI payload shipped, provisioning registers a native **AuroraAI** Windows service — `llama.cpp` **`llama-server`** (CUDA) run under **NSSM** (a thin service host, since llama-server is a console exe). It is Automatic + SCM-recovery like the other services, **bound to `127.0.0.1` only** (only AuroraServer calls it; it is never on the LAN and the firewall never opens its port), and **AuroraServer does not depend on it** — the HIS runs with or without the AI (the AI screen stays honest until the model loads). The concurrency guardrails (design §5.4) are `--parallel 4` + `--ctx-size 16384` by default, **env/param-tunable** (see `llama-bench` below).
+
+### Turn the AI on after a GPU is added later (`aurora-enable-ai.ps1`)
+
+A site can install with **no GPU** (AI stays off) and fit an NVIDIA GPU months later. The GPU is detected only once (at install) and the server reads `AI_PROVIDER` once at boot, so **adding a GPU does nothing on its own.** After fitting the GPU, run once as Administrator:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Aurora\server\scripts\aurora-enable-ai.ps1"
+```
+
+It confirms a GPU + the on-disk AI payload, registers **AuroraAI**, makes a **surgical edit to `aurora.env`** (flip `AI_PROVIDER` none→openai, add the endpoint/model/timeout, drop the now-false "no GPU" message), and restarts `AuroraServer`. 🔴 **It touches zero database state** — no `initdb`, no role change, no migration of its own; **no secret is rotated and no clinician is logged out.** (If the install shipped *without* the AI payload — the ~150 MB no-AI build — it says so and stops; lay the payload down first. No data is touched either way.) The install-time "AI unavailable" message is now worded so that **adding a GPU never makes it false** — it speaks to *setup* and points at this command.
 
 ## Build the installer (on a build machine — SDK/Node/Inno/internet)
 
@@ -61,7 +73,8 @@ Because Windows services, the SCM, `initdb`-for-Windows, and Inno Setup **cannot
 - The **self-contained `win-x64` publish** produces a standalone `AuroraIcu.Api.exe` (PE32+) with the CLR bundled (no .NET install needed) and the SPA in `wwwroot`.
 - **Config parity** (PR A): the server reads `aurora.env` for everything (PORT/APP_ENV/DATABASE_URL/BACKUP_DIR…); the real env wins; a missing file is a no-op; the backup CLI reads it too.
 - The **backup engine** (`AuroraIcu.Api.exe backup`) produces a real born-restore-verified AES-256-GCM backup (proven against Postgres in the #164 verification) — `aurora-backup.ps1` calls exactly that.
-- **All three PowerShell scripts parse syntax-clean.** `aurora-provision.ps1` (incl. the new AuroraAI/llama-server registration), `aurora-backup.ps1`, and `build.ps1` were run through the PowerShell engine's own parser (`System.Management.Automation.Language.Parser.ParseFile`) — **zero syntax errors** (no unbalanced braces/quotes, no malformed `param`/pipelines). This is a syntax gate only: it catches typos so the installer will not face-plant on a bracket error, but it does **not** validate the Windows-only cmdlets or any behavior (those stay in the list below). `aurora.iss` is not machine-checkable off Windows (no Linux Inno compiler) — it remains code-reviewed.
+- **All PowerShell scripts parse syntax-clean.** `aurora-provision.ps1` (now dot-sourcing the shared helper), `aurora-backup.ps1`, `build.ps1`, `build-all.ps1`, and the two AI scripts (`aurora-ai-service.ps1`, `aurora-enable-ai.ps1`) were run through the PowerShell engine's own parser (`System.Management.Automation.Language.Parser.ParseFile`) — **zero syntax errors**. Syntax gate only: it does **not** validate the Windows-only cmdlets or behavior (those stay below). `aurora.iss` is not machine-checkable off Windows (no Linux Inno compiler) — code-reviewed.
+- 🔴 **The surgical `aurora.env` edit was EXECUTED, not just reviewed.** `Update-AiEnvLines` (the data-safe core of enable-AI) was run against a sample `aurora.env` through a real PowerShell runspace (`Microsoft.PowerShell.SDK`): **11/11 assertions passed** — `JWT_SECRET`, `DATABASE_URL`, `ADMIN_BOOTSTRAP_PASSWORD`, `BACKUP_KEY_FILE`, the comment and `TZ` all preserved byte-for-byte; `AI_PROVIDER` flipped none→openai; endpoint/model/timeout added; the stale `AI_UNAVAILABLE_REASON` removed. This proves enabling the AI later cannot disturb a secret or any other config line.
 - **The AI client changes type-check + build** (PR C): the queued/waiting UI text and the single-in-flight guard are TypeScript-clean (`tsc --noEmit`) and no server C# changed — the AI adapter was already provider-agnostic, so the native `llama-server` only swaps the endpoint/launcher.
 
 **🔎 Code-reviewed only — VERIFY ON THE WINDOWS MACHINE (your second-laptop run):**
@@ -76,8 +89,9 @@ Because Windows services, the SCM, `initdb`-for-Windows, and Inno Setup **cannot
 9. **Backup restore** (the acceptance test) still works from this native install — fold it into your restore drill.
 10. 🔴 **AuroraAI (the AI service) comes up on the GPU box:** `llama-server` loads the model under NSSM; `curl http://127.0.0.1:8081/health` returns OK; the AI screen answers a real question (grounded query + the labeled interpretation). Auto-starts before login and restarts on crash like the others (`sc.exe stop AuroraAI` → SCM/NSSM restarts it).
 11. **Concurrency (`--parallel`)** — fire several AI questions at once (a few browser tabs): they **queue and all answer**, none fail. This is the §5.4 guardrail; `llama-bench` (below) measures the real curve.
-12. **GPU absent → honest, not broken:** on a box with no NVIDIA GPU, no AuroraAI service is registered, `aurora.env` has `AI_PROVIDER=none` + `AI_UNAVAILABLE_REASON=no GPU on this server`, and the AI screen says exactly that while every other screen runs.
+12. **GPU absent → honest, not broken:** on a box with no NVIDIA GPU, no AuroraAI service is registered, `aurora.env` has `AI_PROVIDER=none` + the actionable *"AI is turned off on this install — no GPU was detected at setup. Add an NVIDIA GPU and run aurora-enable-ai to turn it on."*, and the AI screen says exactly that while every other screen runs.
 13. **AuroraAI is `127.0.0.1`-only** (not reachable from another LAN device — only AuroraServer calls it), and **uninstall removes it** (`sc.exe query AuroraAI` → gone).
+14. **Enable-AI-later** (`aurora-enable-ai.ps1`): on a box that installed with no GPU, fit an NVIDIA GPU, run the script → **AuroraAI registers, `aurora.env` flips to `openai` (secrets untouched, no re-login), the AI screen answers.** Confirm patient data is undisturbed (it is — the script makes no DB call; the pure `aurora.env` edit is already execution-proven above).
 
 ### Measure the real GPU (the `llama-bench` step — design §5.6)
 

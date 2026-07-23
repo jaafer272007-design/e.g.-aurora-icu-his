@@ -1,7 +1,37 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-23 · current through UPDATE + ENABLE-AI DESIGN NOTE
-(docs-only; nothing built yet). `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`
+**Last updated: 2026-07-23 · current through ENABLE-AI-LATER — PR 1 of the
+delivery-updates design (§3 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`; §2
+`aurora-update` is PR 2, still to build). Turns the AI on after a GPU is fitted
+later, DATA-SAFELY, replacing a 5 GB installer re-run (which rotates JWT_SECRET
++ re-prompts). NEW `installer/aurora-enable-ai.ps1`: confirms an Aurora install
++ a GPU (`Test-NvidiaGpu`) + the on-disk AI payload → registers **AuroraAI** →
+makes a **SURGICAL `aurora.env` edit** (`Update-AiEnvLines`: flip AI_PROVIDER
+none→openai, add endpoint/model/timeout, DROP the stale reason; every other
+line — DB URL, JWT_SECRET, backup config — preserved verbatim) → restarts
+AuroraServer. 🔴 **TOUCHES ZERO DATABASE STATE** (no initdb/role/seed; the
+restart's boot-migrate is a no-op on the unchanged binary) — no secret rotated,
+no clinician logged out. NEW shared `installer/aurora-ai-service.ps1`
+(`Register-AuroraAI` + `Update-AiEnvLines` + `Test-NvidiaGpu` +
+`Find-AiModelGguf`), dot-sourced by BOTH `aurora-provision.ps1` (step-5b + gguf
+selection refactored to call it — behaviour unchanged) and the new enable-ai.
+STALE-MESSAGE FIX: provision's no-GPU `AI_UNAVAILABLE_REASON` reworded from the
+absolute "no GPU on this server" (false once a GPU is fitted) to the actionable
+"AI is turned off on this install — no GPU was detected at setup. Add an NVIDIA
+GPU and run aurora-enable-ai to turn it on"; enable-ai removes the line entirely.
+aurora.iss ships the two new scripts to `server\scripts`. ✅ VERIFIED on Linux:
+ALL installer `.ps1` syntax-clean (Parser.ParseFile); 🔴 the surgical edit
+`Update-AiEnvLines` **EXECUTED** through a real PowerShell runspace
+(Microsoft.PowerShell.SDK) against a sample aurora.env — 11/11 assertions
+(JWT_SECRET/DATABASE_URL/ADMIN_BOOTSTRAP_PASSWORD/BACKUP_KEY_FILE/comment/TZ
+byte-preserved; AI flipped to openai; stale reason removed). 🔎
+CODE-REVIEWED-ONLY (Windows/GPU second machine, README verify item 14): the live
+GPU probe, AuroraAI registration, the restart + AI coming up. No server C#
+changed. NEXT: PR 2 = `aurora-update` + `server/version.json` (§2, the rollback
+contract). **
+
+Prior: UPDATE + ENABLE-AI DESIGN NOTE
+(docs-only). `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`
 designs two small, surgical, data-safe `installer/` operations that replace
 re-running the 5 GB installer: (1) **`aurora-update`** — a ~150 MB app-only
 package (self-extracting `AuroraUpdate-<ver>.exe`, engine =
@@ -29,8 +59,8 @@ aurora-enable-ai" wording + enable-ai removes the line. Needs one server-side
 addition: `server/version.json` (semver + commit + migrationHead) emitted by
 build.ps1. Reuses boot-migrate, the backup engine, and the release-bundle +
 verify-release-bundle machinery. Two PR-sized builds (enable-ai first, then the
-updater); five owner decisions flagged in §6. NEXT: owner reads the note, then
-build. **
+updater); five owner decisions flagged in §6. (PR 1 now built — see the current
+marker above.)
 
 Prior work through HOSPITAL INSTALLER — BUILD RUNBOOK
 (docs + build tooling, no product code). Two additions under `installer/` so the

@@ -58,6 +58,7 @@ param(
 $ErrorActionPreference = 'Stop'
 function Say([string]$m) { Write-Host "[aurora-provision] $m" }
 function Fail([string]$m) { Write-Error "[aurora-provision] $m"; exit 1 }
+. (Join-Path $PSScriptRoot 'aurora-ai-service.ps1')   # shared AI helpers (Register-AuroraAI, Find-AiModelGguf, …)
 
 $server   = Join-Path $InstallDir 'server'
 $pgbin    = Join-Path $InstallDir 'pgsql\bin'
@@ -166,9 +167,7 @@ if ($TimeZone) { $lines += "TZ=$TimeZone" }
 #      never a fault (§2.3 "warn and disable, never refuse"). ----
 $aiLlamaExe = Join-Path $InstallDir 'llama\llama-server.exe'
 $aiNssmExe  = Join-Path $InstallDir 'llama\nssm.exe'
-$gguf = Get-ChildItem (Join-Path $InstallDir 'model') -Filter '*.gguf' -ErrorAction SilentlyContinue | Sort-Object Name
-$aiModelGguf = ($gguf | Where-Object { $_.Name -like '*-00001-of-*' } | Select-Object -First 1)
-if (-not $aiModelGguf) { $aiModelGguf = ($gguf | Select-Object -First 1) }   # single (non-split) file
+$aiModelGguf = Find-AiModelGguf (Join-Path $InstallDir 'model')   # shared helper (first split part, else the single file)
 $aiReady = $AiEnabled -and (Test-Path $aiLlamaExe) -and (Test-Path $aiNssmExe) -and $aiModelGguf
 if ($aiReady) {
   $lines += 'AI_PROVIDER=openai'
@@ -179,8 +178,10 @@ if ($aiReady) {
   $lines += 'AI_PROVIDER=none'
   $lines += 'AI_UNAVAILABLE_REASON=the AI runtime was not included in this build'
 } else {
+  # Worded so ADDING a GPU later never falsifies it (speaks to setup, not "now"),
+  # and points at the fix. aurora-enable-ai removes this line when it turns AI on.
   $lines += 'AI_PROVIDER=none'
-  $lines += 'AI_UNAVAILABLE_REASON=no GPU on this server'
+  $lines += 'AI_UNAVAILABLE_REASON=AI is turned off on this install — no GPU was detected at setup. Add an NVIDIA GPU and run aurora-enable-ai to turn it on.'
 }
 Set-Content -Encoding ascii -Path $envFile -Value $lines
 # lock it to SYSTEM + Administrators only (contains the bootstrap + DB + JWT secrets)
@@ -213,21 +214,8 @@ if (-not $healthy) { Fail "AuroraServer did not become healthy — check the Win
 # (re-run this script) once llama-bench measures the real card (§5.6).
 if ($aiReady) {
   Say "registering the AuroraAI service (llama-server, --parallel $AiParallel, 127.0.0.1:$AiPort)"
-  $aiArgs = "--model `"$($aiModelGguf.FullName)`" --host 127.0.0.1 --port $AiPort " +
-            "--parallel $AiParallel --ctx-size $AiCtxSize --temp 0 --jinja"
-  & $aiNssmExe stop AuroraAI 2>$null | Out-Null                  # idempotent: drop any prior registration
-  & $aiNssmExe remove AuroraAI confirm 2>$null | Out-Null
-  & $aiNssmExe install AuroraAI $aiLlamaExe | Out-Null
-  & $aiNssmExe set AuroraAI AppParameters $aiArgs | Out-Null
-  & $aiNssmExe set AuroraAI AppDirectory (Split-Path $aiLlamaExe) | Out-Null   # DLLs load beside the exe
-  & $aiNssmExe set AuroraAI DisplayName 'Aurora ICU AI (llama-server)' | Out-Null
-  & $aiNssmExe set AuroraAI Description 'Aurora ICU local AI model runtime (llama.cpp llama-server, GPU). Serves 127.0.0.1 only; the HIS runs without it.' | Out-Null
-  & $aiNssmExe set AuroraAI Start SERVICE_AUTO_START | Out-Null
-  & $aiNssmExe set AuroraAI AppStdout (Join-Path $DataDir 'ai.log') | Out-Null
-  & $aiNssmExe set AuroraAI AppStderr (Join-Path $DataDir 'ai.log') | Out-Null
-  & $aiNssmExe set AuroraAI AppRestartDelay 5000 | Out-Null
-  & sc.exe failure AuroraAI reset= 300 actions= restart/5000/restart/10000/restart/30000 | Out-Null
-  & $aiNssmExe start AuroraAI 2>$null | Out-Null
+  Register-AuroraAI -NssmExe $aiNssmExe -LlamaExe $aiLlamaExe -ModelGguf $aiModelGguf.FullName `
+    -Port $AiPort -Parallel $AiParallel -CtxSize $AiCtxSize -LogFile (Join-Path $DataDir 'ai.log')
   # the model loads in tens of seconds — do NOT block the install on it; the AI
   # screen is honest (server 503/502) until llama-server answers /health
   Say "AuroraAI starting — the model loads in the background; Aurora is already usable."
