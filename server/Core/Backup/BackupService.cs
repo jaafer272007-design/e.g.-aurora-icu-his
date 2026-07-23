@@ -186,14 +186,24 @@ public static class BackupService
 
     static void RunPg(string exe, string args, string? stdErrTo = null)
     {
+        var (code, err) = RunPgSoft(exe, args);
+        if (code != 0)
+            throw new InvalidOperationException($"{exe} failed (exit {code}): {err.Trim()}");
+        if (stdErrTo != null && err.Length > 0) File.AppendAllText(stdErrTo, err);
+    }
+
+    /** Run a pg tool and RETURN (exitCode, stderr) instead of throwing — for the
+     *  in-place restore, where the manifest comparison, not pg_restore's exit code,
+     *  is the ground truth of success (a terminated idle connection after all rows
+     *  are in must not condemn a restore that actually reconstructed the database). */
+    static (int code, string err) RunPgSoft(string exe, string args)
+    {
         var psi = new ProcessStartInfo(exe, args)
         { RedirectStandardError = true, RedirectStandardOutput = true };
         using var p = Process.Start(psi)!;
         var err = p.StandardError.ReadToEnd();
         p.WaitForExit();
-        if (p.ExitCode != 0)
-            throw new InvalidOperationException($"{exe} failed (exit {p.ExitCode}): {err.Trim()}");
-        if (stdErrTo != null && err.Length > 0) File.AppendAllText(stdErrTo, err);
+        return (p.ExitCode, err);
     }
 
     static string ScratchUrl(string scratchDb)
@@ -624,6 +634,137 @@ public static class BackupService
         return new TestRestoreResultDto(manifest.File, ok, "(live)", tables, checks,
             ok ? $"RESTORE VERIFIED on this machine: {tables.Count} tables match the backup taken on the source machine."
                : "RESTORE VERIFICATION FAILED — a restore that loses data is a FAILED restore. Do not go live on this data.");
+    }
+
+    /* -------- in-place restore (DR / the updater's rollback restore) ------ */
+
+    /** DESTRUCTIVE: REPLACE the live database with the contents of a backup.
+     *  This is the disaster-recovery / update-rollback restore — it returns the
+     *  database to EXACTLY the snapshot (DROP + CREATE the database, then
+     *  pg_restore), so no object a later/failed migration added survives to
+     *  break a subsequent migration replay. Order of operations makes it safe:
+     *    1. decrypt + BORN-VERIFY the dump into a SCRATCH database and match it
+     *       against the manifest — the live database is NOT touched until the
+     *       backup is proven restorable and correct;
+     *    2. only then DROP + CREATE the live database (via the 'postgres'
+     *       maintenance DB; the caller guarantees AuroraServer is stopped, and
+     *       any stragglers are terminated) and pg_restore the snapshot in;
+     *    3. verify the live database against the manifest.
+     *  The aurora role needs CREATEDB (granted by aurora-provision.ps1) for the
+     *  scratch born-verify and the CREATE. Audited as a 'restore' event. */
+    public static TestRestoreResultDto RestoreInPlace(string file, string actor)
+    {
+        var checks = new List<CheckResult>();
+        var tables = new List<TableComparison>();
+        var enc = Path.Combine(BackupDir, Path.GetFileName(file));
+        var scratch = $"aurora_rp_{DateTime.UtcNow:yyyyMMddHHmmss}".ToLowerInvariant();
+        string? plain = null;
+        var ok = false; string summary;
+        try
+        {
+            if (!File.Exists(enc)) throw new InvalidOperationException($"{file} not found in {BackupDir}");
+            var manifest = ReadManifest(file) ?? throw new InvalidOperationException(
+                $"No manifest for {file} — refusing to restore without the recorded source state to verify against.");
+            var key = LoadKey();
+            plain = Path.Combine(BackupDir, ".tmp", Path.GetFileName(file) + ".rp");
+            Directory.CreateDirectory(Path.GetDirectoryName(plain)!);
+            DecryptFile(enc, plain, key);
+            checks.Add(new CheckResult("decrypt", true, "GCM authentication passed"));
+
+            // 1 — BORN-VERIFY into a scratch DB FIRST. The live database is never
+            //     touched until this exact dump is proven to restore and match.
+            using (var admin = Open())
+            using (var create = new NpgsqlCommand($"CREATE DATABASE {scratch}", admin))
+                create.ExecuteNonQuery();
+            try
+            {
+                RunPg("pg_restore", $"--no-owner --no-acl --exit-on-error -d \"{ScratchUrl(scratch)}\" \"{plain}\"");
+                var (sc, _, _) = Inspect(ScratchUrl(scratch));
+                var mism = manifest.TableCounts.Where(kv => sc.GetValueOrDefault(kv.Key, -1) != kv.Value)
+                    .Select(kv => kv.Key).ToList();
+                if (mism.Count > 0) throw new InvalidOperationException(
+                    "the backup did not match its manifest in a scratch restore (" + string.Join(", ", mism) +
+                    ") — it is SUSPECT; the live database was NOT touched.");
+                checks.Add(new CheckResult("pre-verify", true,
+                    $"the backup restores cleanly into a scratch copy and matches its manifest ({sc.Values.Sum()} rows) — safe to apply"));
+            }
+            finally { DropScratch(scratch); }
+
+            // 2 — replace the live database. DROP + CREATE (empty) guarantees the
+            //     EXACT snapshot schema. Runs against the 'postgres' maintenance DB;
+            //     stragglers are terminated (the caller stopped AuroraServer). Evict
+            //     our OWN idle pooled connections to the target first, so the FORCE
+            //     drop has nothing of ours to sever mid-flight.
+            var db = new Uri(DatabaseUrl).AbsolutePath.TrimStart('/');
+            NpgsqlConnection.ClearAllPools();
+            using (var maint = Open(MaintenanceUrl()))
+            {
+                using (var term = new NpgsqlCommand(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=@d AND pid<>pg_backend_pid()", maint))
+                { term.Parameters.AddWithValue("d", db); term.ExecuteNonQuery(); }
+                using (var drop = new NpgsqlCommand($"DROP DATABASE IF EXISTS \"{db}\" WITH (FORCE)", maint))
+                    drop.ExecuteNonQuery();
+                using (var crt = new NpgsqlCommand($"CREATE DATABASE \"{db}\"", maint))
+                    crt.ExecuteNonQuery();
+            }
+            checks.Add(new CheckResult("recreate", true,
+                $"live database '{db}' dropped and recreated empty — the restore carries the exact snapshot schema"));
+
+            // 3 — restore the snapshot into the fresh live database. The manifest
+            //     comparison in step 4 is the ground truth for success, so a
+            //     non-fatal pg_restore tail (e.g. a terminated idle connection after
+            //     all data is in) does not, by itself, condemn a restore that in
+            //     fact reconstructed every row — but its stderr is kept for the
+            //     failure message if the comparison does NOT match.
+            var (rc, rerr) = RunPgSoft("pg_restore", $"--no-owner --no-acl --exit-on-error -d \"{DatabaseUrl}\" \"{plain}\"");
+
+            // 4 — verify the live DB matches the manifest (BackupEvents grows once we audit)
+            var (counts, digests, _) = Inspect(DatabaseUrl);
+            foreach (var (t, srcCount) in manifest.TableCounts.OrderBy(kv => kv.Key))
+            {
+                var restored = counts.GetValueOrDefault(t, -1);
+                var grows = t == "BackupEvents";
+                tables.Add(new TableComparison(t, srcCount, restored,
+                    grows ? restored >= srcCount : restored == srcCount,
+                    grows || digests.GetValueOrDefault(t, "?") == manifest.TableDigests.GetValueOrDefault(t, "!")));
+            }
+            var missing = manifest.TableCounts.Keys.Except(counts.Keys).ToList();
+            checks.Add(new CheckResult("tables", missing.Count == 0,
+                missing.Count == 0 ? $"all {manifest.TableCounts.Count} tables restored"
+                : $"MISSING tables after restore: {string.Join(", ", missing)}"));
+            checks.Add(new CheckResult("counts", tables.All(t => t.CountMatch),
+                tables.All(t => t.CountMatch) ? $"record counts match the manifest on every table ({counts.Values.Sum()} rows)"
+                : "COUNT MISMATCH: " + string.Join("; ", tables.Where(t => !t.CountMatch)
+                    .Select(t => $"{t.Table} source={t.SourceCount} restored={t.RestoredCount}"))));
+            checks.Add(new CheckResult("integrity", tables.All(t => t.DigestMatch),
+                tables.All(t => t.DigestMatch) ? "per-table content digests identical — restored content is byte-equal to the backup"
+                : "DIGEST MISMATCH on: " + string.Join(", ", tables.Where(t => !t.DigestMatch).Select(t => t.Table))));
+            ok = checks.All(c => c.Ok) && tables.All(t => t is { CountMatch: true, DigestMatch: true });
+            summary = ok
+                ? $"RESTORE COMPLETE: the live database was replaced with {Path.GetFileName(file)} — {tables.Count} tables, {counts.Values.Sum()} rows, verified against the backup manifest."
+                : "RESTORE VERIFICATION FAILED after the swap — the restored database does not match the backup manifest."
+                  + (rc != 0 ? $" (pg_restore exit {rc}: {rerr.Trim()})" : "");
+        }
+        catch (Exception ex)
+        {
+            checks.Add(new CheckResult("restore", false, ex.Message));
+            summary = $"RESTORE FAILED: {ex.Message}";
+        }
+        finally
+        {
+            if (plain != null && File.Exists(plain)) File.Delete(plain);
+        }
+        Audit("restore", ok ? "success" : "failed", actor, Path.GetFileName(file),
+            new { inPlace = true, tables = tables.Count, rows = tables.Sum(t => t.RestoredCount) });
+        return new TestRestoreResultDto(Path.GetFileName(file), ok, "(live)", tables, checks, summary);
+    }
+
+    /** the 'postgres' maintenance database on the same cluster — where DROP/CREATE
+     *  of the live database run from (you cannot drop the database you are in). */
+    static string MaintenanceUrl()
+    {
+        var uri = new UriBuilder(DatabaseUrl) { Path = "/postgres" };
+        return uri.Uri.ToString();
     }
 
     /* ---------------- status / health (design §6) ---------------- */

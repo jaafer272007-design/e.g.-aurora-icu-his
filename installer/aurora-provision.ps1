@@ -131,6 +131,11 @@ DO `$`$ BEGIN
     ALTER ROLE aurora PASSWORD '$pgpw';
   END IF;
 END `$`$;
+-- CREATEDB lets the aurora role create the throwaway scratch database the backup
+-- engine born-restore-verifies into, and the empty database the DR / update-rollback
+-- 'restore' recreates. It grants NO access to other databases — a plain capability,
+-- idempotent to re-assert on every provision.
+ALTER ROLE aurora CREATEDB;
 SELECT 'ensure-db' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='aurora');
 "@
 # createdb is separate (CREATE DATABASE cannot run inside a DO block)

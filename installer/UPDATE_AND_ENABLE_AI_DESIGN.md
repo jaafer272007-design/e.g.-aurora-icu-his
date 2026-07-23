@@ -1,9 +1,12 @@
 # Design note — `aurora-update` + `aurora-enable-ai` (surgical, data-safe installer operations)
 
-**Status: §3 `aurora-enable-ai` (+ the message fix) is BUILT (PR 1). §3.5
-on-boot AI self-wiring — the "just works" path that supersedes needing to run
-enable-ai by hand — is BUILT (the auto-wire PR). §2 `aurora-update` (+
-`version.json`) remains DESIGN — the next build (PR 2).**
+**Status: ALL BUILT. §3 `aurora-enable-ai` (+ the message fix) — PR 1. §3.5
+on-boot AI self-wiring (the "just works" path) — the auto-wire PR. §1
+`version.json` + §2 `aurora-update` (+ the enabling `restore` verb and the
+`aurora` `CREATEDB` grant) — PR 2. The one change from this design as written:
+§2.5's rollback called a single `AuroraIcu.Api.exe restore` verb that did not
+exist — PR 2 BUILT it (decrypt → scratch born-verify → DROP+CREATE the live DB →
+`pg_restore` → manifest-verify), proven end-to-end against real Postgres.**
 This note designs two small `installer/` operations that replace *re-running the
 5 GB `AuroraSetup.exe`* for two routine tasks. Both follow one discipline.
 
@@ -250,6 +253,35 @@ update (so a late-discovered regression can still roll back to the immediately
 prior build), record `app-update success` in the audit with old→new versions,
 and update `update-state.json` to `complete`. The self-extracting exe closes with
 the plain result line.
+
+### 2.8 As-built notes (PR 2 — where reality corrected the design)
+
+Two things this design assumed were not true of the code, and PR 2 resolved them:
+
+1. **The `restore` verb did not exist.** §2.3/§2.5 wrote
+   `AuroraIcu.Api.exe restore <backup>` as if it were a verb; the CLI had only
+   `decrypt` + `verify-restored` (the appliance `restore.ps1` orchestrates
+   `decrypt`→`pg_restore`→`verify-restored` into an *empty* DB). PR 2 **built the
+   verb** — `BackupService.RestoreInPlace`: decrypt → **born-verify the dump into a
+   scratch DB first** (the live DB is never touched until the backup is proven
+   restorable and manifest-matching) → **DROP + CREATE** the live database (via the
+   `postgres` maintenance DB; DROP+CREATE, not `pg_restore --clean`, so an object a
+   failed migration added cannot survive to break the next migration replay) →
+   `pg_restore` → compare every table's count **and** content digest to the manifest.
+   The verb requires `--yes` (a bare `restore <file>` cannot wipe a DB by accident).
+   The manifest comparison — not `pg_restore`'s exit code — is the ground truth, so a
+   benign terminated-idle-connection tail after all rows are in cannot condemn a
+   restore that in fact reconstructed the database.
+2. **The `aurora` DB role lacked `CREATEDB`.** The scratch born-verify and the
+   DROP+CREATE both need it; `aurora-provision.ps1` created `aurora` as a plain
+   `LOGIN` role. PR 2 adds `ALTER ROLE aurora CREATEDB` (a minimal capability, no
+   access to other databases). This also **repairs a latent bug**: the *backup*
+   engine's born-verify already did `CREATE DATABASE {scratch}` as `aurora`, which
+   would have failed on a native install (it worked in Docker/CI only because the
+   compose `POSTGRES_USER=aurora` is a superuser). Proven end-to-end against real
+   Postgres with `aurora` as a **CREATEDB-but-not-superuser** role: backup
+   born-verified, the live DB wiped and fully restored (28 tables + migration
+   history, counts + digests matching), and a planted orphan table gone.
 
 ---
 

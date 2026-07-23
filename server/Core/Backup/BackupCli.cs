@@ -25,7 +25,7 @@ public static class BackupCli
 {
     static readonly string[] Verbs =
     [
-        "backup", "verify", "test-restore", "verify-restored",
+        "backup", "verify", "test-restore", "verify-restored", "restore",
         "decrypt", "init-key", "rotate-key", "prune", "status", "audit",
     ];
 
@@ -138,6 +138,19 @@ public static class BackupCli
                 {
                     if (pos.Count < 1) return Usage("verify-restored <manifest.json> [--actor NAME]");
                     var r = BackupService.VerifyRestoredLive(pos[0], actor);
+                    Console.WriteLine(r.Summary);
+                    PrintChecks(r.Checks);
+                    PrintComparison(r.Tables);
+                    return r.Ok ? 0 : 1;
+                }
+                case "restore":
+                {
+                    // DESTRUCTIVE: replaces the live database. Requires an explicit
+                    // --yes so a bare `restore <file>` can never wipe a hospital's DB
+                    // by accident. The updater's rollback passes --yes.
+                    if (pos.Count < 1 || !args.Contains("--yes"))
+                        return Usage("restore <file> --yes [--actor NAME]  (DESTRUCTIVE: REPLACES the live database with the backup)");
+                    var r = BackupService.RestoreInPlace(pos[0], actor);
                     Console.WriteLine(r.Summary);
                     PrintChecks(r.Checks);
                     PrintComparison(r.Tables);
