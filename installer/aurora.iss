@@ -185,10 +185,10 @@ begin
   WizardForm.StatusLabel.Caption := 'Setting up Aurora (database, services, first backup)…';
   { SW_SHOW (not SW_HIDE): provisioning runs in a VISIBLE console. A hidden
     window turned any stall (e.g. antivirus vetting initdb.exe on first launch)
-    into a frozen wizard with no console to close — the operator saw progress
+    into a frozen wizard with no console to close - the operator saw progress
     lines nowhere and could not cancel. Visible: they see each step, any AV
     prompt is answerable, and closing the console releases Setup. A full log is
-    also written to {app}\provision.log regardless. }
+    also written to provision.log in the install folder regardless. }
   if not Exec('powershell.exe', args, '', SW_SHOW, ewWaitUntilTerminated, rc) or (rc <> 0) then begin
     DeleteFile(pwFile);
     MsgBox('Setup could not finish (code ' + IntToStr(rc) + ').'#13#10#13#10 +
