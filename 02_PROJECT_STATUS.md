@@ -1,6 +1,25 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-22 · current through HOSPITAL INSTALLER — PR C (the
+**Last updated: 2026-07-22 · current through HOSPITAL INSTALLER — BUILD RUNBOOK
+(docs + build tooling, no product code). Two additions under `installer/` so the
+owner can produce `AuroraSetup.exe` on a Windows laptop without babysitting ten
+copy-pastes: (1) `build-all.ps1` — a ONE-SHOT wrapper that optionally
+`winget`-installs the toolchain (.NET 8 SDK, Node LTS, Inno Setup 6, Git) and
+refreshes PATH in-session, preflight-checks the tools + inputs (fails early with
+a clear message; enforces "both -ModelDir and -LlamaDir, or neither"; a
+disk-space heads-up), runs `build.ps1`, and reports the finished `.exe` + its
+size. (2) `BUILD_WINDOWS.md` — a never-compiled-an-installer walkthrough: the
+one-command fast path, exactly where to get + place the PostgreSQL zip / the
+Qwen2.5-7B GGUF / llama-server+nssm (`-PgZip`/`-ModelDir`/`-LlamaDir`), the
+llama.cpp-commit parity caveat, the output path + ~5 GB (with model) / ~150 MB
+(no-AI) size, and a per-step failure table. `installer/README.md` points at both.
+✅ VERIFIED on Linux: `build-all.ps1` syntax-clean (Parser.ParseFile). 🔎 The
+actual Windows build run is the owner's (needs the SDK/Node/Inno toolchain + a
+GPU-target machine) — the runbook drives it. NEXT: the owner builds
+`AuroraSetup.exe` and runs the second-machine verification (installer + AI +
+backup-restore).**
+
+Prior work through HOSPITAL INSTALLER — PR C (the
 native AI service + GPU-native path). The final piece of the Docker-free
 Option B deployment: the installer now stands up the AI locally as a Windows
 service, and the design §5.4 AI-concurrency guardrails are baked in. WHAT
@@ -41,7 +60,8 @@ service + auto-start-before-login + crash-restart, the real GPU inference +
 concurrency curve (llama-bench), the GPU-absent honest path, 127.0.0.1-only,
 and uninstall. This completes the native-Windows Option B arc (PR A service
 host + config parity → PR B installer → PR C AI service). NEXT: owner's
-second-machine verification (installer + AI + backup-restore drill).**
+second-machine verification (installer + AI + backup-restore drill). (See the
+BUILD RUNBOOK marker above for how the owner produces AuroraSetup.exe.)
 
 Prior work through HOSPITAL INSTALLER — PR B (the
 native Windows installer). The "double-click → next → finish → runs itself

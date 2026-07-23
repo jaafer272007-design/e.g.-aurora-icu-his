@@ -18,12 +18,16 @@ no internet. This implements Option B of
 | `aurora-provision.ps1` | the Docker-free provisioning engine (DB, services, config, backup, firewall) |
 | `aurora-backup.ps1` | the **native** nightly backup (runs the `.exe` directly — the Docker-free sibling of `../appliance/backup.ps1`) |
 | `build.ps1` | builds the payload (React + self-contained server + private Postgres + model + llama-server) and compiles the installer |
+| `build-all.ps1` | **one-shot** wrapper — optionally `winget`-installs the toolchain, preflight-checks, runs `build.ps1`, and reports the finished `.exe` + size |
+| `BUILD_WINDOWS.md` | **step-by-step build guide** for a Windows laptop (written for someone who has never compiled an installer) |
 
 The **native AI** (PR C): when the target machine has an NVIDIA GPU and the AI payload shipped, provisioning registers a native **AuroraAI** Windows service — `llama.cpp` **`llama-server`** (CUDA) run under **NSSM** (a thin service host, since llama-server is a console exe). It is Automatic + SCM-recovery like the other services, **bound to `127.0.0.1` only** (only AuroraServer calls it; it is never on the LAN and the firewall never opens its port), and **AuroraServer does not depend on it** — the HIS runs with or without the AI (the AI screen stays honest until the model loads). The concurrency guardrails (design §5.4) are `--parallel 4` + `--ctx-size 16384` by default, **env/param-tunable** (see `llama-bench` below).
 
 ## Build the installer (on a build machine — SDK/Node/Inno/internet)
 
 The **build** machine needs the .NET 8 SDK, Node, [Inno Setup 6](https://jrsoftware.org/isinfo.php), and internet. The **hospital** machine needs none of it.
+
+> **New to this?** [`BUILD_WINDOWS.md`](./BUILD_WINDOWS.md) is a full step-by-step walkthrough, and **`build-all.ps1`** does the whole thing in one command (it can even install the toolchain via `winget`). The raw `build.ps1` steps below are the reference.
 
 ```powershell
 # 1. a PostgreSQL 16 "binaries only" zip for Windows x64 from
