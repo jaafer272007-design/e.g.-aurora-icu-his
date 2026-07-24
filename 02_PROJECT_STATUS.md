@@ -1,5 +1,31 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**Last updated: 2026-07-24 · current through BACKUP pg_dump-NOT-FOUND FIX (go-live
+blocker found on the installed Windows machine). Clicking "Backup now" on the
+production install failed: "An error occurred trying to start process 'pg_dump'
+with working directory 'C:\Windows\system32'. The system cannot find the file
+specified." ROOT CAUSE: the backup engine (BackupService) shells out to
+pg_dump/pg_restore by BARE NAME, relying on PATH; but the AuroraServer Windows
+service runs from C:\Windows\system32 and the bundled pgsql\bin is NOT on PATH,
+so NO backup could run - the in-app button AND the nightly 02:00 task both die,
+silently, leaving a hospital with zero backups. (Never caught before because the
+#164 engine verification ran in Linux/Docker CI where the PGDG tools ARE on
+PATH.) FIX: BackupService.PgTool() resolves pg_dump/pg_restore to a real path -
+PG_BIN if set, else pgsql\bin as a SIBLING of the server\ exe dir
+(C:\Aurora\server -> C:\Aurora\pgsql\bin), else the bare name (Docker/CI, on
+PATH); all four call sites (RunPgSoft covers pg_dump + the scratch/live restores,
+plus the Verify pg_restore --list) route through it. aurora-provision.ps1 also
+writes PG_BIN=<install>\pgsql\bin into aurora.env (belt-and-suspenders). Server
+BUILDS CLEAN; the resolver returns the identical bare name in Docker/CI so the
+#164-verified path is unchanged (no regression). IMMEDIATE WORKAROUND for the
+already-installed old build (cannot read PG_BIN / sibling-resolve yet): add
+pgsql\bin to the MACHINE PATH + Restart-Service AuroraServer. NOTE the operator's
+observation that the wizard collects ONE location (Data location) under which
+backups live (their install -> D:\Aurora\backups, correctly OFF the C: system
+drive); a separate backup-drive field and the USB off-site copy (BACKUP_USB) are
+follow-ups. VERIFY on Windows: rebuild, reinstall (or hotfix PATH), Backup now
+-> BACKUP OK, then the restore drill. **
+
 **Last updated: 2026-07-24 · current through INSTALLER NETWORK REACHABILITY —
 two more findings from the first real production install, both of which broke the
 no-commands promise. (1) FIREWALL MISSED THE PUBLIC PROFILE: `aurora-provision.ps1`

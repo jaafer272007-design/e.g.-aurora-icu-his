@@ -259,7 +259,13 @@ $lines = @(
   "ADMIN_BOOTSTRAP_PASSWORD=$adminPw",   # remove this line after the admin changes it at first login
   "BACKUP_DIR=$backups",
   "BACKUP_KEY_FILE=$(Join-Path $secrets 'backup.key')",
-  'BACKUP_SCHEDULE=daily 02:00'
+  'BACKUP_SCHEDULE=daily 02:00',
+  # the bundled PostgreSQL client tools (pg_dump/pg_restore) the backup engine
+  # shells out to. The AuroraServer service runs from C:\Windows\system32 with
+  # pgsql\bin NOT on PATH, so the engine must be told where they are or every
+  # backup fails "cannot find the file specified". (The server also falls back
+  # to pgsql\bin as a sibling of its exe dir, so this is belt-and-suspenders.)
+  "PG_BIN=$pgbin"
 )
 if ($TimeZone) { $lines += "TZ=$TimeZone" }
 

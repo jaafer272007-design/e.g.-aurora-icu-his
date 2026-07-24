@@ -184,6 +184,28 @@ public static class BackupService
 
     /* ---------------- pg tooling + table inspection ---------------- */
 
+    /** Resolve a PostgreSQL client tool (pg_dump / pg_restore) to a runnable
+     *  path. In Docker and CI the PGDG tools are on PATH, so the bare name is
+     *  correct. In the NATIVE WINDOWS install the AuroraServer service runs from
+     *  C:\Windows\system32 with pgsql\bin NOT on PATH, so a bare "pg_dump" fails
+     *  with "The system cannot find the file specified" — for the in-app Backup
+     *  button AND the nightly task. Resolve it explicitly instead of trusting
+     *  PATH: PG_BIN if the installer set it, else pgsql\bin as a SIBLING of the
+     *  server\ exe directory (C:\Aurora\server -> C:\Aurora\pgsql\bin), else the
+     *  bare name (Docker/Linux, where it is on PATH). */
+    static string PgTool(string tool)
+    {
+        if (Path.IsPathRooted(tool)) return tool;
+        var dir = Environment.GetEnvironmentVariable("PG_BIN");
+        if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+            dir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "pgsql", "bin"));
+        if (!Directory.Exists(dir)) return tool;               // on PATH (Docker/CI)
+        var win = Path.Combine(dir, tool + ".exe");
+        if (File.Exists(win)) return win;
+        var nix = Path.Combine(dir, tool);
+        return File.Exists(nix) ? nix : tool;
+    }
+
     static void RunPg(string exe, string args, string? stdErrTo = null)
     {
         var (code, err) = RunPgSoft(exe, args);
@@ -198,7 +220,7 @@ public static class BackupService
      *  are in must not condemn a restore that actually reconstructed the database). */
     static (int code, string err) RunPgSoft(string exe, string args)
     {
-        var psi = new ProcessStartInfo(exe, args)
+        var psi = new ProcessStartInfo(PgTool(exe), args)
         { RedirectStandardError = true, RedirectStandardOutput = true };
         using var p = Process.Start(psi)!;
         var err = p.StandardError.ReadToEnd();
@@ -497,7 +519,7 @@ public static class BackupService
             }
             try
             {
-                var psi = new ProcessStartInfo("pg_restore", $"--list \"{plain}\"")
+                var psi = new ProcessStartInfo(PgTool("pg_restore"), $"--list \"{plain}\"")
                 { RedirectStandardOutput = true, RedirectStandardError = true };
                 using var p = Process.Start(psi)!;
                 var toc = p.StandardOutput.ReadToEnd();
