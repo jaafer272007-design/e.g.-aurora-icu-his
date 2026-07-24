@@ -1,5 +1,32 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**Last updated: 2026-07-24 · current through IN-APP RESTORE (no-commands recovery,
+owner-chosen). Backups + verify + test-restore were already 100% button-driven,
+but the DESTRUCTIVE in-place restore was CLI-only (AuroraIcu.Api.exe restore
+--yes) — deliberately kept off the web so a misclick/CSRF/stale session could not
+wipe the DB. Owner chose to make even recovery no-commands for the hospital. NEW
+POST /api/backup/restore {file, confirm} (BackupApi) → BackupService.RestoreInPlace,
+behind THREE gates: (1) backup.manage — System Administrator only, like every
+backup endpoint; (2) a typed confirmation phrase 'REPLACE' the UI forces the
+operator to enter, rejected server-side if absent; (3) the engine's OWN
+born-verify-first — RestoreInPlace restores into a scratch copy and proves it
+matches the manifest BEFORE touching live data, so a bad backup aborts with the
+live DB untouched. UI (BackupRecovery.tsx): a red 'Restore…' button per backup
+row opens a stark confirm panel (names what is lost, requires typing REPLACE),
+runs the restore, and shows the same source-vs-restored MATCH table as
+test-restore; the Restore-Wizard runbook is reframed as the DEAD-SERVER
+(cross-machine) path, with same-machine recovery now the button. Works in-process
+(RestoreInPlace already ClearAllPools + terminates backends via a maintenance
+connection + re-inspects the restored DB), with a brief unavailability window
+inherent to an in-place restore (stated in the UI). Server + frontend BUILD CLEAN.
+NOT added to the shared deployed E2E: a real restore leg would wipe the shared
+staging DB — the scratch test-restore leg already covers the engine; the
+destructive path stays proven by the CLI round-trip (#135/#139) + the owner's
+live same-machine drill (28 tables MATCH/MATCH). Reached during the go-live
+backup/restore drill on the installed Windows machine (backups now green after
+the pg_dump-PATH fix below; owner ran a full same-laptop restore, all tables
+MATCH). **
+
 **Last updated: 2026-07-24 · current through BACKUP pg_dump-NOT-FOUND FIX (go-live
 blocker found on the installed Windows machine). Clicking "Backup now" on the
 production install failed: "An error occurred trying to start process 'pg_dump'

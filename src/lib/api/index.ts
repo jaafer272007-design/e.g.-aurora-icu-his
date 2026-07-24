@@ -2265,6 +2265,15 @@ export function testRestoreBackup(file: string): Promise<AdtWriteResult<BackupTe
   return backupPost<BackupTestRestoreResult>('/api/backup/test-restore', 'backup test-restore', { file })
 }
 
+/** POST /api/backup/restore — the DESTRUCTIVE recovery: REPLACES the live
+ *  database with the backup. `confirm` MUST be the literal 'REPLACE' (the UI
+ *  forces the operator to type it); the server rejects anything else so this
+ *  can never fire from a stray click. Returns the same source-vs-restored
+ *  comparison shape as test-restore, computed against the now-live database. */
+export function restoreBackup(file: string, confirm: string): Promise<AdtWriteResult<BackupTestRestoreResult>> {
+  return backupPost<BackupTestRestoreResult>('/api/backup/restore', 'backup restore', { file, confirm })
+}
+
 /** POST /api/backup/rotate-key — the response carries the NEW key exactly
  *  once for the envelope ceremony; nothing can read it back later. */
 export function rotateBackupKey(): Promise<AdtWriteResult<BackupRotateKeyResult>> {

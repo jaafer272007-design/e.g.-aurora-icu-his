@@ -108,6 +108,31 @@ static class BackupApi
             catch (Exception ex) { return ApiError.StateConflict(ex.Message); }
         }).RequireAuthorization();
 
+        /* POST /api/backup/restore {file, confirm} — the DESTRUCTIVE recovery:
+           REPLACES the live database with the backup. Kept deliberately behind
+           three gates so a hospital never needs a command line for recovery yet
+           this can never fire by accident: (1) backup.manage — System
+           Administrator ONLY, like every endpoint here; (2) a typed confirmation
+           phrase ("REPLACE") the UI forces the operator to enter, so a stray
+           click / CSRF / left-open session cannot trigger it; (3) the engine's
+           OWN born-verify-first — RestoreInPlace restores into a scratch copy
+           and proves it matches the manifest BEFORE it touches live data, so a
+           bad backup aborts with the live database untouched. Synchronous: the
+           response IS the source-vs-restored comparison (same shape as
+           test-restore). There is a brief window mid-restore where the database
+           is being rebuilt; that is inherent to an in-place restore and is the
+           recovery operator's expectation. */
+        app.MapPost("/api/backup/restore", (RestoreRequest req, ClaimsPrincipal user) =>
+        {
+            if (Rbac.Deny(user, "backup.manage") is IResult denied) return denied;
+            if (string.IsNullOrWhiteSpace(req.File)) return ApiError.BadRequest("file is required");
+            if (req.Confirm?.Trim() != "REPLACE")
+                return ApiError.BadRequest(
+                    "restore requires the typed confirmation 'REPLACE' — this REPLACES the live database with the backup");
+            try { return Results.Json(BackupService.RestoreInPlace(req.File.Trim(), Actor(user)), JsonOpts.Web); }
+            catch (Exception ex) { return ApiError.StateConflict(ex.Message); }
+        }).RequireAuthorization();
+
         /* POST /api/backup/rotate-key — the response carries the new key
            EXACTLY ONCE for the operator's envelope ceremony; no endpoint
            can ever read it back. */

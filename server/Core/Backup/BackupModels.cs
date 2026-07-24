@@ -107,6 +107,12 @@ public record BackupEventDto(int Id, string At, string Kind, string Outcome,
 
 public record VerifyRequest(string File, [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Key);
 public record TestRestoreRequest(string File);
+/* The DESTRUCTIVE in-place restore. Confirm carries a typed phrase the UI
+   forces the operator to enter ("REPLACE") so this can never fire from a stray
+   click, a CSRF, or a left-open session — it is the one action that wipes the
+   live database, so it takes an explicit human keystroke on top of the
+   backup.manage gate. */
+public record RestoreRequest(string File, string Confirm);
 
 public record CheckResult(string Check, bool Ok, string Detail);
 

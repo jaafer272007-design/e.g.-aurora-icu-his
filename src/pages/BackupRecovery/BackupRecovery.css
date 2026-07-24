@@ -48,7 +48,22 @@
 .bkbtn.ghost:hover:not(:disabled){background:rgba(var(--text-rgb),.08)}
 .bkbtn.warn{border-color:var(--amber);background:rgba(var(--amber-rgb),.16)}
 .bkbtn.warn:hover:not(:disabled){background:rgba(var(--amber-rgb),.3)}
+/* the DESTRUCTIVE restore — the only red-alarm button in the area */
+.bkbtn.danger{border-color:var(--red);background:rgba(var(--red-rgb),.16);color:var(--text)}
+.bkbtn.danger:hover:not(:disabled){background:rgba(var(--red-rgb),.32)}
 .bkbtn.sm{padding:4px 10px;font-size:.8rem}
+
+/* restore confirm panel (destructive) */
+.bkrestore{display:flex;flex-direction:column;gap:10px;margin-top:10px;padding:12px;
+  border:1px solid rgba(var(--red-rgb),.5);border-radius:10px;background:rgba(var(--red-rgb),.07)}
+.bkrestorewarn{display:flex;gap:10px;align-items:flex-start;color:var(--red)}
+.bkrestorewarn>div{display:flex;flex-direction:column;gap:3px}
+.bkrestorewarn b{color:var(--text)}
+.bkrestorewarn span{font-size:.82rem;line-height:1.45;color:var(--dim);max-width:640px}
+.bkrestorerow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bkrestorerow input{border:1px solid rgba(var(--red-rgb),.5);background:transparent;color:var(--text);
+  border-radius:8px;padding:6px 10px;font:inherit;font-size:.85rem;letter-spacing:.08em;width:150px}
+.bkrestorerow input:focus-visible{outline:2px solid var(--red);outline-offset:1px}
 
 .bknote{font-size:.8rem;color:var(--dim);line-height:1.5;margin:10px 0 0}
 .bknote b{color:var(--text);font-weight:600}

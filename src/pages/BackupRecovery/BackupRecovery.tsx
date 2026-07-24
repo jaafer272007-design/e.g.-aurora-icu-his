@@ -6,7 +6,7 @@ import { Card } from '../../components/Card'
 import { Toast, useToast } from '../../components/Toast'
 import { IconCheck, IconClock, IconShield, IconAlertTriangle } from '../../components/icons'
 import {
-  getBackupEvents, getBackupHistory, getBackupStatus,
+  getBackupEvents, getBackupHistory, getBackupStatus, restoreBackup,
   rotateBackupKey, runBackupNow, testRestoreBackup, verifyBackup,
 } from '../../lib/api'
 import type {
@@ -43,6 +43,7 @@ const HEALTH_LABEL: Record<BackupStatus['health'], string> = {
 type ResultPanel =
   | { kind: 'verify'; data: BackupVerifyResult }
   | { kind: 'test-restore'; data: BackupTestRestoreResult }
+  | { kind: 'restore'; data: BackupTestRestoreResult }
 
 export function BackupRecovery() {
   const { toast, showToast } = useToast()
@@ -63,6 +64,10 @@ export function BackupRecovery() {
   const [shownKey, setShownKey] = useState<BackupRotateKeyResult | null>(null)
   const [confirmRotate, setConfirmRotate] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
+  /* DESTRUCTIVE restore: which file's confirm panel is open + the typed
+     confirmation. The button enables only when the operator types REPLACE. */
+  const [restoreFor, setRestoreFor] = useState<string | null>(null)
+  const [restoreConfirm, setRestoreConfirm] = useState('')
 
   const reload = useCallback(() => {
     void Promise.all([getBackupStatus(), getBackupHistory(), getBackupEvents(100)])
@@ -92,6 +97,12 @@ export function BackupRecovery() {
 
   const doTestRestore = (file: string) => run('test-restore:' + file,
     () => testRestoreBackup(file), data => setResult({ kind: 'test-restore', data }))
+
+  const doRestore = (file: string) => run('restore:' + file,
+    () => restoreBackup(file, 'REPLACE'), data => {
+      setResult({ kind: 'restore', data }); setRestoreFor(null); setRestoreConfirm('')
+      if (data.ok) showToast('Restore complete — live database replaced', data.summary)
+    })
 
   const doRotate = () => run('rotate-key', rotateBackupKey, r => {
     setConfirmRotate(false); setShownKey(r)
@@ -223,7 +234,12 @@ export function BackupRecovery() {
 
             {/* ---------------- Restore Wizard (guided runbook) ---------------- */}
             {wizardOpen && (
-              <Card icon={<IconShield size={15} stroke="var(--red)" />} title="Restore Wizard — disaster runbook" aside="cross-machine by design">
+              <Card icon={<IconShield size={15} stroke="var(--red)" />} title="Restore Wizard — disaster runbook" aside="for a DEAD server (cross-machine)">
+                <p className="bknote" style={{ marginTop: 0 }}>
+                  To recover onto THIS running server (e.g. undo a bad change), use the <b>Restore…</b> button on
+                  any backup in Backup History below — no commands needed. This runbook is for the harder case:
+                  the server itself is <b>gone</b>, and you are rebuilding on a fresh machine from the off-site copy.
+                </p>
                 <ol className="bkwizard">
                   <li>
                     <b>Gather the three things a restore needs:</b> a fresh Windows machine with Docker Desktop,
@@ -262,9 +278,11 @@ export function BackupRecovery() {
             {/* ---------------- result panel (verify / test-restore) ---------------- */}
             {result && (
               <Card icon={<IconCheck size={14} stroke={result.data.ok ? 'var(--green)' : 'var(--red)'} />}
-                title={result.kind === 'verify' ? `Verify — ${result.data.file}` : `Test Restore — ${result.data.file}`}
+                title={result.kind === 'verify' ? `Verify — ${result.data.file}`
+                  : result.kind === 'restore' ? `Restore — ${result.data.file}`
+                  : `Test Restore — ${result.data.file}`}
                 aside={<button className="bkbtn ghost sm" onClick={() => setResult(null)}>Close</button>}>
-                {result.kind === 'test-restore' && (
+                {result.kind !== 'verify' && (
                   <div className={`bksummary ${result.data.ok ? 'ok' : 'bad'}`}>{result.data.summary}</div>
                 )}
                 <div className="bkchecks">
@@ -275,7 +293,7 @@ export function BackupRecovery() {
                     </div>
                   ))}
                 </div>
-                {result.kind === 'test-restore' && result.data.tables.length > 0 && (
+                {result.kind !== 'verify' && result.data.tables.length > 0 && (
                   <div className="bktablewrap">
                     <table className="bktable num">
                       <thead>
@@ -331,8 +349,39 @@ export function BackupRecovery() {
                               onClick={() => doTestRestore(h.file)}>
                               {busy === 'test-restore:' + h.file ? 'Restoring to scratch…' : 'Test Restore'}
                             </button>
+                            <button className="bkbtn sm danger" disabled={busy != null}
+                              onClick={() => { setRestoreFor(restoreFor === h.file ? null : h.file); setRestoreConfirm(''); setKeyFor(null) }}
+                              aria-expanded={restoreFor === h.file}>
+                              Restore…
+                            </button>
                           </span>
                         </div>
+                        {restoreFor === h.file && (
+                          <div className="bkrestore" role="region" aria-label={`Restore the live database from ${h.file}`}>
+                            <div className="bkrestorewarn">
+                              <IconAlertTriangle size={16} plain />
+                              <div>
+                                <b>This REPLACES the entire live database with this backup.</b>
+                                <span>
+                                  Everything entered after this backup (<span className="num">{displayStamp(h.createdAtUtc)}</span>)
+                                  is permanently lost, and the system briefly goes offline while it rebuilds. The backup is
+                                  first restored into a scratch copy and proven to match — if it doesn&apos;t, the live
+                                  database is left untouched. Type <b>REPLACE</b> to confirm.
+                                </span>
+                              </div>
+                            </div>
+                            <div className="bkrestorerow">
+                              <input aria-label="Type REPLACE to confirm" type="text" autoComplete="off"
+                                placeholder="REPLACE" value={restoreConfirm} onChange={e => setRestoreConfirm(e.target.value)} />
+                              <button className="bkbtn sm danger" disabled={busy != null || restoreConfirm.trim() !== 'REPLACE'}
+                                onClick={() => doRestore(h.file)}>
+                                {busy === 'restore:' + h.file ? 'Restoring — replacing live data…' : 'Restore & replace live data'}
+                              </button>
+                              <button className="bkbtn sm ghost" disabled={busy != null}
+                                onClick={() => { setRestoreFor(null); setRestoreConfirm('') }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
                         {keyFor === h.file && (
                           <div className="bkkeyentry" role="region" aria-label={`Verify ${h.file} with a recorded key`}>
                             <label htmlFor={`bkkey-${h.file}`}>
@@ -355,7 +404,9 @@ export function BackupRecovery() {
                 <b>Verify</b> checks integrity without a restore: file hash, GCM authentication (every byte),
                 dump readability, table count vs manifest. <b>Test Restore</b> fully reconstructs the backup in
                 an <b>isolated scratch database</b> and compares source-vs-restored record counts and content
-                digests — <b>live data is never touched</b>.
+                digests — <b>live data is never touched</b>. <b>Restore…</b> is the real recovery on THIS server:
+                it <b>replaces the live database</b> with the backup (you must type <b>REPLACE</b>), and it too
+                proves the backup in a scratch copy first, so a bad backup can never wipe your data.
               </p>
             </Card>
 
