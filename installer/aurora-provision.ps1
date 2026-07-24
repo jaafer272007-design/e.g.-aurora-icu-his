@@ -45,6 +45,7 @@ param(
   [string]$TimeZone = '',                         # IANA id; '' = server displays UTC (operator can edit)
   [Parameter(Mandatory)][string]$AdminPasswordFile, # temp file holding the bootstrap admin password
   [Parameter(Mandatory)][string]$KeyOutFile,     # where to write the show-once backup key for the wizard
+  [string]$UrlOutFile = '',                       # optional: relay the REAL derived access URL back to the wizard finish page
   [switch]$AiEnabled,                             # GPU present -> register the native AuroraAI (llama-server) service
   # ---- AI concurrency knobs (HOSPITAL_INSTALLER_RUNTIME_DESIGN.md sec 5). The
   #      defaults match the RTX 4060 + Qwen2.5-7B analysis; the owner's
@@ -89,6 +90,51 @@ function New-Secret([int]$bytes) {
 }
 $jwt   = New-Secret 48
 $pgpw  = New-Secret 24     # the aurora DB role's password (local scram)
+
+# ---- LAN access helpers: the URL clinicians actually reach + its DHCP status ----
+# Port 80 is the HTTP default, so a URL on :80 is written WITHOUT the port (staff
+# type just http://<server> - no error-prone port). Any other port is explicit.
+function New-AccessUrl([string]$hostOrIp, [int]$port) {
+  if ($port -eq 80) { "http://$hostOrIp" } else { "http://${hostOrIp}:$port" }
+}
+# Find this server's real LAN IPv4: prefer the interface carrying the default
+# route (the one on the hospital network), skip loopback / APIPA (169.254.*) and
+# obvious virtual adapters (Hyper-V, WSL, VirtualBox, VMware, Bluetooth, tunnels)
+# so we do not advertise an address no clinician device can reach. Returns the
+# primary IP + whether it is DHCP-assigned + every candidate URL.
+function Get-LanAccess([int]$port) {
+  $skip = 'Loopback|Pseudo|vEthernet|Hyper-V|Virtual|VMware|VirtualBox|WSL|Bluetooth|Tunnel|TAP'
+  $primaryIp = $null; $isDhcp = $false; $ips = New-Object System.Collections.Generic.List[string]
+  function Add-Candidate($addr) {
+    if (-not $addr) { return }
+    if ($addr.IPAddress -match '^(127\.|169\.254\.)') { return }
+    $desc = ''
+    try { $desc = (Get-NetAdapter -InterfaceIndex $addr.InterfaceIndex -ErrorAction SilentlyContinue).InterfaceDescription } catch {}
+    if ($desc -and ($desc -match $skip)) { return }
+    if (-not $script:__primaryIp) { $script:__primaryIp = $addr.IPAddress; $script:__isDhcp = ($addr.PrefixOrigin -eq 'Dhcp') }
+    if (-not $ips.Contains($addr.IPAddress)) { $ips.Add($addr.IPAddress) }
+  }
+  $script:__primaryIp = $null; $script:__isDhcp = $false
+  try {
+    # default-route interfaces first (lowest metric = the LAN clinicians use)
+    $routes = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric, ifMetric
+    foreach ($r in $routes) {
+      Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $r.InterfaceIndex -ErrorAction SilentlyContinue | ForEach-Object { Add-Candidate $_ }
+    }
+  } catch {}
+  if (-not $script:__primaryIp) {
+    # fallback: any preferred IPv4 that is not loopback/APIPA/virtual
+    try {
+      Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.AddressState -eq 'Preferred' } | ForEach-Object { Add-Candidate $_ }
+    } catch {}
+  }
+  $primaryIp = $script:__primaryIp; $isDhcp = $script:__isDhcp
+  $primaryUrl = if ($primaryIp) { New-AccessUrl $primaryIp $port } else { $null }
+  $alt = @()
+  foreach ($ip in $ips) { $u = New-AccessUrl $ip $port; if ($u -ne $primaryUrl) { $alt += $u } }
+  [pscustomobject]@{ PrimaryIp = $primaryIp; IsDhcp = $isDhcp; PrimaryUrl = $primaryUrl; AltUrls = $alt; AllIps = $ips }
+}
 
 # ---- 0b. antivirus posture (fixes the classic "frozen at Setting up Aurora" hang) ----
 # Windows Defender (block-at-first-sight / cloud verdict) can stall a freshly
@@ -186,12 +232,27 @@ try {
 # ---- 4. write the ACL-locked machine config (server\aurora.env) ----
 Say "writing the machine config $envFile (ACL-locked)"
 $adminPw = (Get-Content -Raw $AdminPasswordFile).TrimEnd("`r","`n")
+# Detect the real LAN address(es) now so CORS_ORIGINS allows every origin a
+# browser might actually use (the typed URL PLUS each live interface), not only
+# the one address the operator happened to type. Same detection is reused for
+# the finish-page URL + DHCP warning at step 9. Loopback origins are stripped
+# (production BootGuards refuses them); the typed URL is always kept as a floor.
+$access = Get-LanAccess -Port $Port
+$originList = New-Object System.Collections.Generic.List[string]
+foreach ($o in @($AccessUrl) + @($access.PrimaryUrl) + $access.AltUrls) {
+  if (-not $o) { continue }
+  $o = $o.TrimEnd('/')
+  if ($o -match 'localhost|127\.0\.0\.1') { continue }
+  if (-not $originList.Contains($o)) { $originList.Add($o) }
+}
+if ($originList.Count -eq 0) { $originList.Add($AccessUrl) }   # never leave CORS empty
+$corsValue = ($originList -join ';')
 $lines = @(
   '# Aurora ICU machine config (written by the installer). ACL-locked.',
   '# The server (a Windows service, no compose) reads this via AuroraEnvFile.',
   'APP_ENV=production',
   "PORT=$Port",
-  "CORS_ORIGINS=$AccessUrl",
+  "CORS_ORIGINS=$corsValue",
   "DATABASE_URL=postgresql://aurora:$pgpw@127.0.0.1:$pgPort/aurora",
   "JWT_SECRET=$jwt",
   "FORMULARY_SEED=$FormularySeed",
@@ -290,14 +351,48 @@ $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd
 Register-ScheduledTask -TaskName 'AuroraBackup' -Action $action -Trigger $trigger `
   -Principal $principal -Settings $settings -Force | Out-Null
 
-# ---- 8. open the Windows Firewall for the API port ----
-Say "opening the Windows Firewall for TCP $Port"
-if (-not (Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyContinue)) {
-  New-NetFirewallRule -DisplayName 'Aurora ICU' -Direction Inbound -Action Allow `
-    -Protocol TCP -LocalPort $Port -Profile Domain,Private | Out-Null
+# ---- 8. open the Windows Firewall for the API port (ALL profiles) ----
+# The rule MUST cover the Public profile, not just Domain+Private. Windows
+# readily classifies an unidentified hospital Wi-Fi/LAN as PUBLIC (it cannot
+# find a domain controller), and a Public-excluded rule then blocks the port
+# from every other device: localhost works on the server, both services show
+# RUNNING, yet every tablet/phone/laptop gets "site can't be reached". Opening
+# -Profile Any makes the system reachable immediately after a next-next-finish
+# install with NO manual command. Remove-then-create so the final rule is
+# exactly right (Any profile + the chosen port) even if an older, narrower rule
+# was left behind by a previous install - idempotent across re-provision.
+Say "opening the Windows Firewall for TCP $Port (all profiles: Domain, Private, Public)"
+Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+New-NetFirewallRule -DisplayName 'Aurora ICU' -Direction Inbound -Action Allow `
+  -Protocol TCP -LocalPort $Port -Profile Any | Out-Null
+
+# ---- 9. record the REAL, working access URL for the installer's finish page ----
+# What the operator typed can be wrong (no port) or already stale (DHCP moved
+# the address after a reboot). Derive the authoritative URL from this server's
+# live network interface + the port we actually bound, and hand it back to the
+# wizard via -UrlOutFile so the finish screen shows a URL that truly works. Also
+# flag DHCP: on a DHCP lease the address WILL change on reboot and break every
+# bookmark - the operator must be told to get a static IP / DHCP reservation.
+# ($access was computed at step 4 for CORS; reuse it.)
+if ($access.PrimaryUrl) {
+  Say "Access URL (from this server's live network interface): $($access.PrimaryUrl)"
+} else {
+  Say "Access URL: $AccessUrl (could not detect a LAN address automatically)"
+}
+if ($access.IsDhcp) {
+  Say "WARNING: this server's address ($($access.PrimaryIp)) is assigned by DHCP and WILL"
+  Say "         CHANGE on reboot, breaking every saved bookmark. Ask hospital IT for a"
+  Say "         STATIC IP or a DHCP RESERVATION for this machine before rollout."
+}
+if ($UrlOutFile) {
+  $relay = @("URL=$(if ($access.PrimaryUrl) { $access.PrimaryUrl } else { $AccessUrl })",
+             "DHCP=$([int][bool]$access.IsDhcp)")
+  foreach ($u in $access.AltUrls) { $relay += "ALT=$u" }
+  try {
+    Set-Content -Encoding ascii -Path $UrlOutFile -Value $relay
+  } catch { Say "NOTE: could not write the access-URL relay file ($($_.Exception.Message))." }
 }
 
 Say "PROVISIONING COMPLETE - Aurora is running as a Windows service and will start on every boot."
-Say "Access URL: $AccessUrl"
 try { Stop-Transcript | Out-Null } catch {}
 exit 0

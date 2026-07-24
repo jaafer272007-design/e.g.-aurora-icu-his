@@ -1,5 +1,35 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**Last updated: 2026-07-24 · current through INSTALLER NETWORK REACHABILITY —
+two more findings from the first real production install, both of which broke the
+no-commands promise. (1) FIREWALL MISSED THE PUBLIC PROFILE: `aurora-provision.ps1`
+opened the `Aurora ICU` inbound rule for `-Profile Domain,Private` only. Windows
+readily classifies an unidentified hospital Wi-Fi/LAN as PUBLIC (no domain
+controller), so port 8080 stayed blocked from every other device: localhost
+worked on the server, `sc.exe query` showed both services RUNNING, yet every
+tablet/phone/laptop got "site can't be reached" until the operator ran
+`Set-NetFirewallRule -Profile ...Public` by hand. FIX: open `-Profile Any` (all
+profiles), remove-then-recreate so a prior narrow rule is corrected too -
+reachable from a Public-classified network right after a next-next-finish install
+with zero PowerShell. (2) FINISH-PAGE URL WAS WRONG/STALE: the wizard echoed what
+the operator typed, which lacked `:8080` and had gone stale after a reboot moved
+the DHCP address. FIX: provisioning now derives the AUTHORITATIVE url from the
+server's live default-route IPv4 + the bound port and relays it back
+(`-UrlOutFile`); the finish screen shows the real, working URL, drops a
+double-clickable desktop shortcut + `ACCESS.txt` (copyable, no retyping), folds
+every live-interface origin into CORS_ORIGINS, and WARNS when the address is
+DHCP-assigned (it will change on reboot - recommends a static IP / DHCP
+reservation). The wizard now PRE-FILLS the address from this machine's interface
+and takes the port as its own field (default 8080; enter 80 so staff can omit the
+port). PORT-80 TRADEOFF recorded in installer/README.md (80 = shortest URL but
+often contended by IIS/W3SVC -> worse failure if occupied; 8080 = uncontended,
+recommended default; either way the shortcut/ACCESS.txt mean the port is a
+one-time install decision, never a daily burden). Both installer files stay PURE
+ASCII (0 non-ASCII bytes) and `aurora-provision.ps1` re-verified SYNTAX-CLEAN
+(2129 tokens) + the wizard's embedded IP-detect one-liner parsed clean; aurora.iss
+is Windows-only, code-reviewed. VERIFY on the Windows machine: Public-network
+reachability from a second device + the finish URL/shortcut + the DHCP warning. **
+
 **Last updated: 2026-07-24 · current through TWO UI FIXES found on the first
 real-hardware production run (MSI Cyborg 15, 15.6" 1920x1080). (A) LAYOUT CUTS:
 the shared Configuration/User-Admin form grids (`.ua*` in

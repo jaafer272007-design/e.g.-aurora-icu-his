@@ -60,9 +60,29 @@ var
   PwPage:      TInputQueryWizardPage;
   FormPage:    TInputOptionWizardPage;
   DetectedTz:  String;
+  DetectedIp:  String;
   GpuPresent:  Boolean;
 
 { ---- best-effort detection (reviewed; runs on the target Windows) ---- }
+
+{ Detect this server's LAN IPv4 so the wizard can PRE-FILL the access address -
+  the operator usually does not know the server's IP, and a typed/stale value is
+  exactly what stranded the first install. Prefer the interface with the default
+  route; skip loopback + APIPA. Best-effort: on any failure the field stays a
+  placeholder and provisioning still derives the authoritative URL for the finish
+  page. PowerShell cannot return a value to Inno directly, so it writes the IP to
+  a temp file we read back. }
+procedure DetectPrimaryIp();
+var rc: Integer; tmp: String; lines: TArrayOfString;
+begin
+  DetectedIp := '';
+  tmp := ExpandConstant('{tmp}\aurora-ip.txt');
+  Exec('powershell.exe',
+    '-NoProfile -ExecutionPolicy Bypass -Command "try { $r = Get-NetRoute -DestinationPrefix ''0.0.0.0/0'' -EA SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1; $a = Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $r.InterfaceIndex -EA SilentlyContinue | Where-Object { $_.IPAddress -notmatch ''^(127\.|169\.254\.)'' } | Select-Object -First 1; if ($a) { Set-Content -Encoding ascii -Path ''' + tmp + ''' -Value $a.IPAddress } } catch {}"',
+    '', SW_HIDE, ewWaitUntilTerminated, rc);
+  if LoadStringsFromFile(tmp, lines) and (GetArrayLength(lines) > 0) then DetectedIp := Trim(lines[0]);
+  DeleteFile(tmp);
+end;
 
 procedure DetectTzAndGpu();
 var rc: Integer;
@@ -72,6 +92,7 @@ begin
     '-NoProfile -Command "if (Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match ''NVIDIA'' }) { exit 0 } else { exit 1 }"',
     '', SW_HIDE, ewWaitUntilTerminated, rc) and (rc = 0);
   DetectedTz := '';  { converted best-effort by provisioning; blank = server displays UTC, operator can edit aurora.env }
+  DetectPrimaryIp();
 end;
 
 procedure InitializeWizard();
@@ -87,9 +108,11 @@ begin
 
   UrlPage := CreateInputQueryPage(DataDirPage.ID,
     'Access address', 'The address clinicians open in their browser',
-    'Enter this server''s address on the hospital network (not localhost). Every device - nurse stations, doctor laptops, tablets - opens this URL.');
-  UrlPage.Add('Access URL (e.g. http://192.168.1.50:8080):', False);
-  UrlPage.Values[0] := 'http://SERVER-IP:8080';
+    'This server''s address on the hospital network - every device (nurse stations, doctor laptops, tablets) opens http://<this address>. It is filled in automatically from this machine; change it only if you use a fixed hostname. Do not use localhost.');
+  UrlPage.Add('Server address (IP or hostname, not localhost):', False);
+  UrlPage.Add('Port (8080 is the default; enter 80 so staff can leave the port off):', False);
+  if DetectedIp <> '' then UrlPage.Values[0] := DetectedIp else UrlPage.Values[0] := 'SERVER-IP';
+  UrlPage.Values[1] := '8080';
 
   PwPage := CreateInputQueryPage(UrlPage.ID,
     'First administrator', 'Set the first administrator password',
@@ -107,7 +130,7 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
-var url, dir: String;
+var url, dir: String; p: Integer;
 begin
   Result := True;
   if CurPageID = wpSelectDir then begin
@@ -125,9 +148,19 @@ begin
     end;
   end else if CurPageID = UrlPage.ID then begin
     url := Lowercase(Trim(UrlPage.Values[0]));
-    if (url = '') or (Pos('localhost', url) > 0) or (Pos('127.0.0.1', url) > 0) then begin
-      MsgBox('Enter a real network address (not localhost) - this is what other devices connect to.', mbError, MB_OK);
+    if (url = '') or (Pos('localhost', url) > 0) or (Pos('127.0.0.1', url) > 0) or (Pos('server-ip', url) > 0) then begin
+      MsgBox('Enter this server''s real network address (not localhost) - this is what other devices connect to.', mbError, MB_OK);
       Result := False;
+    end else begin
+      p := StrToIntDef(Trim(UrlPage.Values[1]), -1);
+      if (p < 1) or (p > 65535) then begin
+        MsgBox('Enter a valid port number (1-65535). The default is 8080.', mbError, MB_OK);
+        Result := False;
+      end else if (p = 5432) or (p = 8081) then begin
+        MsgBox('Port ' + IntToStr(p) + ' is reserved by Aurora (5432 = database, 8081 = AI).' + #13#10 +
+               'Choose another - 8080 is the default, or 80 so staff can omit the port.', mbError, MB_OK);
+        Result := False;
+      end;
     end;
   end else if CurPageID = PwPage.ID then begin
     if PwPage.Values[0] = '' then begin
@@ -171,14 +204,35 @@ begin
   Result := '"' + s + '"';
 end;
 
+function ChosenPort(): Integer;
+begin
+  Result := StrToIntDef(Trim(UrlPage.Values[1]), 8080);
+end;
+
+{ Build the access URL from the address + port fields. Tolerates the operator
+  pasting a scheme/path/inline-port into the address box (the Port field is
+  authoritative). Port 80 is written WITHOUT ':80' so staff type just the host. }
+function BuildAccessUrl(): String;
+var host: String; port: Integer;
+begin
+  host := Trim(UrlPage.Values[0]);
+  if Pos('://', host) > 0 then host := Copy(host, Pos('://', host) + 3, Length(host));
+  if Pos('/', host) > 0 then host := Copy(host, 1, Pos('/', host) - 1);
+  if Pos(':', host) > 0 then host := Copy(host, 1, Pos(':', host) - 1);
+  port := ChosenPort();
+  if port = 80 then Result := 'http://' + host
+  else Result := 'http://' + host + ':' + IntToStr(port);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
-var pwFile, keyFile, args, tz, seed: String; rc: Integer;
+var pwFile, keyFile, urlFile, args, tz, seed: String; rc: Integer;
 begin
   if CurStep <> ssPostInstall then Exit;
 
   { hand the admin password to provisioning via a temp file (never a visible arg) }
   pwFile  := ExpandConstant('{tmp}\aurora-admin.txt');
   keyFile := ExpandConstant('{tmp}\aurora-key.txt');
+  urlFile := ExpandConstant('{tmp}\aurora-url.txt');   { provisioning writes the REAL access URL + DHCP flag here }
   SaveStringToFile(pwFile, PwPage.Values[0], False);
   if FormPage.SelectedValueIndex = 1 then seed := 'empty' else seed := 'starter';
   tz := DetectedTz;
@@ -186,11 +240,12 @@ begin
   args := '-NoProfile -ExecutionPolicy Bypass -File ' + QArg(ExpandConstant('{app}\server\scripts\aurora-provision.ps1')) +
     ' -InstallDir ' + QArg(ExpandConstant('{app}')) +
     ' -DataDir '    + QArg(DataDirPage.Values[0]) +
-    ' -Port 8080' +
-    ' -AccessUrl '  + QArg(Trim(UrlPage.Values[0])) +
+    ' -Port ' + IntToStr(ChosenPort()) +
+    ' -AccessUrl '  + QArg(BuildAccessUrl()) +
     ' -FormularySeed ' + seed +
     ' -AdminPasswordFile ' + QArg(pwFile) +
-    ' -KeyOutFile ' + QArg(keyFile);
+    ' -KeyOutFile ' + QArg(keyFile) +
+    ' -UrlOutFile ' + QArg(urlFile);
   if tz <> '' then args := args + ' -TimeZone ' + QArg(tz);
   if GpuPresent then args := args + ' -AiEnabled';
 
@@ -212,13 +267,54 @@ begin
   if FileExists(keyFile) then ShowKeyOnce(keyFile);
 end;
 
-{ Finished-page message: the access URL + always-on confirmation }
+{ Finished-page message: the REAL, working access URL (derived by provisioning
+  from this server's live interface + the bound port, not the typed value which
+  can be portless or DHCP-stale), plus a DHCP warning and copyable artifacts. }
 procedure CurPageChanged(CurPageID: Integer);
+var lines: TArrayOfString; i: Integer; realUrl, dhcp, alt, body, warn: String;
 begin
-  if CurPageID = wpFinished then
-    WizardForm.FinishedLabel.Caption :=
-      'Aurora ICU is installed and running as a Windows service - it starts automatically on every boot and restarts itself if it stops. ' + #13#10#13#10 +
-      'Open ' + Trim(UrlPage.Values[0]) + ' in a browser from any device on the hospital network. Sign in as ''admin'' with the password you set (you will change it at first sign-in).';
+  if CurPageID <> wpFinished then Exit;
+
+  realUrl := ''; dhcp := '0'; alt := '';
+  if LoadStringsFromFile(ExpandConstant('{tmp}\aurora-url.txt'), lines) then begin
+    for i := 0 to GetArrayLength(lines) - 1 do begin
+      if Pos('URL=', lines[i]) = 1 then realUrl := Copy(lines[i], 5, Length(lines[i]));
+      if Pos('DHCP=', lines[i]) = 1 then dhcp := Copy(lines[i], 6, Length(lines[i]));
+      if Pos('ALT=', lines[i]) = 1 then begin
+        if alt <> '' then alt := alt + '   or   ';
+        alt := alt + Copy(lines[i], 5, Length(lines[i]));
+      end;
+    end;
+  end;
+  if realUrl = '' then realUrl := BuildAccessUrl();   { fallback to the typed value if the relay is missing }
+
+  warn := '';
+  if dhcp = '1' then
+    warn := #13#10#13#10 +
+      'IMPORTANT - this server''s address is assigned automatically (DHCP) and will' + #13#10 +
+      'CHANGE when the machine reboots, which breaks every saved link. Ask hospital IT' + #13#10 +
+      'to give this machine a FIXED (static) address or a DHCP reservation before rollout.';
+
+  { copyable artifacts so nobody has to retype the URL: a double-clickable
+    desktop shortcut (also copyable to other machines) + a plain-text file. }
+  SaveStringToFile(ExpandConstant('{commondesktop}\Aurora ICU.url'),
+    '[InternetShortcut]' + #13#10 + 'URL=' + realUrl + #13#10, False);
+  body := 'Aurora ICU - access address' + #13#10 +
+          '===========================' + #13#10#13#10 +
+          'Open this in a browser from any device on the hospital network:' + #13#10#13#10 +
+          '    ' + realUrl + #13#10;
+  if alt <> '' then body := body + #13#10 + 'Also reachable at:  ' + alt + #13#10;
+  if dhcp = '1' then body := body + #13#10 +
+          'NOTE: this address is DHCP-assigned and will change on reboot -' + #13#10 +
+          'ask IT for a static IP or a DHCP reservation.' + #13#10;
+  SaveStringToFile(ExpandConstant('{app}\ACCESS.txt'), body, False);
+
+  WizardForm.FinishedLabel.Caption :=
+    'Aurora ICU is installed and running as a Windows service - it starts automatically on every boot and restarts itself if it stops.' + #13#10#13#10 +
+    'Open this address in a browser from any device on the hospital network:' + #13#10 +
+    '        ' + realUrl + #13#10#13#10 +
+    'Sign in as ''admin'' with the password you set (you will change it at first sign-in). ' +
+    'A desktop shortcut ("Aurora ICU") opens it, and the address is saved in ' + ExpandConstant('{app}\ACCESS.txt') + '.' + warn;
 end;
 
 [UninstallRun]
@@ -230,3 +326,9 @@ Filename: "sc.exe"; Parameters: "delete AuroraServer";  Flags: runhidden; RunOnc
 Filename: "sc.exe"; Parameters: "stop AuroraPostgres";  Flags: runhidden; RunOnceId: "stoppg"
 Filename: "sc.exe"; Parameters: "delete AuroraPostgres"; Flags: runhidden; RunOnceId: "delpg"
 Filename: "schtasks.exe"; Parameters: "/Delete /TN AuroraBackup /F"; Flags: runhidden; RunOnceId: "delbk"
+
+[UninstallDelete]
+; runtime-created (not [Files]) artifacts: the desktop access shortcut + the saved URL
+Type: files; Name: "{commondesktop}\Aurora ICU.url"
+Type: files; Name: "{app}\ACCESS.txt"
+Type: files; Name: "{app}\provision.log"
