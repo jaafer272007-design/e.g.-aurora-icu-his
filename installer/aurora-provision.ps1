@@ -109,10 +109,16 @@ try {
 }
 
 # ---- 1. initialise the private PostgreSQL cluster (once) ----
+# $superpw is the postgres SUPERUSER password. It is set at initdb and RETAINED
+# (in-memory only) so step 3 can authenticate to create the aurora role — the
+# cluster's pg_hba requires scram even on 127.0.0.1, so an empty password makes
+# psql prompt "Password for user postgres:" and fail. Never written to disk.
+$superpw = ''
 if (-not (Test-Path (Join-Path $pgdata 'PG_VERSION'))) {
   Say "initialising the private PostgreSQL cluster at $pgdata"
   $pwFile = Join-Path $env:TEMP ("aurora-pg-super-" + [Guid]::NewGuid().ToString('N') + '.txt')
-  Set-Content -Encoding ascii -Path $pwFile -Value (New-Secret 24)   # postgres superuser pw (local only)
+  $superpw = New-Secret 24                                           # postgres superuser pw (local only, kept for step 3)
+  Set-Content -Encoding ascii -Path $pwFile -Value $superpw
   try {
     & (Join-Path $pgbin 'initdb.exe') -D $pgdata -U postgres -A scram-sha-256 --pwfile=$pwFile -E UTF8 --locale=C | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail "initdb failed ($LASTEXITCODE)" }
@@ -144,6 +150,10 @@ if ($LASTEXITCODE -ne 0) { Fail "PostgreSQL did not become ready" }
 # ---- 3. create the aurora role + database ----
 Say "creating the aurora role + database"
 $env:PGHOST = '127.0.0.1'; $env:PGPORT = "$pgPort"; $env:PGUSER = 'postgres'
+# authenticate as the superuser with the password set at initdb (scram is required
+# on 127.0.0.1). Without this psql prompts for a password and fails the install.
+if (-not $superpw) { Fail "the postgres superuser password is unknown (the cluster was pre-existing) — cannot create the aurora role. Remove $pgdata and re-run for a clean init." }
+$env:PGPASSWORD = $superpw
 # superuser trust is not enabled; use the postgres pw only for setup — but we
 # reset it above per-init. For an existing cluster we rely on the role already
 # existing; a first install creates it here. Use a here-string via psql -f.
@@ -168,7 +178,10 @@ try {
   & (Join-Path $pgbin 'psql.exe') -v ON_ERROR_STOP=1 -d postgres -f $setup | Out-Null
   $exists = & (Join-Path $pgbin 'psql.exe') -tAc "SELECT 1 FROM pg_database WHERE datname='aurora'" -d postgres
   if (-not $exists) { & (Join-Path $pgbin 'createdb.exe') -O aurora aurora | Out-Null }
-} finally { Remove-Item -Force $setup -ErrorAction SilentlyContinue }
+} finally {
+  Remove-Item -Force $setup -ErrorAction SilentlyContinue
+  Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue   # don't leave the superuser pw in the environment
+}
 
 # ---- 4. write the ACL-locked machine config (server\aurora.env) ----
 Say "writing the machine config $envFile (ACL-locked)"
