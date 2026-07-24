@@ -27,7 +27,20 @@ present), preventing the `C:\Aurora` clone-collision when the installer is run o
 the BUILD machine (Setup's default dir `C:\Aurora` IS the clone from
 `git clone … aurora`). NEXT: rebuild the no-AI `AuroraSetup.exe` and re-run on a
 CLEAN Windows machine per `installer/README.md` items 1–13 + the backup-restore
-drill. **
+drill. FOLLOW-UP FIX (locale crash, found on the first non-Western-locale test
+machine): the installer `.ps1`/`.iss` were UTF-8 WITHOUT a BOM and contained
+non-ASCII characters (em-dashes, section-sign, arrows, ellipses, review emoji).
+Windows PowerShell 5.1 decodes a no-BOM file with the machine's ANSI codepage;
+on an ARABIC-locale PC those bytes mis-decode into characters that break
+`aurora-provision.ps1`'s SYNTAX → the install dies at "Setting up Aurora" with
+exit 1 (parse errors: "Missing closing '}'", "string missing terminator"). It
+parsed fine on the English build laptop (CP1252) and crashed on CP1256 — a
+landmine on every hospital PC in an Arabic-speaking region. FIX: all ten
+installer scripts converted to PURE ASCII (0 non-ASCII bytes; em-dash→`-`,
+`sec`, `->`, `...`, `>=`, emoji removed) so no locale can misread them; verified
+SYNTAX-CLEAN by the real PowerShell `Parser.ParseFile` (1522 tokens in
+aurora-provision.ps1). Flagged, deferred: `provision.log` did not survive Inno's
+rollback (write it to a durable path). **
 
 Prior: APP-ONLY UPDATER — `aurora-update` +
 `server/version.json` (§1–§2 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`; PR 2

@@ -1,5 +1,5 @@
 <#
-  AURORA ICU — native provisioning engine (installer Option B,
+  AURORA ICU - native provisioning engine (installer Option B,
   HOSPITAL_INSTALLER_RUNTIME_DESIGN.md). Docker-free. Invoked by the Inno
   Setup installer (aurora.iss) AFTER the files are laid down; can also be run
   by hand to re-provision or debug.
@@ -8,21 +8,21 @@
     1. initialise a PRIVATE PostgreSQL cluster (no separate Postgres install)
     2. register + start the AuroraPostgres Windows service (Automatic)
     3. create the aurora role + database
-    4. write the ACL-locked machine config (server\aurora.env — the PR-A
+    4. write the ACL-locked machine config (server\aurora.env - the PR-A
        AuroraEnvFile loader reads it; the real env is not used by a service)
-    5. register + start the AuroraServer Windows service — Automatic (starts
+    5. register + start the AuroraServer Windows service - Automatic (starts
        at boot BEFORE any login), depends-on AuroraPostgres, SCM Recovery =
        restart on crash. On first boot the server migrates + seeds
        (catalogues + configuration + ONE bootstrap admin; zero patients).
-    6. the backup-key ceremony (init-key) — the key is written to -KeyOutFile
+    6. the backup-key ceremony (init-key) - the key is written to -KeyOutFile
        for the installer to DISPLAY ONCE, then that file is deleted.
-    7. register the nightly backup (native — aurora-backup.ps1, NOT the Docker
+    7. register the nightly backup (native - aurora-backup.ps1, NOT the Docker
        backup.ps1)
     8. open the Windows Firewall for the chosen port
 
   DESIGN NOTES
   - The whole point of Option B: everything is a Windows SERVICE (Automatic +
-    SCM Recovery), so it starts on boot before login and restarts on crash —
+    SCM Recovery), so it starts on boot before login and restarts on crash -
     no Docker, no logged-in user. This script only REGISTERS/STARTS them;
     auto-start-on-boot and restart-on-crash are the services' own SCM config,
     also set here (start=auto, sc failure).
@@ -31,7 +31,7 @@
   - Idempotent where practical: existing services are updated, an existing
     cluster is not re-initialised.
 
-  🔎 WINDOWS-ONLY — CODE-REVIEWED, NOT executed in CI (the Linux sandbox
+  WINDOWS-ONLY - CODE-REVIEWED, NOT executed in CI (the Linux sandbox
   cannot run Windows services / SCM / initdb-for-Windows). Verify on the
   hospital-class Windows machine per installer/README.md.
 #>
@@ -40,25 +40,25 @@ param(
   [Parameter(Mandatory)][string]$InstallDir,     # e.g. C:\Aurora  (server\, pgsql\, model\)
   [Parameter(Mandatory)][string]$DataDir,        # e.g. C:\Aurora\data (pg\, backups\, secrets\)
   [Parameter(Mandatory)][int]$Port,              # the LAN port clinicians open (e.g. 8080)
-  [Parameter(Mandatory)][string]$AccessUrl,      # CORS_ORIGINS — http://<lan-ip>:<port> (not localhost)
+  [Parameter(Mandatory)][string]$AccessUrl,      # CORS_ORIGINS - http://<lan-ip>:<port> (not localhost)
   [ValidateSet('starter','empty')][string]$FormularySeed = 'starter',
   [string]$TimeZone = '',                         # IANA id; '' = server displays UTC (operator can edit)
   [Parameter(Mandatory)][string]$AdminPasswordFile, # temp file holding the bootstrap admin password
   [Parameter(Mandatory)][string]$KeyOutFile,     # where to write the show-once backup key for the wizard
-  [switch]$AiEnabled,                             # GPU present → register the native AuroraAI (llama-server) service
-  # ---- AI concurrency knobs (HOSPITAL_INSTALLER_RUNTIME_DESIGN.md §5). The
+  [switch]$AiEnabled,                             # GPU present -> register the native AuroraAI (llama-server) service
+  # ---- AI concurrency knobs (HOSPITAL_INSTALLER_RUNTIME_DESIGN.md sec 5). The
   #      defaults match the RTX 4060 + Qwen2.5-7B analysis; the owner's
-  #      llama-bench run (§5.6) validates them on the real card and can retune
+  #      llama-bench run (sec 5.6) validates them on the real card and can retune
   #      by re-running this script (or editing the AuroraAI service). ----
-  [int]$AiPort     = 8081,        # llama-server port — 127.0.0.1 ONLY, never on the LAN
-  [int]$AiParallel = 4,           # --parallel: concurrent AI slots (§5.4 guardrail 1; the ~4 ceiling on a 4060)
-  [int]$AiCtxSize  = 16384,       # --ctx-size TOTAL; per slot = ctx/parallel (16384/4 = 4096 per slot, §5.3)
-  [string]$AiModel = 'qwen2.5-7b-instruct-q4_k_m'  # AI_MODEL the server sends (Qwen2.5-7B — GQA, §5.5)
+  [int]$AiPort     = 8081,        # llama-server port - 127.0.0.1 ONLY, never on the LAN
+  [int]$AiParallel = 4,           # --parallel: concurrent AI slots (sec 5.4 guardrail 1; the ~4 ceiling on a 4060)
+  [int]$AiCtxSize  = 16384,       # --ctx-size TOTAL; per slot = ctx/parallel (16384/4 = 4096 per slot, sec 5.3)
+  [string]$AiModel = 'qwen2.5-7b-instruct-q4_k_m'  # AI_MODEL the server sends (Qwen2.5-7B - GQA, sec 5.5)
 )
 $ErrorActionPreference = 'Stop'
 function Say([string]$m) { Write-Host "[aurora-provision] $m" }
 function Fail([string]$m) { try { Stop-Transcript | Out-Null } catch {}; Write-Error "[aurora-provision] $m"; exit 1 }
-. (Join-Path $PSScriptRoot 'aurora-ai-service.ps1')   # shared AI helpers (Register-AuroraAI, Find-AiModelGguf, …)
+. (Join-Path $PSScriptRoot 'aurora-ai-service.ps1')   # shared AI helpers (Register-AuroraAI, Find-AiModelGguf, ...)
 
 $server   = Join-Path $InstallDir 'server'
 $pgbin    = Join-Path $InstallDir 'pgsql\bin'
@@ -69,12 +69,12 @@ $envFile  = Join-Path $server 'aurora.env'          # AuroraEnvFile default path
 $exe      = Join-Path $server 'AuroraIcu.Api.exe'
 $pgPort   = 5432                                     # local-only; never exposed on the LAN
 
-# ---- 0. always-on diagnostics — a hidden-window hang used to leave NO trace ----
+# ---- 0. always-on diagnostics - a hidden-window hang used to leave NO trace ----
 # The installer runs us with SW_HIDE by default, so before this there was no
 # record of WHERE provisioning stalled. Always leave a readable log beside the
 # app; Fail/exit both flush it.
 try { Start-Transcript -Path (Join-Path $InstallDir 'provision.log') -Append -Force | Out-Null } catch {}
-Say "aurora-provision starting — InstallDir=$InstallDir DataDir=$DataDir Port=$Port AiEnabled=$AiEnabled"
+Say "aurora-provision starting - InstallDir=$InstallDir DataDir=$DataDir Port=$Port AiEnabled=$AiEnabled"
 
 foreach ($p in @($DataDir,$pgdata,$backups,$secrets)) { New-Item -ItemType Directory -Force -Path $p | Out-Null }
 foreach ($f in @($exe, (Join-Path $pgbin 'initdb.exe'), (Join-Path $pgbin 'pg_ctl.exe'), (Join-Path $pgbin 'psql.exe'))) {
@@ -110,7 +110,7 @@ try {
 
 # ---- 1. initialise the private PostgreSQL cluster (once) ----
 # $superpw is the postgres SUPERUSER password. It is set at initdb and RETAINED
-# (in-memory only) so step 3 can authenticate to create the aurora role — the
+# (in-memory only) so step 3 can authenticate to create the aurora role - the
 # cluster's pg_hba requires scram even on 127.0.0.1, so an empty password makes
 # psql prompt "Password for user postgres:" and fail. Never written to disk.
 $superpw = ''
@@ -126,7 +126,7 @@ if (-not (Test-Path (Join-Path $pgdata 'PG_VERSION'))) {
   # local-only + the chosen port; only the API is exposed on the LAN
   Add-Content -Path (Join-Path $pgdata 'postgresql.conf') -Value "`nlisten_addresses = '127.0.0.1'`nport = $pgPort`n"
   Set-Content  -Path (Join-Path $pgdata 'pg_hba.conf') -Encoding ascii -Value @(
-    '# Aurora appliance — local connections only',
+    '# Aurora appliance - local connections only',
     'local   all   all                  scram-sha-256',
     'host    all   all   127.0.0.1/32   scram-sha-256',
     'host    all   all   ::1/128        scram-sha-256')
@@ -152,9 +152,9 @@ Say "creating the aurora role + database"
 $env:PGHOST = '127.0.0.1'; $env:PGPORT = "$pgPort"; $env:PGUSER = 'postgres'
 # authenticate as the superuser with the password set at initdb (scram is required
 # on 127.0.0.1). Without this psql prompts for a password and fails the install.
-if (-not $superpw) { Fail "the postgres superuser password is unknown (the cluster was pre-existing) — cannot create the aurora role. Remove $pgdata and re-run for a clean init." }
+if (-not $superpw) { Fail "the postgres superuser password is unknown (the cluster was pre-existing) - cannot create the aurora role. Remove $pgdata and re-run for a clean init." }
 $env:PGPASSWORD = $superpw
-# superuser trust is not enabled; use the postgres pw only for setup — but we
+# superuser trust is not enabled; use the postgres pw only for setup - but we
 # reset it above per-init. For an existing cluster we rely on the role already
 # existing; a first install creates it here. Use a here-string via psql -f.
 $setup = Join-Path $env:TEMP ("aurora-setup-" + [Guid]::NewGuid().ToString('N') + '.sql')
@@ -168,7 +168,7 @@ DO `$`$ BEGIN
 END `$`$;
 -- CREATEDB lets the aurora role create the throwaway scratch database the backup
 -- engine born-restore-verifies into, and the empty database the DR / update-rollback
--- 'restore' recreates. It grants NO access to other databases — a plain capability,
+-- 'restore' recreates. It grants NO access to other databases - a plain capability,
 -- idempotent to re-assert on every provision.
 ALTER ROLE aurora CREATEDB;
 SELECT 'ensure-db' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='aurora');
@@ -202,19 +202,19 @@ $lines = @(
 )
 if ($TimeZone) { $lines += "TZ=$TimeZone" }
 
-# ---- AI wiring (§5). The native AI is the AuroraAI Windows service
-#      (llama-server, registered in step 5b) — ENABLED only when the machine
+# ---- AI wiring (sec 5). The native AI is the AuroraAI Windows service
+#      (llama-server, registered in step 5b) - ENABLED only when the machine
 #      has a GPU AND the AI payload (llama-server.exe + nssm.exe + a .gguf
 #      model) actually shipped in this build. The HIS never depends on it:
-#      any absence → AI_PROVIDER=none + an HONEST reason the AI screen shows,
-#      never a fault (§2.3 "warn and disable, never refuse"). ----
+#      any absence -> AI_PROVIDER=none + an HONEST reason the AI screen shows,
+#      never a fault (sec 2.3 "warn and disable, never refuse"). ----
 $aiLlamaExe = Join-Path $InstallDir 'llama\llama-server.exe'
 $aiNssmExe  = Join-Path $InstallDir 'llama\nssm.exe'
 $aiModelGguf = Find-AiModelGguf (Join-Path $InstallDir 'model')   # shared helper (first split part, else the single file)
 $aiReady = $AiEnabled -and (Test-Path $aiLlamaExe) -and (Test-Path $aiNssmExe) -and $aiModelGguf
 if ($aiReady) {
   $lines += 'AI_PROVIDER=openai'
-  $lines += "AI_ENDPOINT=http://127.0.0.1:$AiPort/v1"   # local only — never on the LAN
+  $lines += "AI_ENDPOINT=http://127.0.0.1:$AiPort/v1"   # local only - never on the LAN
   $lines += "AI_MODEL=$AiModel"
   $lines += 'AI_TIMEOUT_SECONDS=120'
 } elseif ($AiEnabled) {
@@ -224,7 +224,7 @@ if ($aiReady) {
   # Worded so ADDING a GPU later never falsifies it (speaks to setup, not "now"),
   # and points at the fix. aurora-enable-ai removes this line when it turns AI on.
   $lines += 'AI_PROVIDER=none'
-  $lines += 'AI_UNAVAILABLE_REASON=AI is turned off on this install — no GPU was detected at setup. Add an NVIDIA GPU and run aurora-enable-ai to turn it on.'
+  $lines += 'AI_UNAVAILABLE_REASON=AI is turned off on this install - no GPU was detected at setup. Add an NVIDIA GPU and run aurora-enable-ai to turn it on.'
 }
 Set-Content -Encoding ascii -Path $envFile -Value $lines
 # lock it to SYSTEM + Administrators only (contains the bootstrap + DB + JWT secrets)
@@ -236,7 +236,7 @@ Say "registering the AuroraServer Windows service (Automatic, depends-on AuroraP
 & sc.exe create AuroraServer binPath= "`"$exe`"" start= auto depend= AuroraPostgres DisplayName= "Aurora ICU" 2>$null | Out-Null
 & sc.exe config AuroraServer start= auto depend= AuroraPostgres | Out-Null      # idempotent if it existed
 & sc.exe failure AuroraServer reset= 300 actions= restart/5000/restart/10000/restart/30000 | Out-Null
-& sc.exe description AuroraServer "Aurora ICU — the hospital ICU system (API + web app). Starts automatically at boot." | Out-Null
+& sc.exe description AuroraServer "Aurora ICU - the hospital ICU system (API + web app). Starts automatically at boot." | Out-Null
 & sc.exe start AuroraServer 2>$null | Out-Null
 Say "waiting for AuroraServer to become healthy (migrations + production seed run on first boot)"
 $healthy = $false
@@ -244,29 +244,29 @@ for ($i = 0; $i -lt 90; $i++) {
   try { Invoke-RestMethod "http://127.0.0.1:$Port/healthz" -TimeoutSec 2 | Out-Null; $healthy = $true; break } catch {}
   Start-Sleep 2
 }
-if (-not $healthy) { Fail "AuroraServer did not become healthy — check the Windows Event Log (source AuroraServer)" }
+if (-not $healthy) { Fail "AuroraServer did not become healthy - check the Windows Event Log (source AuroraServer)" }
 
 # ---- 5b. register + start the native AI service (AuroraAI = llama-server) ----
-# The GPU-native path (§5). llama-server is a console exe, so it runs under
+# The GPU-native path (sec 5). llama-server is a console exe, so it runs under
 # NSSM (a thin, battle-tested service host): Automatic start (BEFORE login) +
 # restart-on-crash, exactly like AuroraServer/AuroraPostgres. Bound to
-# 127.0.0.1 — ONLY AuroraServer (same box) calls it; it is NEVER on the LAN and
+# 127.0.0.1 - ONLY AuroraServer (same box) calls it; it is NEVER on the LAN and
 # the firewall never opens $AiPort. AuroraServer does NOT depend on it: the HIS
 # runs with or without the AI, and the AI screen stays honest until it is ready.
-# The --parallel / --ctx-size guardrails (§5.4) are set here and are tunable
-# (re-run this script) once llama-bench measures the real card (§5.6).
+# The --parallel / --ctx-size guardrails (sec 5.4) are set here and are tunable
+# (re-run this script) once llama-bench measures the real card (sec 5.6).
 if ($aiReady) {
   Say "registering the AuroraAI service (llama-server, --parallel $AiParallel, 127.0.0.1:$AiPort)"
   Register-AuroraAI -NssmExe $aiNssmExe -LlamaExe $aiLlamaExe -ModelGguf $aiModelGguf.FullName `
     -Port $AiPort -Parallel $AiParallel -CtxSize $AiCtxSize -LogFile (Join-Path $DataDir 'ai.log')
-  # the model loads in tens of seconds — do NOT block the install on it; the AI
+  # the model loads in tens of seconds - do NOT block the install on it; the AI
   # screen is honest (server 503/502) until llama-server answers /health
-  Say "AuroraAI starting — the model loads in the background; Aurora is already usable."
+  Say "AuroraAI starting - the model loads in the background; Aurora is already usable."
 } elseif ($AiEnabled) {
-  Say "GPU present but the AI runtime was not bundled in this build — AI stays disabled; the HIS is unaffected."
+  Say "GPU present but the AI runtime was not bundled in this build - AI stays disabled; the HIS is unaffected."
 }
 
-# ---- 6. backup-key ceremony (init-key) — write the key ONCE for the wizard to show ----
+# ---- 6. backup-key ceremony (init-key) - write the key ONCE for the wizard to show ----
 Say "generating the backup encryption key (shown once by the installer)"
 # init-key writes the ACL-locked server copy AND prints the key; we capture the
 # printed key for the installer's show-once page, then this relay file is deleted.
@@ -276,9 +276,9 @@ $idLine  = ($out | Select-String -Pattern '^\s*key id\s*:\s*(.+)$').Matches.Grou
 if ($keyLine) {
   Set-Content -Encoding ascii -Path $KeyOutFile -Value "$idLine`n$keyLine"
   & icacls.exe $KeyOutFile /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
-} else { Say "NOTE: init-key produced no key (already initialised?) — no show-once page." }
+} else { Say "NOTE: init-key produced no key (already initialised?) - no show-once page." }
 
-# ---- 7. register the nightly backup (native — NOT the Docker backup.ps1) ----
+# ---- 7. register the nightly backup (native - NOT the Docker backup.ps1) ----
 Say "registering the automatic nightly backup (Task Scheduler 'AuroraBackup', 02:00)"
 $backupScript = Join-Path $server 'scripts\aurora-backup.ps1'
 $action  = New-ScheduledTaskAction -Execute 'powershell.exe' `
@@ -297,7 +297,7 @@ if (-not (Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyCon
     -Protocol TCP -LocalPort $Port -Profile Domain,Private | Out-Null
 }
 
-Say "PROVISIONING COMPLETE — Aurora is running as a Windows service and will start on every boot."
+Say "PROVISIONING COMPLETE - Aurora is running as a Windows service and will start on every boot."
 Say "Access URL: $AccessUrl"
 try { Stop-Transcript | Out-Null } catch {}
 exit 0
