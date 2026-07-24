@@ -159,6 +159,18 @@ begin
          '(Press Ctrl+C to copy this window''s text.)', mbInformation, MB_OK);
 end;
 
+{ Quote a value as ONE powershell.exe argument. A path chosen as a drive root
+  (e.g. D:\) or any value ending in '\' would, inside "...", let the trailing
+  backslash ESCAPE the closing quote (the CommandLineToArgvW rule) — swallowing
+  the next parameter (that is why -Port got eaten and provisioning prompted for
+  it). Doubling a trailing backslash makes it a literal '\' and closes the quote
+  cleanly. }
+function QArg(s: String): String;
+begin
+  if (Length(s) > 0) and (s[Length(s)] = '\') then s := s + '\';
+  Result := '"' + s + '"';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var pwFile, keyFile, args, tz, seed: String; rc: Integer;
 begin
@@ -171,15 +183,15 @@ begin
   if FormPage.SelectedValueIndex = 1 then seed := 'empty' else seed := 'starter';
   tz := DetectedTz;
 
-  args := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\server\scripts\aurora-provision.ps1') + '"' +
-    ' -InstallDir "' + ExpandConstant('{app}') + '"' +
-    ' -DataDir "'    + DataDirPage.Values[0] + '"' +
+  args := '-NoProfile -ExecutionPolicy Bypass -File ' + QArg(ExpandConstant('{app}\server\scripts\aurora-provision.ps1')) +
+    ' -InstallDir ' + QArg(ExpandConstant('{app}')) +
+    ' -DataDir '    + QArg(DataDirPage.Values[0]) +
     ' -Port 8080' +
-    ' -AccessUrl "'  + Trim(UrlPage.Values[0]) + '"' +
+    ' -AccessUrl '  + QArg(Trim(UrlPage.Values[0])) +
     ' -FormularySeed ' + seed +
-    ' -AdminPasswordFile "' + pwFile + '"' +
-    ' -KeyOutFile "' + keyFile + '"';
-  if tz <> '' then args := args + ' -TimeZone "' + tz + '"';
+    ' -AdminPasswordFile ' + QArg(pwFile) +
+    ' -KeyOutFile ' + QArg(keyFile);
+  if tz <> '' then args := args + ' -TimeZone ' + QArg(tz);
   if GpuPresent then args := args + ' -AiEnabled';
 
   WizardForm.StatusLabel.Caption := 'Setting up Aurora (database, services, first backup)…';
