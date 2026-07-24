@@ -34,6 +34,12 @@
   cursor: pointer;
 }
 
+/* PERMISSION boundary (403), not an outage: calm slate + amber, never the
+   alarm-red outage screen — a role legitimately lacking access is normal. */
+.envrefusal.envforbidden { background: #10151c; color: #d7e2ef; }
+.envrefusal.envforbidden h1 { color: #e3b341; font-size: 22px; }
+.envrefusal.envforbidden .envretry { border-color: #e3b341; color: #d7e2ef; }
+
 /* the staging/development strip: persistent and unmistakable */
 .envbanner {
   position: fixed;

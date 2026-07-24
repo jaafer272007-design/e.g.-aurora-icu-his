@@ -5,16 +5,21 @@
 .ua main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 .ua .uanote{font-size:11.5px;line-height:1.5;color:var(--text);border:1px solid rgba(var(--violet-rgb),.35);
  background:rgba(var(--violet-rgb),.07);border-radius:12px;padding:10px 14px}
-.ua .uacols{display:grid;grid-template-columns:minmax(520px,1.5fr) minmax(360px,1fr);gap:14px;align-items:start}
+/* minmax(0,...) not a px minimum: the columns SHRINK to fit their container
+   instead of forcing horizontal overflow that a parent then clips. On a 15"
+   laptop (and under Windows display scaling) the old 520/360px minimums pushed
+   the right column off-screen; 0-min keeps the same 1.5:1 look when wide and
+   never overflows when narrow. */
+.ua .uacols{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start}
 .ua .uarows{display:flex;flex-direction:column;gap:8px;max-height:640px;overflow-y:auto}
 .ua .uarow{border:1px solid var(--stroke);border-radius:12px;padding:9px 12px;background:rgba(var(--lift-rgb),.02)}
 .ua .uarow.off{opacity:.72}
-.ua .uamain{display:grid;grid-template-columns:minmax(150px,1.1fr) minmax(150px,1.2fr) auto auto;gap:12px;align-items:center}
-.ua .uawho{display:flex;flex-direction:column;gap:2px;min-height:44px;justify-content:center}
+.ua .uamain{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.2fr) auto auto;gap:12px;align-items:center}
+.ua .uawho{display:flex;flex-direction:column;gap:2px;min-height:44px;justify-content:center;min-width:0;overflow-wrap:anywhere}
 .ua .uawho b{font-size:12.5px;color:var(--text)}
 .ua .uawho small{font-size:10.5px;color:var(--dim)}
 .ua .uaself{font-style:normal;color:var(--cyan);font-weight:600}
-.ua .uarole{display:flex;flex-direction:column;gap:2px}
+.ua .uarole{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}
 .ua .uarole span{font-size:11.5px;color:var(--text)}
 .ua .uaprofile{font-size:10px;letter-spacing:.4px;color:var(--faint)}
 .ua .uaprofile.clinical{color:var(--amber)}
@@ -40,7 +45,10 @@
 .ua .uaevent:last-child{border-bottom:0}
 .ua .uaevent b{color:var(--cyan);font-weight:600}
 .ua .uaevent small{color:var(--faint)}
-.ua .uafields{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+/* auto-fit: the field pairs wrap to one column when the panel is narrow (a 15"
+   screen / scaled display) instead of the second column running off the edge.
+   min(100%,150px) keeps a single field full-width rather than overflowing. */
+.ua .uafields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:10px}
 .ua .uafields label{display:flex;flex-direction:column;gap:5px;font-size:10.5px;letter-spacing:.6px;
  text-transform:uppercase;color:var(--dim)}
 .ua .uawide{grid-column:1 / -1}
@@ -70,7 +78,7 @@
  background:rgba(var(--red-rgb),.08);border-radius:10px;padding:8px 11px}
 .ua .uaempty{font-size:11.5px;color:var(--faint);padding:8px 2px}
 @media(max-width:1180px){.ua .shell{grid-template-columns:64px 1fr}}
-@media(max-width:1280px){.ua .uacols{grid-template-columns:1fr}}
+@media(max-width:1400px){.ua .uacols{grid-template-columns:1fr}}
 @media(max-width:1180px){.ua.app-frame{height:auto;overflow:visible}.ua main{overflow:visible}}
 
 /* ---- multi-role (User Management design): the role SET a person holds ---- */

@@ -1,5 +1,26 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**Last updated: 2026-07-24 · current through TWO UI FIXES found on the first
+real-hardware production run (MSI Cyborg 15, 15.6" 1920x1080). (A) LAYOUT CUTS:
+the shared Configuration/User-Admin form grids (`.ua*` in
+`src/pages/UsersAdmin/UsersAdmin.css`) used pixel column minimums (520/360px)
+that, under Windows display scaling, pushed the right column off-screen and let a
+parent clip it. FIX: `minmax(0,...)` columns that SHRINK to fit instead of
+overflowing (same 1.5:1 / 1.1:1.2 look when wide), `.uafields` to
+`repeat(auto-fit,minmax(min(100%,150px),1fr))` so field pairs wrap to one column
+when narrow, `min-width:0;overflow-wrap:anywhere` on `.uawho`/`.uarole`, and the
+single-column breakpoint bumped 1280->1400px. (B) 403 UX: opening a section a
+role legitimately cannot see (e.g. the System Administrator — `users.manage`,
+`users.view`, `backup.manage`, NO `patients.view` — opening a screen that fetches
+`/api/icu/adt/beds`) hit the alarming red full-screen "AURORA API UNAVAILABLE"
+outage overlay. FIX: `apiGet` records whether a failed read was a 403 (permission
+boundary) vs a real outage (`lastReadWasForbidden`), `apiUnavailable()` carries
+`{what, forbidden}` on the latch + event, and `EnvironmentChrome` renders a calm
+slate/amber "YOU DON'T HAVE ACCESS TO THIS AREA" screen with a "go back" button
+for the forbidden case — the red outage overlay stays reserved for genuine
+unavailability. Frontend `npm run build` clean. NEXT: pull `src/` on the build
+laptop and rebuild `AuroraSetup.exe` to carry these onto the hospital machines. **
+
 **Last updated: 2026-07-23 · current through INSTALLER PROVISIONING HARDENING —
 the FIRST real-Windows run of `AuroraSetup.exe` (no-AI, `AuroraSetup-1.0.0.exe`,
 59.5 MB, built after the aurora.iss compile fixes landed on the real ISCC 6.7.3)

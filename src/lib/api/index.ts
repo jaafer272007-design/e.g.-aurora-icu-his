@@ -65,11 +65,20 @@ export class ApiUnavailableError extends Error {}
    fired into nothing and the screen rendered half-broken instead of
    refusing. The gate now also reads this latch on mount, so the refusal
    holds regardless of who ran first. */
-let apiUnavailableLatched: string | null = null
-export function apiUnavailableLatch(): string | null { return apiUnavailableLatched }
+export type ApiRefusal = { what: string; forbidden: boolean }
+let apiUnavailableLatched: ApiRefusal | null = null
+export function apiUnavailableLatch(): ApiRefusal | null { return apiUnavailableLatched }
+/* Set by apiGet when a real read returns 403 (a PERMISSION boundary, not a
+   server outage). apiUnavailable() consumes it so the full-screen refusal can
+   say "you do not have access to this area" instead of the alarming
+   "API unavailable" — a role legitimately lacking a permission is not an
+   incident. Cleared on any ok/other-status/unreachable read. */
+let lastReadWasForbidden = false
 function apiUnavailable(what: string): ApiUnavailableError {
-  apiUnavailableLatched = what
-  window.dispatchEvent(new CustomEvent('aurora:api-unavailable', { detail: what }))
+  const forbidden = lastReadWasForbidden
+  lastReadWasForbidden = false
+  apiUnavailableLatched = { what, forbidden }
+  window.dispatchEvent(new CustomEvent('aurora:api-unavailable', { detail: { what, forbidden } }))
   return new ApiUnavailableError(`${what}: the AURORA API is unavailable — clinical data cannot be served`)
 }
 
@@ -372,9 +381,11 @@ async function apiGet<T>(path: string, what: string): Promise<T | null> {
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
     const res = await fetch(`${API_BASE}${path}`, { signal: ctrl.signal, headers: authHeaders() })
     clearTimeout(timer)
-    if (res.ok) return (await res.json()) as T
+    if (res.ok) { lastReadWasForbidden = false; return (await res.json()) as T }
+    lastReadWasForbidden = res.status === 403   // a permission boundary vs a real outage
     console.info(`[aurora] ${what} API responded ${res.status} — using mock data`)
   } catch {
+    lastReadWasForbidden = false
     console.info(`[aurora] ${what} API unreachable (cold start?) — using mock data`)
   }
   return null
