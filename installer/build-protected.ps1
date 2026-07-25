@@ -45,22 +45,34 @@
   a build where the password silently failed to reach the compiler cannot
   masquerade as protected.
 
+  UPDATE PACKAGES TOO (owner's ruling, 2026-07-25): AuroraUpdate-<ver>.exe
+  carries the newest server binaries, so it is locked with the SAME company
+  password by the SAME machinery - an unprotected update exe would defeat
+  the point of protecting the installer. Under the engineer-present service
+  model the engineer runs updates anyway, so there is no operational cost.
+
   USAGE (Windows build machine, after the usual build inputs exist):
 
+    # the full hospital installer -> AuroraSetup-<ver>-PROTECTED.exe
     powershell -ExecutionPolicy Bypass -File .\installer\build-protected.ps1 `
       -PgZip C:\aurora-build\postgresql-16.4-1-windows-x64-binaries.zip `
       -ModelDir C:\aurora-ai\model -LlamaDir C:\aurora-ai\llama
 
-    # payload already staged today (skip the slow steps 1-4):
+    # the app-only update package -> AuroraUpdate-<ver>-PROTECTED.exe
+    # (no -PgZip/-ModelDir/-LlamaDir needed - server payload only)
+    ... -UpdateOnly ...
+
+    # payload already staged today (skip the slow staging steps):
     ... -SkipStage ...
 
   WINDOWS-ONLY (ISCC). CODE-REVIEWED here; verify on the build machine.
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory)][string]$PgZip,
+  [string]$PgZip = '',          # required for the full installer; unused with -UpdateOnly
   [string]$ModelDir = '',
   [string]$LlamaDir = '',
+  [switch]$UpdateOnly,          # build the ENCRYPTED app-only update package instead of the full installer
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
   [switch]$SkipStage            # the payload is already staged (a previous run of this or build.ps1)
 )
@@ -68,6 +80,9 @@ $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
 function Say([string]$m) { Write-Host "[build-protected] $m" -ForegroundColor Cyan }
 function Die([string]$m) { Write-Host "[build-protected] $m" -ForegroundColor Red; exit 1 }
+if (-not $UpdateOnly -and -not $PgZip) {
+  Die '-PgZip is required for the full installer build (it is only optional with -UpdateOnly)'
+}
 
 # ---- 1. the company password, typed blind, twice ----
 # SecureString only shields the CONSOLE (no echo); the value is then held as
@@ -90,36 +105,57 @@ if ($pw -notmatch '^[A-Za-z0-9-]{12,64}$') {
   Die 'the password must be 12-64 characters using only letters, digits and dashes (this exact rule is what the encrypted-build pipeline is verified with)'
 }
 
-# ---- 2. stage the payload (React bundle, server publish, pgsql, model) ----
+# ---- 2. stage the payload ----
+#   full build:  React bundle, server publish, pgsql, model (build.ps1 steps 1-4)
+#   -UpdateOnly: React bundle, server publish, SHA256SUMS + manifest (steps 1-3u)
 if (-not $SkipStage) {
-  $buildArgs = @{ PgZip = $PgZip; Iscc = $Iscc; SkipCompile = $true }
-  if ($ModelDir) { $buildArgs.ModelDir = $ModelDir }
-  if ($LlamaDir) { $buildArgs.LlamaDir = $LlamaDir }
-  & (Join-Path $here 'build.ps1') @buildArgs
+  if ($UpdateOnly) {
+    & (Join-Path $here 'build.ps1') -UpdateOnly -SkipCompile -Iscc $Iscc
+  } else {
+    $buildArgs = @{ PgZip = $PgZip; Iscc = $Iscc; SkipCompile = $true }
+    if ($ModelDir) { $buildArgs.ModelDir = $ModelDir }
+    if ($LlamaDir) { $buildArgs.LlamaDir = $LlamaDir }
+    & (Join-Path $here 'build.ps1') @buildArgs
+  }
 } else {
   Say 'payload staging SKIPPED (-SkipStage)'
 }
-if (-not (Test-Path (Join-Path $here 'payload\server\AuroraIcu.Api.exe'))) {
+if ($UpdateOnly) {
+  if (-not (Test-Path (Join-Path $here 'payload\SHA256SUMS'))) {
+    Die 'the update payload is not staged - run once without -SkipStage first'
+  }
+} elseif (-not (Test-Path (Join-Path $here 'payload\server\AuroraIcu.Api.exe'))) {
   Die 'the payload is not staged - run once without -SkipStage first'
 }
 if (-not (Test-Path $Iscc)) { Die "Inno Setup compiler not found at $Iscc (install Inno Setup 6, or pass -Iscc)" }
 
-# ---- 3. compile the ENCRYPTED installer (password via ISCC's environment) ----
-Say 'compiling the PROTECTED installer (full LZMA2 pass - 20-60 min on an AI build)'
+# ---- 3. compile the ENCRYPTED artifact (password via ISCC's environment) ----
 $started = Get-Date
 $env:AURORA_INSTALL_PASSWORD = $pw
 try {
-  & $Iscc (Join-Path $here 'aurora.iss')
+  if ($UpdateOnly) {
+    # aurora-update.iss expects /DAppVer; the single source of the version is
+    # aurora.iss (the same read build.ps1 does for version.json)
+    $appVer = ([regex]::Match((Get-Content -Raw (Join-Path $here 'aurora.iss')),
+      '#define\s+AppVer\s+"([^"]+)"').Groups[1].Value)
+    if (-not $appVer) { Die 'could not read AppVer from aurora.iss' }
+    Say "compiling the PROTECTED update package AuroraUpdate-$appVer-PROTECTED.exe"
+    & $Iscc "/DAppVer=$appVer" (Join-Path $here 'aurora-update.iss')
+  } else {
+    Say 'compiling the PROTECTED installer (full LZMA2 pass - 20-60 min on an AI build)'
+    & $Iscc (Join-Path $here 'aurora.iss')
+  }
   if ($LASTEXITCODE -ne 0) { Die 'ISCC failed (see the compiler output above)' }
 } finally {
   Remove-Item Env:\AURORA_INSTALL_PASSWORD -ErrorAction SilentlyContinue
 }
 
 # ---- 4. prove the output really is the protected build ----
-$exe = Get-ChildItem (Join-Path $here 'Output') -Filter 'AuroraSetup-*-PROTECTED.exe' -ErrorAction SilentlyContinue |
+$wantFilter = if ($UpdateOnly) { 'AuroraUpdate-*-PROTECTED.exe' } else { 'AuroraSetup-*-PROTECTED.exe' }
+$exe = Get-ChildItem (Join-Path $here 'Output') -Filter $wantFilter -ErrorAction SilentlyContinue |
        Where-Object { $_.LastWriteTime -ge $started } | Sort-Object LastWriteTime | Select-Object -Last 1
 if (-not $exe) {
-  Die 'ISCC succeeded but produced no fresh AuroraSetup-*-PROTECTED.exe - the password did NOT reach the compiler (is aurora.iss current?). Whatever it built is NOT protected; do not ship it.'
+  Die "ISCC succeeded but produced no fresh $wantFilter - the password did NOT reach the compiler (is the .iss current?). Whatever it built is NOT protected; do not ship it."
 }
 $sha = (Get-FileHash -Algorithm SHA256 -Path $exe.FullName).Hash.ToLowerInvariant()
 Say '----------------------------------------------------------------------'
@@ -127,7 +163,7 @@ Say ("DONE  ->  {0}   ({1} GB)" -f $exe.FullName, [math]::Round($exe.Length / 1G
 Say "sha256: $sha"
 Say 'The install password was NOT written anywhere by this build - it exists'
 Say 'only where you keep it. The hospital never receives it: the engineer'
-Say 'types it on site at every install. Without it this file cannot be'
-Say 'installed and its payload cannot be extracted.'
+Say 'types it on site at every install and update. Without it this file'
+Say 'cannot be run and its payload cannot be extracted.'
 Say '----------------------------------------------------------------------'
 exit 0

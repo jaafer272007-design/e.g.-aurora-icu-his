@@ -310,7 +310,7 @@ begin
        '  Backup key file:  ' + keyState + #13#10#13#10 +
        'This installer is for FIRST installs and disaster rebuilds. Running it' + #13#10 +
        'again is NOT how Aurora is upgraded:' + #13#10#13#10 +
-       '  - Upgrades: run AuroraUpdate-<version>.exe instead. It keeps the' + #13#10 +
+       '  - Upgrades: run AuroraUpdate-<version>-PROTECTED.exe instead. It keeps the' + #13#10 +
        '    database, the backup key and every setting.' + #13#10 +
        '  - If you continue, the install and database locations are LOCKED to' + #13#10 +
        '    the existing install shown above. This machine''s Aurora services' + #13#10 +

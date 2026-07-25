@@ -223,9 +223,10 @@ nothing else.
 
 ### The install password — held by the vendor, not by you
 
-Newer copies of `AuroraSetup.exe` are locked with an **install password**.
-Without it no one can install the file or extract the software inside it,
-so a copied installer is useless on its own.
+Newer copies of `AuroraSetup.exe` — and the smaller `AuroraUpdate`
+packages used for upgrades — are locked with an **install password**.
+Without it no one can run either file or extract the software inside it,
+so a copied installer or update package is useless on its own.
 
 **Your hospital does not receive, store, or record this password — there
 is nothing for you to keep.** The vendor's engineer holds it and types it

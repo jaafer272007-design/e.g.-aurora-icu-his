@@ -51,9 +51,24 @@ the newest server payload, and is extractable with standard Inno tools.
 It cannot install Aurora fresh, so the engineer-present install model
 survives, but server-binary confidentiality does not once the first
 update ships. Docs now scope the claim and state the exposure plainly;
-🔴 OPEN OWNER DECISION: whether the update package gets the same
-password lock (same `GetEnv` machinery would compose) — until then
-update exes get installer-grade custody. Third confirmed: the runbook's
+the open owner decision this raised was RESOLVED the same day — owner's
+ruling: update packages get the SAME company password by the SAME
+machinery ("an unprotected update exe leaking the current server
+binaries defeats the point of protecting the installer"; engineer runs
+updates anyway, so no operational cost). Built accordingly:
+`aurora-update.iss` adopts `AURORA_INSTALL_PASSWORD` via the identical
+ISPP `GetEnv` block (+ the Inno <6.4 `#error` gate), output
+`AuroraUpdate-<ver>-PROTECTED.exe` vs `-UNPROTECTED` (plain
+`build.ps1 -UpdateOnly`, smoke only, with the same lingering-env
+refuse-guard and `-SkipCompile` staging split);
+`build-protected.ps1 -UpdateOnly` is the shipping update build (no
+-PgZip needed; AppVer read from aurora.iss; fails unless the compile
+produced the `-PROTECTED` name). Update-path harness assertions
+executed: 7/7 (env-only delivery with /DAppVer on argv and the password
+absent, wrong-name masquerade death, env cleanup on success and
+failure, -PgZip still required for full builds) — 25/25 total with the
+original 18.
+Third confirmed: the runbook's
 "a secret that never enters the building cannot leak from it" overclaim
 (it IS typed on hospital hardware at every install) — reworded to what
 is true. Beyond the confirmed set, 13 refuted-but-cheap hardenings were

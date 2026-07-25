@@ -135,17 +135,21 @@ Put all of these in one folder, e.g. `C:\aurora-ai\llama\`:
 - **Size:** **~5–5.5 GB** with the model (the 4.7 GB GGUF is already compressed,
   so it dominates and barely shrinks), or **~150 MB** for the no-AI build.
 
-The protection state is **in the filename, by construction** — the `.iss`
-names the output from the same condition that turns encryption on, so a
-`-PROTECTED` file is always encrypted and an `-UNPROTECTED` file never is.
-**An `-UNPROTECTED` file never leaves the build machine; everything shipped
-is an encrypted build** (`-PROTECTED`, or `-<hospitalid>` on the dormant
-per-hospital path). Known gap, deliberate and on the record: the app-only
-update package `AuroraUpdate-<ver>.exe` (`build.ps1 -UpdateOnly`) is **not**
-password-locked — it cannot install Aurora fresh, but its server payload is
-extractable. Whether it gets the same password lock is an open owner
-decision; until then treat update packages with the same custody as
-installers.
+- **Update packages** (app-only, `server\` payload):
+  `AuroraUpdate-1.0.0-PROTECTED.exe` (shipping, `build-protected.ps1
+  -UpdateOnly`) / `AuroraUpdate-1.0.0-UNPROTECTED.exe` (plain
+  `build.ps1 -UpdateOnly`, smoke tests only).
+
+The protection state is **in the filename, by construction** — both `.iss`
+files name the output from the same condition that turns encryption on, so
+a `-PROTECTED` file is always encrypted and an `-UNPROTECTED` file never
+is. **An `-UNPROTECTED` file never leaves the build machine; everything
+shipped is an encrypted build** (`-PROTECTED`, or `-<hospitalid>` on the
+dormant per-hospital path). Update packages are locked with the **same
+company password by the same machinery** (owner's ruling, 2026-07-25): an
+unprotected update exe would hand out the newest server binaries and
+defeat the point of protecting the installer, and under the
+engineer-present service model the engineer runs updates anyway.
 
 ---
 
@@ -158,9 +162,14 @@ down; any reinstall or disaster rebuild happens with the engineer present.
 That is the service model.
 
 ```powershell
+# full hospital installer -> AuroraSetup-<ver>-PROTECTED.exe
 powershell -ExecutionPolicy Bypass -File .\installer\build-protected.ps1 `
   -PgZip   C:\aurora-build\postgresql-16.4-1-windows-x64-binaries.zip `
   -ModelDir C:\aurora-ai\model -LlamaDir C:\aurora-ai\llama
+
+# app-only update package -> AuroraUpdate-<ver>-PROTECTED.exe
+# (no -PgZip/-ModelDir/-LlamaDir; same password prompt, same rules)
+powershell -ExecutionPolicy Bypass -File .\installer\build-protected.ps1 -UpdateOnly
 ```
 
 How the password is handled — and where it never goes:

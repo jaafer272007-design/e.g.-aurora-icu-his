@@ -98,10 +98,19 @@ if ($UpdateOnly) {
      files=(Get-Content $sums | Measure-Object -Line).Lines } |
     ConvertTo-Json | Set-Content -Encoding ascii (Join-Path $payload 'manifest.json')
   Write-Host "== 4u. compile AuroraUpdate-$appVer.exe =="
+  if ($SkipCompile) {
+    Write-Host '  SKIPPED (-SkipCompile): the update payload is staged; build-protected.ps1 -UpdateOnly compiles the ENCRYPTED update package.'
+    return
+  }
+  # same refuse-guard as the full-installer compile: a lingering password
+  # must not silently turn this "plain" update build into an encrypted one.
+  if ($env:AURORA_INSTALL_PASSWORD) {
+    throw 'AURORA_INSTALL_PASSWORD is set. For a shipping update package run build-protected.ps1 -UpdateOnly; for a plain UNPROTECTED smoke-test build first run: Remove-Item Env:\AURORA_INSTALL_PASSWORD'
+  }
   if (-not (Test-Path $Iscc)) { throw "Inno Setup compiler not found at $Iscc (install Inno Setup 6, or pass -Iscc)." }
   & $Iscc "/DAppVer=$appVer" (Join-Path $here 'aurora-update.iss')
   if ($LASTEXITCODE -ne 0) { throw 'ISCC (update) failed' }
-  Write-Host "DONE - update package at $(Join-Path $here 'Output')"
+  Write-Host "DONE - UNPROTECTED (plain) update package at $(Join-Path $here 'Output') - smoke tests only, never ship this file."
   return
 }
 
