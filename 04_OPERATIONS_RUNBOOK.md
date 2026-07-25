@@ -213,6 +213,29 @@ appearing to break.
 If Aurora needs repairing, the answer is almost never to re-run the
 installer. Raise it with the vendor first.
 
+Newer installers notice an existing Aurora on the machine and stop with a
+warning before anything happens; getting past that warning requires typing
+the backup key ID from the sealed envelope. That is a safety net, not a
+change to the rule: the installer is for first installs and disaster
+rebuilds, nothing else.
+
+### The install password
+
+Newer copies of `AuroraSetup.exe` are built one-per-hospital and locked
+with an **install password**. Without that password no one can install it
+or extract the software inside it, so a copied installer is useless on
+its own. Your hospital's install password arrives separately from the
+installer file — by phone or in person, never in the same email.
+
+Keep it in the same sealed envelope as the backup encryption key, but as
+its own clearly labelled line. **They are different secrets and must
+never be combined or confused:**
+
+- A lost **install password** can be replaced — the vendor issues that
+  hospital a new installer.
+- A lost **backup key** cannot be replaced by anyone, and every backup
+  that needs it is gone.
+
 ---
 
 ## 6. Knowing a login before you need one
@@ -406,6 +429,9 @@ Key ID (8 characters)  : ______________________________________
 Key envelope 1 held by : ______________________________________
 Key envelope 2 held by : ______________________________________
 Key envelope 3 held by : ______________________________________
+Install password (own
+labelled line, same
+envelopes - NOT the key): recorded  [ ] yes   [ ] not yet
 Admin username recorded: ______________________________________
 Time zone              : ______________________________________
 Rotation weekday       : ______________________________________

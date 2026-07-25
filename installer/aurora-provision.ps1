@@ -236,12 +236,34 @@ for ($i = 0; $i -lt 60; $i++) {
 }
 if ($LASTEXITCODE -ne 0) { Fail "PostgreSQL did not become ready" }
 
-# ---- 3. create the aurora role + database ----
+# ---- 3. create the aurora role + database (fresh cluster), or REUSE the
+#         existing credentials (pre-existing cluster: a reinstall over live
+#         data, deliberately allowed through the installer's reinstall guard) ----
+if (-not $superpw) {
+  # The cluster pre-existed, so initdb did not run and the superuser password is
+  # unknown BY DESIGN (it is never written to disk). The aurora role + database
+  # already live in that cluster - reuse the DATABASE_URL from the existing
+  # aurora.env instead of minting a password we could not set on the role. The
+  # env file survives both the file copy (the payload ships no aurora.env) and
+  # an uninstall (only [Files]-installed artifacts are removed), so a reinstall
+  # over existing data lands here and comes back up on its own database.
+  Say "pre-existing cluster at $pgdata - reusing the aurora credentials from $envFile"
+  $dbUrl = ''
+  if (Test-Path $envFile) {
+    $m = Select-String -Path $envFile -Pattern '^DATABASE_URL=(.+)$' | Select-Object -First 1
+    if ($m) { $dbUrl = $m.Matches[0].Groups[1].Value.Trim() }
+  }
+  if (-not $dbUrl) {
+    # NEVER advise deleting the data directory here - an earlier version of this
+    # message did exactly that, and following it destroys the hospital record.
+    Fail ("an existing PostgreSQL cluster is at $pgdata but no aurora.env with a DATABASE_URL was found at $envFile to reuse. " +
+          "Do NOT delete or move the database. Upgrades use AuroraUpdate; for a repair, restore the original aurora.env beside the server exe (or contact support), then run Setup again.")
+  }
+} else {
 Say "creating the aurora role + database"
 $env:PGHOST = '127.0.0.1'; $env:PGPORT = "$pgPort"; $env:PGUSER = 'postgres'
 # authenticate as the superuser with the password set at initdb (scram is required
 # on 127.0.0.1). Without this psql prompts for a password and fails the install.
-if (-not $superpw) { Fail "the postgres superuser password is unknown (the cluster was pre-existing) - cannot create the aurora role. Remove $pgdata and re-run for a clean init." }
 $env:PGPASSWORD = $superpw
 # superuser trust is not enabled; use the postgres pw only for setup - but we
 # reset it above per-init. For an existing cluster we rely on the role already
@@ -265,11 +287,19 @@ SELECT 'ensure-db' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='au
 # createdb is separate (CREATE DATABASE cannot run inside a DO block)
 try {
   & (Join-Path $pgbin 'psql.exe') -v ON_ERROR_STOP=1 -d postgres -f $setup | Out-Null
+  # a silent psql failure here used to let provisioning continue and write an
+  # aurora.env whose credentials were never applied to any role - fail loudly
+  if ($LASTEXITCODE -ne 0) { Fail "could not create/update the aurora role (psql exit $LASTEXITCODE) - see provision.log" }
   $exists = & (Join-Path $pgbin 'psql.exe') -tAc "SELECT 1 FROM pg_database WHERE datname='aurora'" -d postgres
-  if (-not $exists) { & (Join-Path $pgbin 'createdb.exe') -O aurora aurora | Out-Null }
+  if (-not $exists) {
+    & (Join-Path $pgbin 'createdb.exe') -O aurora aurora | Out-Null
+    if ($LASTEXITCODE -ne 0) { Fail "could not create the aurora database (createdb exit $LASTEXITCODE) - see provision.log" }
+  }
 } finally {
   Remove-Item -Force $setup -ErrorAction SilentlyContinue
   Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue   # don't leave the superuser pw in the environment
+}
+$dbUrl = "postgresql://aurora:$pgpw@127.0.0.1:$pgPort/aurora"
 }
 
 # ---- 4. write the ACL-locked machine config (server\aurora.env) ----
@@ -296,7 +326,7 @@ $lines = @(
   'APP_ENV=production',
   "PORT=$Port",
   "CORS_ORIGINS=$corsValue",
-  "DATABASE_URL=postgresql://aurora:$pgpw@127.0.0.1:$pgPort/aurora",
+  "DATABASE_URL=$dbUrl",
   "JWT_SECRET=$jwt",
   "FORMULARY_SEED=$FormularySeed",
   "ADMIN_BOOTSTRAP_PASSWORD=$adminPw",   # remove this line after the admin changes it at first login
@@ -384,9 +414,20 @@ if ($aiReady) {
 Say "generating the backup encryption key (shown once by the installer)"
 # init-key writes the server copy AND prints the key; we capture the printed key
 # for the installer's show-once page, then this relay file is deleted.
+# init-key EXITS 1 and prints to stderr when a key already exists - the NORMAL
+# case on every reinstall/repair this installer's guard now allows. Under
+# $ErrorActionPreference='Stop', 2>&1 on a native command turns those stderr
+# lines into TERMINATING errors in Windows PowerShell 5.1 - which would abort
+# provisioning at the exact step that is supposed to be a no-op. Relax the
+# preference around this one call; the exit code and output decide what happened.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 $out = & $exe init-key --actor installer 2>&1
-$keyLine = ($out | Select-String -Pattern '^\s*key\s*:\s*(.+)$').Matches.Groups[1].Value.Trim()
-$idLine  = ($out | Select-String -Pattern '^\s*key id\s*:\s*(.+)$').Matches.Groups[1].Value.Trim()
+$ErrorActionPreference = $prevEap
+$keyMatch = $out | Select-String -Pattern '^\s*key\s*:\s*(.+)$'    | Select-Object -First 1
+$idMatch  = $out | Select-String -Pattern '^\s*key id\s*:\s*(.+)$' | Select-Object -First 1
+$keyLine = if ($keyMatch) { $keyMatch.Matches[0].Groups[1].Value.Trim() } else { '' }
+$idLine  = if ($idMatch)  { $idMatch.Matches[0].Groups[1].Value.Trim() }  else { '' }
 if ($keyLine) {
   Set-Content -Encoding ascii -Path $KeyOutFile -Value "$idLine`n$keyLine"
   & icacls.exe $KeyOutFile /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null

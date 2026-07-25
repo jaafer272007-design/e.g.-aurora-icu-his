@@ -136,6 +136,47 @@ Copy that one `.exe` to the hospital server and double-click it.
 
 ---
 
+## Per-hospital encrypted installers — `build-hospitals.ps1`
+
+For real hospital deployments, do **not** ship the generic `AuroraSetup-<ver>.exe`.
+Build one installer **per hospital**, each locked with its own install password:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\installer\build-hospitals.ps1 `
+  -Hospitals alnoor,city-icu `
+  -PgZip   C:\aurora-build\postgresql-16.4-1-windows-x64-binaries.zip `
+  -ModelDir C:\aurora-ai\model -LlamaDir C:\aurora-ai\llama
+```
+
+What this changes vs a plain build:
+
+- The whole payload is **XChaCha20-encrypted** (built into Inno Setup since
+  6.4.0; the key is PBKDF2-HMAC-SHA256-derived from the password). Without the
+  password the `.exe` cannot be installed and its **payload** (server binaries,
+  database engine, AI model, provisioning scripts) cannot be extracted — real
+  cryptography, not a check someone can patch out. Honest limit: the setup
+  *metadata* (file names, install paths, wizard messages and the compiled
+  `[Code]` logic) is **not** encrypted and is readable with standard Inno
+  tools, so treat a leaked installer as revealing the install's *layout*,
+  just never its *contents*.
+- **One password per hospital.** A leak burns exactly one build and tells you
+  whose copy leaked; rebuild that one hospital's installer to rotate.
+- Output is `Output\AuroraSetup-<ver>-<hospital>.exe` per hospital, plus a
+  password ledger CSV. **Transcribe the ledger into each hospital's sealed
+  envelope (its own labelled line — it is a different secret from the backup
+  key) and the vendor record, then delete it.** The ledger and `Output\` are
+  gitignored; none of this may ever be committed.
+- The payload is staged once; ISCC's full-compression pass runs **per
+  hospital** (20–60 min each on an AI build). `-SkipStage` reuses a payload
+  staged earlier the same day.
+- Ship each hospital only its own `.exe`; give the password over a separate
+  channel (phone or in person), never in the same e-mail as the file.
+
+The plain `build.ps1`/`build-all.ps1` path still works and stays unencrypted —
+use it for build-machine smoke tests, not for anything that leaves the vendor.
+
+---
+
 ## If a step fails — most likely cause
 
 | Symptom / where | Most likely cause & fix |

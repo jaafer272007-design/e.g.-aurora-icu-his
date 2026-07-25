@@ -21,6 +21,7 @@ param(
   [string]$LlamaDir = '',  # folder with the Windows llama-server build (llama-server.exe + its DLLs, CUDA);
                            # needed for the AI (else AI ships disabled). See installer/README.md for the build.
   [switch]$UpdateOnly,     # build the small app-only update package (AuroraUpdate-<ver>.exe) instead of the full installer
+  [switch]$SkipCompile,    # stage the payload but skip ISCC - build-hospitals.ps1 then compiles one ENCRYPTED installer per hospital
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 )
 $ErrorActionPreference = 'Stop'
@@ -140,6 +141,10 @@ if ($aiModel -xor $aiLlama) {
 }
 
 Write-Host '== 5. compile the installer =='
+if ($SkipCompile) {
+  Write-Host '  SKIPPED (-SkipCompile): the payload is staged; build-hospitals.ps1 compiles one ENCRYPTED installer per hospital.'
+  return
+}
 if (-not (Test-Path $Iscc)) { throw "Inno Setup compiler not found at $Iscc (install Inno Setup 6, or pass -Iscc)." }
 & $Iscc (Join-Path $here 'aurora.iss')
 if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }

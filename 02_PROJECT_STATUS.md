@@ -1,5 +1,73 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-07-25 · INSTALLER REINSTALL GUARD + PER-HOSPITAL ENCRYPTED BUILDS.**
+Two protections against `AuroraSetup.exe` misuse, in the order the risks
+bit. (1) **Reinstall guard** (`aurora.iss`): Setup now detects the registered
+Aurora services (HKLM Services ImagePath for AuroraServer/AuroraPostgres)
+before any wizard page and inserts a guard page — what exists (install root,
+pgdata + PG_VERSION presence, BACKUP_DIR/BACKUP_KEY_FILE from the live
+aurora.env), default choice CLOSE SETUP (upgrades are AuroraUpdate's job),
+and a continue-anyway that requires typing the current backup key id (or the
+full key) from the sealed envelope — computed identically to
+`BackupService.KeyIdOf` (first 8 hex of SHA256 over the decoded 32 key
+bytes, via a PowerShell relay); REPLACE fallback only when the key FILE is
+unreadable; the expected id is never echoed. On continue, the wizard LOCKS the
+install + database locations to the EXISTING install (Windows service names
+are machine-global and Setup cannot re-point binPath/-D, so any other location
+is a broken hybrid, not a second install; the BACKUP fields stay editable) and
+carries BACKUP_USB/PORT/TZ from the live aurora.env so a repair keeps the
+off-site mirror, the port and the hospital clock;
+`PrepareToInstall` stops the three services before file copy. This is
+the exact failure that happened in production on 2026-07-25 (reinstall to D:
+over a live C: install, services re-pointed, database + key orphaned).
+Companion provisioning fix: a pre-existing cluster no longer dies at step 3
+with advice to *delete pgdata* — it reuses DATABASE_URL from the surviving
+aurora.env (initdb/init-key were already idempotent), so
+reinstall-over-existing-data comes back up on its own database and key. An
+orphaned-database adopt notice fires when PG_VERSION exists at the chosen
+data location with no services registered. (2) **Per-hospital encrypted
+installers** (`build-hospitals.ps1` + ISPP conditionals in `aurora.iss`):
+`Encryption=yes` + per-hospital `Password=` — real XChaCha20 payload
+encryption, key PBKDF2-HMAC-SHA256-derived (built into Inno Setup since
+6.4.0, verified against the 6.4.0 changelog; ARCFOUR/ISCrypt.dll era is
+gone) — so a copied installer without its hospital's password cannot be
+installed nor its payload extracted (honest limit, stated in every doc: setup
+METADATA and the compiled wizard code are not encrypted — only file data is),
+and a leak burns one identifiable build, not the product. Passwords:
+20-char unambiguous-charset, rejection-sampled crypto-random, ISCC-arg-safe
+by construction; ledger CSV + `Output/` + `payload/` gitignored. Owner's
+locked decisions: guard first, then encrypted builds; install password is a
+SEPARATE secret from the backup key (same envelope, own line — reissuable
+vs unrecoverable); code signing deferred as follow-up. 04 §5 + Appendix A
+amended to match.
+
+Adversarially reviewed BEFORE push: 5 independent lenses (Pascal/Inno,
+PowerShell 5.1, threat model, installer↔provision interplay, docs-vs-code),
+18 raw findings, 12 confirmed by two-skeptic votes, 0 refuted — and all 12
+closed in this same batch. The two highs reshaped the design: (1)
+continue-to-NEW-locations could never work (sc create/pg_ctl register
+silently no-op on existing services, sc config never re-sets binPath/-D, so
+the OLD install kept serving while the nightly-backup task was re-pointed at
+the broken new one and the wizard reported success) → locations are now
+LOCKED; (2) the sanctioned repair path itself died at step 6 (init-key exits
+1 on an existing key; under $ErrorActionPreference='Stop' the 2>&1 turns its
+stderr into a terminating NativeCommandError — the "init-key was already
+idempotent" claim had never been exercised because step 3 previously failed
+first) → EAP relaxed around that one call + null-safe output parsing. Also
+closed: REPLACE-fallback gates on key-file readability, not id-relay success
+(a blocked powershell.exe child on a locked-down hospital box could
+previously bypass the custody check); repair carries BACKUP_USB/PORT/TZ
+(previously silently dropped — including the runbook's load-bearing off-site
+mirror); psql/createdb exit codes now Fail loudly instead of writing an env
+with never-applied credentials; the adopt notice, the admin-password page and
+the finish page now say honestly that the typed password applies ONLY to a
+brand-new database and that adoption needs the surviving aurora.env; and the
+"cannot be opened or unpacked" overstatement was corrected in every doc.
+
+NOT yet verified on real Windows — the guard page, the locked repair path,
+and one encrypted build need the machine-verification pass before any
+hospital sees them.**
+
 **2026-07-25 · HOSPITAL OPERATIONS RUNBOOK (`04_OPERATIONS_RUNBOOK.md`) —
 the operational half of Backup & DR, written down.** The audit below closed
 what code could close and named the rest as "covered ONLY by operational
