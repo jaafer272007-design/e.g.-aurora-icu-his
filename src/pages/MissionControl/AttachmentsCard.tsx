@@ -126,7 +126,7 @@ export function AttachmentsCard({ patientId }: { patientId: string }) {
   }
 
   return (
-    <Card title="Attachments" subtitle={visible.length === 0 ? 'No files attached' : `${visible.length} file${visible.length === 1 ? '' : 's'}`}>
+    <Card title="Attachments" aside={visible.length === 0 ? 'No files attached' : `${visible.length} file${visible.length === 1 ? '' : 's'}`}>
       {err && <div className="att-err" role="alert">{err}</div>}
 
       {visible.length > 0 && (
