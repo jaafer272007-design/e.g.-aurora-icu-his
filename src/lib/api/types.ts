@@ -1966,6 +1966,12 @@ export interface BackupStatus {
   externalDisk: BackupExternalDisk
   keyId: string
   backupDir: string
+  /** File Attachments (2026-07-25): attachment bytes live IN the database,
+   *  so they ride inside every dump and every retained copy — surfaced here
+   *  (raw file bytes) with the ATTACH_MAX_TOTAL_MB brake for context.
+   *  Optional: an older server build omits them. */
+  attachmentBytes?: number
+  attachmentMaxTotalMb?: number
 }
 
 export interface BackupHistoryEntry {

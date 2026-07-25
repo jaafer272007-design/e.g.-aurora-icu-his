@@ -440,3 +440,24 @@
    (multiple precaution types are clinically real) */
 .mc .csopt.isochk{display:flex;align-items:center;gap:8px;cursor:pointer}
 .mc .csopt.isochk input{width:15px;height:15px;accent-color:var(--violet);cursor:pointer}
+/* File Attachments card (2026-07-25): list + upload + retract, the
+   quiet-chart styling family */
+.att-err{font-size:12px;color:var(--red);margin-bottom:8px}
+.att-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.att-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px solid rgba(var(--steel-rgb),.08)}
+.att-name{background:none;border:none;padding:0;color:var(--violet);font-size:13px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.att-name-dead{font-size:13px;color:var(--faint);text-decoration:line-through}
+.att-meta{font-size:11px;color:var(--faint)}
+.att-desc{flex-basis:100%;font-size:12px;color:var(--ink)}
+.att-retract{margin-left:auto;font-size:11px;background:none;border:1px solid var(--stroke);border-radius:6px;padding:2px 8px;color:var(--faint);cursor:pointer}
+.att-retract:hover{color:var(--red);border-color:var(--red)}
+.att-retract-form{display:flex;gap:6px;flex-basis:100%;align-items:center}
+.att-retract-form input{flex:1;font-size:12px;padding:4px 8px;border:1px solid var(--stroke);border-radius:6px;background:transparent;color:var(--ink)}
+.att-retract-form button{font-size:11px;padding:3px 8px;border:1px solid var(--stroke);border-radius:6px;background:none;color:var(--ink);cursor:pointer}
+.att-hidden{margin-top:8px}
+.att-hidden>button{font-size:11px;background:none;border:none;color:var(--faint);cursor:pointer;text-decoration:underline;padding:0}
+.att-upload{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.att-upload>input{flex:1;min-width:160px;font-size:12px;padding:6px 8px;border:1px solid var(--stroke);border-radius:6px;background:transparent;color:var(--ink)}
+.att-pick{font-size:12px;font-weight:600;padding:6px 12px;border:1px solid var(--violet);border-radius:8px;color:var(--violet);cursor:pointer}
+.att-pick-busy{opacity:.5;cursor:wait}
+.att-hint{font-size:11px;color:var(--faint)}

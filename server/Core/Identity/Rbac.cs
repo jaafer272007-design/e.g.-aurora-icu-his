@@ -58,10 +58,21 @@ static class Rbac
            constraint). Admission-time selection rides adt.admit exactly
            as weight/height do; this atom gates the bedside set/change
            path. */
+        /* attachments.* (File Attachments, 2026-07-25 owner decision):
+           attachments.view = the chart's CLINICAL tier - granted exactly
+           where results.view is (attachments are result-like clinical
+           documents; the identity-tier office Administrator is excluded
+           as it is from the orders/results/ai panes). attachments.add =
+           the DOCUMENTING roles only (Doctor, SeniorDoctor, Nurse,
+           Ancillary - technicians scan outside reports); uploading is a
+           clinical write. Retraction needs no atom of its own: Tier-1 is
+           the uploader + the 5-minute window, Tier-2 rides
+           results.correct (the labs correction convention). */
         ["Doctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
             "results.document", "notes.document", "ai.view", "adt.admit", "adt.discharge",
-            "observations.record", "patients.measure", "codestatus.set"],
+            "observations.record", "patients.measure", "codestatus.set",
+            "attachments.view", "attachments.add"],
         /* SeniorDoctor (Stage 11 F4): Doctor's SUPERSET — everything a
            doctor may do, plus the Consultant-tier observation authorities:
            observations.correct (tier-2 retrospective correction, §8) and
@@ -125,10 +136,11 @@ static class Rbac
             "notes.document", "ai.view", "adt.admit", "adt.discharge", "observations.record",
             "observations.correct", "observations.configure", "patients.measure",
             "assignments.manage", "codestatus.set", "codestatus.manage", "imagingcatalog.manage",
-            "beds.manage", "dispositions.manage", "isolation.manage", "shifts.manage"],
+            "beds.manage", "dispositions.manage", "isolation.manage", "shifts.manage",
+            "attachments.view", "attachments.add"],
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "handoff.document", "results.view", "results.document", "ai.view", "adt.transfer",
-            "observations.record", "patients.measure"],
+            "observations.record", "patients.measure", "attachments.view", "attachments.add"],
         /* users.manage MOVED to the System Administrator (User Management
            design §5: the atoms are held ONLY by that role) — the office
            Administrator (receptionist/billing/records) keeps the
@@ -186,8 +198,8 @@ static class Rbac
            stays clinician authority (orders.create/orders.sign) — any
            ordering clinician, unchanged. */
         ["Pharmacist"] = ["patients.view", "orders.view", "results.view", "formulary.manage",
-            "frequencies.manage"],
-        ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view"],
+            "frequencies.manage", "attachments.view"],
+        ["RespiratoryTherapist"] = ["patients.view", "orders.view", "results.view", "ai.view", "attachments.view"],
         /* results.create (results audit PR): entering a result is the
            PRODUCING SERVICE's authority — lab/radiology technicians — not
            the prescriber's (doctor/nurse tokens are 403'd on create, the
@@ -215,8 +227,9 @@ static class Rbac
            radiology and the laboratory are different producing services,
            and a hospital may govern them separately later — that split is
            then a row edit here, no schema change. */
-        ["Ancillary"] = ["patients.view", "orders.view", "results.view", "results.create", "labcatalog.manage", "imagingcatalog.manage"],
-        ["AlliedHealth"] = ["patients.view", "results.view"],
+        ["Ancillary"] = ["patients.view", "orders.view", "results.view", "results.create", "labcatalog.manage", "imagingcatalog.manage",
+            "attachments.view", "attachments.add"],
+        ["AlliedHealth"] = ["patients.view", "results.view", "attachments.view"],
     };
 
     /** the derived profile for a JobTitle, or null when the title is not

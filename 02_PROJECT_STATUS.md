@@ -1,5 +1,60 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-07-25 · FILE ATTACHMENTS ON THE PATIENT CHART (verify-first →
+approved design → build).** Scanned reports, photos of paper notes, outside
+documents. THE STORAGE DECISION (the PR's load-bearing fact): bytes live IN
+THE DATABASE as base64 text (`AttachmentRow.DataBase64` — the
+HospitalIdentity.LogoBase64 precedent generalized), so the one nightly
+pg_dump keeps capturing the ENTIRE hospital record and the backup engine
+needed ZERO changes for coverage: the verify phase proved table enumeration
+is dynamic (`pg_tables`, BackupService `Tables()`), so the new Attachments
+table is swept automatically into TableCounts/TableDigests, born-restore-
+verify, Test Restore and both in-place-restore passes. Filesystem storage
+was REJECTED (falls out of every backup, digest and off-site mirror). Base64
+text over bytea deliberately: logo-consistent, SQLite-dev-provider-portable,
+and the digest hashes each row's TEXT rendering — base64 costs 1.33x where
+bytea's hex rendering costs 2x.
+
+Shape: patient-scoped (open-encounter id server-stamped when one exists,
+"" after discharge — the note-addendum exemption category; deliberately NOT
+EncounterGuard'ed), ATT-9701+ persistence-aware counter, original filename
+free-text (#145, 200 cap), per-row raw-bytes sha256 recomputed on EVERY
+byte serve (integrity 409 on mismatch), append-only EventsJson audit
+(Time/Actor/Action/Detail + active role — the #104 rule). Types:
+PDF/PNG/JPEG ONLY, magic-byte verified against the declared mime (the logo
+rule + %PDF-); SVG/HTML excluded (script surface). No delete exists:
+RETRACT is the audited soft-hide on the labs two-tier convention verbatim
+(Tier-1 uploader/5-min window/reason optional; Tier-2 results.correct/
+reason REQUIRED); retracted bytes answer 409, metadata stays on the chart's
+hidden list. Limits (owner-raised): ATTACH_MAX_MB=20 per file,
+ATTACH_MAX_TOTAL_MB=8192 corpus brake (409 naming the operator action —
+every byte rides inside every dump and ~54 retained backup copies); the
+upload path's request-body cap is raised EXPLICITLY and ONLY for
+POST .../attachments (Program.cs middleware, derived from ATTACH_MAX_MB:
+a 20 MB file is ~27 MB as base64 JSON, ~93% of Kestrel's 30,000,000-byte
+default — the owner's flagged near-cap failure mode). Upload is JSON
+base64 like the logo (no multipart machinery); serving is Results.File
+inline + nosniff + Content-Disposition, ALWAYS authenticated (PHI — unlike
+the anonymous logo endpoint). Attachment bytes surfaced on the Backup
+dashboard (BackupStatusDto.AttachmentBytes + the cap; best-effort 0 when
+the table is absent on a pre-attachments restore).
+
+RBAC (owner's decision): attachments.view = the chart's CLINICAL tier —
+granted exactly where results.view is (Doctor, SeniorDoctor, Nurse,
+Pharmacist, RespiratoryTherapist, Ancillary, AlliedHealth); attachments.add
+= the documenting roles (Doctor, SeniorDoctor, Nurse, Ancillary); office
+Administrator excluded from both — the delta vs the validator's
+"anyone who can view beds + chart" ask, accepted because the chart is
+already tiered and patients.view would have handed the identity-tier
+clerks their first clinical pane. The STALE 01 RBAC matrix (no
+SystemAdministrator row, IT Administrator misfiled, Administrator shown
+with users.manage) was regenerated from Rbac.cs in the same PR with a
+dated refresh note. UI: AttachmentsCard on the patient chart
+(MissionControl) — list/open (authorized blob → object URL), upload with
+courtesy pre-checks, retract with reason, retracted list collapsed;
+real-server-only domain (no mock store — inventing clinical documents
+would fabricate data). Migration 20260725183726_AddAttachments.**
+
 **2026-07-25 · INSTALLER REINSTALL GUARD + PER-HOSPITAL ENCRYPTED BUILDS.**
 Two protections against `AuroraSetup.exe` misuse, in the order the risks
 bit. (1) **Reinstall guard** (`aurora.iss`): Setup now detects the registered
