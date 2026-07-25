@@ -37,7 +37,43 @@ dead-server rebuild = CONTACT THE VENDOR, reinstall performed with the
 engineer present; backup-key custody UNCHANGED and re-emphasized as the
 hospital's own irreplaceable secret. The #175 record below stands as
 history; its per-hospital custody/envelope/ledger guidance no longer
-describes the configured path.**
+describes the configured path.
+
+Adversarially reviewed BEFORE leaving draft: 5 independent lenses
+(Inno/ISPP semantics, PowerShell 5.1, secret-handling threat model,
+cross-file consistency, runbook honesty), 24 raw findings, 3 CONFIRMED by
+two-skeptic votes, 21 refuted — all 3 closed in the same PR. The one that
+mattered (found by two lenses independently, rated high): the new "only
+-PROTECTED files ever leave the build machine" claim was contradicted by
+the app-only update package — `AuroraUpdate-<ver>.exe` (`build.ps1
+-UpdateOnly` / `aurora-update.iss`) has NO password/encryption, carries
+the newest server payload, and is extractable with standard Inno tools.
+It cannot install Aurora fresh, so the engineer-present install model
+survives, but server-binary confidentiality does not once the first
+update ships. Docs now scope the claim and state the exposure plainly;
+🔴 OPEN OWNER DECISION: whether the update package gets the same
+password lock (same `GetEnv` machinery would compose) — until then
+update exes get installer-grade custody. Third confirmed: the runbook's
+"a secret that never enters the building cannot leak from it" overclaim
+(it IS typed on hospital hardware at every install) — reworded to what
+is true. Beyond the confirmed set, 13 refuted-but-cheap hardenings were
+applied anyway: Inno <6.4 `#error` gate on encrypted builds; reserved-id
+guard extended to ids ending in -protected/-unprotected; README +
+runtime-design walkthroughs moved to the engineer-present model; §6/§7
+runbook leftovers ("you install Aurora", hospital-run annual drill);
+dead-server vendor-dependency honest limit; rotation
+does-not-retro-protect-shipped-copies honesty; paging/crash-dump honest
+limit; long-random-password guidance (12 is a floor, not a target);
+`build-all` report pinned to the -UNPROTECTED glob. Verification
+executed, not just reviewed: all 5 installer scripts parse clean under
+the real PowerShell parser, and an 18/18-assertion harness ran
+`build-protected.ps1` against stub compilers proving env-only password
+delivery (absent from argv), zero disk persistence, env removal on
+success AND both failure paths, loud death on wrong-name/ISCC-fail/
+mismatched-or-invalid entry, and stale-PROTECTED-exe immunity.
+Remaining for the owner's Windows pass: run `build-protected.ps1` for
+real (prompt → -PROTECTED exe), and the test-laptop install demanding
+the password up front.**
 
 **2026-07-25 · FILE ATTACHMENTS ON THE PATIENT CHART (verify-first →
 approved design → build).** Scanned reports, photos of paper notes, outside
