@@ -75,6 +75,21 @@ Encryption=yes
 #endif
 Compression=lzma2/max
 SolidCompression=yes
+; ---- SLICED OUTPUT (discovered on the first real AI-enabled compile,
+; 2026-07-26). Inno refuses to emit a SINGLE Setup.exe above ~4.2 GB
+; ("Disk spanning must be enabled..."), and the AI payload - a 4.7 GB GGUF
+; that is already compressed and will not shrink, plus ~1.1 GB of CUDA
+; runtime - lands around 5.5 GB. So the full installer ships as
+; AuroraSetup-<ver>-PROTECTED.exe PLUS numbered .bin slices. They must
+; travel TOGETHER in one folder; the operator still double-clicks the .exe
+; and sees the identical wizard, and Encryption=yes still covers the
+; payload data in every slice. 2100000000 is Inno's maximum slice size, so
+; this yields the fewest files. This also applies to a no-AI smoke build
+; (it just produces fewer slices) - kept unconditional because every
+; SHIPPING build carries the AI, and a conditional would be one more thing
+; to get wrong.
+DiskSpanning=yes
+DiskSliceSize=2100000000
 WizardStyle=modern
 ; the installer must not run over a live older instance without stopping it
 CloseApplications=yes
