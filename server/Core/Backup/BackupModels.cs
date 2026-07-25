@@ -95,8 +95,16 @@ public record RetentionDto(int DailyKeep, int WeeklyKeep, int MonthlyKeep,
 /** the external USB target is a HOST-side path the container cannot see —
  *  its status is reported honestly from the audit trail (the scheduled
  *  task records every usb-copy outcome), never fabricated from a probe
- *  this process cannot make */
-public record ExternalDiskDto(string? LastCopyAt, string? LastOutcome, string? Detail);
+ *  this process cannot make.
+ *
+ *  Configured/StaleDays/Severity close the "silent off-site stop" hole: the
+ *  classic disaster is nobody plugging the disk back in after a rotation, so
+ *  the copy quietly stops and the dashboard keeps saying HEALTHY. Severity is
+ *  'none' (never configured — the on-server copy is the ONLY copy),
+ *  'stale' (configured but not seen for BACKUP_USB_MAX_AGE_DAYS),
+ *  'failed' (last attempt errored) or 'ok'. */
+public record ExternalDiskDto(string? LastCopyAt, string? LastOutcome, string? Detail,
+    bool Configured, int? StaleDays, string Severity, int MaxAgeDays);
 
 public record BackupHistoryRow(string File, string CreatedAtUtc, long SizeBytes,
     string KeyId, string TimeZone, int TableCount, long RowTotal,
@@ -106,7 +114,14 @@ public record BackupEventDto(int Id, string At, string Kind, string Outcome,
     string Actor, string File, string DetailJson);
 
 public record VerifyRequest(string File, [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Key);
-public record TestRestoreRequest(string File);
+public record TestRestoreRequest(string File, [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Key);
+/* The DESTRUCTIVE in-place restore. Confirm carries a typed phrase the UI
+   forces the operator to enter ("REPLACE") so this can never fire from a stray
+   click, a CSRF, or a left-open session — it is the one action that wipes the
+   live database, so it takes an explicit human keystroke on top of the
+   backup.manage gate. */
+public record RestoreRequest(string File, string Confirm,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Key);
 
 public record CheckResult(string Check, bool Ok, string Detail);
 

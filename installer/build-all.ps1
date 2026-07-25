@@ -1,5 +1,5 @@
 <#
-  AURORA ICU — one-shot Windows build wrapper.
+  AURORA ICU - one-shot Windows build wrapper.
 
   Run this ONCE with your paths and it does the whole job: (optionally) install
   the build toolchain via winget, preflight-check everything, then run build.ps1
@@ -7,7 +7,7 @@
   llama-server -> compile the Inno installer) and report the finished
   AuroraSetup.exe. See installer/BUILD_WINDOWS.md for the full walkthrough.
 
-  TYPICAL USE (from the repo root, one line — no need to change ExecutionPolicy):
+  TYPICAL USE (from the repo root, one line - no need to change ExecutionPolicy):
 
     # AI-enabled build, installing the toolchain first:
     powershell -ExecutionPolicy Bypass -File .\installer\build-all.ps1 `
@@ -20,7 +20,7 @@
     powershell -ExecutionPolicy Bypass -File .\installer\build-all.ps1 `
       -PgZip C:\aurora-build\postgresql-16.4-1-windows-x64-binaries.zip
 
-  🔎 WINDOWS-ONLY (needs the .NET 8 SDK, Node, Inno Setup 6). CODE-REVIEWED
+  WINDOWS-ONLY (needs the .NET 8 SDK, Node, Inno Setup 6). CODE-REVIEWED
      here; it just orchestrates build.ps1, which is itself Windows-only.
 #>
 [CmdletBinding()]
@@ -52,20 +52,20 @@ if ($InstallPrereqs) {
               [System.Environment]::GetEnvironmentVariable('Path','User')
 }
 
-# ---- 1. preflight — fail early with a clear message ----
+# ---- 1. preflight - fail early with a clear message ----
 Say "checking the toolchain..."
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
   Die "dotnet not found. Install the .NET 8 SDK (or re-run with -InstallPrereqs), then open a NEW terminal."
 }
 $dv = (& dotnet --version)
-if ($dv -notlike '8.*') { Warn "dotnet $dv is selected — the server publishes for .NET 8 (win-x64); make sure an 8.0 SDK is installed." }
+if ($dv -notlike '8.*') { Warn "dotnet $dv is selected - the server publishes for .NET 8 (win-x64); make sure an 8.0 SDK is installed." }
 foreach ($t in @('node','npm','npx')) {
   if (-not (Get-Command $t -ErrorAction SilentlyContinue)) {
     Die "$t not found. Install Node.js 20 LTS or newer (or -InstallPrereqs), then open a NEW terminal."
   }
 }
 if (-not (Test-Path $Iscc))  { Die "Inno Setup compiler not found at $Iscc. Install Inno Setup 6 (or -InstallPrereqs), or pass -Iscc <path to ISCC.exe>." }
-if (-not (Test-Path $PgZip)) { Die "-PgZip not found: $PgZip  (download the EDB 'binaries only' PostgreSQL 16 zip — NOT the .exe installer)." }
+if (-not (Test-Path $PgZip)) { Die "-PgZip not found: $PgZip  (download the EDB 'binaries only' PostgreSQL 16 zip - NOT the .exe installer)." }
 
 # ---- 2. AI inputs: BOTH or NEITHER ----
 $ai = $false
@@ -92,7 +92,7 @@ try {
   $free = [math]::Round((Get-PSDrive $qual.TrimEnd(':')).Free / 1GB, 1)
   $need = if ($ai) { 20 } else { 3 }
   Say "free space on $qual = $free GB (recommended >= $need GB for the $sizeHint build)"
-  if ($free -lt $need) { Warn "low disk — the compression step may run out of room." }
+  if ($free -lt $need) { Warn "low disk - the compression step may run out of room." }
 } catch { }
 
 # ---- 4. run the real build ----

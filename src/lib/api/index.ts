@@ -65,11 +65,20 @@ export class ApiUnavailableError extends Error {}
    fired into nothing and the screen rendered half-broken instead of
    refusing. The gate now also reads this latch on mount, so the refusal
    holds regardless of who ran first. */
-let apiUnavailableLatched: string | null = null
-export function apiUnavailableLatch(): string | null { return apiUnavailableLatched }
+export type ApiRefusal = { what: string; forbidden: boolean }
+let apiUnavailableLatched: ApiRefusal | null = null
+export function apiUnavailableLatch(): ApiRefusal | null { return apiUnavailableLatched }
+/* Set by apiGet when a real read returns 403 (a PERMISSION boundary, not a
+   server outage). apiUnavailable() consumes it so the full-screen refusal can
+   say "you do not have access to this area" instead of the alarming
+   "API unavailable" — a role legitimately lacking a permission is not an
+   incident. Cleared on any ok/other-status/unreachable read. */
+let lastReadWasForbidden = false
 function apiUnavailable(what: string): ApiUnavailableError {
-  apiUnavailableLatched = what
-  window.dispatchEvent(new CustomEvent('aurora:api-unavailable', { detail: what }))
+  const forbidden = lastReadWasForbidden
+  lastReadWasForbidden = false
+  apiUnavailableLatched = { what, forbidden }
+  window.dispatchEvent(new CustomEvent('aurora:api-unavailable', { detail: { what, forbidden } }))
   return new ApiUnavailableError(`${what}: the AURORA API is unavailable — clinical data cannot be served`)
 }
 
@@ -372,9 +381,11 @@ async function apiGet<T>(path: string, what: string): Promise<T | null> {
     const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
     const res = await fetch(`${API_BASE}${path}`, { signal: ctrl.signal, headers: authHeaders() })
     clearTimeout(timer)
-    if (res.ok) return (await res.json()) as T
+    if (res.ok) { lastReadWasForbidden = false; return (await res.json()) as T }
+    lastReadWasForbidden = res.status === 403   // a permission boundary vs a real outage
     console.info(`[aurora] ${what} API responded ${res.status} — using mock data`)
   } catch {
+    lastReadWasForbidden = false
     console.info(`[aurora] ${what} API unreachable (cold start?) — using mock data`)
   }
   return null
@@ -2252,6 +2263,16 @@ export function verifyBackup(file: string, key?: string): Promise<AdtWriteResult
  *  untouched. */
 export function testRestoreBackup(file: string): Promise<AdtWriteResult<BackupTestRestoreResult>> {
   return backupPost<BackupTestRestoreResult>('/api/backup/test-restore', 'backup test-restore', { file })
+}
+
+/** POST /api/backup/restore — the DESTRUCTIVE recovery: REPLACES the live
+ *  database with the backup. `confirm` MUST be the literal 'REPLACE' (the UI
+ *  forces the operator to type it); the server rejects anything else so this
+ *  can never fire from a stray click. Returns the same source-vs-restored
+ *  comparison shape as test-restore, computed against the now-live database. */
+export function restoreBackup(file: string, confirm: string, key?: string): Promise<AdtWriteResult<BackupTestRestoreResult>> {
+  return backupPost<BackupTestRestoreResult>('/api/backup/restore', 'backup restore',
+    { file, confirm, ...(key && key.trim() !== '' ? { key: key.trim() } : {}) })
 }
 
 /** POST /api/backup/rotate-key — the response carries the NEW key exactly

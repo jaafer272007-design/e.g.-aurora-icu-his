@@ -6,7 +6,7 @@ import { Card } from '../../components/Card'
 import { Toast, useToast } from '../../components/Toast'
 import { IconCheck, IconClock, IconShield, IconAlertTriangle } from '../../components/icons'
 import {
-  getBackupEvents, getBackupHistory, getBackupStatus,
+  getBackupEvents, getBackupHistory, getBackupStatus, restoreBackup,
   rotateBackupKey, runBackupNow, testRestoreBackup, verifyBackup,
 } from '../../lib/api'
 import type {
@@ -38,11 +38,21 @@ const fmtBytes = (n: number): string =>
 
 const HEALTH_LABEL: Record<BackupStatus['health'], string> = {
   ok: 'HEALTHY', stale: 'BACKUP OVERDUE', failed: 'LAST BACKUP FAILED', none: 'NO BACKUP EXISTS',
+  /* off-site states: the primary backup is fine, but the hospital's only copy
+     is on the server — never shown as HEALTHY (that false green is the exact
+     comfort this area exists to deny) */
+  'offsite-none': 'NO OFF-SITE COPY',
+  'offsite-stale': 'OFF-SITE COPY OVERDUE',
+  'offsite-failed': 'OFF-SITE COPY FAILED',
 }
+
+/** off-site severities that must read as a problem, not a footnote */
+const OFFSITE_BAD = new Set(['none', 'stale', 'failed'])
 
 type ResultPanel =
   | { kind: 'verify'; data: BackupVerifyResult }
   | { kind: 'test-restore'; data: BackupTestRestoreResult }
+  | { kind: 'restore'; data: BackupTestRestoreResult }
 
 export function BackupRecovery() {
   const { toast, showToast } = useToast()
@@ -63,6 +73,13 @@ export function BackupRecovery() {
   const [shownKey, setShownKey] = useState<BackupRotateKeyResult | null>(null)
   const [confirmRotate, setConfirmRotate] = useState(false)
   const [wizardOpen, setWizardOpen] = useState(false)
+  /* DESTRUCTIVE restore: which file's confirm panel is open + the typed
+     confirmation. The button enables only when the operator types REPLACE. */
+  const [restoreFor, setRestoreFor] = useState<string | null>(null)
+  const [restoreConfirm, setRestoreConfirm] = useState('')
+  /* the RECORDED key — required only when restoring a backup this server did
+     not make (fresh hardware after the original died). Blank = server's key. */
+  const [restoreKey, setRestoreKey] = useState('')
 
   const reload = useCallback(() => {
     void Promise.all([getBackupStatus(), getBackupHistory(), getBackupEvents(100)])
@@ -92,6 +109,12 @@ export function BackupRecovery() {
 
   const doTestRestore = (file: string) => run('test-restore:' + file,
     () => testRestoreBackup(file), data => setResult({ kind: 'test-restore', data }))
+
+  const doRestore = (file: string) => run('restore:' + file,
+    () => restoreBackup(file, 'REPLACE', restoreKey.trim() || undefined), data => {
+      setResult({ kind: 'restore', data }); setRestoreFor(null); setRestoreConfirm(''); setRestoreKey('')
+      if (data.ok) showToast('Restore complete — live database replaced', data.summary)
+    })
 
   const doRotate = () => run('rotate-key', rotateBackupKey, r => {
     setConfirmRotate(false); setShownKey(r)
@@ -184,10 +207,15 @@ export function BackupRecovery() {
                     </div>
                     <div>
                       <span>External USB disk (off-site copy)</span>
-                      <b>
-                        {status.externalDisk.lastCopyAt
-                          ? `last copy ${displayStamp(status.externalDisk.lastCopyAt)} — ${status.externalDisk.lastOutcome}`
-                          : status.externalDisk.detail ?? 'no copy recorded yet'}
+                      <b className={OFFSITE_BAD.has(status.externalDisk.severity) ? 'bkbad' : undefined}>
+                        {!status.externalDisk.configured
+                          ? 'NOT CONFIGURED — backups exist only on this server'
+                          : status.externalDisk.lastCopyAt
+                            ? `last copy ${displayStamp(status.externalDisk.lastCopyAt)}`
+                              + (status.externalDisk.staleDays != null ? ` (${status.externalDisk.staleDays}d ago)` : '')
+                              + (status.externalDisk.severity === 'stale' ? ` — OVERDUE, limit ${status.externalDisk.maxAgeDays}d` : '')
+                              + (status.externalDisk.severity === 'failed' ? ' — LAST ATTEMPT FAILED' : '')
+                            : status.externalDisk.detail ?? 'no copy recorded yet'}
                       </b>
                     </div>
                     <div><span>Encryption</span><b>AES-256-GCM (authenticated) · key id <span className="num">{status.keyId || 'NOT INITIALISED'}</span></b></div>
@@ -200,7 +228,15 @@ export function BackupRecovery() {
                       ? <button className="bkbtn ghost" disabled={busy != null} onClick={() => setConfirmRotate(true)}>Rotate key…</button>
                       : (
                         <span className="bkconfirm">
-                          <span>Rotation replaces the key for FUTURE backups — old backups still need the old key&apos;s envelope. Continue?</span>
+                          <span>
+                            Rotation generates a NEW key. It <b>cannot show you the current one</b> — nothing can,
+                            by design. {(() => {
+                              const orphaned = (history ?? []).filter(h => h.keyId === status?.keyId).length
+                              return orphaned > 0
+                                ? `The ${orphaned} backup${orphaned === 1 ? '' : 's'} made with key ${status?.keyId} will ONLY open with that key from then on — if its envelope is not recorded, ${orphaned === 1 ? 'it becomes' : 'they become'} permanently unreadable.`
+                                : 'Existing backups keep needing the key they were made with.'
+                            })()} Continue?
+                          </span>
                           <button className="bkbtn warn" disabled={busy != null} onClick={doRotate}>
                             {busy === 'rotate-key' ? 'Rotating…' : 'Rotate the key'}
                           </button>
@@ -223,48 +259,69 @@ export function BackupRecovery() {
 
             {/* ---------------- Restore Wizard (guided runbook) ---------------- */}
             {wizardOpen && (
-              <Card icon={<IconShield size={15} stroke="var(--red)" />} title="Restore Wizard — disaster runbook" aside="cross-machine by design">
+              <Card icon={<IconShield size={15} stroke="var(--red)" />} title="Restore Wizard — disaster runbook" aside="for a DEAD server (cross-machine)">
+                <p className="bknote" style={{ marginTop: 0 }}>
+                  To recover onto THIS running server (e.g. undo a bad change), use the <b>Restore…</b> button on
+                  any backup in Backup History below — no commands needed. This runbook is for the harder case:
+                  the server itself is <b>gone</b>, and you are rebuilding on a fresh machine from the off-site copy.
+                </p>
                 <ol className="bkwizard">
                   <li>
-                    <b>Gather the three things a restore needs:</b> a fresh Windows machine with Docker Desktop,
-                    the newest backup pair from the off-site USB disk (<code>aurora-*.aurbk</code> +
-                    <code> aurora-*.manifest.json</code>), and the <b>backup key</b> from a recorded copy — the
-                    sealed envelope, the password manager, or the hospital-management copy. The manifest names
-                    which key the backup needs (its <i>key id</i>); the dead server&apos;s key file is not required.
+                    <b>Gather the FOUR things a rebuild needs.</b> (1) The <b>installer</b>
+                    <code> AuroraSetup-&lt;ver&gt;.exe</code> — keep a copy OFF this server, it cannot be rebuilt
+                    in a crisis. (2) The newest backup <b>pair</b> from the off-site disk:
+                    <code> aurora-*.aurbk</code> <b>and</b> <code>aurora-*.manifest.json</code> — the manifest is
+                    mandatory, a restore refuses without it. (3) The <b>backup key</b> from a recorded copy
+                    (sealed envelope / password manager / hospital-management copy) — the dead server&apos;s key
+                    file is NOT needed, but without a recorded copy the backup can never be opened by anyone.
+                    (4) A working <b>administrator username + password from the OLD system</b> — see step 5.
                   </li>
                   <li>
-                    <b>Install Aurora</b> on the new machine from the installer (clone or copy the release), then
-                    open PowerShell in the <code>appliance</code> folder.
+                    <b>Install Aurora normally</b> on the replacement Windows machine — the same
+                    next-next-finish install. It comes up empty, with its OWN new backup key. That is expected.
                   </li>
                   <li>
-                    <b>Run</b> <code>.\restore.ps1 -BackupFile D:\path\aurora-&lt;stamp&gt;.aurbk</code>. The script
-                    checks Docker, writes a fresh <code>.env</code> (new secrets — everyone signs in again; the
-                    hospital timezone is restored from the manifest), starts PostgreSQL alone, asks for the key,
-                    <b> decrypts</b> (a wrong or corrupt key fails the AES-256-GCM authentication tag loudly —
-                    nothing partial is ever restored), runs <code>pg_restore</code>, and starts Aurora.
+                    <b>Put the backup pair where this machine looks for backups.</b> Copy BOTH files off the
+                    off-site disk into the new server&apos;s backup folder (the <b>On-server target</b> path shown
+                    on this dashboard). A backup left on the USB does not appear in Backup History.
                   </li>
                   <li>
-                    <b>Read the verification report.</b> The script&apos;s final step compares the restored database
-                    against the manifest — <b>source-vs-restored record counts and per-table content digests
-                    across every table, plus the hospital logo&apos;s bytes</b> — and records the restore in the
-                    immutable audit. <b>A restore that completes but loses data is a FAILED restore</b>: if any
-                    count differs, stop and try the previous backup.
+                    <b>Prove the key first, then restore.</b> On the copied backup use
+                    <b> Verify with recorded key…</b> and paste the recorded key — all checks must pass. Then use
+                    <b> Restore…</b>; because the backup was made by a DIFFERENT machine, the panel asks for that
+                    same recorded key. It is restored into a scratch copy and matched against the manifest
+                    BEFORE anything is written, then the live database is replaced and the
+                    source-vs-restored table is shown. <b>A restore that completes but loses rows is a FAILED
+                    restore</b> — if any count or digest differs, stop and try the previous backup.
                   </li>
                   <li>
-                    <b>Confirm in the app:</b> sign in, spot-check patients, then open this Backup area — the
-                    restore event is on the audit trail, and the next nightly backup should be re-registered
-                    with <code>.\backup.ps1 -Install</code>.
+                    <b>Sign in with an OLD administrator account.</b> The restore replaces the user table with
+                    the dead server&apos;s, so the new install&apos;s fresh <code>admin</code> password is gone —
+                    the old system&apos;s credentials are what work now. Spot-check patients, and re-check the
+                    hospital timezone in Configuration (a rebuilt machine starts at UTC).
+                  </li>
+                  <li>
+                    <b>Re-establish protection immediately.</b> Confirm the nightly backup task exists, set the
+                    off-site disk again, and take one <b>Backup now</b> — until that succeeds the rebuilt
+                    hospital has no backup of its own.
                   </li>
                 </ol>
+                <p className="bknote">
+                  Everything above is done from this screen — no command line. If the app cannot be reached at
+                  all, the same engine is available as operator commands
+                  (<code>AuroraIcu.Api.exe verify | restore --key … </code>) from the install folder.
+                </p>
               </Card>
             )}
 
             {/* ---------------- result panel (verify / test-restore) ---------------- */}
             {result && (
               <Card icon={<IconCheck size={14} stroke={result.data.ok ? 'var(--green)' : 'var(--red)'} />}
-                title={result.kind === 'verify' ? `Verify — ${result.data.file}` : `Test Restore — ${result.data.file}`}
+                title={result.kind === 'verify' ? `Verify — ${result.data.file}`
+                  : result.kind === 'restore' ? `Restore — ${result.data.file}`
+                  : `Test Restore — ${result.data.file}`}
                 aside={<button className="bkbtn ghost sm" onClick={() => setResult(null)}>Close</button>}>
-                {result.kind === 'test-restore' && (
+                {result.kind !== 'verify' && (
                   <div className={`bksummary ${result.data.ok ? 'ok' : 'bad'}`}>{result.data.summary}</div>
                 )}
                 <div className="bkchecks">
@@ -275,7 +332,7 @@ export function BackupRecovery() {
                     </div>
                   ))}
                 </div>
-                {result.kind === 'test-restore' && result.data.tables.length > 0 && (
+                {result.kind !== 'verify' && result.data.tables.length > 0 && (
                   <div className="bktablewrap">
                     <table className="bktable num">
                       <thead>
@@ -331,8 +388,51 @@ export function BackupRecovery() {
                               onClick={() => doTestRestore(h.file)}>
                               {busy === 'test-restore:' + h.file ? 'Restoring to scratch…' : 'Test Restore'}
                             </button>
+                            <button className="bkbtn sm danger" disabled={busy != null}
+                              onClick={() => { setRestoreFor(restoreFor === h.file ? null : h.file); setRestoreConfirm(''); setKeyFor(null) }}
+                              aria-expanded={restoreFor === h.file}>
+                              Restore…
+                            </button>
                           </span>
                         </div>
+                        {restoreFor === h.file && (
+                          <div className="bkrestore" role="region" aria-label={`Restore the live database from ${h.file}`}>
+                            <div className="bkrestorewarn">
+                              <IconAlertTriangle size={16} plain />
+                              <div>
+                                <b>This REPLACES the entire live database with this backup.</b>
+                                <span>
+                                  Everything entered after this backup (<span className="num">{displayStamp(h.createdAtUtc)}</span>)
+                                  is permanently lost, and the system briefly goes offline while it rebuilds. The backup is
+                                  first restored into a scratch copy and proven to match — if it doesn&apos;t, the live
+                                  database is left untouched. Type <b>REPLACE</b> to confirm.
+                                </span>
+                              </div>
+                            </div>
+                            {h.keyId !== status?.keyId && (
+                              <label className="bkrestorekey">
+                                <span>
+                                  This backup was made with key <b className="num">{h.keyId}</b>, but this server&apos;s
+                                  key is <b className="num">{status?.keyId || 'none'}</b> — so this is a backup from
+                                  ANOTHER machine. Paste the <b>recorded key {h.keyId}</b> (sealed envelope / password
+                                  manager) to restore it here:
+                                </span>
+                                <input className="num" type="password" autoComplete="off" placeholder="64 hex characters"
+                                  value={restoreKey} onChange={e => setRestoreKey(e.target.value)} />
+                              </label>
+                            )}
+                            <div className="bkrestorerow">
+                              <input aria-label="Type REPLACE to confirm" type="text" autoComplete="off"
+                                placeholder="REPLACE" value={restoreConfirm} onChange={e => setRestoreConfirm(e.target.value)} />
+                              <button className="bkbtn sm danger" disabled={busy != null || restoreConfirm.trim() !== 'REPLACE'}
+                                onClick={() => doRestore(h.file)}>
+                                {busy === 'restore:' + h.file ? 'Restoring — replacing live data…' : 'Restore & replace live data'}
+                              </button>
+                              <button className="bkbtn sm ghost" disabled={busy != null}
+                                onClick={() => { setRestoreFor(null); setRestoreConfirm(''); setRestoreKey('') }}>Cancel</button>
+                            </div>
+                          </div>
+                        )}
                         {keyFor === h.file && (
                           <div className="bkkeyentry" role="region" aria-label={`Verify ${h.file} with a recorded key`}>
                             <label htmlFor={`bkkey-${h.file}`}>
@@ -355,7 +455,9 @@ export function BackupRecovery() {
                 <b>Verify</b> checks integrity without a restore: file hash, GCM authentication (every byte),
                 dump readability, table count vs manifest. <b>Test Restore</b> fully reconstructs the backup in
                 an <b>isolated scratch database</b> and compares source-vs-restored record counts and content
-                digests — <b>live data is never touched</b>.
+                digests — <b>live data is never touched</b>. <b>Restore…</b> is the real recovery on THIS server:
+                it <b>replaces the live database</b> with the backup (you must type <b>REPLACE</b>), and it too
+                proves the backup in a scratch copy first, so a bad backup can never wipe your data.
               </p>
             </Card>
 

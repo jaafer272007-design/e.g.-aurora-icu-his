@@ -82,9 +82,22 @@ cd installer
 ## What the hospital does (the whole deployment)
 
 1. Copy `AuroraSetup.exe` to the **one server** and double-click it.
-2. Wizard: install/data locations → **access URL** (the server's LAN address) → **admin password** → **formulary** (starter/empty). Timezone + GPU are auto-detected.
+2. Wizard: install/data locations → **access address** (the server's LAN address + port — the address box is **pre-filled** from this machine's network interface; the port defaults to **8080**, or enter **80** so staff can omit it) → **admin password** → **formulary** (starter/empty). Timezone + GPU are auto-detected.
 3. Click Install. The installer initialises the private database, registers the **AuroraPostgres** and **AuroraServer** Windows services (Automatic start, SCM auto-restart, Aurora depends-on Postgres), seeds catalogues + the bootstrap admin, shows the **backup key once** (record it in three places), registers the **nightly backup**, and opens the firewall. **When the machine has an NVIDIA GPU** (and the AI payload shipped), it also registers the **AuroraAI** service (llama-server, `127.0.0.1` only) — otherwise the AI screen honestly says "no GPU on this server" and everything else runs unchanged.
-4. Finish. From then on, every clinician opens the access URL in a browser. Nobody launches anything; it starts on every boot.
+4. Finish. The final screen shows the **real, working access URL** (derived from the server's live interface + the port it actually bound — not just what was typed), and drops a **desktop shortcut ("Aurora ICU")** plus an **`ACCESS.txt`** in the install folder so nobody has to retype it. From then on, every clinician opens that URL in a browser. Nobody launches anything; it starts on every boot.
+
+## Networking: reachability, DHCP, and the port
+
+Three things decide whether every device can reach the one server. All are handled next-next-finish; the notes matter for a clean rollout.
+
+- **Firewall covers ALL profiles (incl. Public).** Provisioning opens the `Aurora ICU` inbound rule with `-Profile Any`. A Domain/Private-only rule is the classic silent failure on hospital Wi-Fi that Windows tags *Public* — the server works on `localhost`, both services show RUNNING, and every other device gets "site can't be reached." Opening all profiles removes that trap with no `Set-NetFirewallRule` by hand. The rule is remove-then-recreated on every (re-)provision, so an older narrow rule is corrected automatically.
+- **DHCP will move the address — get a static IP.** The finish screen (and `provision.log`) **warn when the server's address is DHCP-assigned**, because a DHCP lease **changes on reboot** and breaks every saved bookmark and the desktop shortcut. Before rollout, ask hospital IT for a **static IP** or a **DHCP reservation** for this one machine. This is the single most common "it worked yesterday" failure.
+- **The port — 8080 by default, or 80.** The wizard defaults to **8080** and pre-fills the address, and the finish screen always shows the correct URL *including the port*, so no clinician has to guess it. If you prefer staff to type just `http://<server>` with **no port**, enter **80** in the wizard — provisioning binds 80 and writes the URL without `:80`.
+
+  **Port 80 vs 8080 — the tradeoff:**
+  - **80 (pro):** shortest possible URL, no port to mistype, matches what non-technical staff expect. **(con):** port 80 is often already taken on a Windows box (IIS / the *World Wide Web Publishing Service* / another web app); if it's occupied the bind fails and the install is unreachable — a *worse* failure than a nonstandard port. Some hospital security baselines also reserve 80.
+  - **8080 (pro):** almost never contended, so the install "just works"; the correct URL is shown/short­cut anyway. **(con):** staff must include `:8080`.
+  - **Recommendation:** keep **8080** unless the hospital's IT has confirmed port 80 is free on the server and prefers it — then choose 80 at install time. Either way the operator never types the URL to *use* it (shortcut + `ACCESS.txt`), so the port is a one-time install decision, not a daily burden.
 
 ## ✅ Tested (in CI / the Linux sandbox) vs 🔎 code-reviewed-only
 
@@ -108,7 +121,7 @@ Because Windows services, the SCM, `initdb`-for-Windows, and Inno Setup **cannot
 5. 🔴 **Auto-restart on crash:** `sc.exe stop AuroraServer` / kill the process → the SCM restarts it within seconds.
 6. **Backup-key ceremony:** the key is shown once; the relay file is deleted; the server keeps its ACL-locked copy.
 7. **Nightly backup task** is registered (`schtasks /Query /TN AuroraBackup`) and `aurora-backup.ps1` produces a real backup when run.
-8. **Firewall** rule opened; the port is reachable from the LAN, `127.0.0.1:5432` (Postgres) is **not** exposed.
+8. 🔴 **Firewall reachable from another device on a PUBLIC network.** The rule is opened for **all profiles (Domain, Private, AND Public)** — Windows readily classifies an unidentified hospital Wi-Fi/LAN as *Public*, and a Public-excluded rule silently strands the install (localhost works, both services RUNNING, yet every tablet gets "site can't be reached"). **Verify:** on a machine whose network shows **Public**, after a next-next-finish install, open the access URL **from a second device** with **no manual command** — Aurora answers. `127.0.0.1:5432` (Postgres) stays **not** exposed.
 9. **Backup restore** (the acceptance test) still works from this native install — fold it into your restore drill.
 10. 🔴 **AuroraAI (the AI service) comes up on the GPU box:** `llama-server` loads the model under NSSM; `curl http://127.0.0.1:8081/health` returns OK; the AI screen answers a real question (grounded query + the labeled interpretation). Auto-starts before login and restarts on crash like the others (`sc.exe stop AuroraAI` → SCM/NSSM restarts it).
 11. **Concurrency (`--parallel`)** — fire several AI questions at once (a few browser tabs): they **queue and all answer**, none fail. This is the §5.4 guardrail; `llama-bench` (below) measures the real curve.

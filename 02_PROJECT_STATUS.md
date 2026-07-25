@@ -1,6 +1,198 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-07-23 · current through APP-ONLY UPDATER — `aurora-update` +
+**Last updated: 2026-07-25 · current through the BACKUP DATA-LOSS AUDIT (six
+scenarios, every claim traced to file:line, findings adversarially re-verified).
+VERDICTS: (1) same-disk — NOT COVERED: pgdata/backups/secrets all derived from one
+-DataDir and the wizard asked for ONE location, so a single disk failure destroyed
+the database, every backup AND the server's key copy together. (2) off-site USB —
+NOT COVERED: the installer never wrote BACKUP_USB, so the off-site branch never
+ran, and Status() ignored the external disk entirely (HEALTHY with zero off-site
+copies). (3) ransomware — NOT COVERED, and honestly unfixable in-app: no
+immutability/WORM/VSS/versioning/separate credential anywhere; every write path
+runs as SYSTEM; AES protects confidentiality not availability; the ONLY real
+control is a physically disconnected rotated disk (load-bearing OPERATIONAL
+discipline). (4) key custody — PARTIAL: show-once is real and no endpoint can read
+a key back, but nothing enforces recording it and the native install never
+ACL-locked backup.key. (5) cross-machine restore — PARTIAL, with a CRITICAL
+binding: RestoreInPlace/TestRestore called LoadKey() with NO argument, so fresh
+hardware (own key from init-key) could never decrypt the dead server's backup —
+the recorded envelope key had no way in; and the on-screen runbook gave DOCKER
+instructions (restore.ps1/appliance/.env) that the native installer does not ship.
+(6) retention — COVERED: GfsPrune runs inside RunBackup every night and the
+30/12/12 keep-set arithmetic is sound; limitation stated honestly (born-verify
+proves a backup matches ITSELF, so a corrupted-but-consistent DB is faithfully
+backed up as corrupted — no cross-backup drift detection).
+FIXED IN CODE THIS PASS: recorded-key threading through
+RestoreInPlace/TestRestore + API + CLI (--key) + a restore-panel key prompt shown
+exactly when the backup's key id differs from this server's; off-site health
+escalation (offsite-none / offsite-stale / offsite-failed, BACKUP_USB_MAX_AGE_DAYS
+default 8) with the dashboard row turning red; separate backup-location + off-site
+disk in the wizard with a same-drive warning; provisioning -BackupDir/-BackupUsb,
+recoverability posture stated in provision.log; Defender exclusions narrowed from
+the whole DataDir to binaries + pgdata so backups/secrets stay AV-scanned;
+backups\ + secrets\ + backup.key ACL-locked to SYSTEM+Administrators; nightly
+robocopy made ADD-ONLY (/XC /XN /XO) so in-place-encrypted backups can no longer
+overwrite good off-site copies; re-provision now says loudly when no key ceremony
+was shown; rotate-key warns with the COUNT of backups the rotation would orphan;
+the Restore Wizard runbook rewritten for the NATIVE path (four artifacts incl.
+keeping the installer off-server, copy the .aurbk+.manifest PAIR into BACKUP_DIR,
+verify-with-key then restore-with-key, old-admin-credential warning, TZ recheck).
+REMAINS OPERATIONAL-ONLY (hospital runbook, not code): physically rotating a
+DISCONNECTED off-site disk (the only ransomware control), recording the key in the
+three places and keeping OLD envelopes after rotation, keeping AuroraSetup.exe
+off-server, knowing an OLD admin credential for a cross-machine restore, and
+periodically running verify/test-restore. Server + frontend build clean; PS
+syntax-clean; installer files pure ASCII. Windows-only paths stay code-reviewed —
+the recorded-key cross-machine restore and the off-site alerting need the hardware
+pass. **
+
+**Last updated: 2026-07-24 · current through IN-APP RESTORE (no-commands recovery,
+owner-chosen). Backups + verify + test-restore were already 100% button-driven,
+but the DESTRUCTIVE in-place restore was CLI-only (AuroraIcu.Api.exe restore
+--yes) — deliberately kept off the web so a misclick/CSRF/stale session could not
+wipe the DB. Owner chose to make even recovery no-commands for the hospital. NEW
+POST /api/backup/restore {file, confirm} (BackupApi) → BackupService.RestoreInPlace,
+behind THREE gates: (1) backup.manage — System Administrator only, like every
+backup endpoint; (2) a typed confirmation phrase 'REPLACE' the UI forces the
+operator to enter, rejected server-side if absent; (3) the engine's OWN
+born-verify-first — RestoreInPlace restores into a scratch copy and proves it
+matches the manifest BEFORE touching live data, so a bad backup aborts with the
+live DB untouched. UI (BackupRecovery.tsx): a red 'Restore…' button per backup
+row opens a stark confirm panel (names what is lost, requires typing REPLACE),
+runs the restore, and shows the same source-vs-restored MATCH table as
+test-restore; the Restore-Wizard runbook is reframed as the DEAD-SERVER
+(cross-machine) path, with same-machine recovery now the button. Works in-process
+(RestoreInPlace already ClearAllPools + terminates backends via a maintenance
+connection + re-inspects the restored DB), with a brief unavailability window
+inherent to an in-place restore (stated in the UI). Server + frontend BUILD CLEAN.
+NOT added to the shared deployed E2E: a real restore leg would wipe the shared
+staging DB — the scratch test-restore leg already covers the engine; the
+destructive path stays proven by the CLI round-trip (#135/#139) + the owner's
+live same-machine drill (28 tables MATCH/MATCH). Reached during the go-live
+backup/restore drill on the installed Windows machine (backups now green after
+the pg_dump-PATH fix below; owner ran a full same-laptop restore, all tables
+MATCH). **
+
+**Last updated: 2026-07-24 · current through BACKUP pg_dump-NOT-FOUND FIX (go-live
+blocker found on the installed Windows machine). Clicking "Backup now" on the
+production install failed: "An error occurred trying to start process 'pg_dump'
+with working directory 'C:\Windows\system32'. The system cannot find the file
+specified." ROOT CAUSE: the backup engine (BackupService) shells out to
+pg_dump/pg_restore by BARE NAME, relying on PATH; but the AuroraServer Windows
+service runs from C:\Windows\system32 and the bundled pgsql\bin is NOT on PATH,
+so NO backup could run - the in-app button AND the nightly 02:00 task both die,
+silently, leaving a hospital with zero backups. (Never caught before because the
+#164 engine verification ran in Linux/Docker CI where the PGDG tools ARE on
+PATH.) FIX: BackupService.PgTool() resolves pg_dump/pg_restore to a real path -
+PG_BIN if set, else pgsql\bin as a SIBLING of the server\ exe dir
+(C:\Aurora\server -> C:\Aurora\pgsql\bin), else the bare name (Docker/CI, on
+PATH); all four call sites (RunPgSoft covers pg_dump + the scratch/live restores,
+plus the Verify pg_restore --list) route through it. aurora-provision.ps1 also
+writes PG_BIN=<install>\pgsql\bin into aurora.env (belt-and-suspenders). Server
+BUILDS CLEAN; the resolver returns the identical bare name in Docker/CI so the
+#164-verified path is unchanged (no regression). IMMEDIATE WORKAROUND for the
+already-installed old build (cannot read PG_BIN / sibling-resolve yet): add
+pgsql\bin to the MACHINE PATH + Restart-Service AuroraServer. NOTE the operator's
+observation that the wizard collects ONE location (Data location) under which
+backups live (their install -> D:\Aurora\backups, correctly OFF the C: system
+drive); a separate backup-drive field and the USB off-site copy (BACKUP_USB) are
+follow-ups. VERIFY on Windows: rebuild, reinstall (or hotfix PATH), Backup now
+-> BACKUP OK, then the restore drill. **
+
+**Last updated: 2026-07-24 · current through INSTALLER NETWORK REACHABILITY —
+two more findings from the first real production install, both of which broke the
+no-commands promise. (1) FIREWALL MISSED THE PUBLIC PROFILE: `aurora-provision.ps1`
+opened the `Aurora ICU` inbound rule for `-Profile Domain,Private` only. Windows
+readily classifies an unidentified hospital Wi-Fi/LAN as PUBLIC (no domain
+controller), so port 8080 stayed blocked from every other device: localhost
+worked on the server, `sc.exe query` showed both services RUNNING, yet every
+tablet/phone/laptop got "site can't be reached" until the operator ran
+`Set-NetFirewallRule -Profile ...Public` by hand. FIX: open `-Profile Any` (all
+profiles), remove-then-recreate so a prior narrow rule is corrected too -
+reachable from a Public-classified network right after a next-next-finish install
+with zero PowerShell. (2) FINISH-PAGE URL WAS WRONG/STALE: the wizard echoed what
+the operator typed, which lacked `:8080` and had gone stale after a reboot moved
+the DHCP address. FIX: provisioning now derives the AUTHORITATIVE url from the
+server's live default-route IPv4 + the bound port and relays it back
+(`-UrlOutFile`); the finish screen shows the real, working URL, drops a
+double-clickable desktop shortcut + `ACCESS.txt` (copyable, no retyping), folds
+every live-interface origin into CORS_ORIGINS, and WARNS when the address is
+DHCP-assigned (it will change on reboot - recommends a static IP / DHCP
+reservation). The wizard now PRE-FILLS the address from this machine's interface
+and takes the port as its own field (default 8080; enter 80 so staff can omit the
+port). PORT-80 TRADEOFF recorded in installer/README.md (80 = shortest URL but
+often contended by IIS/W3SVC -> worse failure if occupied; 8080 = uncontended,
+recommended default; either way the shortcut/ACCESS.txt mean the port is a
+one-time install decision, never a daily burden). Both installer files stay PURE
+ASCII (0 non-ASCII bytes) and `aurora-provision.ps1` re-verified SYNTAX-CLEAN
+(2129 tokens) + the wizard's embedded IP-detect one-liner parsed clean; aurora.iss
+is Windows-only, code-reviewed. VERIFY on the Windows machine: Public-network
+reachability from a second device + the finish URL/shortcut + the DHCP warning. **
+
+**Last updated: 2026-07-24 · current through TWO UI FIXES found on the first
+real-hardware production run (MSI Cyborg 15, 15.6" 1920x1080). (A) LAYOUT CUTS:
+the shared Configuration/User-Admin form grids (`.ua*` in
+`src/pages/UsersAdmin/UsersAdmin.css`) used pixel column minimums (520/360px)
+that, under Windows display scaling, pushed the right column off-screen and let a
+parent clip it. FIX: `minmax(0,...)` columns that SHRINK to fit instead of
+overflowing (same 1.5:1 / 1.1:1.2 look when wide), `.uafields` to
+`repeat(auto-fit,minmax(min(100%,150px),1fr))` so field pairs wrap to one column
+when narrow, `min-width:0;overflow-wrap:anywhere` on `.uawho`/`.uarole`, and the
+single-column breakpoint bumped 1280->1400px. (B) 403 UX: opening a section a
+role legitimately cannot see (e.g. the System Administrator — `users.manage`,
+`users.view`, `backup.manage`, NO `patients.view` — opening a screen that fetches
+`/api/icu/adt/beds`) hit the alarming red full-screen "AURORA API UNAVAILABLE"
+outage overlay. FIX: `apiGet` records whether a failed read was a 403 (permission
+boundary) vs a real outage (`lastReadWasForbidden`), `apiUnavailable()` carries
+`{what, forbidden}` on the latch + event, and `EnvironmentChrome` renders a calm
+slate/amber "YOU DON'T HAVE ACCESS TO THIS AREA" screen with a "go back" button
+for the forbidden case — the red outage overlay stays reserved for genuine
+unavailability. Frontend `npm run build` clean. NEXT: pull `src/` on the build
+laptop and rebuild `AuroraSetup.exe` to carry these onto the hospital machines. **
+
+**Last updated: 2026-07-23 · current through INSTALLER PROVISIONING HARDENING —
+the FIRST real-Windows run of `AuroraSetup.exe` (no-AI, `AuroraSetup-1.0.0.exe`,
+59.5 MB, built after the aurora.iss compile fixes landed on the real ISCC 6.7.3)
+hung INVISIBLY at "Setting up Aurora (database, services, first backup)…" with no
+way to close the wizard. Root cause: `aurora.iss` `ssPostInstall` runs
+`aurora-provision.ps1` via `Exec(... SW_HIDE, ewWaitUntilTerminated ...)` — a
+**hidden** window; on the test machine Windows Defender (Task-Manager evidence:
+Antimalware Service Executable busy at 4.4% while EVERY Aurora process sat at 0%
+CPU / 0 disk) was vetting a freshly-extracted `initdb.exe` / `AuroraIcu.Api.exe`
+on first launch, and a hidden window turns that stall into a frozen, uncloseable
+wizard that leaves NO log. FOUR fixes (all in `installer/`, CODE-REVIEWED-ONLY —
+verify on the Windows second machine): (1) `aurora-provision.ps1` step 0b
+`Add-MpPreference` exclusions for the install + data dirs and the pg/server/llama
+exe names — removes the AV stall AND is standard practice for a database server
+(live AV scanning of a Postgres data dir is a known problem); best-effort
+(try/catch, honest NOTE + AV-exclusion instructions on failure, NEVER fails the
+install). (2) `aurora-provision.ps1` step 0 always-on `Start-Transcript` →
+`{app}\provision.log` (+ `Stop-Transcript` in `Fail` and at `exit 0`) so a hidden
+hang always leaves a readable trail. (3) `aurora.iss` `SW_HIDE`→`SW_SHOW`:
+provisioning now runs in a VISIBLE console (operator sees each step, any AV prompt
+is answerable, closing it releases Setup) and the failure `MsgBox` now points at
+`provision.log` + the AV-exclusion remedy. (4) `aurora.iss` source-folder guard on
+`wpSelectDir` — refuses to install onto a git clone (`package.json`/`.git`
+present), preventing the `C:\Aurora` clone-collision when the installer is run on
+the BUILD machine (Setup's default dir `C:\Aurora` IS the clone from
+`git clone … aurora`). NEXT: rebuild the no-AI `AuroraSetup.exe` and re-run on a
+CLEAN Windows machine per `installer/README.md` items 1–13 + the backup-restore
+drill. FOLLOW-UP FIX (locale crash, found on the first non-Western-locale test
+machine): the installer `.ps1`/`.iss` were UTF-8 WITHOUT a BOM and contained
+non-ASCII characters (em-dashes, section-sign, arrows, ellipses, review emoji).
+Windows PowerShell 5.1 decodes a no-BOM file with the machine's ANSI codepage;
+on an ARABIC-locale PC those bytes mis-decode into characters that break
+`aurora-provision.ps1`'s SYNTAX → the install dies at "Setting up Aurora" with
+exit 1 (parse errors: "Missing closing '}'", "string missing terminator"). It
+parsed fine on the English build laptop (CP1252) and crashed on CP1256 — a
+landmine on every hospital PC in an Arabic-speaking region. FIX: all ten
+installer scripts converted to PURE ASCII (0 non-ASCII bytes; em-dash→`-`,
+`sec`, `->`, `...`, `>=`, emoji removed) so no locale can misread them; verified
+SYNTAX-CLEAN by the real PowerShell `Parser.ParseFile` (1522 tokens in
+aurora-provision.ps1). Flagged, deferred: `provision.log` did not survive Inno's
+rollback (write it to a durable path). **
+
+Prior: APP-ONLY UPDATER — `aurora-update` +
 `server/version.json` (§1–§2 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`; PR 2
 of the delivery-updates design). Delivers a new application build WITHOUT
 re-running the 5 GB installer, DATA-SAFELY. NEW `server/version.json` (emitted by
@@ -38,7 +230,7 @@ runspace (19/19: numeric semver + all five refusals). 🔎 CODE-REVIEWED-ONLY
 (Windows second machine, README verify items 16–17): the live service stop/swap/
 start, the ISS self-extractor, and the full ROLLBACK drill (fail health → restore
 server.prev + DB snapshot). NEXT: none queued — the delivery-updates design (§1/§2/
-§3/§3.5) is fully BUILT. **
+§3/§3.5) is fully BUILT.
 
 Prior: ON-BOOT AI AUTO-WIRE — the "just
 works" path (§3.5 of `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`). The validator

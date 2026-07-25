@@ -184,6 +184,28 @@ public static class BackupService
 
     /* ---------------- pg tooling + table inspection ---------------- */
 
+    /** Resolve a PostgreSQL client tool (pg_dump / pg_restore) to a runnable
+     *  path. In Docker and CI the PGDG tools are on PATH, so the bare name is
+     *  correct. In the NATIVE WINDOWS install the AuroraServer service runs from
+     *  C:\Windows\system32 with pgsql\bin NOT on PATH, so a bare "pg_dump" fails
+     *  with "The system cannot find the file specified" — for the in-app Backup
+     *  button AND the nightly task. Resolve it explicitly instead of trusting
+     *  PATH: PG_BIN if the installer set it, else pgsql\bin as a SIBLING of the
+     *  server\ exe directory (C:\Aurora\server -> C:\Aurora\pgsql\bin), else the
+     *  bare name (Docker/Linux, where it is on PATH). */
+    static string PgTool(string tool)
+    {
+        if (Path.IsPathRooted(tool)) return tool;
+        var dir = Environment.GetEnvironmentVariable("PG_BIN");
+        if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+            dir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "pgsql", "bin"));
+        if (!Directory.Exists(dir)) return tool;               // on PATH (Docker/CI)
+        var win = Path.Combine(dir, tool + ".exe");
+        if (File.Exists(win)) return win;
+        var nix = Path.Combine(dir, tool);
+        return File.Exists(nix) ? nix : tool;
+    }
+
     static void RunPg(string exe, string args, string? stdErrTo = null)
     {
         var (code, err) = RunPgSoft(exe, args);
@@ -198,7 +220,7 @@ public static class BackupService
      *  are in must not condemn a restore that actually reconstructed the database). */
     static (int code, string err) RunPgSoft(string exe, string args)
     {
-        var psi = new ProcessStartInfo(exe, args)
+        var psi = new ProcessStartInfo(PgTool(exe), args)
         { RedirectStandardError = true, RedirectStandardOutput = true };
         using var p = Process.Start(psi)!;
         var err = p.StandardError.ReadToEnd();
@@ -353,8 +375,20 @@ public static class BackupService
             File.WriteAllText(Path.Combine(BackupDir, name + ".sha256"),
                 $"{manifest.EncryptedSha256}  {name}\n");
 
-            // 4 — GFS retention (30/12/12, design §1) + audit + status
-            var pruned = GfsPrune(actor);
+            // 4 — GFS retention (30/12/12, design §1) + audit + status.
+            //     ISOLATED: the .aurbk, its manifest and its .sha256 are already
+            //     on disk and verified by this point, so the backup HAS
+            //     succeeded. A retention problem (one unreadable manifest, a
+            //     locked file) must never re-label that good backup as failed —
+            //     which would also make the nightly script skip the off-site
+            //     copy and leave the newest backup only on this machine.
+            List<string> pruned;
+            try { pruned = GfsPrune(actor); }
+            catch (Exception pruneEx)
+            {
+                pruned = [];
+                Audit("prune", "failed", actor, "", new { reason = pruneEx.Message });
+            }
             WriteStatus("success", name);
             Audit("backup", "success", actor, name, new
             {
@@ -419,6 +453,29 @@ public static class BackupService
         var keep = new HashSet<string>();
         DateTime At(BackupManifest m) => DateTime.Parse(m.CreatedAtUtc + "Z",
             null, System.Globalization.DateTimeStyles.AdjustToUniversal);
+
+        /* CLOCK-SKEW GUARD. Retention is entirely a function of "now" vs each
+           backup's stamp, so a machine whose clock jumps FORWARD (dead CMOS
+           battery, BIOS reset, a mistyped date) makes every existing backup
+           look older than the whole 30/12/12 window — and one nightly run
+           would delete the hospital's entire history. If the newest backup
+           looks implausibly old (> the monthly window), the clock is far more
+           likely wrong than the hospital having stopped backing up for a year
+           while still running this backup right now. Refuse to prune and say
+           so; keeping too much is always survivable, deleting everything is
+           not. */
+        var newestAge = now - all.Max(At);
+        if (newestAge > TimeSpan.FromDays(31.0 * KeepMonthly))
+        {
+            Audit("prune", "failed", actor, "", new
+            {
+                reason = "refused: the newest backup appears older than the entire retention window "
+                       + $"({Math.Floor(newestAge.TotalDays)} days) — the system clock is probably wrong. "
+                       + "Nothing was deleted. Fix the clock, then prune.",
+                nowUtc = NowStamp(), newestBackupUtc = all.Max(At).ToString("yyyy-MM-dd HH:mm:ss"),
+            });
+            return [];
+        }
         foreach (var g in all.GroupBy(m => At(m).Date))
             if ((now.Date - g.Key).TotalDays < KeepDaily)
                 keep.Add(g.OrderByDescending(At).First().File);
@@ -430,6 +487,11 @@ public static class BackupService
         foreach (var g in all.GroupBy(m => (At(m).Year, At(m).Month)))
             if (((now.Year - g.Key.Year) * 12 + now.Month - g.Key.Month) < KeepMonthly)
                 keep.Add(g.OrderByDescending(At).First().File);
+        /* NEVER PRUNE TO NOTHING. Whatever the arithmetic says, at least the
+           newest backup survives — a retention pass that empties the backup
+           directory is a bug or a bad clock, never a correct outcome. */
+        keep.Add(all.OrderByDescending(At).First().File);
+
         var pruned = new List<string>();
         foreach (var m in all.Where(m => !keep.Contains(m.File)))
         {
@@ -497,7 +559,7 @@ public static class BackupService
             }
             try
             {
-                var psi = new ProcessStartInfo("pg_restore", $"--list \"{plain}\"")
+                var psi = new ProcessStartInfo(PgTool("pg_restore"), $"--list \"{plain}\"")
                 { RedirectStandardOutput = true, RedirectStandardError = true };
                 using var p = Process.Start(psi)!;
                 var toc = p.StandardOutput.ReadToEnd();
@@ -527,7 +589,12 @@ public static class BackupService
 
     /* -------- test restore (isolated scratch — live data untouched) ------ */
 
-    public static TestRestoreResultDto TestRestore(string file, string actor)
+    /** suppliedKeyHex: the RECORDED off-server key (sealed envelope / password
+     *  manager). Required on FRESH HARDWARE, where the newly-installed server
+     *  generated its OWN key at init-key and therefore cannot decrypt a backup
+     *  made by the dead machine — without it, DecryptFile refuses with a
+     *  key-id mismatch. Omitted = use the server's own key (same-machine). */
+    public static TestRestoreResultDto TestRestore(string file, string actor, string? suppliedKeyHex = null)
     {
         var checks = new List<CheckResult>();
         var tables = new List<TableComparison>();
@@ -539,7 +606,7 @@ public static class BackupService
         {
             var manifest = ReadManifest(file) ?? throw new InvalidOperationException(
                 $"No manifest for {file} — cannot compare counts without the recorded source state.");
-            var key = LoadKey();
+            var key = LoadKey(suppliedKeyHex);
             plain = Path.Combine(BackupDir, ".tmp", Path.GetFileName(file) + ".tr");
             Directory.CreateDirectory(Path.GetDirectoryName(plain)!);
             DecryptFile(enc, plain, key);
@@ -652,7 +719,12 @@ public static class BackupService
      *    3. verify the live database against the manifest.
      *  The aurora role needs CREATEDB (granted by aurora-provision.ps1) for the
      *  scratch born-verify and the CREATE. Audited as a 'restore' event. */
-    public static TestRestoreResultDto RestoreInPlace(string file, string actor)
+    /** suppliedKeyHex: the RECORDED off-server key. THE cross-machine path —
+     *  a fresh install generated its own key at init-key, so restoring the dead
+     *  server's backup on new hardware REQUIRES the recorded key here; without
+     *  it DecryptFile refuses (key-id mismatch) and the rebuild is impossible
+     *  from the app. Omitted = the server's own key (same-machine recovery). */
+    public static TestRestoreResultDto RestoreInPlace(string file, string actor, string? suppliedKeyHex = null)
     {
         var checks = new List<CheckResult>();
         var tables = new List<TableComparison>();
@@ -665,7 +737,7 @@ public static class BackupService
             if (!File.Exists(enc)) throw new InvalidOperationException($"{file} not found in {BackupDir}");
             var manifest = ReadManifest(file) ?? throw new InvalidOperationException(
                 $"No manifest for {file} — refusing to restore without the recorded source state to verify against.");
-            var key = LoadKey();
+            var key = LoadKey(suppliedKeyHex);
             plain = Path.Combine(BackupDir, ".tmp", Path.GetFileName(file) + ".rp");
             Directory.CreateDirectory(Path.GetDirectoryName(plain)!);
             DecryptFile(enc, plain, key);
@@ -793,20 +865,86 @@ public static class BackupService
             { health = "failed"; detail = "The most recent backup attempt FAILED. The last good backup is intact, but the pipeline needs attention before the 24h RPO is breached."; }
         }
         // external disk status: honestly from the audit trail (see ExternalDiskDto)
-        ExternalDiskDto usb;
-        try
+        var usb = ExternalDiskStatus();
+
+        /* The off-site copy escalates health. Without this, the dashboard reads
+           HEALTHY while the ONLY copy of the hospital's record sits on the same
+           disk as the database — which is precisely the silent failure the
+           design exists to prevent. A never-configured off-site copy is called
+           out on every install; a configured one that stops being seen (nobody
+           plugged the rotated disk back in) goes stale and says so. This never
+           MASKS a primary-backup problem: the primary rules stay first. */
+        if (health == "ok")
         {
-            using var db = Ctx();
-            var last = db.Set<BackupEventRow>().Where(e => e.Kind == "usb-copy")
-                .OrderByDescending(e => e.Id).FirstOrDefault();
-            usb = last == null ? new ExternalDiskDto(null, null, "no external-disk copy recorded yet")
-                : new ExternalDiskDto(last.At, last.Outcome, last.DetailJson);
+            if (!usb.Configured)
+            {
+                health = "offsite-none";
+                detail = "NO OFF-SITE COPY IS CONFIGURED. Every backup lives only on this server — " +
+                    "one disk failure, fire or theft destroys the database AND every backup together. " +
+                    "Set BACKUP_USB to a removable/second disk and rotate it off-site.";
+            }
+            else if (usb.Severity == "failed")
+            {
+                health = "offsite-failed";
+                detail = "The most recent OFF-SITE COPY FAILED. On-server backups are fine, but the " +
+                    "disaster copy is not being made — check the external disk is connected and healthy.";
+            }
+            else if (usb.Severity == "stale")
+            {
+                health = "offsite-stale";
+                detail = $"NO OFF-SITE COPY IN {usb.StaleDays} DAYS (limit {usb.MaxAgeDays}). The external disk " +
+                    "has not been seen — if it was rotated out, plug the next one in. A backup that " +
+                    "silently stops going off-site is the classic failure.";
+            }
         }
-        catch { usb = new ExternalDiskDto(null, null, "event store unavailable"); }
         return new BackupStatusDto(health, detail, lastSuccess, lastOutcome,
             NextScheduled(), Schedule, manifests.Count,
             manifests.Sum(m => m.EncryptedSizeBytes), RetentionSummary(), usb,
             CurrentKeyId(), BackupDir);
+    }
+
+    /** How many days without a successful off-site copy before the dashboard
+     *  calls it stale. Default 8 = one week plus a day of slack, so a weekly
+     *  rotation does not cry wolf but a forgotten disk is caught fast. */
+    public static int UsbMaxAgeDays => EnvInt("BACKUP_USB_MAX_AGE_DAYS", 8);
+
+    /** Honest off-site state. "Configured" is read from BACKUP_USB, which the
+     *  nightly script also reads — so the dashboard can distinguish "the
+     *  hospital never set up an off-site copy" from "it is set up but the disk
+     *  has not been seen", two very different conversations. */
+    static ExternalDiskDto ExternalDiskStatus()
+    {
+        var configured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("BACKUP_USB"));
+        BackupEventRow? last = null, lastOk = null;
+        try
+        {
+            using var db = Ctx();
+            var rows = db.Set<BackupEventRow>().Where(e => e.Kind == "usb-copy")
+                .OrderByDescending(e => e.Id).Take(50).ToList();
+            last = rows.FirstOrDefault();
+            lastOk = rows.FirstOrDefault(e => e.Outcome == "success");
+        }
+        catch
+        {
+            return new ExternalDiskDto(null, null, "event store unavailable",
+                configured, null, configured ? "unknown" : "none", UsbMaxAgeDays);
+        }
+        if (!configured)
+            return new ExternalDiskDto(last?.At, last?.Outcome,
+                "no off-site copy configured — BACKUP_USB is not set, so backups exist ONLY on this server",
+                false, null, "none", UsbMaxAgeDays);
+        if (lastOk == null)
+            return new ExternalDiskDto(last?.At, last?.Outcome,
+                last == null
+                    ? "configured, but no off-site copy has ever succeeded"
+                    : "configured, but the last off-site copy attempt failed",
+                true, null, "failed", UsbMaxAgeDays);
+        var days = (int)Math.Floor((DateTime.UtcNow - DateTime.Parse(lastOk.At + "Z",
+            null, System.Globalization.DateTimeStyles.AdjustToUniversal)).TotalDays);
+        var severity = last is { Outcome: "failed" } ? "failed"
+            : days >= UsbMaxAgeDays ? "stale" : "ok";
+        return new ExternalDiskDto(lastOk.At, last?.Outcome, last?.DetailJson,
+            true, days, severity, UsbMaxAgeDays);
     }
 
     /** "daily HH:mm" → the next occurrence in the hospital TZ, rendered as

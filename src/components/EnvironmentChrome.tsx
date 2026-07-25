@@ -34,14 +34,18 @@ import { apiHealthUrl, apiUnavailableLatch } from '../lib/api'
 type GateState =
   | { kind: 'ok' }
   | { kind: 'mismatch'; reported: string }
-  | { kind: 'api-unavailable'; what: string }
+  | { kind: 'api-unavailable'; what: string; forbidden: boolean }
 
 export function EnvironmentGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GateState>({ kind: 'ok' })
 
   useEffect(() => {
-    const onUnavailable = (e: Event) =>
-      setState(s => (s.kind === 'ok' ? { kind: 'api-unavailable', what: String((e as CustomEvent).detail ?? '') } : s))
+    const onUnavailable = (e: Event) => {
+      const d = (e as CustomEvent).detail as { what?: string; forbidden?: boolean } | string | undefined
+      const what = typeof d === 'string' ? d : String(d?.what ?? '')
+      const forbidden = typeof d === 'object' && d !== null ? Boolean(d.forbidden) : false
+      setState(s => (s.kind === 'ok' ? { kind: 'api-unavailable', what, forbidden } : s))
+    }
     window.addEventListener('aurora:api-unavailable', onUnavailable)
     /* the DIRECT-LOAD race (found by PR 1's production verification): on
        first load of a refusing route, the route's effects run before
@@ -49,7 +53,7 @@ export function EnvironmentGate({ children }: { children: ReactNode }) {
        carries the refusal across that gap */
     const latched = apiUnavailableLatch()
     if (latched !== null)
-      setState(s => (s.kind === 'ok' ? { kind: 'api-unavailable', what: latched } : s))
+      setState(s => (s.kind === 'ok' ? { kind: 'api-unavailable', what: latched.what, forbidden: latched.forbidden } : s))
 
     const url = apiHealthUrl()
     if (url !== null) {
@@ -77,6 +81,28 @@ export function EnvironmentGate({ children }: { children: ReactNode }) {
           Refusing to operate: a cross-environment session could read or write the wrong
           system of record. This is a deployment/configuration error to fix — served from{' '}
           <span className="envmono">{window.location.origin}</span>.
+        </p>
+      </div>
+    )
+  }
+  if (state.kind === 'api-unavailable' && state.forbidden) {
+    /* a 403 is an ACCESS boundary, not an outage — say so plainly instead of
+       the alarming red "API unavailable". A role legitimately lacking a
+       permission is normal (e.g. the System Administrator opening a clinical
+       area). Offer a way back, not a "check the service / reload". */
+    return (
+      <div className="envrefusal envforbidden" role="alert">
+        <h1>YOU DON'T HAVE ACCESS TO THIS AREA</h1>
+        <p>
+          Your role doesn't include permission to open this section
+          (<b>{state.what || 'this area'}</b>). This is a normal access boundary,
+          not an error — a different role, or an administrator, can open it.
+        </p>
+        <p>
+          <button
+            className="envretry"
+            onClick={() => (window.history.length > 1 ? window.history.back() : window.location.assign('/'))}
+          >go back</button>
         </p>
       </div>
     )
