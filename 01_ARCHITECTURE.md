@@ -252,29 +252,50 @@ depth); server-side permission enforcement per endpoint is Stage 10
 Phase 3+ scope. Finer-grained permissions per profile come in a later
 stage — these tables are provisional.
 
+*[Superseded 2026-07-25 — MATRIX REFRESH (the File Attachments PR's flagged
+fix): the tables below had drifted badly from the shipped code — they still
+mapped IT Administrator into the office profile, showed Administrator holding
+users.manage, and had NO SystemAdministrator row at all, none of which has
+been true since the User Management design (§5) shipped. The tables are now
+regenerated to match the runtime source of truth EXACTLY:
+`server/Core/Identity/Rbac.cs` (authoritative, per-request) mirrored by
+`src/lib/session.ts`. When they disagree with this file again, the CODE
+wins and this section gets the next refresh note.]*
+
 JobTitle → PermissionProfile:
 | PermissionProfile    | JobTitles |
 |---|---|
-| SeniorDoctor         | Consultant *(Stage 11 F4 decision: Doctor's SUPERSET + the Consultant-tier observation authorities; v1 maps Consultant alone — widening is a row edit)* |
+| SeniorDoctor         | Consultant *(Stage 11 F4: Doctor's SUPERSET; v1 maps Consultant alone — widening is a row edit)* |
 | Doctor               | Specialist, Senior Resident, Resident, Intern |
 | Nurse                | Staff Nurse, Charge Nurse, Head Nurse |
 | Pharmacist           | Pharmacist, Clinical Pharmacist |
 | RespiratoryTherapist | Respiratory Therapist |
 | Ancillary            | Laboratory Technician, Radiology Technician |
 | AlliedHealth         | Physiotherapist, Dietitian |
-| Administrator        | Hospital Administrator, IT Administrator, Receptionist, Billing Officer, Medical Records Officer |
+| Administrator        | Hospital Administrator, Receptionist, Billing Officer, Medical Records Officer *(the OFFICE profile — administrative, identity-tier reads only)* |
+| SystemAdministrator  | IT Administrator, System Administrator *(User Management §5: manages WHO EXISTS and WHAT ACCESS — no clinical access, ever, not even patients.view)* |
 
 PermissionProfile → Permissions (and Dashboard landing view):
 | Profile | Permissions | Landing |
 |---|---|---|
-| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, notes.document, ai.view, adt.admit, adt.discharge, observations.record (Stage 11 §4 F1) | /workspace |
-| SeniorDoctor         | everything Doctor has + observations.correct (Stage 11 §8 F2 — tier-2 retrospective correction) + observations.configure (Stage 11 §3 F3 — group enablement) + ordersets.manage *(moved from Pharmacist 2026-07-20, per the project owner: an order set is a clinical protocol — sepsis bundle, DKA protocol — and authoring one is a senior medical decision; the drugs a set references still come from the Pharmacy-governed formulary, so pharmacy governance applies at the formulary level; APPLYING a set stays orders.create/orders.sign — any ordering clinician)*. HARD CONSTRAINT (§4): the observation authorities NEVER sit on the office Administrator profile | /workspace |
-| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, results.view, ai.view, adt.transfer, observations.record (Stage 11 §4 F1), handoff.document *(added 2026-07-18, per the project owner: SBAR handoff entries are nurse-only for now — the doctor handoff is a separate record, not yet designed, and the two must NOT be merged; the write additionally requires an ACTIVE nurse assignment on the open encounter, checked server-side — see the scoped exception under Locked Decisions)* | /nurse |
-| Administrator        | admin.view, patients.view, users.manage | /admin |
-| Pharmacist           | patients.view, orders.view, results.view, formulary.manage (Layer 4 — maintain the formulary; ordersets.manage moved to SeniorDoctor 2026-07-20) | /beds |
-| RespiratoryTherapist | patients.view, orders.view, results.view, ai.view (view-only) | /beds |
-| Ancillary            | patients.view, orders.view, results.view, results.create, labcatalog.manage (Layer 4 — maintain the lab test catalogue) | /beds |
-| AlliedHealth         | patients.view, results.view (view-only) | /beds |
+| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, results.document, notes.document, ai.view, adt.admit, adt.discharge, observations.record, patients.measure, codestatus.set, attachments.view, attachments.add | /workspace |
+| SeniorDoctor         | everything Doctor has + results.correct, labcatalog.manage, ordersets.manage, observations.correct, observations.configure, assignments.manage, codestatus.manage, imagingcatalog.manage, beds.manage, dispositions.manage, isolation.manage, shifts.manage. HARD CONSTRAINT: the Consultant-tier authorities NEVER sit on the office Administrator profile | /workspace |
+| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, handoff.document, results.view, results.document, ai.view, adt.transfer, observations.record, patients.measure, attachments.view, attachments.add | /nurse |
+| Administrator        | admin.view, patients.view, identity.correct, hospital.configure, beds.manage *(office profile: NO clinical panes — no orders/results/ai/attachments; users.manage moved to SystemAdministrator)* | /admin |
+| SystemAdministrator  | users.manage, users.view, backup.manage — and nothing else (no patients.view: access governance without patient-data reach) | /admin/users |
+| Pharmacist           | patients.view, orders.view, results.view, attachments.view, formulary.manage, frequencies.manage | /beds |
+| RespiratoryTherapist | patients.view, orders.view, results.view, ai.view, attachments.view | /beds |
+| Ancillary            | patients.view, orders.view, results.view, results.create, labcatalog.manage, imagingcatalog.manage, attachments.view, attachments.add | /beds |
+| AlliedHealth         | patients.view, results.view, attachments.view | /beds |
+
+attachments.view / attachments.add (File Attachments, 2026-07-25 owner
+decision): view = the chart's CLINICAL tier — granted exactly where
+results.view is, because attachments are result-like clinical documents
+(the identity-tier office Administrator is excluded exactly as it is from
+the orders/results/ai panes); add = the DOCUMENTING roles only (uploading
+is a clinical write). Retraction has no atom: Tier-1 is the uploader inside
+the 5-minute window, Tier-2 rides results.correct — the labs correction
+convention.
 
 Route guards: /workspace = orders.sign · /nurse = meds.administer ·
 /admin = admin.view · /admin/users = users.manage (Layer 3) ·

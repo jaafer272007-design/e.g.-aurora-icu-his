@@ -205,6 +205,24 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 app.UseCors();
+/* Attachments upload: a 20 MB file is ~27 MB as base64 JSON - uncomfortably
+   close under Kestrel's 30,000,000-byte default body cap, so near-cap files
+   would fail. Raise the cap EXPLICITLY and ONLY for the attachment upload
+   path (derived from ATTACH_MAX_MB, so raising the knob raises this too);
+   every other endpoint keeps the tight default. Must run BEFORE anything
+   reads the body - minimal-API JSON binding happens at endpoint invocation. */
+app.Use(async (ctx, next) =>
+{
+    if (HttpMethods.IsPost(ctx.Request.Method)
+        && ctx.Request.Path.StartsWithSegments("/api/icu/patients")
+        && ctx.Request.Path.Value!.EndsWith("/attachments", StringComparison.OrdinalIgnoreCase))
+    {
+        var sizeFeature = ctx.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+        if (sizeFeature is { IsReadOnly: false })
+            sizeFeature.MaxRequestBodySize = Aurora.Core.Attachments.AttachmentsApi.MaxUploadRequestBytes;
+    }
+    await next();
+});
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -301,6 +319,7 @@ VocabApi.Map(app);
 Aurora.Core.Observations.ObservationsApi.Map(app);
 Aurora.Core.Observations.ObservationCatalogApi.Map(app);
 Aurora.Core.Nursing.HandoffApi.Map(app);
+Aurora.Core.Attachments.AttachmentsApi.Map(app);
 Aurora.Core.Backup.BackupApi.Map(app);
 
 /* SPA fallback (only when this service carries the frontend): unmatched

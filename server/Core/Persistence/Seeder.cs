@@ -168,6 +168,7 @@ static class Seeder
         Aurora.Core.Observations.ObservationCatalog.InitializeCounters(db);
         AiLogic.InitializeCounters(db);
         Aurora.Core.Nursing.HandoffLogic.InitializeCounters(db);
+        Aurora.Core.Attachments.AttachmentsApi.InitializeCounters(db);
     }
 
     /* An arbitrary but STABLE 64-bit key every Aurora instance contends

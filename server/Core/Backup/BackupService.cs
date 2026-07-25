@@ -897,10 +897,23 @@ public static class BackupService
                     "silently stops going off-site is the classic failure.";
             }
         }
+        /* attachment corpus size - every byte is inside every future dump and
+           every retained copy, so it belongs on this dashboard. Best-effort:
+           a database restored from a pre-attachments backup has no table
+           until the next boot migrates it (0 then, never an error). */
+        long attachBytes = 0;
+        try
+        {
+            using var db = Ctx();
+            attachBytes = db.Attachments.AsNoTracking().Sum(a => (long?)a.SizeBytes) ?? 0L;
+        }
+        catch { /* table absent or store unreachable - report 0, never fail Status */ }
+
         return new BackupStatusDto(health, detail, lastSuccess, lastOutcome,
             NextScheduled(), Schedule, manifests.Count,
             manifests.Sum(m => m.EncryptedSizeBytes), RetentionSummary(), usb,
-            CurrentKeyId(), BackupDir);
+            CurrentKeyId(), BackupDir,
+            attachBytes, Aurora.Core.Attachments.AttachmentsApi.MaxTotalMb);
     }
 
     /** How many days without a successful off-site copy before the dashboard

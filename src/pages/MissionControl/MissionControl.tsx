@@ -24,6 +24,7 @@ import type { CoverageRow, CodeStatusEntry, IsolationTypeEntry, PatientAlert, Pa
 import { IdentityDialog } from './IdentityDialog'
 import { AssignmentDialog } from './AssignmentDialog'
 import { LatestObservationsCard } from './LatestObservationsCard'
+import { AttachmentsCard } from './AttachmentsCard'
 import { DigitalTwin } from './DigitalTwin'
 import { LabsCard } from './LabsCard'
 import { WeightHeightCard } from './WeightHeightCard'
@@ -630,6 +631,11 @@ export function MissionControl() {
           )}
 
           {detail && <LabsCard labs={detail.labs} />}
+
+          {/* File Attachments (2026-07-25): patient-scoped, DB-resident,
+              clinical-tier view / documenting-roles add — the card gates
+              itself on attachments.view and renders nothing without it */}
+          <AttachmentsCard patientId={patientId ?? ''} />
 
           {detail && (
             <Card id="alerts"

@@ -112,7 +112,9 @@ export type Permission =
   | 'isolation.manage'     // Configuration Vocabularies: maintain the IPC isolation-type vocabulary (CLINICAL governance — SeniorDoctor ONLY; never office admin). Setting a PATIENT's isolation rides observations.record, exactly the codestatus.set split.
   | 'shifts.manage'        // Configuration Vocabularies: maintain the working-shift vocabulary (OPERATIONAL/clinical governance — SeniorDoctor ONLY; never office admin). Since the Assignment Simplification nothing references shifts at assignment time (the opt-out model has no per-assignment shift); the vocabulary remains hospital data and historical #114 rows keep resolving their stored codes.
   | 'frequencies.manage'   // Configuration Vocabularies: maintain the NAMED medication-frequency vocabulary (PHARMACY governance — Pharmacist ONLY, the formulary.manage precedent). The structured q<n>h pattern stays code, never a hospital list.
-  | 'backup.manage'        // Backup & DR (the hard go-live gate): the Backup & Recovery area — run/verify/test-restore backups, rotate the key, read the immutable audit (IT OPERATIONS — System Administrator ONLY per the design's §1 owner decision; every clinical profile 403s). Backups are opaque encrypted blobs: managing them never reads patient data, so the profile's clinical exclusion is untouched.
+  | 'backup.manage'
+  | 'attachments.view'     // File Attachments: read/open attached files — the chart's CLINICAL tier (granted exactly where results.view is; the identity-tier office Administrator is excluded as from the orders/results/ai panes)
+  | 'attachments.add'      // File Attachments: upload a file to a patient's chart — a CLINICAL WRITE, on the documenting roles only (Doctor/SeniorDoctor/Nurse/Ancillary). Retraction has no atom: Tier-1 = uploader + 5-min window, Tier-2 rides results.correct        // Backup & DR (the hard go-live gate): the Backup & Recovery area — run/verify/test-restore backups, rotate the key, read the immutable audit (IT OPERATIONS — System Administrator ONLY per the design's §1 owner decision; every clinical profile 403s). Backups are opaque encrypted blobs: managing them never reads patient data, so the profile's clinical exclusion is untouched.
 
 /* Provisional permission sets (finer-grained permissions come in a later
    stage) — all 7 profiles carry REAL sets now; the four view-only profiles
@@ -124,7 +126,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'results.document', 'notes.document', 'ai.view',
     'adt.admit', 'adt.discharge', 'observations.record', 'patients.measure',
-    'codestatus.set',
+    'codestatus.set', 'attachments.view', 'attachments.add',
   ],
   /* Stage 11 F4: Doctor's SUPERSET + the Consultant-tier observation
      authorities (correct/configure). HARD CONSTRAINT: these never sit
@@ -143,6 +145,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'assignments.manage', 'codestatus.set', 'codestatus.manage',
     'imagingcatalog.manage', 'beds.manage',
     'dispositions.manage', 'isolation.manage', 'shifts.manage',
+    'attachments.view', 'attachments.add',
   ],
   /* administer + document only — cannot originate orders (locked decision).
      results.document (Lab Result-Entry): the ICU bedside team transcribes
@@ -151,7 +154,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   Nurse: [
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
     'notes.document', 'handoff.document', 'results.view', 'results.document', 'ai.view', 'adt.transfer',
-    'observations.record', 'patients.measure',
+    'observations.record', 'patients.measure', 'attachments.view', 'attachments.add',
   ],
   /* administrative landing view + census-level board + user administration */
   /* users.manage MOVED to the System Administrator (User Management
@@ -177,19 +180,19 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   /* medication-chart review + Layer 4: maintaining the formulary is
      PHARMACY's authority (the same polarity flip as results.create on
      Ancillary — doctors/nurses/administrators are 403'd on mutations) */
-  Pharmacist: ['patients.view', 'orders.view', 'results.view', 'formulary.manage',
+  Pharmacist: ['patients.view', 'orders.view', 'results.view', 'attachments.view', 'formulary.manage',
     'frequencies.manage'],
   /* vent-focused: orders, ABGs, and risk trajectories, view-only */
-  RespiratoryTherapist: ['patients.view', 'orders.view', 'results.view', 'ai.view'],
+  RespiratoryTherapist: ['patients.view', 'orders.view', 'results.view', 'ai.view', 'attachments.view'],
   /* lab/radiology technicians: pending order worklist + results; entering
      a RESULT via results.create is the producing service's authority
      (results audit PR / future LIS feed) — doctors/nurses are 403'd on
      create, the usual polarity flip. The manual documentation path is a
      SEPARATE atom (results.document, on the clinical profiles) — the two
      authorities are reconciled, not merged. */
-  Ancillary: ['patients.view', 'orders.view', 'results.view', 'results.create', 'labcatalog.manage', 'imagingcatalog.manage'],
+  Ancillary: ['patients.view', 'orders.view', 'results.view', 'results.create', 'labcatalog.manage', 'imagingcatalog.manage', 'attachments.view', 'attachments.add'],
   /* physio/dietitian: chart + results, view-only */
-  AlliedHealth: ['patients.view', 'results.view'],
+  AlliedHealth: ['patients.view', 'results.view', 'attachments.view'],
 }
 
 /* profile landing view — what "Dashboard" resolves to */

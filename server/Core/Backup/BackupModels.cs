@@ -87,7 +87,14 @@ public record BackupStatusDto(
     RetentionDto Retention,
     ExternalDiskDto ExternalDisk,
     string KeyId,                // the CURRENT key's id ("" = no key yet)
-    string BackupDir);
+    string BackupDir,
+    /* File Attachments (2026-07-25): attachment bytes live IN the database,
+       so every byte here rides inside every dump and every retained backup
+       copy - the growth must be VISIBLE where the operator already looks.
+       AttachmentBytes = current corpus (raw file bytes, all rows incl.
+       retracted); AttachmentMaxTotalMb = the ATTACH_MAX_TOTAL_MB brake. */
+    long AttachmentBytes,
+    int AttachmentMaxTotalMb);
 
 public record RetentionDto(int DailyKeep, int WeeklyKeep, int MonthlyKeep,
     int DailyHeld, int WeeklyHeld, int MonthlyHeld);

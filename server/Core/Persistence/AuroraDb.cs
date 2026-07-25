@@ -86,6 +86,11 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
        Lives in this same database ON PURPOSE: every backup captures its
        own audit trail (design §5). */
     public DbSet<Aurora.Core.Backup.BackupEventRow> BackupEvents => Set<Aurora.Core.Backup.BackupEventRow>();
+    /* File attachments on the patient chart: bytes IN the database
+       (base64 text - the logo precedent generalized) so the one nightly
+       pg_dump keeps capturing the entire hospital record; patient-scoped,
+       amend-not-erase (retract, never delete) */
+    public DbSet<Aurora.Core.Attachments.AttachmentRow> Attachments => Set<Aurora.Core.Attachments.AttachmentRow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {

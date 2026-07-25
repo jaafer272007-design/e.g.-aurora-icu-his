@@ -201,6 +201,17 @@ export function BackupRecovery() {
                     <div><span>Next scheduled</span><b className="num">{status.nextScheduled ? displayStamp(status.nextScheduled) : '—'}</b></div>
                     <div><span>Schedule</span><b>{status.schedule} (hospital time) · Windows Task Scheduler</b></div>
                     <div><span>On-server target</span><b className="num">{status.backupCount} backups · {fmtBytes(status.totalBytes)} · {status.backupDir}</b></div>
+                    {status.attachmentBytes != null && (
+                      <div>
+                        <span>Attachments in database</span>
+                        {/* every attachment byte rides inside every dump and every
+                            retained copy — growth must be visible HERE, before it
+                            slows the nightly backup or fills the backup disk */}
+                        <b className="num">
+                          {fmtBytes(status.attachmentBytes)} of {status.attachmentMaxTotalMb ?? '?'} MB cap (ATTACH_MAX_TOTAL_MB) · carried inside every backup
+                        </b>
+                      </div>
+                    )}
                     <div>
                       <span>Retention (GFS, auto-pruned)</span>
                       <b>{status.retention.dailyHeld}/{status.retention.dailyKeep} daily · {status.retention.weeklyHeld}/{status.retention.weeklyKeep} weekly · {status.retention.monthlyHeld}/{status.retention.monthlyKeep} monthly</b>

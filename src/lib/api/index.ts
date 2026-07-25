@@ -2280,3 +2280,68 @@ export function restoreBackup(file: string, confirm: string, key?: string): Prom
 export function rotateBackupKey(): Promise<AdtWriteResult<BackupRotateKeyResult>> {
   return backupPost<BackupRotateKeyResult>('/api/backup/rotate-key', 'backup rotate-key')
 }
+
+/* ---------------- File Attachments (patient chart) ---------------- */
+/* DB-resident (base64 text — the logo precedent generalized) so the one
+   nightly pg_dump keeps capturing the ENTIRE hospital record; list reads
+   never carry bytes — the authenticated byte endpoint serves them. */
+
+export type PatientAttachment = {
+  attachmentId: string
+  patientId: string
+  encounterId: string
+  fileName: string
+  mime: string
+  sizeBytes: number
+  sha256: string
+  description: string
+  uploadedAt: string
+  uploadedBy: string
+  uploadedRole: string
+  retracted: boolean
+  retractedAt: string
+  retractedBy: string
+  retractReason: string
+  events: { time: string; actor: string; action: string; detail?: string }[]
+}
+
+/** GET /api/icu/patients/:patientId/attachments — metadata only, newest
+ *  first (attachments.view — the chart's clinical tier). */
+export async function getAttachments(patientId: string): Promise<PatientAttachment[] | null> {
+  return apiGet<PatientAttachment[]>(
+    `/api/icu/patients/${encodeURIComponent(patientId)}/attachments`, 'attachments')
+}
+
+/** POST /api/icu/patients/:patientId/attachments — upload (attachments.add,
+ *  a clinical write). JSON base64 like the logo; the server re-validates
+ *  size (ATTACH_MAX_MB), type (PDF/PNG/JPEG magic bytes) and the corpus cap. */
+export function uploadAttachment(patientId: string, draft: {
+  fileName: string; mime: string; dataBase64: string; description?: string
+}): Promise<AdtWriteResult<PatientAttachment>> {
+  return usersWrite<PatientAttachment>(
+    `/api/icu/patients/${encodeURIComponent(patientId)}/attachments`, 'attachment upload', draft)
+}
+
+/** POST /api/icu/attachments/:id/retract — the audited soft-hide (never a
+ *  delete): Tier-1 uploader in the 5-min window, Tier-2 results.correct
+ *  with reason required. */
+export function retractAttachment(attachmentId: string, reason?: string): Promise<AdtWriteResult<PatientAttachment>> {
+  return usersWrite<PatientAttachment>(
+    `/api/icu/attachments/${encodeURIComponent(attachmentId)}/retract`, 'attachment retract',
+    { ...(reason && reason.trim() !== '' ? { reason: reason.trim() } : {}) })
+}
+
+/** GET /api/icu/attachments/:id/bytes — the AUTHENTICATED byte endpoint
+ *  (PHI: unlike the logo this is never anonymous). Returns the blob for an
+ *  object-URL open; null = unreachable, {error} = server refusal. */
+export async function fetchAttachmentBlob(attachmentId: string): Promise<{ blob: Blob } | { error: string } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/api/icu/attachments/${encodeURIComponent(attachmentId)}/bytes`,
+      { headers: { ...authHeaders() } })
+    if (res.ok) return { blob: await res.blob() }
+    const err = (await res.json().catch(() => null)) as { error?: string } | null
+    return { error: err?.error ?? `Rejected (${res.status})` }
+  } catch {
+    return null
+  }
+}
