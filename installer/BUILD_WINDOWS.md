@@ -80,7 +80,7 @@ Preflight lines, then five build banners, then the result:
 == 3. private PostgreSQL binaries ==
 == 4. AI model + llama-server (the native AI service — PR C) ==
 == 5. compile the installer ==
-[build-all] DONE  ->  C:\aurora\installer\Output\AuroraSetup-1.0.0.exe   (5.1 GB)
+[build-all] DONE  ->  C:\aurora\installer\Output\AuroraSetup-1.0.0-UNPROTECTED.exe   (5.1 GB)
 ```
 
 **Step 5 compresses ~5 GB at max LZMA2 — expect 20–60 min for an AI build**
@@ -128,52 +128,89 @@ Put all of these in one folder, e.g. `C:\aurora-ai\llama\`:
 
 ## Output — where it lands and how big
 
-- **Path:** `installer\Output\AuroraSetup-1.0.0.exe`
+- **Plain build:** `installer\Output\AuroraSetup-1.0.0-UNPROTECTED.exe`
+- **Protected build:** `installer\Output\AuroraSetup-1.0.0-PROTECTED.exe`
 - **Size:** **~5–5.5 GB** with the model (the 4.7 GB GGUF is already compressed,
   so it dominates and barely shrinks), or **~150 MB** for the no-AI build.
 
-Copy that one `.exe` to the hospital server and double-click it.
+The protection state is **in the filename, by construction** — the `.iss`
+names the output from the same condition that turns encryption on, so a
+`-PROTECTED` file is always encrypted and an `-UNPROTECTED` file never is.
+**Only `-PROTECTED` files ever leave the build machine.**
 
 ---
 
-## Per-hospital encrypted installers — `build-hospitals.ps1`
+## The shipping build — `build-protected.ps1` (single company password)
 
-For real hospital deployments, do **not** ship the generic `AuroraSetup-<ver>.exe`.
-Build one installer **per hospital**, each locked with its own install password:
+The path for anything that leaves the vendor. One **company install
+password**, held by the vendor's engineer **alone** — typed on site at every
+hospital install. The hospital never receives it, stores it, or writes it
+down; any reinstall or disaster rebuild happens with the engineer present.
+That is the service model.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\installer\build-hospitals.ps1 `
-  -Hospitals alnoor,city-icu `
+powershell -ExecutionPolicy Bypass -File .\installer\build-protected.ps1 `
   -PgZip   C:\aurora-build\postgresql-16.4-1-windows-x64-binaries.zip `
   -ModelDir C:\aurora-ai\model -LlamaDir C:\aurora-ai\llama
 ```
 
-What this changes vs a plain build:
+How the password is handled — and where it never goes:
 
-- The whole payload is **XChaCha20-encrypted** (built into Inno Setup since
-  6.4.0; the key is PBKDF2-HMAC-SHA256-derived from the password). Without the
-  password the `.exe` cannot be installed and its **payload** (server binaries,
-  database engine, AI model, provisioning scripts) cannot be extracted — real
-  cryptography, not a check someone can patch out. Honest limit: the setup
-  *metadata* (file names, install paths, wizard messages and the compiled
-  `[Code]` logic) is **not** encrypted and is readable with standard Inno
-  tools, so treat a leaked installer as revealing the install's *layout*,
-  just never its *contents*.
-- **One password per hospital.** A leak burns exactly one build and tells you
-  whose copy leaked; rebuild that one hospital's installer to rotate.
-- Output is `Output\AuroraSetup-<ver>-<hospital>.exe` per hospital, plus a
-  password ledger CSV. **Transcribe the ledger into each hospital's sealed
-  envelope (its own labelled line — it is a different secret from the backup
-  key) and the vendor record, then delete it.** The ledger and `Output\` are
-  gitignored; none of this may ever be committed.
-- The payload is staged once; ISCC's full-compression pass runs **per
-  hospital** (20–60 min each on an AI build). `-SkipStage` reuses a payload
-  staged earlier the same day.
-- Ship each hospital only its own `.exe`; give the password over a separate
-  channel (phone or in person), never in the same e-mail as the file.
+- The script asks for it at a **masked prompt, twice**. It is never a
+  command-line argument (nothing lands in PowerShell history or scrollback)
+  and it is **never written to disk** — no ledger, no file, nothing to
+  delete afterwards.
+- It reaches the compiler through ISCC's process **environment**
+  (`aurora.iss` reads `GetEnv` at preprocess time), set immediately before
+  the compile and removed in a `finally` block. Honest limit: it exists in
+  the build processes' memory while the compile runs — build on a machine
+  you trust.
+- The script **fails loudly** if the compile did not produce the
+  `-PROTECTED` filename, so a build where the password silently failed to
+  reach the compiler cannot masquerade as protected.
+- Allowed form: 12–64 characters, letters, digits and dashes only — the
+  exact charset this pipeline is verified with.
+
+What the password does (real cryptography, not a patchable check): the whole
+payload is **XChaCha20-encrypted** (built into Inno Setup since 6.4.0; the
+key is PBKDF2-HMAC-SHA256-derived from the password). Without the password
+the `.exe` cannot be installed and its **payload** (server binaries,
+database engine, AI model, provisioning scripts) cannot be extracted.
+Honest limit: the setup *metadata* (file names, install paths, wizard
+messages and the compiled `[Code]` logic) is **not** encrypted and is
+readable with standard Inno tools — a leaked installer reveals the
+install's *layout*, never its *contents*.
+
+Trade accepted with one company-wide password: a leak burns **every**
+shipped installer at once, with no way to tell whose copy leaked. That is
+acceptable precisely because the password never leaves the engineer — there
+is no hospital-side copy to leak. If it is ever compromised: pick a new
+password and rebuild; installers already run in the field are unaffected
+(the password gates *installation*, not the running system).
+
+`-SkipStage` reuses a payload staged earlier the same day. The install
+password is a **different secret from the backup encryption key**: the
+install password belongs to the *vendor* (reissuable by rebuilding); the
+backup key belongs to the *hospital*, held in three places (unrecoverable
+if lost). Neither substitutes for the other.
+
+---
+
+## Dormant: per-hospital installers — `build-hospitals.ps1`
+
+Kept working but **not the configured path** (owner's decision, 2026-07-25).
+It builds one encrypted installer *per hospital*, each with its own random
+password plus a ledger CSV to transcribe into per-hospital envelopes — the
+right shape once there are too many hospitals to attend every install in
+person, because a leak then burns one identifiable build instead of the
+whole product. Same cryptography, same honest metadata limit as above.
+Hospital ids `protected`/`unprotected` are refused (they are the other
+paths' filename markers). See the script header for usage; nothing calls
+it today.
 
 The plain `build.ps1`/`build-all.ps1` path still works and stays unencrypted —
-use it for build-machine smoke tests, not for anything that leaves the vendor.
+its output is named `-UNPROTECTED` and is for build-machine smoke tests only,
+never for anything that leaves the vendor.
 
 ---
 

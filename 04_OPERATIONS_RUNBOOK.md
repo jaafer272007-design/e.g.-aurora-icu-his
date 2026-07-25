@@ -219,22 +219,28 @@ the backup key ID from the sealed envelope. That is a safety net, not a
 change to the rule: the installer is for first installs and disaster
 rebuilds, nothing else.
 
-### The install password
+### The install password — held by the vendor, not by you
 
-Newer copies of `AuroraSetup.exe` are built one-per-hospital and locked
-with an **install password**. Without that password no one can install it
-or extract the software inside it, so a copied installer is useless on
-its own. Your hospital's install password arrives separately from the
-installer file — by phone or in person, never in the same email.
+Newer copies of `AuroraSetup.exe` are locked with an **install password**.
+Without it no one can install the file or extract the software inside it,
+so a copied installer is useless on its own.
 
-Keep it in the same sealed envelope as the backup encryption key, but as
-its own clearly labelled line. **They are different secrets and must
-never be combined or confused:**
+**Your hospital does not receive, store, or record this password — there
+is nothing for you to keep.** The vendor's engineer holds it and types it
+in person whenever Aurora is installed or reinstalled on your premises.
+That is deliberate: a secret that never enters the building cannot leak
+from it.
 
-- A lost **install password** can be replaced — the vendor issues that
-  hospital a new installer.
-- A lost **backup key** cannot be replaced by anyone, and every backup
-  that needs it is gone.
+What this means for a disaster — if the server is destroyed or must be
+rebuilt from scratch: **contact the vendor.** The reinstall is performed
+with the vendor's engineer present; you cannot run the installer on your
+own, and you are not expected to. What makes that rebuild succeed is the
+part only your hospital can do, and it is unchanged: the **backup
+encryption key** (Part 4 — three places, hospital-held, unrecoverable if
+lost), the off-site disk (Part 3), and a working old sign-in (Part 6).
+The install password is the vendor's secret; the backup key is yours.
+Neither replaces the other, and only one of them — yours — is
+irreplaceable.
 
 ---
 
@@ -268,13 +274,17 @@ same as no credential at all.
 
 ### Also needed for a restore onto a new machine
 
-Have these together, in one place, before you start:
+A restore onto a new machine starts with a reinstall, and reinstalls are
+performed by the **vendor's engineer on site** (Part 5) — so the first
+step is always: **call the vendor.** Then have these together, in one
+place, before the engineer arrives:
 
 - The backup file **and** its manifest file — both, with matching names.
   Aurora refuses to restore without the manifest, because the manifest is
   what it checks the restore against.
 - The **encryption key** for that backup (match the key ID shown next to
-  the file).
+  the file). This is the hospital's to produce — the vendor does not have
+  it and cannot recover it.
 - A **working old username and password**, as above.
 - The hospital's **time zone**, so the restored server shows the same clock.
 
@@ -429,9 +439,6 @@ Key ID (8 characters)  : ______________________________________
 Key envelope 1 held by : ______________________________________
 Key envelope 2 held by : ______________________________________
 Key envelope 3 held by : ______________________________________
-Install password (own
-labelled line, same
-envelopes - NOT the key): recorded  [ ] yes   [ ] not yet
 Admin username recorded: ______________________________________
 Time zone              : ______________________________________
 Rotation weekday       : ______________________________________

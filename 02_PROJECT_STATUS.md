@@ -1,5 +1,44 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-07-25 · INSTALL-PASSWORD MODEL FINAL: SINGLE COMPANY PASSWORD
+(owner's decision, superseding the per-hospital scheme as the configured
+path).** The service model is on-site assistance at every hospital, so the
+protection model matches it: ONE company install password, held by the
+vendor's engineer ALONE, typed in person at every install — the hospital
+never receives, stores, or records it (no envelope line, nothing on site),
+and any reinstall/disaster rebuild waits for the vendor's engineer;
+recovery-waits-for-us is accepted explicitly. Build: new
+`installer/build-protected.ps1` = the shipping path — password typed at a
+MASKED prompt twice (never a command-line argument, never written to disk,
+no ledger), handed to ISCC via the child process ENVIRONMENT
+(`AURORA_INSTALL_PASSWORD`, adopted in `aurora.iss` by ISPP `GetEnv` when
+`/DInstallPassword` is absent; set immediately before the compile, removed
+in `finally`) — same XChaCha20/PBKDF2 `Encryption=yes` cryptography and the
+same honest metadata limit as #175. Accepted trade, stated in the docs: one
+company-wide password means a leak burns EVERY shipped installer with no
+attribution — acceptable because no hospital-side copy exists to leak;
+rotation = new password + rebuild. Filenames now carry protection state BY
+CONSTRUCTION (the `.iss` names the output from the same condition that
+enables encryption): `AuroraSetup-<ver>-PROTECTED.exe` (this path) vs
+`AuroraSetup-<ver>-UNPROTECTED.exe` (plain `build.ps1`/`build-all.ps1`,
+smoke tests only, never ships) — and `build-protected.ps1` FAILS unless the
+compile produced the `-PROTECTED` name, so a password that silently missed
+the compiler cannot masquerade. Guards: plain `build.ps1` refuses to
+compile with `AURORA_INSTALL_PASSWORD` lingering in the environment (a
+killed protected build must not silently encrypt a "plain" one);
+`aurora.iss` `#error`s on a per-hospital build without a password;
+`build-hospitals.ps1` refuses ids `protected`/`unprotected` (filename
+collision with the markers). Per-hospital machinery KEPT DORMANT
+(`build-hospitals.ps1` + `/DHospitalId` ISPP path unchanged and still
+winning over the environment when passed) for a future at-scale switch —
+header + BUILD_WINDOWS.md say so. 04 runbook §5/§6/Appendix A reworked:
+install password is the vendor's secret (hospital keeps nothing);
+dead-server rebuild = CONTACT THE VENDOR, reinstall performed with the
+engineer present; backup-key custody UNCHANGED and re-emphasized as the
+hospital's own irreplaceable secret. The #175 record below stands as
+history; its per-hospital custody/envelope/ledger guidance no longer
+describes the configured path.**
+
 **2026-07-25 · FILE ATTACHMENTS ON THE PATIENT CHART (verify-first →
 approved design → build).** Scanned reports, photos of paper notes, outside
 documents. THE STORAGE DECISION (the PR's load-bearing fact): bytes live IN
@@ -56,6 +95,10 @@ real-server-only domain (no mock store — inventing clinical documents
 would fabricate data). Migration 20260725183726_AddAttachments.**
 
 **2026-07-25 · INSTALLER REINSTALL GUARD + PER-HOSPITAL ENCRYPTED BUILDS.**
+*[Superseded in part, same day: the per-hospital password scheme in item (2)
+is no longer the configured path — see the SINGLE COMPANY PASSWORD marker
+above. The machinery stays in the tree, dormant. Item (1), the reinstall
+guard, is unaffected and remains current.]*
 Two protections against `AuroraSetup.exe` misuse, in the order the risks
 bit. (1) **Reinstall guard** (`aurora.iss`): Setup now detects the registered
 Aurora services (HKLM Services ImagePath for AuroraServer/AuroraPostgres)

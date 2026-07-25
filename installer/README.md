@@ -75,8 +75,12 @@ The **build** machine needs the .NET 8 SDK, Node, [Inno Setup 6](https://jrsoftw
 cd installer
 .\build.ps1 -PgZip C:\downloads\postgresql-16.x-windows-x64-binaries.zip `
             -ModelDir C:\aurora-ai\model -LlamaDir C:\aurora-ai\llama
-# → installer\Output\AuroraSetup-1.0.0.exe
+# → installer\Output\AuroraSetup-1.0.0-UNPROTECTED.exe  (plain build: smoke tests only)
 # (omit -ModelDir/-LlamaDir to build an installer that ships with the AI DISABLED)
+# SHIPPING builds use build-protected.ps1 instead — same inputs, plus the company
+# install password typed at a masked prompt → AuroraSetup-1.0.0-PROTECTED.exe.
+# The password is held by the vendor's engineer alone and typed on site at every
+# install; hospitals never receive it. See BUILD_WINDOWS.md.
 ```
 
 ## What the hospital does (the whole deployment)

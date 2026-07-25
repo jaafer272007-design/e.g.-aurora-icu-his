@@ -1,7 +1,10 @@
 <#
   AURORA ICU - build the hospital installer (run on a BUILD machine with the
   .NET 8 SDK, Node, Inno Setup, and internet; the HOSPITAL machine needs none
-  of these). Produces installer\Output\AuroraSetup-<ver>.exe.
+  of these). Produces installer\Output\AuroraSetup-<ver>-UNPROTECTED.exe -
+  the PLAIN build, for build-machine smoke tests ONLY; it never ships.
+  Shipping builds are made by build-protected.ps1 (single company install
+  password - the configured path) or, dormant for scale, build-hospitals.ps1.
 
   Steps:
     1. build the React app (production bundle, same-origin by construction)
@@ -142,10 +145,16 @@ if ($aiModel -xor $aiLlama) {
 
 Write-Host '== 5. compile the installer =='
 if ($SkipCompile) {
-  Write-Host '  SKIPPED (-SkipCompile): the payload is staged; build-hospitals.ps1 compiles one ENCRYPTED installer per hospital.'
+  Write-Host '  SKIPPED (-SkipCompile): the payload is staged; the caller (build-protected.ps1 or build-hospitals.ps1) compiles the ENCRYPTED installer.'
   return
+}
+# A password lingering in the environment (e.g. a protected build that was
+# killed before its cleanup ran) would silently turn this "plain" compile
+# into an encrypted one nobody knows the intent of. Refuse - be explicit.
+if ($env:AURORA_INSTALL_PASSWORD) {
+  throw 'AURORA_INSTALL_PASSWORD is set. For a shipping build run build-protected.ps1; for a plain UNPROTECTED smoke-test build first run: Remove-Item Env:\AURORA_INSTALL_PASSWORD'
 }
 if (-not (Test-Path $Iscc)) { throw "Inno Setup compiler not found at $Iscc (install Inno Setup 6, or pass -Iscc)." }
 & $Iscc (Join-Path $here 'aurora.iss')
 if ($LASTEXITCODE -ne 0) { throw 'ISCC failed' }
-Write-Host "DONE - installer at $(Join-Path $here 'Output')"
+Write-Host "DONE - UNPROTECTED (plain) installer at $(Join-Path $here 'Output') - smoke tests only, never ship this file."

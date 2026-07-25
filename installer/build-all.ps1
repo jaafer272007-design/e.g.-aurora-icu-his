@@ -4,8 +4,10 @@
   Run this ONCE with your paths and it does the whole job: (optionally) install
   the build toolchain via winget, preflight-check everything, then run build.ps1
   (React bundle -> self-contained server -> private Postgres -> AI model +
-  llama-server -> compile the Inno installer) and report the finished
-  AuroraSetup.exe. See installer/BUILD_WINDOWS.md for the full walkthrough.
+  llama-server -> compile the Inno installer) and report the finished exe.
+  Output is the PLAIN AuroraSetup-<ver>-UNPROTECTED.exe - build-machine smoke
+  tests only; shipping builds come from build-protected.ps1 (company install
+  password). See installer/BUILD_WINDOWS.md for the full walkthrough.
 
   TYPICAL USE (from the repo root, one line - no need to change ExecutionPolicy):
 
@@ -111,5 +113,7 @@ $out = Get-ChildItem (Join-Path $here 'Output') -Filter 'AuroraSetup-*.exe' -Err
 if (-not $out) { Die "build finished but no AuroraSetup-*.exe is in $here\Output -- check the output above." }
 $gb = [math]::Round($out.Length / 1GB, 2)
 Say "DONE  ->  $($out.FullName)   ($gb GB)"
-Say "Copy that ONE .exe to the hospital server and double-click it (next -> next -> finish)."
+Say "This is the UNPROTECTED (plain) build - for build-machine smoke tests only."
+Say "Anything that leaves this machine is built with build-protected.ps1 (the"
+Say "company install password) and is named AuroraSetup-<ver>-PROTECTED.exe."
 exit 0
