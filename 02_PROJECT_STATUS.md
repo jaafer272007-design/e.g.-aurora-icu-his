@@ -1,5 +1,38 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-07-25 · HOSPITAL OPERATIONS RUNBOOK (`04_OPERATIONS_RUNBOOK.md`) —
+the operational half of Backup & DR, written down.** The audit below closed
+what code could close and named the rest as "covered ONLY by operational
+discipline". That discipline existed only in conversation, which means it did
+not exist: nothing told a hospital IT person to rotate a disk off-site, keep
+three copies of the key, keep `AuroraSetup.exe` off the server, or record a
+working admin credential before needing one. 04 is that document — audience is
+hospital IT, not developers, so it carries no code, no paths and no CLI verbs,
+and states plainly which protections are human-only.
+
+Sourced from shipped code, not memory: 02:00 nightly task
+(`installer/aurora-backup.ps1`), 24h RPO + the seven health states incl. the
+three off-site escalations (`BackupService.cs:855-899`), 8-day off-site
+staleness (`UsbMaxAgeDays`, :909), 30/12/12 retention (:54-56),
+`backup.manage` on SystemAdministrator only (`Rbac.cs:173`), add-only
+off-site mirroring and why (`aurora-backup.ps1:49-58`), manifest required to
+restore + born-verify-into-scratch before the live DB is touched
+(`RestoreInPlace`), key id = first 8 hex of SHA256(key) and show-once
+(`BackupModels.cs:54-56,137-140`). The old-admin-credential requirement is
+stated as a consequence of `RestoreInPlace` DROPping and recreating the live
+database — the restored users table comes from the backup, so a new install's
+bootstrap admin is wiped by its own restore.
+
+Honest limits are a section of the document, not a footnote: Aurora shows
+backup warnings on-screen but sends no email/SMS/page (a person opening that
+screen daily IS the alerting system); nothing verifies the disk left the
+building; a lost key is unrecoverable; no free-space guard exists; and only
+the newest backup is proven each night, which is why the monthly Test Restore
+runs against a file taken from the off-site disk. Appendices A-C are
+fill-in-the-blank site record, rotation log, and the four-artifact
+explanation. Sections 8 and 9 have deliberate blanks for named people —
+"IT" is not an escalation target.
+
 **Last updated: 2026-07-25 · current through the BACKUP DATA-LOSS AUDIT (six
 scenarios, every claim traced to file:line, findings adversarially re-verified).
 VERDICTS: (1) same-disk — NOT COVERED: pgdata/backups/secrets all derived from one
