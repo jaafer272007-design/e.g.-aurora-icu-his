@@ -28,7 +28,29 @@ PrivilegesRequired=admin
 ; Setup runs in 64-bit install mode automatically on a matching OS. (Inno 6.4+
 ; removed the old ArchitecturesInstall64Bit directive in favour of this one.)
 ArchitecturesAllowed=x64compatible
+#ifdef HospitalId
+OutputBaseFilename=AuroraSetup-{#AppVer}-{#HospitalId}
+#else
 OutputBaseFilename=AuroraSetup-{#AppVer}
+#endif
+#ifdef InstallPassword
+; Per-hospital ENCRYPTED build (installer\build-hospitals.ps1 passes
+; /DHospitalId + /DInstallPassword). The whole payload is XChaCha20-encrypted
+; (built into Inno Setup since 6.4.0; the key is PBKDF2-HMAC-SHA256-derived
+; from this password), so a copied AuroraSetup.exe without the hospital's
+; install password cannot be installed and its PAYLOAD (server, database
+; engine, AI model, scripts) cannot be extracted. Honest limit: the setup
+; METADATA - file names, paths, messages and this compiled [Code] wizard,
+; including the reinstall-guard logic - is NOT encrypted and is readable
+; with standard Inno tools; only the file data is protected. One password
+; per hospital: a leak identifies WHICH hospital's
+; copy leaked and burns one installer, not the whole product. The install
+; password is a DIFFERENT secret from the backup encryption key and lives as
+; its own line in the same sealed envelope: a lost install password is
+; reissued by rebuilding; a lost backup key is unrecoverable.
+Password={#InstallPassword}
+Encryption=yes
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
@@ -62,6 +84,17 @@ var
   DetectedTz:  String;
   DetectedIp:  String;
   GpuPresent:  Boolean;
+  { reinstall guard state (see the REINSTALL GUARD block below) }
+  ExistingDetected: Boolean;
+  ExistingRoot, ExistingPgData, ExistingDataDir, ExistingBackupDir: String;
+  ExistingKeyFile, ExistingKeyId, ExistingKeyHex: String;
+  ExistingUsb, ExistingPort, ExistingTz: String;
+  GuardPage: TWizardPage;
+  GuardMemo: TNewMemo;
+  GuardOptExit, GuardOptContinue: TNewRadioButton;
+  GuardKeyLabel: TNewStaticText;
+  GuardKeyEdit: TNewEdit;
+  GuardAbort: Boolean;
 
 { ---- best-effort detection (reviewed; runs on the target Windows) ---- }
 
@@ -95,8 +128,246 @@ begin
   DetectPrimaryIp();
 end;
 
-procedure InitializeWizard();
+{ ---- REINSTALL GUARD ----------------------------------------------------
+  The risk that actually materialised in production: Setup re-run on a machine
+  that already runs Aurora, pointed at NEW locations, re-registers the services
+  elsewhere and orphans the live database - and, because a fresh secrets folder
+  gets a fresh key, orphans every existing backup with it. This installer is
+  for FIRST installs; upgrades are AuroraUpdate's job.
+
+  So: detect the registered Aurora services BEFORE any wizard page, state what
+  exists, default to closing Setup, and let an operator continue ONLY after
+  proving the current backup key was recorded (typing its key id or the full
+  key from the sealed envelope). On continue, every location field is steered
+  to the EXISTING install so the default outcome is an in-place repair, not a
+  second install elsewhere. A machine with no Aurora services (fresh hardware,
+  a disaster rebuild) never sees any of this. }
+
+function SvcImagePath(svc: String): String;
 begin
+  Result := '';
+  if not RegQueryStringValue(HKLM, 'SYSTEM\CurrentControlSet\Services\' + svc,
+    'ImagePath', Result) then Result := '';
+end;
+
+{ the executable path out of a service ImagePath - quoted or bare }
+function ExeOfImagePath(ip: String): String;
+var p: Integer;
+begin
+  ip := Trim(ip);
+  if (Length(ip) > 0) and (ip[1] = '"') then begin
+    ip := Copy(ip, 2, Length(ip));
+    p := Pos('"', ip);
+    if p > 0 then ip := Copy(ip, 1, p - 1);
+  end else begin
+    p := Pos('.exe', Lowercase(ip));
+    if p > 0 then ip := Copy(ip, 1, p + 3);
+  end;
+  Result := Trim(ip);
+end;
+
+{ the -D <datadir> argument out of the AuroraPostgres ImagePath }
+function PgDataOfImagePath(ip: String): String;
+var p, q: Integer; rest: String;
+begin
+  Result := '';
+  p := Pos(' -D ', ip);
+  if p = 0 then Exit;
+  rest := Trim(Copy(ip, p + 4, Length(ip)));
+  if (Length(rest) > 0) and (rest[1] = '"') then begin
+    rest := Copy(rest, 2, Length(rest));
+    q := Pos('"', rest);
+    if q > 0 then Result := Copy(rest, 1, q - 1);
+  end else begin
+    q := Pos(' ', rest);
+    if q > 0 then Result := Copy(rest, 1, q - 1) else Result := rest;
+  end;
+end;
+
+function EnvValueOf(envFile, key: String): String;
+var lines: TArrayOfString; i: Integer;
+begin
+  Result := '';
+  if not LoadStringsFromFile(envFile, lines) then Exit;
+  for i := 0 to GetArrayLength(lines) - 1 do
+    if Pos(key + '=', lines[i]) = 1 then begin
+      Result := Trim(Copy(lines[i], Length(key) + 2, Length(lines[i])));
+      Exit;
+    end;
+end;
+
+function FirstLineLower(f: String): String;
+var lines: TArrayOfString;
+begin
+  Result := '';
+  if LoadStringsFromFile(f, lines) and (GetArrayLength(lines) > 0) then
+    Result := Lowercase(Trim(lines[0]));
+end;
+
+{ The key id EXACTLY as the server computes it (BackupService.KeyIdOf): the key
+  file holds 64 hex chars; the id is the first 8 hex of SHA256 over the DECODED
+  32 raw bytes. Pascal Script cannot hash raw bytes, so PowerShell runs the
+  identical computation and relays the id through a temp file. Best-effort: on
+  any failure the guard falls back to the typed-REPLACE confirmation. }
+function ComputeKeyId(keyFile: String): String;
+var rc: Integer; tmp, cmd: String; lines: TArrayOfString;
+begin
+  Result := '';
+  if (keyFile = '') or (not FileExists(keyFile)) then Exit;
+  tmp := ExpandConstant('{tmp}\aurora-keyid.txt');
+  cmd := '-NoProfile -ExecutionPolicy Bypass -Command "try { ' +
+    '$hex = (Get-Content -Raw ''' + keyFile + ''').Trim(); ' +
+    '$b = New-Object byte[] ($hex.Length / 2); ' +
+    'for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($hex.Substring($i * 2, 2), 16) }; ' +
+    '$h = [System.Security.Cryptography.SHA256]::Create().ComputeHash($b); ' +
+    '$id = -join ($h[0..3] | ForEach-Object { $_.ToString(''x2'') }); ' +
+    'Set-Content -Encoding ascii -Path ''' + tmp + ''' -Value $id } catch {}"';
+  Exec('powershell.exe', cmd, '', SW_HIDE, ewWaitUntilTerminated, rc);
+  if LoadStringsFromFile(tmp, lines) and (GetArrayLength(lines) > 0) then
+    Result := Lowercase(Trim(lines[0]));
+  DeleteFile(tmp);
+end;
+
+procedure DetectExistingInstall();
+var ipSrv, ipPg, exePath: String;
+begin
+  ExistingDetected := False;
+  ipSrv := SvcImagePath('AuroraServer');
+  ipPg  := SvcImagePath('AuroraPostgres');
+  if (ipSrv = '') and (ipPg = '') then Exit;
+  ExistingDetected := True;
+  exePath := ExeOfImagePath(ipSrv);
+  if exePath <> '' then ExistingRoot := ExtractFileDir(ExtractFileDir(exePath));
+  ExistingPgData := PgDataOfImagePath(ipPg);
+  if ExistingPgData <> '' then ExistingDataDir := ExtractFileDir(ExistingPgData);
+  if ExistingRoot <> '' then begin
+    ExistingBackupDir := EnvValueOf(ExistingRoot + '\server\aurora.env', 'BACKUP_DIR');
+    ExistingKeyFile   := EnvValueOf(ExistingRoot + '\server\aurora.env', 'BACKUP_KEY_FILE');
+    { carried into the wizard on continue, so an in-place repair does not
+      silently drop the off-site mirror, the port or the hospital clock }
+    ExistingUsb  := EnvValueOf(ExistingRoot + '\server\aurora.env', 'BACKUP_USB');
+    ExistingPort := EnvValueOf(ExistingRoot + '\server\aurora.env', 'PORT');
+    ExistingTz   := EnvValueOf(ExistingRoot + '\server\aurora.env', 'TZ');
+  end;
+  { historical installs put secrets under <DataDir>\secrets - the fallback when
+    the env file is missing or does not name the key file }
+  if (ExistingKeyFile = '') and (ExistingDataDir <> '') then
+    ExistingKeyFile := ExistingDataDir + '\secrets\backup.key';
+  ExistingKeyId  := ComputeKeyId(ExistingKeyFile);
+  ExistingKeyHex := FirstLineLower(ExistingKeyFile);
+end;
+
+procedure GuardOptClick(Sender: TObject);
+begin
+  GuardKeyEdit.Enabled  := GuardOptContinue.Checked;
+  GuardKeyLabel.Enabled := GuardOptContinue.Checked;
+end;
+
+procedure CreateGuardPage();
+var s, shown, dbState, keyState: String;
+begin
+  GuardPage := CreateCustomPage(wpWelcome, 'Aurora is ALREADY INSTALLED on this machine',
+    'Read this before going any further');
+
+  if ExistingPgData <> '' then begin
+    if FileExists(AddBackslash(ExistingPgData) + 'PG_VERSION') then
+      dbState := ExistingPgData + '  (database files PRESENT)'
+    else
+      dbState := ExistingPgData + '  (files NOT FOUND at the registered location)';
+  end else dbState := '(could not read the registered database location)';
+  if ExistingKeyFile <> '' then begin
+    if FileExists(ExistingKeyFile) then keyState := ExistingKeyFile + '  (present)'
+    else keyState := ExistingKeyFile + '  (MISSING)';
+  end else keyState := '(unknown)';
+  if ExistingRoot <> '' then shown := ExistingRoot else shown := '(unknown)';
+
+  s := 'Setup found Aurora ICU services already registered on this machine:' + #13#10#13#10 +
+       '  Install folder:   ' + shown + #13#10 +
+       '  Database:         ' + dbState + #13#10 +
+       '  Backups:          ' + ExistingBackupDir + #13#10 +
+       '  Backup key file:  ' + keyState + #13#10#13#10 +
+       'This installer is for FIRST installs and disaster rebuilds. Running it' + #13#10 +
+       'again is NOT how Aurora is upgraded:' + #13#10#13#10 +
+       '  - Upgrades: run AuroraUpdate-<version>.exe instead. It keeps the' + #13#10 +
+       '    database, the backup key and every setting.' + #13#10 +
+       '  - If you continue, the install and database locations are LOCKED to' + #13#10 +
+       '    the existing install shown above. This machine''s Aurora services' + #13#10 +
+       '    can only point at ONE place, so Setup will not create a second copy' + #13#10 +
+       '    elsewhere. Moving Aurora to different disks or another machine is a' + #13#10 +
+       '    support operation, not a reinstall. (The BACKUP locations may be' + #13#10 +
+       '    changed - they are settings, not services.)' + #13#10 +
+       '  - Continuing re-runs setup IN PLACE: the existing database and backup' + #13#10 +
+       '    key are KEPT. If the database files above are missing (a wiped data' + #13#10 +
+       '    disk), a FRESH database and a NEW backup key are created at the same' + #13#10 +
+       '    locations - backups already made still need the OLD recorded key.' + #13#10 +
+       '  - Existing sign-ins keep working. The administrator password typed' + #13#10 +
+       '    later in this wizard takes effect ONLY on a brand-new database.';
+
+  GuardMemo := TNewMemo.Create(GuardPage);
+  GuardMemo.Parent := GuardPage.Surface;
+  GuardMemo.Left := 0;
+  GuardMemo.Top := 0;
+  GuardMemo.Width := GuardPage.SurfaceWidth;
+  GuardMemo.Height := GuardPage.SurfaceHeight - ScaleY(96);
+  GuardMemo.ReadOnly := True;
+  GuardMemo.ScrollBars := ssVertical;
+  GuardMemo.Text := s;
+
+  GuardOptExit := TNewRadioButton.Create(GuardPage);
+  GuardOptExit.Parent := GuardPage.Surface;
+  GuardOptExit.Left := 0;
+  GuardOptExit.Top := GuardMemo.Top + GuardMemo.Height + ScaleY(6);
+  GuardOptExit.Width := GuardPage.SurfaceWidth;
+  GuardOptExit.Caption := 'Close Setup (recommended) - I will use AuroraUpdate or ask for support';
+  GuardOptExit.Checked := True;
+  GuardOptExit.OnClick := @GuardOptClick;
+
+  GuardOptContinue := TNewRadioButton.Create(GuardPage);
+  GuardOptContinue.Parent := GuardPage.Surface;
+  GuardOptContinue.Left := 0;
+  GuardOptContinue.Top := GuardOptExit.Top + ScaleY(18);
+  GuardOptContinue.Width := GuardPage.SurfaceWidth;
+  GuardOptContinue.Caption := 'Continue anyway - I have read the warning above';
+  GuardOptContinue.OnClick := @GuardOptClick;
+
+  GuardKeyLabel := TNewStaticText.Create(GuardPage);
+  GuardKeyLabel.Parent := GuardPage.Surface;
+  GuardKeyLabel.Left := 0;
+  GuardKeyLabel.Top := GuardOptContinue.Top + ScaleY(20);
+  GuardKeyLabel.Width := GuardPage.SurfaceWidth;
+  GuardKeyLabel.AutoSize := False;
+  GuardKeyLabel.WordWrap := True;
+  GuardKeyLabel.Height := ScaleY(28);
+  { The gate is the KEY FILE's readability, not the id-relay's success: as long
+    as the key was read, the operator must prove custody of the recorded copy
+    (the relay only adds the short-id convenience). REPLACE is accepted ONLY
+    when the key file itself is missing/unreadable - then there is truly
+    nothing to check against. }
+  if ExistingKeyHex <> '' then begin
+    if ExistingKeyId <> '' then
+      GuardKeyLabel.Caption :=
+        'Prove the current backup key was recorded: type its 8-character key id (or the full 64-character key) from the sealed envelope:'
+    else
+      GuardKeyLabel.Caption :=
+        'Prove the current backup key was recorded: type the FULL 64-character key from the sealed envelope (the short key id cannot be verified on this machine):';
+  end else
+    GuardKeyLabel.Caption :=
+      'The current backup key file could NOT be read, so there is nothing to check the envelope against. Type REPLACE to accept the risk:';
+  GuardKeyLabel.Enabled := False;
+
+  GuardKeyEdit := TNewEdit.Create(GuardPage);
+  GuardKeyEdit.Parent := GuardPage.Surface;
+  GuardKeyEdit.Left := 0;
+  GuardKeyEdit.Top := GuardKeyLabel.Top + GuardKeyLabel.Height + ScaleY(2);
+  GuardKeyEdit.Width := GuardPage.SurfaceWidth;
+  GuardKeyEdit.Enabled := False;
+end;
+
+procedure InitializeWizard();
+var pwDesc: String;
+begin
+  DetectExistingInstall();
+  if ExistingDetected then CreateGuardPage();
   DetectTzAndGpu();
 
   { Three separate locations, because putting them on ONE disk is the single
@@ -130,9 +401,14 @@ begin
   if DetectedIp <> '' then UrlPage.Values[0] := DetectedIp else UrlPage.Values[0] := 'SERVER-IP';
   UrlPage.Values[1] := '8080';
 
+  pwDesc := 'This is the ''admin'' account (System Administrator). You will be required to change it at first sign-in. It cannot be the shared demo password.';
+  { Honesty on a reinstall: the server applies this bootstrap password ONLY
+    when the database has no user accounts yet. Over an existing database the
+    typed value changes nothing - say so HERE, not after the fact. }
+  if ExistingDetected then
+    pwDesc := pwDesc + ' NOTE: this machine already has an Aurora database - existing sign-ins keep working, and this password takes effect ONLY if the database is brand-new or empty (for example after a wiped data disk).';
   PwPage := CreateInputQueryPage(UrlPage.ID,
-    'First administrator', 'Set the first administrator password',
-    'This is the ''admin'' account (System Administrator). You will be required to change it at first sign-in. It cannot be the shared demo password.');
+    'First administrator', 'Set the first administrator password', pwDesc);
   PwPage.Add('Password:', True);
   PwPage.Add('Confirm password:', True);
 
@@ -155,10 +431,79 @@ begin
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
-var url, dir, dbDrv, bkDrv, usbDrv: String; p: Integer;
+var url, dir, dbDrv, bkDrv, usbDrv, t: String; p: Integer;
 begin
   Result := True;
+  if ExistingDetected then begin
+    if CurPageID = GuardPage.ID then begin
+      if GuardOptExit.Checked then begin
+        GuardAbort := True;
+        WizardForm.Close;
+        Result := False;
+        Exit;
+      end;
+      t := Lowercase(Trim(GuardKeyEdit.Text));
+      if ExistingKeyHex <> '' then begin
+        { never echo the expected id or key - the typed value must come from
+          the operator's own record, or this proves nothing. The full key is
+          always accepted; the short id only when the relay could verify it. }
+        if (t <> ExistingKeyHex) and ((ExistingKeyId = '') or (t <> ExistingKeyId)) then begin
+          if ExistingKeyId <> '' then
+            MsgBox('That does not match this machine''s current backup key.'#13#10#13#10 +
+                   'Type the 8-character key id (or the full key) exactly as recorded in the sealed ' +
+                   'envelope. If the envelope cannot be found, STOP: without the recorded key, every ' +
+                   'existing backup is unreadable anywhere but this machine.', mbError, MB_OK)
+          else
+            MsgBox('That does not match this machine''s current backup key.'#13#10#13#10 +
+                   'Type the FULL 64-character key exactly as recorded in the sealed envelope. ' +
+                   'If the envelope cannot be found, STOP: without the recorded key, every ' +
+                   'existing backup is unreadable anywhere but this machine.', mbError, MB_OK);
+          Result := False;
+          Exit;
+        end;
+      end else begin
+        if Trim(GuardKeyEdit.Text) <> 'REPLACE' then begin
+          MsgBox('Type REPLACE (capitals) to continue, or choose Close Setup.', mbError, MB_OK);
+          Result := False;
+          Exit;
+        end;
+      end;
+      { A continue with UNKNOWN existing locations cannot be made safe: the
+        registered services cannot be re-pointed by this installer, so Setup
+        must not guess where they live. }
+      if (ExistingRoot = '') or (ExistingDataDir = '') then begin
+        MsgBox('Setup could not determine the existing install''s locations from the registered ' +
+               'services, so it cannot safely re-run setup in place.'#13#10#13#10 +
+               'Use AuroraUpdate for upgrades, or contact support for repair.', mbError, MB_OK);
+        Result := False;
+        Exit;
+      end;
+      { LOCK the rest of the wizard to the EXISTING install. The services can
+        only point at one place; the location pages below enforce the same
+        lock if these values are edited. Backup targets + port + TZ are
+        carried from the live aurora.env so a repair keeps them. }
+      WizardForm.DirEdit.Text := ExistingRoot;
+      DataDirPage.Values[0] := ExistingDataDir;
+      if ExistingBackupDir <> '' then DataDirPage.Values[1] := ExistingBackupDir;
+      if ExistingUsb <> '' then DataDirPage.Values[2] := ExistingUsb;
+      if StrToIntDef(Trim(ExistingPort), 0) > 0 then UrlPage.Values[1] := Trim(ExistingPort);
+      if ExistingTz <> '' then DetectedTz := ExistingTz;
+      Exit;
+    end;
+  end;
   if CurPageID = DataDirPage.ID then begin
+    { LOCKED on a continue-anyway, same reason as the install folder: the
+      AuroraPostgres service's -D argument cannot be re-pointed by Setup.
+      The BACKUP fields stay editable - they are settings, not services. }
+    if ExistingDetected and (CompareText(Trim(DataDirPage.Values[0]), ExistingDataDir) <> 0) then begin
+      MsgBox('The database location is locked to the existing install:'#13#10 +
+             '    ' + ExistingDataDir + #13#10#13#10 +
+             'The registered database service points there and Setup cannot re-point it. ' +
+             'The backup locations below MAY be changed.', mbError, MB_OK);
+      DataDirPage.Values[0] := ExistingDataDir;
+      Result := False;
+      Exit;
+    end;
     dbDrv  := DriveOf(DataDirPage.Values[0]);
     bkDrv  := DriveOf(DataDirPage.Values[1]);
     usbDrv := DriveOf(DataDirPage.Values[2]);
@@ -179,19 +524,51 @@ begin
         'Pick a removable/second disk, or leave it blank.', mbError, MB_OK);
       Result := False;
     end;
+    { An ORPHANED database at the chosen location (services gone - e.g. after an
+      uninstall - but the data deliberately left in place): say out loud that it
+      is adopted, not wiped - and be honest about the condition. Provisioning
+      skips initdb when PG_VERSION exists, but it can only adopt the cluster
+      when the original aurora.env (beside the old server exe) survived to
+      reuse its credentials; without it, Setup stops SAFELY at the database
+      step rather than guess - the database files are not touched either way. }
+    if Result and (not ExistingDetected) and
+       FileExists(AddBackslash(Trim(DataDirPage.Values[0])) + 'pg\PG_VERSION') then
+      MsgBox('An existing Aurora database was found at ' + Trim(DataDirPage.Values[0]) + '\pg.'#13#10#13#10 +
+        'It is NEVER wiped or reseeded. If the original install folder (with its aurora.env '
+        + 'configuration file) still exists, the install adopts the database and continues on top of it. '
+        + 'If that folder is gone, Setup will STOP SAFELY at the database step - restore the original '
+        + 'aurora.env or contact support; the database files are not touched either way.',
+        mbInformation, MB_OK);
   end;
   if CurPageID = wpSelectDir then begin
-    { Refuse to install ON TOP of a source/development checkout of Aurora. Setup
-      defaults to C:\Aurora, which on a BUILD machine is the git clone (from
-      'git clone ... aurora'); installing there would overwrite the source tree and
-      collide the payload's server\ with the source server\. Empty folder only. }
     dir := WizardDirValue;
-    if FileExists(AddBackslash(dir) + 'package.json') or DirExists(AddBackslash(dir) + '.git') then begin
-      MsgBox('That folder looks like a source-code / development copy of Aurora' + #13#10 +
-             '(it contains package.json or a .git folder). Installing here would' + #13#10 +
-             'overwrite your source tree.' + #13#10#13#10 +
-             'Pick an EMPTY folder for the hospital install - for example C:\AuroraICU.', mbError, MB_OK);
-      Result := False;
+    if ExistingDetected then begin
+      { LOCKED on a continue-anyway: the registered services point here and
+        this installer cannot re-point them, so any other folder would produce
+        a broken second copy while the old install keeps running. }
+      if CompareText(Trim(dir), ExistingRoot) <> 0 then begin
+        MsgBox('Aurora is already installed at'#13#10 + '    ' + ExistingRoot + #13#10#13#10 +
+               'and this machine''s services can only point at ONE install, so the install ' +
+               'folder is locked to that location. Moving Aurora is a support operation, ' +
+               'not a reinstall.', mbError, MB_OK);
+        WizardForm.DirEdit.Text := ExistingRoot;
+        Result := False;
+      end;
+      { the source-checkout test below is skipped when locked-equal: if the
+        existing install already lives inside a checkout, re-running in place
+        maintains the status quo - blocking here would leave NO valid path }
+    end else begin
+      { Refuse to install ON TOP of a source/development checkout of Aurora. Setup
+        defaults to C:\Aurora, which on a BUILD machine is the git clone (from
+        'git clone ... aurora'); installing there would overwrite the source tree and
+        collide the payload's server\ with the source server\. Empty folder only. }
+      if FileExists(AddBackslash(dir) + 'package.json') or DirExists(AddBackslash(dir) + '.git') then begin
+        MsgBox('That folder looks like a source-code / development copy of Aurora' + #13#10 +
+               '(it contains package.json or a .git folder). Installing here would' + #13#10 +
+               'overwrite your source tree.' + #13#10#13#10 +
+               'Pick an EMPTY folder for the hospital install - for example C:\AuroraICU.', mbError, MB_OK);
+        Result := False;
+      end;
     end;
   end else if CurPageID = UrlPage.ID then begin
     url := Lowercase(Trim(UrlPage.Values[0]));
@@ -218,6 +595,27 @@ begin
       MsgBox('That is the shared demo password - choose a real one.', mbError, MB_OK); Result := False;
     end;
   end;
+end;
+
+{ the guard's Close-Setup choice already confirmed intent - skip the exit prompt }
+procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
+begin
+  if GuardAbort then Confirm := False;
+end;
+
+{ On a continue-anyway over a live install, the running services hold locks on
+  the very files [Files] is about to replace (CloseApplications only covers
+  interactive applications, not services). Stop them first; Stop-Service waits
+  for the stop to complete. Fresh machines skip this entirely. }
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var rc: Integer;
+begin
+  Result := '';
+  if not ExistingDetected then Exit;
+  WizardForm.StatusLabel.Caption := 'Stopping the existing Aurora services...';
+  Exec('powershell.exe',
+    '-NoProfile -Command "Stop-Service -Name AuroraAI,AuroraServer,AuroraPostgres -Force -ErrorAction SilentlyContinue"',
+    '', SW_HIDE, ewWaitUntilTerminated, rc);
 end;
 
 { show the backup key EXACTLY ONCE (a standard message box - copyable with Ctrl+C) }
@@ -358,11 +756,17 @@ begin
           'ask IT for a static IP or a DHCP reservation.' + #13#10;
   SaveStringToFile(ExpandConstant('{app}\ACCESS.txt'), body, False);
 
+  { on a reinstall over an existing database the typed admin password does NOT
+    take effect (the server only bootstraps it into an EMPTY database) - the
+    finish page must not promise a credential that will not work }
+  if ExistingDetected then
+    alt := 'Sign in with the hospital''s EXISTING accounts - the password typed during Setup only applies to a brand-new database. '
+  else
+    alt := 'Sign in as ''admin'' with the password you set (you will change it at first sign-in). ';
   WizardForm.FinishedLabel.Caption :=
     'Aurora ICU is installed and running as a Windows service - it starts automatically on every boot and restarts itself if it stops.' + #13#10#13#10 +
     'Open this address in a browser from any device on the hospital network:' + #13#10 +
-    '        ' + realUrl + #13#10#13#10 +
-    'Sign in as ''admin'' with the password you set (you will change it at first sign-in). ' +
+    '        ' + realUrl + #13#10#13#10 + alt +
     'A desktop shortcut ("Aurora ICU") opens it, and the address is saved in ' + ExpandConstant('{app}\ACCESS.txt') + '.' + warn;
 end;
 

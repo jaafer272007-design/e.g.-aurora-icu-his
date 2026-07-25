@@ -23,3 +23,10 @@ appliance/models/*.gguf
 appliance/secrets/
 appliance/backups/
 .local-ca.crt
+
+# installer build artifacts + the per-hospital install-password ledger
+# (the ledger holds real hospital secrets - transcribe to the sealed
+# envelopes and the vendor record, then delete; NEVER commit)
+installer/payload/
+installer/Output/
+installer/hospitals.csv

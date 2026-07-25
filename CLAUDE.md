@@ -11,8 +11,13 @@ Modules" below.
 in `01_ARCHITECTURE.md`.]*
 
 ## Documentation map (docs split, 2026-07-10)
-This file is an index only. The project documentation lives in three files,
-all equally binding:
+This file is an index only. The project documentation lives in the files
+below, all equally binding.
+
+*[Amendment, 2026-07-25: a fourth file, `04_OPERATIONS_RUNBOOK.md`, was
+added after the first production installs. The original three remain the
+engineering documentation and are unchanged; 04 is the only file written
+for a hospital IT reader rather than a developer.]*
 
 - **`01_ARCHITECTURE.md` — the stable constitution.** Platform structure
   (Aurora Core + Modules), binding architecture rules, the three-layer RBAC
@@ -34,6 +39,15 @@ all equally binding:
   passed check are visually identical), and the deployed-E2E suite
   disciplines (finite seeded resources, the coverage lesson, sequential
   dispatch, failure-path cleanup).
+- **`04_OPERATIONS_RUNBOOK.md` — the hospital operator's runbook.** The
+  operational half of Backup & DR: the disconnected rotated off-site disk
+  (the only real ransomware defence), three-place key custody, why
+  `AuroraSetup.exe` must not live on the server, the old-admin-credential
+  requirement before any cross-machine restore, the Verify/Test-Restore
+  cadence, the escalation table, and the daily/weekly/monthly/quarterly/
+  annual checklist. Written for a hospital IT person, not a developer.
+  Every figure in it is sourced from the shipped code; when a default
+  changes, this file changes with it.
 
 All content was moved verbatim from the pre-split CLAUDE.md; lines styled
 *[Docs split note: …]* and the three subsections in 02 explicitly marked as
