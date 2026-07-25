@@ -53,6 +53,9 @@ OutputBaseFilename=AuroraSetup-{#AppVer}-PROTECTED
 OutputBaseFilename=AuroraSetup-{#AppVer}-UNPROTECTED
 #endif
 #ifdef InstallPassword
+  #if VER < EncodeVer(6,4,0)
+    #error "Inno Setup 6.4+ is required for an encrypted build - older compilers do not implement Encryption=yes as XChaCha20"
+  #endif
 ; ENCRYPTED build. The whole payload is XChaCha20-encrypted (built into
 ; Inno Setup since 6.4.0; the key is PBKDF2-HMAC-SHA256-derived from this
 ; password), so a copied AuroraSetup.exe without the install password

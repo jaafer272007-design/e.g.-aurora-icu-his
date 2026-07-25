@@ -12,7 +12,7 @@
        on the hospital box) - the wwwroot (SPA) ships inside it
     3. stage a PRIVATE PostgreSQL (Windows binaries) into payload\pgsql
     4. stage the AI model file(s) into payload\model
-    5. compile aurora.iss with ISCC -> the single AuroraSetup.exe
+    5. compile aurora.iss with ISCC -> AuroraSetup-<ver>-UNPROTECTED.exe
 
   WINDOWS-ONLY build (dotnet publish win-x64 can cross-build, but ISCC and
      the Postgres Windows binaries are Windows). CODE-REVIEWED here.

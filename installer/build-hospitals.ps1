@@ -101,10 +101,13 @@ foreach ($h in $list) {
     Die "hospital id '$($h.Id)' is invalid - a-z, 0-9 and dashes, up to 31 chars, starting with a letter or digit (it becomes part of the installer filename)"
   }
   # 'protected'/'unprotected' are the filename markers of the OTHER build
-  # paths (AuroraSetup-<ver>-PROTECTED / -UNPROTECTED); a hospital id equal
-  # to either would make those files indistinguishable on disk.
-  if (@('protected','unprotected') -contains $h.Id) {
-    Die "hospital id '$($h.Id)' is reserved - it is the filename marker of the company-password/plain build paths"
+  # paths (AuroraSetup-<ver>-PROTECTED / -UNPROTECTED); an id equal to
+  # either - or ENDING in '-protected'/'-unprotected' (Windows filenames
+  # are case-insensitive, and 'city-protected' would match the
+  # 'AuroraSetup-*-PROTECTED.exe' pattern) - would make those files
+  # indistinguishable on disk.
+  if ($h.Id -match '(^|-)(un)?protected$') {
+    Die "hospital id '$($h.Id)' is reserved - ids may not be or end in 'protected'/'unprotected' (the company-password/plain build paths' filename markers)"
   }
   if ($seen.ContainsKey($h.Id)) { Die "duplicate hospital id '$($h.Id)'" }
   $seen[$h.Id] = $true

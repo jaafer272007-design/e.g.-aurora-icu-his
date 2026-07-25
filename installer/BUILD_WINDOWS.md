@@ -1,6 +1,8 @@
 # Building `AuroraSetup.exe` on a Windows laptop
 
-This produces the single `AuroraSetup.exe` a hospital double-clicks. You build it
+This produces the installer the **vendor's engineer** runs on the hospital
+server (the shipping build is password-locked — see *The shipping build*
+below; hospitals do not install Aurora themselves). You build it
 **once** on a build laptop (with internet + the SDK/Node/Inno toolchain); the
 hospital server needs **none** of it. Written for someone who has never compiled
 an installer.
@@ -136,7 +138,14 @@ Put all of these in one folder, e.g. `C:\aurora-ai\llama\`:
 The protection state is **in the filename, by construction** — the `.iss`
 names the output from the same condition that turns encryption on, so a
 `-PROTECTED` file is always encrypted and an `-UNPROTECTED` file never is.
-**Only `-PROTECTED` files ever leave the build machine.**
+**An `-UNPROTECTED` file never leaves the build machine; everything shipped
+is an encrypted build** (`-PROTECTED`, or `-<hospitalid>` on the dormant
+per-hospital path). Known gap, deliberate and on the record: the app-only
+update package `AuroraUpdate-<ver>.exe` (`build.ps1 -UpdateOnly`) is **not**
+password-locked — it cannot install Aurora fresh, but its server payload is
+extractable. Whether it gets the same password lock is an open owner
+decision; until then treat update packages with the same custody as
+installers.
 
 ---
 
@@ -163,13 +172,18 @@ How the password is handled — and where it never goes:
 - It reaches the compiler through ISCC's process **environment**
   (`aurora.iss` reads `GetEnv` at preprocess time), set immediately before
   the compile and removed in a `finally` block. Honest limit: it exists in
-  the build processes' memory while the compile runs — build on a machine
-  you trust.
+  the build processes' memory while the compile runs (and the OS may page
+  or crash-dump that memory like any other) — build on a machine you
+  trust.
 - The script **fails loudly** if the compile did not produce the
   `-PROTECTED` filename, so a build where the password silently failed to
   reach the compiler cannot masquerade as protected.
 - Allowed form: 12–64 characters, letters, digits and dashes only — the
-  exact charset this pipeline is verified with.
+  exact charset this pipeline is verified with. 12 is the floor, not the
+  target: a short memorable password is offline-guessable by anyone
+  holding a leaked `.exe` (PBKDF2 slows that, it does not stop it), so
+  use a long random one — the `XXXXX-XXXXX-XXXXX-XXXXX` shape the
+  per-hospital generator produces (~98 bits) is the right size.
 
 What the password does (real cryptography, not a patchable check): the whole
 payload is **XChaCha20-encrypted** (built into Inno Setup since 6.4.0; the
@@ -186,7 +200,10 @@ shipped installer at once, with no way to tell whose copy leaked. That is
 acceptable precisely because the password never leaves the engineer — there
 is no hospital-side copy to leak. If it is ever compromised: pick a new
 password and rebuild; installers already run in the field are unaffected
-(the password gates *installation*, not the running system).
+(the password gates *installation*, not the running system). Be clear
+about what rotation does **not** do: every `.exe` already shipped stays
+openable with the old password forever — rotation protects future builds,
+it does not retro-protect copies already in the wild.
 
 `-SkipStage` reuses a payload staged earlier the same day. The install
 password is a **different secret from the backup encryption key**: the

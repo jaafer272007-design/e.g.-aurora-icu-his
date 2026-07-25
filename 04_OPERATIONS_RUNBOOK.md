@@ -214,10 +214,12 @@ If Aurora needs repairing, the answer is almost never to re-run the
 installer. Raise it with the vendor first.
 
 Newer installers notice an existing Aurora on the machine and stop with a
-warning before anything happens; getting past that warning requires typing
-the backup key ID from the sealed envelope. That is a safety net, not a
-change to the rule: the installer is for first installs and disaster
-rebuilds, nothing else.
+warning before anything happens; getting past that warning requires the
+backup key ID from the sealed envelope — when the vendor's engineer runs a
+repair, they will ask **you** to produce it, because the key envelope is
+the hospital's, not the vendor's. That is a safety net, not a change to
+the rule: the installer is for first installs and disaster rebuilds,
+nothing else.
 
 ### The install password — held by the vendor, not by you
 
@@ -228,8 +230,9 @@ so a copied installer is useless on its own.
 **Your hospital does not receive, store, or record this password — there
 is nothing for you to keep.** The vendor's engineer holds it and types it
 in person whenever Aurora is installed or reinstalled on your premises.
-That is deliberate: a secret that never enters the building cannot leak
-from it.
+That is deliberate: a secret your hospital never holds cannot leak from
+your files, safes, or envelopes — the engineer types it and takes it away
+with them.
 
 What this means for a disaster — if the server is destroyed or must be
 rebuilt from scratch: **contact the vendor.** The reinstall is performed
@@ -252,8 +255,9 @@ Restoring a backup replaces the entire database — including the user
 accounts. Every username and password in the restored system comes from
 the backup, not from the machine you restored onto.
 
-So if the server is destroyed and you install Aurora on a replacement
-machine and restore last night's backup:
+So if the server is destroyed, Aurora is reinstalled on a replacement
+machine (by the vendor's engineer — Part 5) and last night's backup is
+restored:
 
 - The new install's own starting administrator account **is wiped by the
   restore**.
@@ -325,8 +329,11 @@ actually be relying on.
 
 Once a year, restore onto a **different machine** and log in. This is the
 only exercise that proves the credential in your envelope still works and
-that the key you wrote down is the right one. Schedule it. Write down what
-happened.
+that the key you wrote down is the right one. The install half of the
+drill needs the vendor's engineer (installing Aurora requires their
+password — Part 5), so schedule it **with the vendor**; the key and the
+credential are yours to bring, exactly as in a real disaster. Write down
+what happened.
 
 ---
 
@@ -418,6 +425,11 @@ Things this system does **not** do. Do not assume otherwise.
 - **A backup taken after bad data was entered contains the bad data.**
   Backups protect against loss, not against mistakes. Noticing a data
   problem early is what lets you go back to a copy from before it.
+- **A dead-server rebuild cannot start until the vendor's engineer is on
+  site.** Only the vendor can run the installer (Part 5). Factor their
+  travel time into your recovery expectations, keep the vendor contact in
+  Appendix A current, and have the hospital-side items (Part 6) ready so
+  the visit is spent rebuilding, not searching for envelopes.
 
 ---
 

@@ -108,9 +108,9 @@ try {
 }
 
 # ---- 5. report the artifact ----
-$out = Get-ChildItem (Join-Path $here 'Output') -Filter 'AuroraSetup-*.exe' -ErrorAction SilentlyContinue |
+$out = Get-ChildItem (Join-Path $here 'Output') -Filter 'AuroraSetup-*-UNPROTECTED.exe' -ErrorAction SilentlyContinue |
        Sort-Object LastWriteTime | Select-Object -Last 1
-if (-not $out) { Die "build finished but no AuroraSetup-*.exe is in $here\Output -- check the output above." }
+if (-not $out) { Die "build finished but no AuroraSetup-*-UNPROTECTED.exe is in $here\Output -- check the output above." }
 $gb = [math]::Round($out.Length / 1GB, 2)
 Say "DONE  ->  $($out.FullName)   ($gb GB)"
 Say "This is the UNPROTECTED (plain) build - for build-machine smoke tests only."
