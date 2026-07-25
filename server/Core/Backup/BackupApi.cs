@@ -104,7 +104,8 @@ static class BackupApi
         {
             if (Rbac.Deny(user, "backup.manage") is IResult denied) return denied;
             if (string.IsNullOrWhiteSpace(req.File)) return ApiError.BadRequest("file is required");
-            try { return Results.Json(BackupService.TestRestore(req.File.Trim(), Actor(user)), JsonOpts.Web); }
+            try { return Results.Json(BackupService.TestRestore(req.File.Trim(), Actor(user),
+                string.IsNullOrWhiteSpace(req.Key) ? null : req.Key.Trim()), JsonOpts.Web); }
             catch (Exception ex) { return ApiError.StateConflict(ex.Message); }
         }).RequireAuthorization();
 
@@ -129,7 +130,8 @@ static class BackupApi
             if (req.Confirm?.Trim() != "REPLACE")
                 return ApiError.BadRequest(
                     "restore requires the typed confirmation 'REPLACE' — this REPLACES the live database with the backup");
-            try { return Results.Json(BackupService.RestoreInPlace(req.File.Trim(), Actor(user)), JsonOpts.Web); }
+            try { return Results.Json(BackupService.RestoreInPlace(req.File.Trim(), Actor(user),
+                string.IsNullOrWhiteSpace(req.Key) ? null : req.Key.Trim()), JsonOpts.Web); }
             catch (Exception ex) { return ApiError.StateConflict(ex.Message); }
         }).RequireAuthorization();
 

@@ -127,8 +127,8 @@ public static class BackupCli
                 }
                 case "test-restore":
                 {
-                    if (pos.Count < 1) return Usage("test-restore <file> [--actor NAME]");
-                    var r = BackupService.TestRestore(pos[0], actor);
+                    if (pos.Count < 1) return Usage("test-restore <file> [--key HEX] [--actor NAME]");
+                    var r = BackupService.TestRestore(pos[0], actor, FlagOrNull(args, "--key"));
                     Console.WriteLine(r.Summary);
                     PrintChecks(r.Checks);
                     PrintComparison(r.Tables);
@@ -149,8 +149,8 @@ public static class BackupCli
                     // --yes so a bare `restore <file>` can never wipe a hospital's DB
                     // by accident. The updater's rollback passes --yes.
                     if (pos.Count < 1 || !args.Contains("--yes"))
-                        return Usage("restore <file> --yes [--actor NAME]  (DESTRUCTIVE: REPLACES the live database with the backup)");
-                    var r = BackupService.RestoreInPlace(pos[0], actor);
+                        return Usage("restore <file> --yes [--key HEX] [--actor NAME]  (DESTRUCTIVE: REPLACES the live database with the backup; --key is REQUIRED on fresh hardware, where this machine's own key cannot decrypt the dead server's backup)");
+                    var r = BackupService.RestoreInPlace(pos[0], actor, FlagOrNull(args, "--key"));
                     Console.WriteLine(r.Summary);
                     PrintChecks(r.Checks);
                     PrintComparison(r.Tables);

@@ -38,7 +38,16 @@ const fmtBytes = (n: number): string =>
 
 const HEALTH_LABEL: Record<BackupStatus['health'], string> = {
   ok: 'HEALTHY', stale: 'BACKUP OVERDUE', failed: 'LAST BACKUP FAILED', none: 'NO BACKUP EXISTS',
+  /* off-site states: the primary backup is fine, but the hospital's only copy
+     is on the server — never shown as HEALTHY (that false green is the exact
+     comfort this area exists to deny) */
+  'offsite-none': 'NO OFF-SITE COPY',
+  'offsite-stale': 'OFF-SITE COPY OVERDUE',
+  'offsite-failed': 'OFF-SITE COPY FAILED',
 }
+
+/** off-site severities that must read as a problem, not a footnote */
+const OFFSITE_BAD = new Set(['none', 'stale', 'failed'])
 
 type ResultPanel =
   | { kind: 'verify'; data: BackupVerifyResult }
@@ -68,6 +77,9 @@ export function BackupRecovery() {
      confirmation. The button enables only when the operator types REPLACE. */
   const [restoreFor, setRestoreFor] = useState<string | null>(null)
   const [restoreConfirm, setRestoreConfirm] = useState('')
+  /* the RECORDED key — required only when restoring a backup this server did
+     not make (fresh hardware after the original died). Blank = server's key. */
+  const [restoreKey, setRestoreKey] = useState('')
 
   const reload = useCallback(() => {
     void Promise.all([getBackupStatus(), getBackupHistory(), getBackupEvents(100)])
@@ -99,8 +111,8 @@ export function BackupRecovery() {
     () => testRestoreBackup(file), data => setResult({ kind: 'test-restore', data }))
 
   const doRestore = (file: string) => run('restore:' + file,
-    () => restoreBackup(file, 'REPLACE'), data => {
-      setResult({ kind: 'restore', data }); setRestoreFor(null); setRestoreConfirm('')
+    () => restoreBackup(file, 'REPLACE', restoreKey.trim() || undefined), data => {
+      setResult({ kind: 'restore', data }); setRestoreFor(null); setRestoreConfirm(''); setRestoreKey('')
       if (data.ok) showToast('Restore complete — live database replaced', data.summary)
     })
 
@@ -195,10 +207,15 @@ export function BackupRecovery() {
                     </div>
                     <div>
                       <span>External USB disk (off-site copy)</span>
-                      <b>
-                        {status.externalDisk.lastCopyAt
-                          ? `last copy ${displayStamp(status.externalDisk.lastCopyAt)} — ${status.externalDisk.lastOutcome}`
-                          : status.externalDisk.detail ?? 'no copy recorded yet'}
+                      <b className={OFFSITE_BAD.has(status.externalDisk.severity) ? 'bkbad' : undefined}>
+                        {!status.externalDisk.configured
+                          ? 'NOT CONFIGURED — backups exist only on this server'
+                          : status.externalDisk.lastCopyAt
+                            ? `last copy ${displayStamp(status.externalDisk.lastCopyAt)}`
+                              + (status.externalDisk.staleDays != null ? ` (${status.externalDisk.staleDays}d ago)` : '')
+                              + (status.externalDisk.severity === 'stale' ? ` — OVERDUE, limit ${status.externalDisk.maxAgeDays}d` : '')
+                              + (status.externalDisk.severity === 'failed' ? ' — LAST ATTEMPT FAILED' : '')
+                            : status.externalDisk.detail ?? 'no copy recorded yet'}
                       </b>
                     </div>
                     <div><span>Encryption</span><b>AES-256-GCM (authenticated) · key id <span className="num">{status.keyId || 'NOT INITIALISED'}</span></b></div>
@@ -370,6 +387,18 @@ export function BackupRecovery() {
                                 </span>
                               </div>
                             </div>
+                            {h.keyId !== status?.keyId && (
+                              <label className="bkrestorekey">
+                                <span>
+                                  This backup was made with key <b className="num">{h.keyId}</b>, but this server&apos;s
+                                  key is <b className="num">{status?.keyId || 'none'}</b> — so this is a backup from
+                                  ANOTHER machine. Paste the <b>recorded key {h.keyId}</b> (sealed envelope / password
+                                  manager) to restore it here:
+                                </span>
+                                <input className="num" type="password" autoComplete="off" placeholder="64 hex characters"
+                                  value={restoreKey} onChange={e => setRestoreKey(e.target.value)} />
+                              </label>
+                            )}
                             <div className="bkrestorerow">
                               <input aria-label="Type REPLACE to confirm" type="text" autoComplete="off"
                                 placeholder="REPLACE" value={restoreConfirm} onChange={e => setRestoreConfirm(e.target.value)} />
@@ -378,7 +407,7 @@ export function BackupRecovery() {
                                 {busy === 'restore:' + h.file ? 'Restoring — replacing live data…' : 'Restore & replace live data'}
                               </button>
                               <button className="bkbtn sm ghost" disabled={busy != null}
-                                onClick={() => { setRestoreFor(null); setRestoreConfirm('') }}>Cancel</button>
+                                onClick={() => { setRestoreFor(null); setRestoreConfirm(''); setRestoreKey('') }}>Cancel</button>
                             </div>
                           </div>
                         )}

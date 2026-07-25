@@ -99,12 +99,23 @@ procedure InitializeWizard();
 begin
   DetectTzAndGpu();
 
+  { Three separate locations, because putting them on ONE disk is the single
+    biggest recoverability mistake: if the database and its backups share a
+    drive, one failure destroys both at the same instant. The wizard now asks
+    for the backup target separately (and warns on a same-drive choice), plus
+    an optional OFF-SITE disk that the nightly job mirrors to. }
   DataDirPage := CreateInputDirPage(wpSelectDir,
-    'Data location', 'Where should patient data, the database and backups live?',
-    'Aurora stores the database and encrypted backups here. Use a large, ideally separate, drive.',
+    'Data and backup locations', 'Where should the database, the backups and the off-site copy live?',
+    'The DATABASE and the BACKUPS should be on DIFFERENT physical disks - otherwise one disk failure '
+    + 'destroys the patient record AND every backup of it together. The off-site disk is a removable '
+    + 'drive you rotate away from the building; leave it blank if you do not have one yet.',
     False, '');
-  DataDirPage.Add('');
+  DataDirPage.Add('Database + data location:');
+  DataDirPage.Add('Backup location (use a DIFFERENT drive):');
+  DataDirPage.Add('Off-site copy - removable/second disk (OPTIONAL, leave blank if none):');
   DataDirPage.Values[0] := 'C:\Aurora\data';
+  DataDirPage.Values[1] := 'C:\Aurora\data\backups';
+  DataDirPage.Values[2] := '';
 
   UrlPage := CreateInputQueryPage(DataDirPage.ID,
     'Access address', 'The address clinicians open in their browser',
@@ -129,10 +140,41 @@ begin
   FormPage.SelectedValueIndex := 0;
 end;
 
+{ Drive letter of a path ('D:' from 'D:\Aurora\backups'), uppercased; '' when
+  the path is a UNC/network share, which we treat as a different device. }
+function DriveOf(path: String): String;
+begin
+  Result := '';
+  path := Trim(path);
+  if (Length(path) >= 2) and (path[2] = ':') then Result := Uppercase(Copy(path, 1, 2));
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
-var url, dir: String; p: Integer;
+var url, dir, dbDrv, bkDrv, usbDrv: String; p: Integer;
 begin
   Result := True;
+  if CurPageID = DataDirPage.ID then begin
+    dbDrv  := DriveOf(DataDirPage.Values[0]);
+    bkDrv  := DriveOf(DataDirPage.Values[1]);
+    usbDrv := DriveOf(DataDirPage.Values[2]);
+    if Trim(DataDirPage.Values[1]) = '' then begin
+      MsgBox('Choose a backup location.', mbError, MB_OK);
+      Result := False;
+    end else if (dbDrv <> '') and (dbDrv = bkDrv) then begin
+      { Warn, do not block: some hospitals genuinely have one disk today. They
+        must SEE the consequence and choose it deliberately. }
+      Result := MsgBox('The database and the backups are both on drive ' + dbDrv + '.'#13#10#13#10 +
+        'If that disk fails, you lose the patient record AND every backup of it AT THE SAME TIME.'#13#10#13#10 +
+        'Strongly recommended: put the backups on a different physical disk, and set an off-site copy.'#13#10#13#10 +
+        'Continue anyway with both on ' + dbDrv + ' ?', mbConfirmation, MB_YESNO) = IDYES;
+    end;
+    if Result and (Trim(DataDirPage.Values[2]) <> '') and (usbDrv <> '') and (usbDrv = dbDrv) then begin
+      MsgBox('The off-site copy is on the SAME drive (' + usbDrv + ') as the database, so it is not an '
+        + 'off-site copy at all - it dies with the same disk.'#13#10#13#10 +
+        'Pick a removable/second disk, or leave it blank.', mbError, MB_OK);
+      Result := False;
+    end;
+  end;
   if CurPageID = wpSelectDir then begin
     { Refuse to install ON TOP of a source/development checkout of Aurora. Setup
       defaults to C:\Aurora, which on a BUILD machine is the git clone (from
@@ -240,6 +282,8 @@ begin
   args := '-NoProfile -ExecutionPolicy Bypass -File ' + QArg(ExpandConstant('{app}\server\scripts\aurora-provision.ps1')) +
     ' -InstallDir ' + QArg(ExpandConstant('{app}')) +
     ' -DataDir '    + QArg(DataDirPage.Values[0]) +
+    ' -BackupDir '  + QArg(DataDirPage.Values[1]) +
+    (' -BackupUsb ' + QArg(Trim(DataDirPage.Values[2]))) +
     ' -Port ' + IntToStr(ChosenPort()) +
     ' -AccessUrl '  + QArg(BuildAccessUrl()) +
     ' -FormularySeed ' + seed +

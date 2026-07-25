@@ -1939,11 +1939,22 @@ export interface BackupExternalDisk {
   lastCopyAt?: string | null
   lastOutcome?: string | null
   detail?: string | null
+  /** BACKUP_USB set? false = backups exist ONLY on this server */
+  configured: boolean
+  /** days since the last SUCCESSFUL off-site copy (null = never succeeded) */
+  staleDays?: number | null
+  /** ok | stale | failed | none (never configured) | unknown */
+  severity: 'ok' | 'stale' | 'failed' | 'none' | 'unknown'
+  /** the staleness threshold in days (BACKUP_USB_MAX_AGE_DAYS) */
+  maxAgeDays: number
 }
 
 export interface BackupStatus {
-  /** ok | stale (>24h — the LOUD persistent alert) | failed | none */
+  /** primary-backup states first (ok | stale >24h | failed | none), then the
+   *  OFF-SITE states — a healthy primary with no/stale/failed off-site copy is
+   *  still a hospital one disk failure from total loss, so it is never "ok" */
   health: 'ok' | 'stale' | 'failed' | 'none'
+    | 'offsite-none' | 'offsite-stale' | 'offsite-failed'
   healthDetail: string
   lastSuccessAt?: string | null
   lastOutcome?: string | null

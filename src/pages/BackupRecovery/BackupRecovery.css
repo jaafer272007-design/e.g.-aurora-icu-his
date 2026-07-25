@@ -60,6 +60,15 @@
 .bkrestorewarn>div{display:flex;flex-direction:column;gap:3px}
 .bkrestorewarn b{color:var(--text)}
 .bkrestorewarn span{font-size:.82rem;line-height:1.45;color:var(--dim);max-width:640px}
+/* the cross-machine key entry: shown only when the backup's key id differs
+   from this server's, i.e. it came from another (dead) machine */
+.bkrestorekey{display:flex;flex-direction:column;gap:6px;font-size:.82rem;line-height:1.45;color:var(--dim)}
+.bkrestorekey b{color:var(--text)}
+.bkrestorekey input{border:1px solid rgba(var(--red-rgb),.5);background:transparent;color:var(--text);
+  border-radius:8px;padding:6px 10px;font:inherit;font-size:.85rem;max-width:420px}
+.bkrestorekey input:focus-visible{outline:2px solid var(--red);outline-offset:1px}
+/* an off-site fact that is actively bad reads red, not as a grey footnote */
+.bkfacts .bkbad{color:var(--red)}
 .bkrestorerow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .bkrestorerow input{border:1px solid rgba(var(--red-rgb),.5);background:transparent;color:var(--text);
   border-radius:8px;padding:6px 10px;font:inherit;font-size:.85rem;letter-spacing:.08em;width:150px}

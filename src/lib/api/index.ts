@@ -2270,8 +2270,9 @@ export function testRestoreBackup(file: string): Promise<AdtWriteResult<BackupTe
  *  forces the operator to type it); the server rejects anything else so this
  *  can never fire from a stray click. Returns the same source-vs-restored
  *  comparison shape as test-restore, computed against the now-live database. */
-export function restoreBackup(file: string, confirm: string): Promise<AdtWriteResult<BackupTestRestoreResult>> {
-  return backupPost<BackupTestRestoreResult>('/api/backup/restore', 'backup restore', { file, confirm })
+export function restoreBackup(file: string, confirm: string, key?: string): Promise<AdtWriteResult<BackupTestRestoreResult>> {
+  return backupPost<BackupTestRestoreResult>('/api/backup/restore', 'backup restore',
+    { file, confirm, ...(key && key.trim() !== '' ? { key: key.trim() } : {}) })
 }
 
 /** POST /api/backup/rotate-key — the response carries the NEW key exactly

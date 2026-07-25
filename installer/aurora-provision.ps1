@@ -39,6 +39,16 @@
 param(
   [Parameter(Mandatory)][string]$InstallDir,     # e.g. C:\Aurora  (server\, pgsql\, model\)
   [Parameter(Mandatory)][string]$DataDir,        # e.g. C:\Aurora\data (pg\, backups\, secrets\)
+  # The PRIMARY backup target. Defaults to <DataDir>\backups, but SHOULD be a
+  # DIFFERENT PHYSICAL DISK from the database: with both on one disk, a single
+  # drive failure destroys the live data AND every backup of it at the same
+  # moment. The wizard now asks for this separately and warns on a same-drive
+  # choice; this parameter is what carries that decision.
+  [string]$BackupDir = '',
+  # The OFF-SITE copy (a removable/second disk the hospital rotates away). Empty
+  # = no off-site copy, and the dashboard says so LOUDLY rather than implying
+  # the on-server copy is enough.
+  [string]$BackupUsb = '',
   [Parameter(Mandatory)][int]$Port,              # the LAN port clinicians open (e.g. 8080)
   [Parameter(Mandatory)][string]$AccessUrl,      # CORS_ORIGINS - http://<lan-ip>:<port> (not localhost)
   [ValidateSet('starter','empty')][string]$FormularySeed = 'starter',
@@ -64,7 +74,8 @@ function Fail([string]$m) { try { Stop-Transcript | Out-Null } catch {}; Write-E
 $server   = Join-Path $InstallDir 'server'
 $pgbin    = Join-Path $InstallDir 'pgsql\bin'
 $pgdata   = Join-Path $DataDir 'pg'
-$backups  = Join-Path $DataDir 'backups'
+# -BackupDir wins when given; otherwise the historical <DataDir>\backups.
+$backups  = if ($BackupDir) { $BackupDir } else { Join-Path $DataDir 'backups' }
 $secrets  = Join-Path $DataDir 'secrets'
 $envFile  = Join-Path $server 'aurora.env'          # AuroraEnvFile default path = beside the exe
 $exe      = Join-Path $server 'AuroraIcu.Api.exe'
@@ -77,7 +88,33 @@ $pgPort   = 5432                                     # local-only; never exposed
 try { Start-Transcript -Path (Join-Path $InstallDir 'provision.log') -Append -Force | Out-Null } catch {}
 Say "aurora-provision starting - InstallDir=$InstallDir DataDir=$DataDir Port=$Port AiEnabled=$AiEnabled"
 
+# ---- 0a. RECOVERABILITY POSTURE - state it plainly in the log ----
+# The single most consequential fact about this install is whether the backups
+# can survive the thing that kills the database. Say it out loud at provision
+# time so provision.log always carries the answer.
+function Get-Vol([string]$p) { try { (Split-Path -Qualifier (Resolve-Path -LiteralPath $p -ErrorAction Stop).Path).ToUpper() } catch { try { (Split-Path -Qualifier $p).ToUpper() } catch { '' } } }
+$dbVol  = Get-Vol $pgdata
+$bkVol  = Get-Vol $backups
+if ($dbVol -and $bkVol -and $dbVol -eq $bkVol) {
+  Say "WARNING: the database ($pgdata) and the primary backups ($backups) are on the SAME DISK ($dbVol)."
+  Say "         ONE disk failure destroys both at once. Put the backups on a different physical disk,"
+  Say "         and configure an OFF-SITE copy (rotated removable disk) - that is the real protection."
+} else {
+  Say "Recoverability: database on $dbVol, primary backups on $bkVol (separate volumes - good)."
+}
+if ($BackupUsb) { Say "Off-site copy target: $BackupUsb (mirrored after every nightly backup)." }
+else { Say "NOTE: no off-site copy configured. Backups will exist ONLY on this machine until BACKUP_USB is set." }
+
 foreach ($p in @($DataDir,$pgdata,$backups,$secrets)) { New-Item -ItemType Directory -Force -Path $p | Out-Null }
+# Lock the two folders that hold the hospital's recoverability: the encrypted
+# backups and the key. SYSTEM + Administrators only - a limited user (or malware
+# running as one) can no longer read or delete them. This is NOT ransomware-proof
+# (anything running as SYSTEM/Administrator still can - see the runbook), but it
+# removes the easy path and stops ordinary users stumbling into them.
+foreach ($p in @($backups,$secrets)) {
+  try { & icacls.exe $p /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null }
+  catch { Say "NOTE: could not tighten permissions on $p ($($_.Exception.Message))." }
+}
 foreach ($f in @($exe, (Join-Path $pgbin 'initdb.exe'), (Join-Path $pgbin 'pg_ctl.exe'), (Join-Path $pgbin 'psql.exe'))) {
   if (-not (Test-Path $f)) { Fail "missing bundled file: $f (the installer lays these down before provisioning)" }
 }
@@ -144,14 +181,20 @@ function Get-LanAccess([int]$port) {
 # stall AND is standard practice for a database server (live AV scanning of a
 # Postgres data directory is a well-known performance problem). Best-effort:
 # never fail the install if AV is locked down (Tamper Protection / 3rd-party AV).
+# SCOPE: exclude the BINARIES ($InstallDir) and the live Postgres cluster
+# ($pgdata) only - NOT the whole $DataDir. Excluding $DataDir also excluded
+# $DataDir\backups and $DataDir\secrets, which meant antivirus stopped watching
+# the very files a ransomware attack would encrypt (and the key file). The
+# performance reason for exclusions is the hot Postgres data directory; backups
+# are written once a night and benefit from being scanned. Narrower = safer.
 try {
   Add-MpPreference -ExclusionPath $InstallDir -ErrorAction Stop
-  Add-MpPreference -ExclusionPath $DataDir    -ErrorAction Stop
+  Add-MpPreference -ExclusionPath $pgdata     -ErrorAction Stop
   Add-MpPreference -ExclusionProcess 'initdb.exe','postgres.exe','pg_ctl.exe','psql.exe','createdb.exe','pg_isready.exe','AuroraIcu.Api.exe','llama-server.exe' -ErrorAction Stop
-  Say "added Windows Defender exclusions for $InstallDir and $DataDir"
+  Say "added Windows Defender exclusions for $InstallDir and $pgdata (backups + secrets stay SCANNED on purpose)"
 } catch {
   Say "NOTE: could not set Windows Defender exclusions ($($_.Exception.Message))."
-  Say "      If setup stalls at the database step, add $InstallDir and $DataDir to the machine's antivirus exclusions, then re-run."
+  Say "      If setup stalls at the database step, add $InstallDir and $pgdata to the machine's antivirus exclusions, then re-run."
 }
 
 # ---- 1. initialise the private PostgreSQL cluster (once) ----
@@ -267,6 +310,10 @@ $lines = @(
   # to pgsql\bin as a sibling of its exe dir, so this is belt-and-suspenders.)
   "PG_BIN=$pgbin"
 )
+# The off-site copy the nightly task mirrors to. Written ONLY when the operator
+# chose one, so the dashboard can tell "never configured" from "configured but
+# the disk has not been seen" - two very different problems.
+if ($BackupUsb) { $lines += "BACKUP_USB=$BackupUsb" }
 if ($TimeZone) { $lines += "TZ=$TimeZone" }
 
 # ---- AI wiring (sec 5). The native AI is the AuroraAI Windows service

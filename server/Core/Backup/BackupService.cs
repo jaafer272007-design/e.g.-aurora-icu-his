@@ -549,7 +549,12 @@ public static class BackupService
 
     /* -------- test restore (isolated scratch — live data untouched) ------ */
 
-    public static TestRestoreResultDto TestRestore(string file, string actor)
+    /** suppliedKeyHex: the RECORDED off-server key (sealed envelope / password
+     *  manager). Required on FRESH HARDWARE, where the newly-installed server
+     *  generated its OWN key at init-key and therefore cannot decrypt a backup
+     *  made by the dead machine — without it, DecryptFile refuses with a
+     *  key-id mismatch. Omitted = use the server's own key (same-machine). */
+    public static TestRestoreResultDto TestRestore(string file, string actor, string? suppliedKeyHex = null)
     {
         var checks = new List<CheckResult>();
         var tables = new List<TableComparison>();
@@ -561,7 +566,7 @@ public static class BackupService
         {
             var manifest = ReadManifest(file) ?? throw new InvalidOperationException(
                 $"No manifest for {file} — cannot compare counts without the recorded source state.");
-            var key = LoadKey();
+            var key = LoadKey(suppliedKeyHex);
             plain = Path.Combine(BackupDir, ".tmp", Path.GetFileName(file) + ".tr");
             Directory.CreateDirectory(Path.GetDirectoryName(plain)!);
             DecryptFile(enc, plain, key);
@@ -674,7 +679,12 @@ public static class BackupService
      *    3. verify the live database against the manifest.
      *  The aurora role needs CREATEDB (granted by aurora-provision.ps1) for the
      *  scratch born-verify and the CREATE. Audited as a 'restore' event. */
-    public static TestRestoreResultDto RestoreInPlace(string file, string actor)
+    /** suppliedKeyHex: the RECORDED off-server key. THE cross-machine path —
+     *  a fresh install generated its own key at init-key, so restoring the dead
+     *  server's backup on new hardware REQUIRES the recorded key here; without
+     *  it DecryptFile refuses (key-id mismatch) and the rebuild is impossible
+     *  from the app. Omitted = the server's own key (same-machine recovery). */
+    public static TestRestoreResultDto RestoreInPlace(string file, string actor, string? suppliedKeyHex = null)
     {
         var checks = new List<CheckResult>();
         var tables = new List<TableComparison>();
@@ -687,7 +697,7 @@ public static class BackupService
             if (!File.Exists(enc)) throw new InvalidOperationException($"{file} not found in {BackupDir}");
             var manifest = ReadManifest(file) ?? throw new InvalidOperationException(
                 $"No manifest for {file} — refusing to restore without the recorded source state to verify against.");
-            var key = LoadKey();
+            var key = LoadKey(suppliedKeyHex);
             plain = Path.Combine(BackupDir, ".tmp", Path.GetFileName(file) + ".rp");
             Directory.CreateDirectory(Path.GetDirectoryName(plain)!);
             DecryptFile(enc, plain, key);
@@ -815,20 +825,86 @@ public static class BackupService
             { health = "failed"; detail = "The most recent backup attempt FAILED. The last good backup is intact, but the pipeline needs attention before the 24h RPO is breached."; }
         }
         // external disk status: honestly from the audit trail (see ExternalDiskDto)
-        ExternalDiskDto usb;
-        try
+        var usb = ExternalDiskStatus();
+
+        /* The off-site copy escalates health. Without this, the dashboard reads
+           HEALTHY while the ONLY copy of the hospital's record sits on the same
+           disk as the database — which is precisely the silent failure the
+           design exists to prevent. A never-configured off-site copy is called
+           out on every install; a configured one that stops being seen (nobody
+           plugged the rotated disk back in) goes stale and says so. This never
+           MASKS a primary-backup problem: the primary rules stay first. */
+        if (health == "ok")
         {
-            using var db = Ctx();
-            var last = db.Set<BackupEventRow>().Where(e => e.Kind == "usb-copy")
-                .OrderByDescending(e => e.Id).FirstOrDefault();
-            usb = last == null ? new ExternalDiskDto(null, null, "no external-disk copy recorded yet")
-                : new ExternalDiskDto(last.At, last.Outcome, last.DetailJson);
+            if (!usb.Configured)
+            {
+                health = "offsite-none";
+                detail = "NO OFF-SITE COPY IS CONFIGURED. Every backup lives only on this server — " +
+                    "one disk failure, fire or theft destroys the database AND every backup together. " +
+                    "Set BACKUP_USB to a removable/second disk and rotate it off-site.";
+            }
+            else if (usb.Severity == "failed")
+            {
+                health = "offsite-failed";
+                detail = "The most recent OFF-SITE COPY FAILED. On-server backups are fine, but the " +
+                    "disaster copy is not being made — check the external disk is connected and healthy.";
+            }
+            else if (usb.Severity == "stale")
+            {
+                health = "offsite-stale";
+                detail = $"NO OFF-SITE COPY IN {usb.StaleDays} DAYS (limit {usb.MaxAgeDays}). The external disk " +
+                    "has not been seen — if it was rotated out, plug the next one in. A backup that " +
+                    "silently stops going off-site is the classic failure.";
+            }
         }
-        catch { usb = new ExternalDiskDto(null, null, "event store unavailable"); }
         return new BackupStatusDto(health, detail, lastSuccess, lastOutcome,
             NextScheduled(), Schedule, manifests.Count,
             manifests.Sum(m => m.EncryptedSizeBytes), RetentionSummary(), usb,
             CurrentKeyId(), BackupDir);
+    }
+
+    /** How many days without a successful off-site copy before the dashboard
+     *  calls it stale. Default 8 = one week plus a day of slack, so a weekly
+     *  rotation does not cry wolf but a forgotten disk is caught fast. */
+    public static int UsbMaxAgeDays => EnvInt("BACKUP_USB_MAX_AGE_DAYS", 8);
+
+    /** Honest off-site state. "Configured" is read from BACKUP_USB, which the
+     *  nightly script also reads — so the dashboard can distinguish "the
+     *  hospital never set up an off-site copy" from "it is set up but the disk
+     *  has not been seen", two very different conversations. */
+    static ExternalDiskDto ExternalDiskStatus()
+    {
+        var configured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("BACKUP_USB"));
+        BackupEventRow? last = null, lastOk = null;
+        try
+        {
+            using var db = Ctx();
+            var rows = db.Set<BackupEventRow>().Where(e => e.Kind == "usb-copy")
+                .OrderByDescending(e => e.Id).Take(50).ToList();
+            last = rows.FirstOrDefault();
+            lastOk = rows.FirstOrDefault(e => e.Outcome == "success");
+        }
+        catch
+        {
+            return new ExternalDiskDto(null, null, "event store unavailable",
+                configured, null, configured ? "unknown" : "none", UsbMaxAgeDays);
+        }
+        if (!configured)
+            return new ExternalDiskDto(last?.At, last?.Outcome,
+                "no off-site copy configured — BACKUP_USB is not set, so backups exist ONLY on this server",
+                false, null, "none", UsbMaxAgeDays);
+        if (lastOk == null)
+            return new ExternalDiskDto(last?.At, last?.Outcome,
+                last == null
+                    ? "configured, but no off-site copy has ever succeeded"
+                    : "configured, but the last off-site copy attempt failed",
+                true, null, "failed", UsbMaxAgeDays);
+        var days = (int)Math.Floor((DateTime.UtcNow - DateTime.Parse(lastOk.At + "Z",
+            null, System.Globalization.DateTimeStyles.AdjustToUniversal)).TotalDays);
+        var severity = last is { Outcome: "failed" } ? "failed"
+            : days >= UsbMaxAgeDays ? "stale" : "ok";
+        return new ExternalDiskDto(lastOk.At, last?.Outcome, last?.DetailJson,
+            true, days, severity, UsbMaxAgeDays);
     }
 
     /** "daily HH:mm" → the next occurrence in the hospital TZ, rendered as
