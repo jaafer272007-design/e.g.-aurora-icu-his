@@ -1,5 +1,51 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**Last updated: 2026-07-25 · current through the BACKUP DATA-LOSS AUDIT (six
+scenarios, every claim traced to file:line, findings adversarially re-verified).
+VERDICTS: (1) same-disk — NOT COVERED: pgdata/backups/secrets all derived from one
+-DataDir and the wizard asked for ONE location, so a single disk failure destroyed
+the database, every backup AND the server's key copy together. (2) off-site USB —
+NOT COVERED: the installer never wrote BACKUP_USB, so the off-site branch never
+ran, and Status() ignored the external disk entirely (HEALTHY with zero off-site
+copies). (3) ransomware — NOT COVERED, and honestly unfixable in-app: no
+immutability/WORM/VSS/versioning/separate credential anywhere; every write path
+runs as SYSTEM; AES protects confidentiality not availability; the ONLY real
+control is a physically disconnected rotated disk (load-bearing OPERATIONAL
+discipline). (4) key custody — PARTIAL: show-once is real and no endpoint can read
+a key back, but nothing enforces recording it and the native install never
+ACL-locked backup.key. (5) cross-machine restore — PARTIAL, with a CRITICAL
+binding: RestoreInPlace/TestRestore called LoadKey() with NO argument, so fresh
+hardware (own key from init-key) could never decrypt the dead server's backup —
+the recorded envelope key had no way in; and the on-screen runbook gave DOCKER
+instructions (restore.ps1/appliance/.env) that the native installer does not ship.
+(6) retention — COVERED: GfsPrune runs inside RunBackup every night and the
+30/12/12 keep-set arithmetic is sound; limitation stated honestly (born-verify
+proves a backup matches ITSELF, so a corrupted-but-consistent DB is faithfully
+backed up as corrupted — no cross-backup drift detection).
+FIXED IN CODE THIS PASS: recorded-key threading through
+RestoreInPlace/TestRestore + API + CLI (--key) + a restore-panel key prompt shown
+exactly when the backup's key id differs from this server's; off-site health
+escalation (offsite-none / offsite-stale / offsite-failed, BACKUP_USB_MAX_AGE_DAYS
+default 8) with the dashboard row turning red; separate backup-location + off-site
+disk in the wizard with a same-drive warning; provisioning -BackupDir/-BackupUsb,
+recoverability posture stated in provision.log; Defender exclusions narrowed from
+the whole DataDir to binaries + pgdata so backups/secrets stay AV-scanned;
+backups\ + secrets\ + backup.key ACL-locked to SYSTEM+Administrators; nightly
+robocopy made ADD-ONLY (/XC /XN /XO) so in-place-encrypted backups can no longer
+overwrite good off-site copies; re-provision now says loudly when no key ceremony
+was shown; rotate-key warns with the COUNT of backups the rotation would orphan;
+the Restore Wizard runbook rewritten for the NATIVE path (four artifacts incl.
+keeping the installer off-server, copy the .aurbk+.manifest PAIR into BACKUP_DIR,
+verify-with-key then restore-with-key, old-admin-credential warning, TZ recheck).
+REMAINS OPERATIONAL-ONLY (hospital runbook, not code): physically rotating a
+DISCONNECTED off-site disk (the only ransomware control), recording the key in the
+three places and keeping OLD envelopes after rotation, keeping AuroraSetup.exe
+off-server, knowing an OLD admin credential for a cross-machine restore, and
+periodically running verify/test-restore. Server + frontend build clean; PS
+syntax-clean; installer files pure ASCII. Windows-only paths stay code-reviewed —
+the recorded-key cross-machine restore and the off-site alerting need the hardware
+pass. **
+
 **Last updated: 2026-07-24 · current through IN-APP RESTORE (no-commands recovery,
 owner-chosen). Backups + verify + test-restore were already 100% button-driven,
 but the DESTRUCTIVE in-place restore was CLI-only (AuroraIcu.Api.exe restore

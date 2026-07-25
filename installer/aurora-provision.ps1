@@ -382,15 +382,31 @@ if ($aiReady) {
 
 # ---- 6. backup-key ceremony (init-key) - write the key ONCE for the wizard to show ----
 Say "generating the backup encryption key (shown once by the installer)"
-# init-key writes the ACL-locked server copy AND prints the key; we capture the
-# printed key for the installer's show-once page, then this relay file is deleted.
+# init-key writes the server copy AND prints the key; we capture the printed key
+# for the installer's show-once page, then this relay file is deleted.
 $out = & $exe init-key --actor installer 2>&1
 $keyLine = ($out | Select-String -Pattern '^\s*key\s*:\s*(.+)$').Matches.Groups[1].Value.Trim()
 $idLine  = ($out | Select-String -Pattern '^\s*key id\s*:\s*(.+)$').Matches.Groups[1].Value.Trim()
 if ($keyLine) {
   Set-Content -Encoding ascii -Path $KeyOutFile -Value "$idLine`n$keyLine"
   & icacls.exe $KeyOutFile /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
-} else { Say "NOTE: init-key produced no key (already initialised?) - no show-once page." }
+} else {
+  # A pre-existing key means THIS run showed the operator nothing. Say so
+  # loudly: if the original ceremony was never recorded, every backup this
+  # machine makes is already unrecoverable off-server and no one has been told.
+  Say "NOTE: init-key produced no key - a key already exists, so NO show-once page is displayed."
+  Say "      If the ORIGINAL key was never recorded (envelope / password manager), this hospital"
+  Say "      CANNOT restore its backups on other hardware. Rotate the key and record the new one."
+}
+# The key file itself, ACL-locked explicitly. The secrets FOLDER is locked above
+# and the file inherits that, but the file is written by the server process
+# (File.WriteAllText) - assert the ACL on the artifact too rather than trusting
+# inheritance. Losing this file is survivable ONLY if the envelope copy exists.
+$keyFilePath = Join-Path $secrets 'backup.key'
+if (Test-Path $keyFilePath) {
+  try { & icacls.exe $keyFilePath /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null }
+  catch { Say "NOTE: could not tighten permissions on the backup key file ($($_.Exception.Message))." }
+}
 
 # ---- 7. register the nightly backup (native - NOT the Docker backup.ps1) ----
 Say "registering the automatic nightly backup (Task Scheduler 'AuroraBackup', 02:00)"

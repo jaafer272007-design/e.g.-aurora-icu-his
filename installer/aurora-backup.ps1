@@ -46,7 +46,16 @@ $usb = Get-EnvVal 'BACKUP_USB'
 $dir = Get-EnvVal 'BACKUP_DIR'
 if ($usb -and $dir) {
   Write-Host "Copying backups to the off-site USB: $usb"
-  robocopy $dir $usb /E /R:2 /W:5 /NP | Out-Null
+  # ADD-ONLY mirroring. /XC /XN /XO exclude Changed, Newer and Older files, so
+  # robocopy copies ONLY files that do not exist on the off-site disk yet and
+  # NEVER overwrites one already there. Backup filenames are unique per run
+  # (aurora-<stamp>.aurbk), so nothing legitimate is ever re-copied - but if
+  # ransomware rewrites the on-server backups IN PLACE, the nightly job would
+  # otherwise faithfully push the encrypted versions over the last good
+  # off-site copies and destroy the only real disaster copy. Add-only means
+  # the off-site disk keeps what it already has. (/PURGE is likewise never
+  # used: deletions on the server must not propagate off-site.)
+  robocopy $dir $usb /E /XC /XN /XO /R:2 /W:5 /NP | Out-Null
   $rc = $LASTEXITCODE
   $outcome = if ($rc -lt 8) { 'success' } else { 'failed' }
   $detail = "{`"target`":`"$($usb -replace '\\','/')`",`"robocopy`":$rc}"

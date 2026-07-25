@@ -228,7 +228,15 @@ export function BackupRecovery() {
                       ? <button className="bkbtn ghost" disabled={busy != null} onClick={() => setConfirmRotate(true)}>Rotate key…</button>
                       : (
                         <span className="bkconfirm">
-                          <span>Rotation replaces the key for FUTURE backups — old backups still need the old key&apos;s envelope. Continue?</span>
+                          <span>
+                            Rotation generates a NEW key. It <b>cannot show you the current one</b> — nothing can,
+                            by design. {(() => {
+                              const orphaned = (history ?? []).filter(h => h.keyId === status?.keyId).length
+                              return orphaned > 0
+                                ? `The ${orphaned} backup${orphaned === 1 ? '' : 's'} made with key ${status?.keyId} will ONLY open with that key from then on — if its envelope is not recorded, ${orphaned === 1 ? 'it becomes' : 'they become'} permanently unreadable.`
+                                : 'Existing backups keep needing the key they were made with.'
+                            })()} Continue?
+                          </span>
                           <button className="bkbtn warn" disabled={busy != null} onClick={doRotate}>
                             {busy === 'rotate-key' ? 'Rotating…' : 'Rotate the key'}
                           </button>
@@ -259,36 +267,50 @@ export function BackupRecovery() {
                 </p>
                 <ol className="bkwizard">
                   <li>
-                    <b>Gather the three things a restore needs:</b> a fresh Windows machine with Docker Desktop,
-                    the newest backup pair from the off-site USB disk (<code>aurora-*.aurbk</code> +
-                    <code> aurora-*.manifest.json</code>), and the <b>backup key</b> from a recorded copy — the
-                    sealed envelope, the password manager, or the hospital-management copy. The manifest names
-                    which key the backup needs (its <i>key id</i>); the dead server&apos;s key file is not required.
+                    <b>Gather the FOUR things a rebuild needs.</b> (1) The <b>installer</b>
+                    <code> AuroraSetup-&lt;ver&gt;.exe</code> — keep a copy OFF this server, it cannot be rebuilt
+                    in a crisis. (2) The newest backup <b>pair</b> from the off-site disk:
+                    <code> aurora-*.aurbk</code> <b>and</b> <code>aurora-*.manifest.json</code> — the manifest is
+                    mandatory, a restore refuses without it. (3) The <b>backup key</b> from a recorded copy
+                    (sealed envelope / password manager / hospital-management copy) — the dead server&apos;s key
+                    file is NOT needed, but without a recorded copy the backup can never be opened by anyone.
+                    (4) A working <b>administrator username + password from the OLD system</b> — see step 5.
                   </li>
                   <li>
-                    <b>Install Aurora</b> on the new machine from the installer (clone or copy the release), then
-                    open PowerShell in the <code>appliance</code> folder.
+                    <b>Install Aurora normally</b> on the replacement Windows machine — the same
+                    next-next-finish install. It comes up empty, with its OWN new backup key. That is expected.
                   </li>
                   <li>
-                    <b>Run</b> <code>.\restore.ps1 -BackupFile D:\path\aurora-&lt;stamp&gt;.aurbk</code>. The script
-                    checks Docker, writes a fresh <code>.env</code> (new secrets — everyone signs in again; the
-                    hospital timezone is restored from the manifest), starts PostgreSQL alone, asks for the key,
-                    <b> decrypts</b> (a wrong or corrupt key fails the AES-256-GCM authentication tag loudly —
-                    nothing partial is ever restored), runs <code>pg_restore</code>, and starts Aurora.
+                    <b>Put the backup pair where this machine looks for backups.</b> Copy BOTH files off the
+                    off-site disk into the new server&apos;s backup folder (the <b>On-server target</b> path shown
+                    on this dashboard). A backup left on the USB does not appear in Backup History.
                   </li>
                   <li>
-                    <b>Read the verification report.</b> The script&apos;s final step compares the restored database
-                    against the manifest — <b>source-vs-restored record counts and per-table content digests
-                    across every table, plus the hospital logo&apos;s bytes</b> — and records the restore in the
-                    immutable audit. <b>A restore that completes but loses data is a FAILED restore</b>: if any
-                    count differs, stop and try the previous backup.
+                    <b>Prove the key first, then restore.</b> On the copied backup use
+                    <b> Verify with recorded key…</b> and paste the recorded key — all checks must pass. Then use
+                    <b> Restore…</b>; because the backup was made by a DIFFERENT machine, the panel asks for that
+                    same recorded key. It is restored into a scratch copy and matched against the manifest
+                    BEFORE anything is written, then the live database is replaced and the
+                    source-vs-restored table is shown. <b>A restore that completes but loses rows is a FAILED
+                    restore</b> — if any count or digest differs, stop and try the previous backup.
                   </li>
                   <li>
-                    <b>Confirm in the app:</b> sign in, spot-check patients, then open this Backup area — the
-                    restore event is on the audit trail, and the next nightly backup should be re-registered
-                    with <code>.\backup.ps1 -Install</code>.
+                    <b>Sign in with an OLD administrator account.</b> The restore replaces the user table with
+                    the dead server&apos;s, so the new install&apos;s fresh <code>admin</code> password is gone —
+                    the old system&apos;s credentials are what work now. Spot-check patients, and re-check the
+                    hospital timezone in Configuration (a rebuilt machine starts at UTC).
+                  </li>
+                  <li>
+                    <b>Re-establish protection immediately.</b> Confirm the nightly backup task exists, set the
+                    off-site disk again, and take one <b>Backup now</b> — until that succeeds the rebuilt
+                    hospital has no backup of its own.
                   </li>
                 </ol>
+                <p className="bknote">
+                  Everything above is done from this screen — no command line. If the app cannot be reached at
+                  all, the same engine is available as operator commands
+                  (<code>AuroraIcu.Api.exe verify | restore --key … </code>) from the install folder.
+                </p>
               </Card>
             )}
 
