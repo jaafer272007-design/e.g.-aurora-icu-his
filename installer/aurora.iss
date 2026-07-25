@@ -114,7 +114,12 @@ begin
   DataDirPage.Add('Backup location (use a DIFFERENT drive):');
   DataDirPage.Add('Off-site copy - removable/second disk (OPTIONAL, leave blank if none):');
   DataDirPage.Values[0] := 'C:\Aurora\data';
-  DataDirPage.Values[1] := 'C:\Aurora\data\backups';
+  { Deliberately NOT a subfolder of the data location: the default must not
+    quietly put the backups on the same disk as the database. D: is the common
+    second drive; if this machine has no D:, the operator changes it and the
+    same-drive warning fires on Next, which is exactly the conversation we want
+    them to have BEFORE the hospital depends on it. }
+  DataDirPage.Values[1] := 'D:\AuroraBackups';
   DataDirPage.Values[2] := '';
 
   UrlPage := CreateInputQueryPage(DataDirPage.ID,

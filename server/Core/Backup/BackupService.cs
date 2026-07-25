@@ -375,8 +375,20 @@ public static class BackupService
             File.WriteAllText(Path.Combine(BackupDir, name + ".sha256"),
                 $"{manifest.EncryptedSha256}  {name}\n");
 
-            // 4 — GFS retention (30/12/12, design §1) + audit + status
-            var pruned = GfsPrune(actor);
+            // 4 — GFS retention (30/12/12, design §1) + audit + status.
+            //     ISOLATED: the .aurbk, its manifest and its .sha256 are already
+            //     on disk and verified by this point, so the backup HAS
+            //     succeeded. A retention problem (one unreadable manifest, a
+            //     locked file) must never re-label that good backup as failed —
+            //     which would also make the nightly script skip the off-site
+            //     copy and leave the newest backup only on this machine.
+            List<string> pruned;
+            try { pruned = GfsPrune(actor); }
+            catch (Exception pruneEx)
+            {
+                pruned = [];
+                Audit("prune", "failed", actor, "", new { reason = pruneEx.Message });
+            }
             WriteStatus("success", name);
             Audit("backup", "success", actor, name, new
             {
@@ -441,6 +453,29 @@ public static class BackupService
         var keep = new HashSet<string>();
         DateTime At(BackupManifest m) => DateTime.Parse(m.CreatedAtUtc + "Z",
             null, System.Globalization.DateTimeStyles.AdjustToUniversal);
+
+        /* CLOCK-SKEW GUARD. Retention is entirely a function of "now" vs each
+           backup's stamp, so a machine whose clock jumps FORWARD (dead CMOS
+           battery, BIOS reset, a mistyped date) makes every existing backup
+           look older than the whole 30/12/12 window — and one nightly run
+           would delete the hospital's entire history. If the newest backup
+           looks implausibly old (> the monthly window), the clock is far more
+           likely wrong than the hospital having stopped backing up for a year
+           while still running this backup right now. Refuse to prune and say
+           so; keeping too much is always survivable, deleting everything is
+           not. */
+        var newestAge = now - all.Max(At);
+        if (newestAge > TimeSpan.FromDays(31.0 * KeepMonthly))
+        {
+            Audit("prune", "failed", actor, "", new
+            {
+                reason = "refused: the newest backup appears older than the entire retention window "
+                       + $"({Math.Floor(newestAge.TotalDays)} days) — the system clock is probably wrong. "
+                       + "Nothing was deleted. Fix the clock, then prune.",
+                nowUtc = NowStamp(), newestBackupUtc = all.Max(At).ToString("yyyy-MM-dd HH:mm:ss"),
+            });
+            return [];
+        }
         foreach (var g in all.GroupBy(m => At(m).Date))
             if ((now.Date - g.Key).TotalDays < KeepDaily)
                 keep.Add(g.OrderByDescending(At).First().File);
@@ -452,6 +487,11 @@ public static class BackupService
         foreach (var g in all.GroupBy(m => (At(m).Year, At(m).Month)))
             if (((now.Year - g.Key.Year) * 12 + now.Month - g.Key.Month) < KeepMonthly)
                 keep.Add(g.OrderByDescending(At).First().File);
+        /* NEVER PRUNE TO NOTHING. Whatever the arithmetic says, at least the
+           newest backup survives — a retention pass that empties the backup
+           directory is a bug or a bad clock, never a correct outcome. */
+        keep.Add(all.OrderByDescending(At).First().File);
+
         var pruned = new List<string>();
         foreach (var m in all.Where(m => !keep.Contains(m.File)))
         {
