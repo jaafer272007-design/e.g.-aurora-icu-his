@@ -225,7 +225,12 @@ about what rotation does **not** do: every `.exe` already shipped stays
 openable with the old password forever — rotation protects future builds,
 it does not retro-protect copies already in the wild.
 
-`-SkipStage` reuses a payload staged earlier the same day. The install
+`-SkipStage` reuses a payload staged earlier the same day.
+**`-OutputDir E:\aurora-out`** writes the artifact (and its slices) to
+another drive — the staged payload is ~6 GB and the AI build emits ~5.5 GB
+more, so the build drive often cannot hold both. The script creates the
+folder, passes ISCC's `/O` switch, verifies the `-PROTECTED` artifact
+there, and lists every `.bin` slice it produced. The install
 password is a **different secret from the backup encryption key**: the
 install password belongs to the *vendor* (reissuable by rebuilding); the
 backup key belongs to the *hospital*, held in three places (unrecoverable

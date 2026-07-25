@@ -65,6 +65,10 @@
     # payload already staged today (skip the slow staging steps):
     ... -SkipStage ...
 
+    # write the (multi-GB, sliced) artifact to another drive when the build
+    # drive is tight - the staged payload stays where it is:
+    ... -OutputDir E:\aurora-out ...
+
   WINDOWS-ONLY (ISCC). CODE-REVIEWED here; verify on the build machine.
 #>
 [CmdletBinding()]
@@ -74,7 +78,9 @@ param(
   [string]$LlamaDir = '',
   [switch]$UpdateOnly,          # build the ENCRYPTED app-only update package instead of the full installer
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
-  [switch]$SkipStage            # the payload is already staged (a previous run of this or build.ps1)
+  [switch]$SkipStage,           # the payload is already staged (a previous run of this or build.ps1)
+  [string]$OutputDir = ''       # write the artifact somewhere other than installer\Output (another drive
+                                # when the build drive is tight - the AI build emits ~5.5 GB of slices)
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
@@ -129,6 +135,17 @@ if ($UpdateOnly) {
 }
 if (-not (Test-Path $Iscc)) { Die "Inno Setup compiler not found at $Iscc (install Inno Setup 6, or pass -Iscc)" }
 
+# Where the artifact lands. Default installer\Output; -OutputDir sends it to
+# another drive (the AI build emits ~5.5 GB of slices, which does not fit on a
+# tight build drive next to the ~6 GB staged payload). ISCC's /O switch
+# overrides the .iss OutputDir; the verification below looks in the same place,
+# so a redirected build is still proven to be the PROTECTED one.
+$outDir = if ($OutputDir) { $OutputDir } else { Join-Path $here 'Output' }
+if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
+$outDir = (Resolve-Path $outDir).Path
+$isccOut = @()
+if ($OutputDir) { $isccOut = @("/O$outDir"); Say "artifact output redirected to $outDir" }
+
 # ---- 3. compile the ENCRYPTED artifact (password via ISCC's environment) ----
 $started = Get-Date
 $env:AURORA_INSTALL_PASSWORD = $pw
@@ -140,10 +157,10 @@ try {
       '#define\s+AppVer\s+"([^"]+)"').Groups[1].Value)
     if (-not $appVer) { Die 'could not read AppVer from aurora.iss' }
     Say "compiling the PROTECTED update package AuroraUpdate-$appVer-PROTECTED.exe"
-    & $Iscc "/DAppVer=$appVer" (Join-Path $here 'aurora-update.iss')
+    & $Iscc "/DAppVer=$appVer" @isccOut (Join-Path $here 'aurora-update.iss')
   } else {
     Say 'compiling the PROTECTED installer (full LZMA2 pass - 20-60 min on an AI build)'
-    & $Iscc (Join-Path $here 'aurora.iss')
+    & $Iscc @isccOut (Join-Path $here 'aurora.iss')
   }
   if ($LASTEXITCODE -ne 0) { Die 'ISCC failed (see the compiler output above)' }
 } finally {
@@ -152,15 +169,26 @@ try {
 
 # ---- 4. prove the output really is the protected build ----
 $wantFilter = if ($UpdateOnly) { 'AuroraUpdate-*-PROTECTED.exe' } else { 'AuroraSetup-*-PROTECTED.exe' }
-$exe = Get-ChildItem (Join-Path $here 'Output') -Filter $wantFilter -ErrorAction SilentlyContinue |
+$exe = Get-ChildItem $outDir -Filter $wantFilter -ErrorAction SilentlyContinue |
        Where-Object { $_.LastWriteTime -ge $started } | Sort-Object LastWriteTime | Select-Object -Last 1
 if (-not $exe) {
-  Die "ISCC succeeded but produced no fresh $wantFilter - the password did NOT reach the compiler (is the .iss current?). Whatever it built is NOT protected; do not ship it."
+  Die "ISCC succeeded but produced no fresh $wantFilter in $outDir - the password did NOT reach the compiler (is the .iss current?). Whatever it built is NOT protected; do not ship it."
 }
 $sha = (Get-FileHash -Algorithm SHA256 -Path $exe.FullName).Hash.ToLowerInvariant()
+# The full installer is SLICED (DiskSpanning) - the .bin files beside the .exe
+# are part of the artifact and must ship with it. List them so the operator
+# cannot mistake the .exe for the whole thing.
+$slices = Get-ChildItem $outDir -Filter ([IO.Path]::GetFileNameWithoutExtension($exe.Name) + '-*.bin') -ErrorAction SilentlyContinue |
+          Where-Object { $_.LastWriteTime -ge $started } | Sort-Object Name
 Say '----------------------------------------------------------------------'
 Say ("DONE  ->  {0}   ({1} GB)" -f $exe.FullName, [math]::Round($exe.Length / 1GB, 2))
 Say "sha256: $sha"
+if ($slices) {
+  $totalGb = [math]::Round((($slices | Measure-Object -Property Length -Sum).Sum + $exe.Length) / 1GB, 2)
+  Say "SLICED build - ship these $($slices.Count) file(s) WITH the .exe (total $totalGb GB):"
+  foreach ($s in $slices) { Say ("  {0}   ({1} GB)" -f $s.Name, [math]::Round($s.Length / 1GB, 2)) }
+  Say 'The .exe alone will NOT install. Keep every file together in one folder.'
+}
 Say 'The install password was NOT written anywhere by this build - it exists'
 Say 'only where you keep it. The hospital never receives it: the engineer'
 Say 'types it on site at every install and update. Without it this file'

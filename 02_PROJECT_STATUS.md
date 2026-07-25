@@ -29,7 +29,16 @@ Alternative considered and NOT taken: splitting the model into a second
 password-protected package — cleaner "one double-clickable file" story,
 but it needs new install-time wiring and a second wizard, and under the
 engineer-present service model carrying a USB folder costs nothing. Open
-if the owner ever wants single-file delivery.
+if the owner ever wants single-file delivery. Companion (same PR, same
+day, from the owner's build machine running out of C: space):
+`build-protected.ps1 -OutputDir <path>` writes the artifact and its
+slices to another drive via ISCC's `/O` switch — staging stays put, the
+`-PROTECTED` verification follows the redirect, and the DONE block now
+LISTS every `.bin` slice with a "the .exe alone will NOT install" line so
+the file set cannot be mistaken for one file. Harness extended to 32/32
+(redirect passed to ISCC, password still env-only when redirected, dir
+created when absent, slice listing, stale-artifact immunity on the
+redirected path).
 
 **2026-07-25 · INSTALL-PASSWORD MODEL FINAL: SINGLE COMPANY PASSWORD
 (owner's decision, superseding the per-hospital scheme as the configured
