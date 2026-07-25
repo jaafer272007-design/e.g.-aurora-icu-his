@@ -201,7 +201,9 @@ that could burn down.
 
 The installer is not a maintenance tool. Store it on the IT file share or
 a locked-away USB, **not on the Aurora server and not on the backup
-disks**.
+disks**. (The installer is a *set* of files — the `.exe` plus numbered
+`.bin` files that carry the software; the rule covers all of them. In
+practice the vendor's engineer brings them and takes them away again.)
 
 The concrete reason: **a fresh install generates a brand-new encryption
 key.** Someone re-running the installer to "repair" or "reinstall" Aurora

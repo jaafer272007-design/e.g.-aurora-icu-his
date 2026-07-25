@@ -1,5 +1,45 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-07-26 · THE AI-ENABLED INSTALLER CANNOT BE ONE FILE — SLICED OUTPUT
+(`DiskSpanning=yes`).** Found by the owner's FIRST real AI-enabled compile,
+which aborted: *"Disk spanning must be enabled to create an installation
+larger than 4200000000 bytes in size for a single Setup.exe."* Inno will
+not emit a single Setup.exe above ~4.2 GB, and the AI payload — a 4.7 GB
+Q4_K_M GGUF that is already compressed and will not shrink under LZMA2,
+plus ~1.1 GB of CUDA runtime (`ggml-cuda.dll` 530 MB, `cublasLt64_12.dll`
+473 MB) — lands near 5.5 GB. 🔴 HONEST CORRECTION: every prior doc
+described the deliverable as a single ~5–5.5 GB `.exe` the hospital
+copies and double-clicks. **That was never build-validated** — no
+AI-enabled installer had ever been compiled before this attempt (the
+appliance path is Docker/Linux; the Windows llama-server build had never
+been downloaded on the build machine either), so the size claim rode on
+arithmetic, not on ISCC. Fix: `DiskSpanning=yes` + `DiskSliceSize=
+2100000000` (Inno's maximum, so the fewest files) in `aurora.iss`. The
+deliverable is now `AuroraSetup-<ver>-PROTECTED.exe` **plus numbered
+`.bin` slices that must travel together**; the operator still
+double-clicks the `.exe` and sees the identical wizard, and
+`Encryption=yes` still covers payload data in every slice. Unconditional
+(a no-AI smoke build just makes fewer slices) — every SHIPPING build
+carries the AI, and a payload-size conditional would be one more thing to
+get wrong. `aurora-update.iss` is UNAFFECTED (server-only payload,
+~150 MB, still one file). Docs corrected with dated supersede notes:
+BUILD_WINDOWS output section, installer README deployment step 1, 04
+runbook §5 (the "keep it off the server" rule now names the file *set*).
+Alternative considered and NOT taken: splitting the model into a second
+password-protected package — cleaner "one double-clickable file" story,
+but it needs new install-time wiring and a second wizard, and under the
+engineer-present service model carrying a USB folder costs nothing. Open
+if the owner ever wants single-file delivery. Companion (same PR, same
+day, from the owner's build machine running out of C: space):
+`build-protected.ps1 -OutputDir <path>` writes the artifact and its
+slices to another drive via ISCC's `/O` switch — staging stays put, the
+`-PROTECTED` verification follows the redirect, and the DONE block now
+LISTS every `.bin` slice with a "the .exe alone will NOT install" line so
+the file set cannot be mistaken for one file. Harness extended to 32/32
+(redirect passed to ISCC, password still env-only when redirected, dir
+created when absent, slice listing, stale-artifact immunity on the
+redirected path).
+
 **2026-07-25 · INSTALL-PASSWORD MODEL FINAL: SINGLE COMPANY PASSWORD
 (owner's decision, superseding the per-hospital scheme as the configured
 path).** The service model is on-site assistance at every hospital, so the

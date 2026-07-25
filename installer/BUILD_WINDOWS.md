@@ -135,6 +135,17 @@ Put all of these in one folder, e.g. `C:\aurora-ai\llama\`:
 - **Size:** **~5–5.5 GB** with the model (the 4.7 GB GGUF is already compressed,
   so it dominates and barely shrinks), or **~150 MB** for the no-AI build.
 
+> 🔴 **The full installer is a SET of files, not one file.** Inno cannot emit a
+> single Setup.exe above ~4.2 GB, so the build is **sliced**: the `.exe` plus
+> numbered `.bin` files beside it (`AuroraSetup-1.0.0-PROTECTED-1.bin`, `-2.bin`,
+> …). **Copy the whole folder** — the `.exe` alone will refuse to install. The
+> operator's experience is unchanged: double-click the `.exe`, same wizard, same
+> password prompt, payload still encrypted in every slice.
+> *(Superseded here: earlier revisions of this document described the output as
+> a single ~5 GB `.exe`. That was never build-validated; the first real
+> AI-enabled compile, 2026-07-26, hit Inno's ceiling and the installer was moved
+> to `DiskSpanning=yes`.)*
+
 - **Update packages** (app-only, `server\` payload):
   `AuroraUpdate-1.0.0-PROTECTED.exe` (shipping, `build-protected.ps1
   -UpdateOnly`) / `AuroraUpdate-1.0.0-UNPROTECTED.exe` (plain
@@ -214,7 +225,12 @@ about what rotation does **not** do: every `.exe` already shipped stays
 openable with the old password forever — rotation protects future builds,
 it does not retro-protect copies already in the wild.
 
-`-SkipStage` reuses a payload staged earlier the same day. The install
+`-SkipStage` reuses a payload staged earlier the same day.
+**`-OutputDir E:\aurora-out`** writes the artifact (and its slices) to
+another drive — the staged payload is ~6 GB and the AI build emits ~5.5 GB
+more, so the build drive often cannot hold both. The script creates the
+folder, passes ISCC's `/O` switch, verifies the `-PROTECTED` artifact
+there, and lists every `.bin` slice it produced. The install
 password is a **different secret from the backup encryption key**: the
 install password belongs to the *vendor* (reissuable by rebuilding); the
 backup key belongs to the *hospital*, held in three places (unrecoverable

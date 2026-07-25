@@ -93,8 +93,11 @@ password-locked and the **install password is held by the vendor's engineer
 alone**, typed in person at every install (see `BUILD_WINDOWS.md`). The
 wizard flow itself is unchanged:
 
-1. The engineer copies `AuroraSetup-<ver>-PROTECTED.exe` to the **one
-   server**, double-clicks it, and enters the install password.
+1. The engineer copies the installer **folder** — `AuroraSetup-<ver>-PROTECTED.exe`
+   **plus its numbered `.bin` slices**, which must stay together — to the **one
+   server**, double-clicks the `.exe`, and enters the install password. (The
+   AI-enabled build is ~5.5 GB, past Inno's ~4.2 GB single-file ceiling, so it
+   ships sliced; the `.exe` on its own will not install.)
 2. Wizard: install/data locations → **access address** (the server's LAN address + port — the address box is **pre-filled** from this machine's network interface; the port defaults to **8080**, or enter **80** so staff can omit it) → **admin password** → **formulary** (starter/empty). Timezone + GPU are auto-detected.
 3. Click Install. The installer initialises the private database, registers the **AuroraPostgres** and **AuroraServer** Windows services (Automatic start, SCM auto-restart, Aurora depends-on Postgres), seeds catalogues + the bootstrap admin, shows the **backup key once** (record it in three places), registers the **nightly backup**, and opens the firewall. **When the machine has an NVIDIA GPU** (and the AI payload shipped), it also registers the **AuroraAI** service (llama-server, `127.0.0.1` only) — otherwise the AI screen honestly says "no GPU on this server" and everything else runs unchanged.
 4. Finish. The final screen shows the **real, working access URL** (derived from the server's live interface + the port it actually bound — not just what was typed), and drops a **desktop shortcut ("Aurora ICU")** plus an **`ACCESS.txt`** in the install folder so nobody has to retype it. From then on, every clinician opens that URL in a browser. Nobody launches anything; it starts on every boot.
