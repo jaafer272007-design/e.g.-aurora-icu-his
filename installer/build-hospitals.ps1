@@ -1,7 +1,14 @@
 <#
   AURORA ICU - per-hospital ENCRYPTED installer builds.
 
-  WHY: one shared AuroraSetup.exe means anyone who gets a copy can install a
+  *** DORMANT (owner's decision, 2026-07-25). The configured shipping path
+  is build-protected.ps1: ONE company install password, held by the
+  vendor's engineer alone and typed on site at every install - the hospital
+  never receives it, and reinstalls happen with the vendor present. This
+  per-hospital script is kept working for a future at-scale switch (many
+  hospitals, no engineer on site); nothing calls it today. ***
+
+  WHY (the at-scale rationale): one shared AuroraSetup.exe means anyone who gets a copy can install a
   hospital system. A single baked-in password is no better - it ships inside
   every copy and the first leak burns the whole product with no way to tell
   WHICH hospital leaked it. So: ONE installer PER hospital, each encrypted
@@ -92,6 +99,15 @@ foreach ($h in $list) {
   $h.Id = $h.Id.Trim().ToLowerInvariant()
   if ($h.Id -notmatch '^[a-z0-9][a-z0-9-]{0,30}$') {
     Die "hospital id '$($h.Id)' is invalid - a-z, 0-9 and dashes, up to 31 chars, starting with a letter or digit (it becomes part of the installer filename)"
+  }
+  # 'protected'/'unprotected' are the filename markers of the OTHER build
+  # paths (AuroraSetup-<ver>-PROTECTED / -UNPROTECTED); an id equal to
+  # either - or ENDING in '-protected'/'-unprotected' (Windows filenames
+  # are case-insensitive, and 'city-protected' would match the
+  # 'AuroraSetup-*-PROTECTED.exe' pattern) - would make those files
+  # indistinguishable on disk.
+  if ($h.Id -match '(^|-)(un)?protected$') {
+    Die "hospital id '$($h.Id)' is reserved - ids may not be or end in 'protected'/'unprotected' (the company-password/plain build paths' filename markers)"
   }
   if ($seen.ContainsKey($h.Id)) { Die "duplicate hospital id '$($h.Id)'" }
   $seen[$h.Id] = $true

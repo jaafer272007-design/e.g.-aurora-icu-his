@@ -153,6 +153,14 @@ no-internet / on-prem decisions.
 
 ### 2.1 Install — double-click → next → next → finish
 
+*[Amendment, 2026-07-25: installs are now performed by the **vendor's
+engineer on site**, who runs the password-locked
+`AuroraSetup-<version>-PROTECTED.exe` and types the company install
+password held by the vendor alone — hospitals no longer run the installer
+themselves, and code signing remains a deferred follow-up. The wizard flow
+below is unchanged. See `installer/BUILD_WINDOWS.md` and `04_OPERATIONS_
+RUNBOOK.md` §5.]*
+
 The hospital's IT runs **`AuroraSetup-<version>.exe`** (signed). Everything
 below happens inside the wizard; no console, no Docker, no internet.
 

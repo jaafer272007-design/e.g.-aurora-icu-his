@@ -27,7 +27,33 @@ Uninstallable=no
 PrivilegesRequired=admin
 ; only 64-bit Windows (Inno 6.4+ replaced ArchitecturesInstall64Bit with this)
 ArchitecturesAllowed=x64compatible
-OutputBaseFilename=AuroraUpdate-{#AppVer}
+; ---- install-password wiring (owner's ruling 2026-07-25: update packages
+; get the SAME company password, SAME machinery as the full installer -
+; an unprotected update exe would hand out the newest server binaries and
+; defeat the point of protecting AuroraSetup). build-protected.ps1
+; -UpdateOnly places the password in ISCC's ENVIRONMENT (never the command
+; line); adopted here at preprocess time exactly as in aurora.iss. The
+; output name carries the protection state by construction; -UNPROTECTED
+; (plain build.ps1 -UpdateOnly) is for build-machine smoke tests only.
+#ifndef InstallPassword
+  #if GetEnv("AURORA_INSTALL_PASSWORD") != ""
+    #define InstallPassword GetEnv("AURORA_INSTALL_PASSWORD")
+  #endif
+#endif
+#ifdef InstallPassword
+  #if VER < EncodeVer(6,4,0)
+    #error "Inno Setup 6.4+ is required for an encrypted build - older compilers do not implement Encryption=yes as XChaCha20"
+  #endif
+OutputBaseFilename=AuroraUpdate-{#AppVer}-PROTECTED
+; XChaCha20 over the whole payload, key PBKDF2-derived from the password
+; (same honest limit as aurora.iss: metadata + this [Code] are readable;
+; only file data is protected). The wizard asks for the password up front;
+; the [Code] update logic runs at ssPostInstall, after that gate.
+Password={#InstallPassword}
+Encryption=yes
+#else
+OutputBaseFilename=AuroraUpdate-{#AppVer}-UNPROTECTED
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern

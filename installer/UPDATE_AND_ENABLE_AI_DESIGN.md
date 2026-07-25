@@ -85,6 +85,13 @@ these operations require.
 
 ### 2.1 Delivery format — what the hospital actually gets
 
+*[Amendment, 2026-07-25: shipping update packages are now encrypted with
+the SAME company install password as the full installer (owner's ruling —
+an unprotected update exe would hand out the newest server binaries) and
+named `AuroraUpdate-<ver>-PROTECTED.exe`, built by
+`build-protected.ps1 -UpdateOnly`; the vendor's engineer runs them on
+site. The mechanics below are unchanged.]*
+
 **Recommendation: a single self-extracting `AuroraUpdate-<ver>.exe`** — a thin
 Inno Setup wrapper (built by the same toolchain as `AuroraSetup.exe`) that
 bundles the new `server\` payload + the updater script + a `manifest.json` +

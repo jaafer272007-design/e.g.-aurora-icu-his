@@ -214,27 +214,37 @@ If Aurora needs repairing, the answer is almost never to re-run the
 installer. Raise it with the vendor first.
 
 Newer installers notice an existing Aurora on the machine and stop with a
-warning before anything happens; getting past that warning requires typing
-the backup key ID from the sealed envelope. That is a safety net, not a
-change to the rule: the installer is for first installs and disaster
-rebuilds, nothing else.
+warning before anything happens; getting past that warning requires the
+backup key ID from the sealed envelope — when the vendor's engineer runs a
+repair, they will ask **you** to produce it, because the key envelope is
+the hospital's, not the vendor's. That is a safety net, not a change to
+the rule: the installer is for first installs and disaster rebuilds,
+nothing else.
 
-### The install password
+### The install password — held by the vendor, not by you
 
-Newer copies of `AuroraSetup.exe` are built one-per-hospital and locked
-with an **install password**. Without that password no one can install it
-or extract the software inside it, so a copied installer is useless on
-its own. Your hospital's install password arrives separately from the
-installer file — by phone or in person, never in the same email.
+Newer copies of `AuroraSetup.exe` — and the smaller `AuroraUpdate`
+packages used for upgrades — are locked with an **install password**.
+Without it no one can run either file or extract the software inside it,
+so a copied installer or update package is useless on its own.
 
-Keep it in the same sealed envelope as the backup encryption key, but as
-its own clearly labelled line. **They are different secrets and must
-never be combined or confused:**
+**Your hospital does not receive, store, or record this password — there
+is nothing for you to keep.** The vendor's engineer holds it and types it
+in person whenever Aurora is installed or reinstalled on your premises.
+That is deliberate: a secret your hospital never holds cannot leak from
+your files, safes, or envelopes — the engineer types it and takes it away
+with them.
 
-- A lost **install password** can be replaced — the vendor issues that
-  hospital a new installer.
-- A lost **backup key** cannot be replaced by anyone, and every backup
-  that needs it is gone.
+What this means for a disaster — if the server is destroyed or must be
+rebuilt from scratch: **contact the vendor.** The reinstall is performed
+with the vendor's engineer present; you cannot run the installer on your
+own, and you are not expected to. What makes that rebuild succeed is the
+part only your hospital can do, and it is unchanged: the **backup
+encryption key** (Part 4 — three places, hospital-held, unrecoverable if
+lost), the off-site disk (Part 3), and a working old sign-in (Part 6).
+The install password is the vendor's secret; the backup key is yours.
+Neither replaces the other, and only one of them — yours — is
+irreplaceable.
 
 ---
 
@@ -246,8 +256,9 @@ Restoring a backup replaces the entire database — including the user
 accounts. Every username and password in the restored system comes from
 the backup, not from the machine you restored onto.
 
-So if the server is destroyed and you install Aurora on a replacement
-machine and restore last night's backup:
+So if the server is destroyed, Aurora is reinstalled on a replacement
+machine (by the vendor's engineer — Part 5) and last night's backup is
+restored:
 
 - The new install's own starting administrator account **is wiped by the
   restore**.
@@ -268,13 +279,17 @@ same as no credential at all.
 
 ### Also needed for a restore onto a new machine
 
-Have these together, in one place, before you start:
+A restore onto a new machine starts with a reinstall, and reinstalls are
+performed by the **vendor's engineer on site** (Part 5) — so the first
+step is always: **call the vendor.** Then have these together, in one
+place, before the engineer arrives:
 
 - The backup file **and** its manifest file — both, with matching names.
   Aurora refuses to restore without the manifest, because the manifest is
   what it checks the restore against.
 - The **encryption key** for that backup (match the key ID shown next to
-  the file).
+  the file). This is the hospital's to produce — the vendor does not have
+  it and cannot recover it.
 - A **working old username and password**, as above.
 - The hospital's **time zone**, so the restored server shows the same clock.
 
@@ -315,8 +330,11 @@ actually be relying on.
 
 Once a year, restore onto a **different machine** and log in. This is the
 only exercise that proves the credential in your envelope still works and
-that the key you wrote down is the right one. Schedule it. Write down what
-happened.
+that the key you wrote down is the right one. The install half of the
+drill needs the vendor's engineer (installing Aurora requires their
+password — Part 5), so schedule it **with the vendor**; the key and the
+credential are yours to bring, exactly as in a real disaster. Write down
+what happened.
 
 ---
 
@@ -408,6 +426,11 @@ Things this system does **not** do. Do not assume otherwise.
 - **A backup taken after bad data was entered contains the bad data.**
   Backups protect against loss, not against mistakes. Noticing a data
   problem early is what lets you go back to a copy from before it.
+- **A dead-server rebuild cannot start until the vendor's engineer is on
+  site.** Only the vendor can run the installer (Part 5). Factor their
+  travel time into your recovery expectations, keep the vendor contact in
+  Appendix A current, and have the hospital-side items (Part 6) ready so
+  the visit is spent rebuilding, not searching for envelopes.
 
 ---
 
@@ -429,9 +452,6 @@ Key ID (8 characters)  : ______________________________________
 Key envelope 1 held by : ______________________________________
 Key envelope 2 held by : ______________________________________
 Key envelope 3 held by : ______________________________________
-Install password (own
-labelled line, same
-envelopes - NOT the key): recorded  [ ] yes   [ ] not yet
 Admin username recorded: ______________________________________
 Time zone              : ______________________________________
 Rotation weekday       : ______________________________________

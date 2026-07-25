@@ -28,26 +28,48 @@ PrivilegesRequired=admin
 ; Setup runs in 64-bit install mode automatically on a matching OS. (Inno 6.4+
 ; removed the old ArchitecturesInstall64Bit directive in favour of this one.)
 ArchitecturesAllowed=x64compatible
+; ---- install-password wiring (two encrypted paths, one plain) ----
+; CONFIGURED PATH (owner's decision 2026-07-25): the SINGLE COMPANY password.
+; build-protected.ps1 places it in ISCC's process ENVIRONMENT (never on the
+; command line), and this file adopts it here at preprocess time. DORMANT
+; at-scale alternative: per-hospital builds - build-hospitals.ps1 passes
+; /DHospitalId + /DInstallPassword explicitly and wins over the environment.
+; Protection state is IN the output filename by construction: -PROTECTED
+; only ever names an encrypted build, -UNPROTECTED (plain build.ps1, smoke
+; tests only) never ships.
+#ifndef InstallPassword
+  #if GetEnv("AURORA_INSTALL_PASSWORD") != ""
+    #define InstallPassword GetEnv("AURORA_INSTALL_PASSWORD")
+  #endif
+#endif
 #ifdef HospitalId
+  #ifndef InstallPassword
+    #error "Per-hospital builds must be encrypted - use build-hospitals.ps1, which passes /DInstallPassword"
+  #endif
 OutputBaseFilename=AuroraSetup-{#AppVer}-{#HospitalId}
+#elif defined(InstallPassword)
+OutputBaseFilename=AuroraSetup-{#AppVer}-PROTECTED
 #else
-OutputBaseFilename=AuroraSetup-{#AppVer}
+OutputBaseFilename=AuroraSetup-{#AppVer}-UNPROTECTED
 #endif
 #ifdef InstallPassword
-; Per-hospital ENCRYPTED build (installer\build-hospitals.ps1 passes
-; /DHospitalId + /DInstallPassword). The whole payload is XChaCha20-encrypted
-; (built into Inno Setup since 6.4.0; the key is PBKDF2-HMAC-SHA256-derived
-; from this password), so a copied AuroraSetup.exe without the hospital's
-; install password cannot be installed and its PAYLOAD (server, database
-; engine, AI model, scripts) cannot be extracted. Honest limit: the setup
-; METADATA - file names, paths, messages and this compiled [Code] wizard,
-; including the reinstall-guard logic - is NOT encrypted and is readable
-; with standard Inno tools; only the file data is protected. One password
-; per hospital: a leak identifies WHICH hospital's
-; copy leaked and burns one installer, not the whole product. The install
-; password is a DIFFERENT secret from the backup encryption key and lives as
-; its own line in the same sealed envelope: a lost install password is
-; reissued by rebuilding; a lost backup key is unrecoverable.
+  #if VER < EncodeVer(6,4,0)
+    #error "Inno Setup 6.4+ is required for an encrypted build - older compilers do not implement Encryption=yes as XChaCha20"
+  #endif
+; ENCRYPTED build. The whole payload is XChaCha20-encrypted (built into
+; Inno Setup since 6.4.0; the key is PBKDF2-HMAC-SHA256-derived from this
+; password), so a copied AuroraSetup.exe without the install password
+; cannot be installed and its PAYLOAD (server, database engine, AI model,
+; scripts) cannot be extracted. Honest limit: the setup METADATA - file
+; names, paths, messages and this compiled [Code] wizard, including the
+; reinstall-guard logic - is NOT encrypted and is readable with standard
+; Inno tools; only the file data is protected. Custody model of the
+; configured path: the company password is held by the vendor's engineer
+; ALONE and typed on site at every install - the hospital never receives
+; or stores it, and a reinstall therefore always involves the vendor. It
+; is a DIFFERENT secret from the backup encryption key (which the HOSPITAL
+; must hold, in three places): a lost install password is reissued by
+; rebuilding; a lost backup key is unrecoverable.
 Password={#InstallPassword}
 Encryption=yes
 #endif
@@ -288,7 +310,7 @@ begin
        '  Backup key file:  ' + keyState + #13#10#13#10 +
        'This installer is for FIRST installs and disaster rebuilds. Running it' + #13#10 +
        'again is NOT how Aurora is upgraded:' + #13#10#13#10 +
-       '  - Upgrades: run AuroraUpdate-<version>.exe instead. It keeps the' + #13#10 +
+       '  - Upgrades: run AuroraUpdate-<version>-PROTECTED.exe instead. It keeps the' + #13#10 +
        '    database, the backup key and every setting.' + #13#10 +
        '  - If you continue, the install and database locations are LOCKED to' + #13#10 +
        '    the existing install shown above. This machine''s Aurora services' + #13#10 +

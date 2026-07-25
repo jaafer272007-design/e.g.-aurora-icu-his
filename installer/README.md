@@ -21,7 +21,7 @@ no internet. This implements Option B of
 | `aurora-autowire.ps1` | **on-boot AI self-wiring** — the "just works" path: AuroraServer runs it every boot; adds/removes the AI to match the hardware, no command typed (see below) |
 | `aurora-enable-ai.ps1` | the **manual** escape hatch to turn the AI on after a GPU is added later — data-safe, one command (now redundant on a normal install; the auto-wire does it) |
 | `aurora-update.ps1` | the **app-only updater** engine — verify → version-skew guard → born-verified DB restore point → swap `server\` (carry `aurora.env`) → verify the new build serves → **roll back on any failure** (see below) |
-| `aurora-update.iss` | the small self-extracting **`AuroraUpdate-<ver>.exe`** wrapper (transport + progress UI); built by `build.ps1 -UpdateOnly` |
+| `aurora-update.iss` | the small self-extracting **`AuroraUpdate-<ver>-PROTECTED.exe`** wrapper (transport + progress UI); shipping build by `build-protected.ps1 -UpdateOnly` (same company password as the installer); plain `build.ps1 -UpdateOnly` yields the `-UNPROTECTED` smoke-test variant |
 | `build.ps1` | builds the payload (React + self-contained server + private Postgres + model + llama-server) and compiles the installer |
 | `build-all.ps1` | **one-shot** wrapper — optionally `winget`-installs the toolchain, preflight-checks, runs `build.ps1`, and reports the finished `.exe` + size |
 | `BUILD_WINDOWS.md` | **step-by-step build guide** for a Windows laptop (written for someone who has never compiled an installer) |
@@ -44,16 +44,19 @@ powershell -ExecutionPolicy Bypass -File "C:\Aurora\server\scripts\aurora-enable
 
 It confirms a GPU + the on-disk AI payload, registers **AuroraAI**, makes a **surgical edit to `aurora.env`** (flip `AI_PROVIDER` none→openai, add the endpoint/model/timeout, drop the now-false "no GPU" message), and restarts `AuroraServer`. 🔴 **It touches zero database state** — no `initdb`, no role change, no migration of its own; **no secret is rotated and no clinician is logged out.** (If the install shipped *without* the AI payload — the ~150 MB no-AI build — it says so and stops; lay the payload down first. No data is touched either way.) The install-time "AI unavailable" message is now worded so that **adding a GPU never makes it false** — it speaks to *setup* and points at this command.
 
-### Update the app on a hospital box later (`AuroraUpdate-<ver>.exe`)
+### Update the app on a hospital box later (`AuroraUpdate-<ver>-PROTECTED.exe`)
 
-Delivering a new application build **without** re-running the 5 GB installer: a small self-extracting `AuroraUpdate-<ver>.exe` (just the `server\` payload — no Postgres/model/llama). IT double-clicks it; the updater (`aurora-update.ps1`) then, in order: **verifies** the package checksums → **guards against version skew** (refuses a downgrade / same-version / DB-ahead / cross-major-without-`-AllowMajor` / non-production package, leaving the system untouched) → takes a **born-verified database backup as the restore point** → stops `AuroraServer` (Postgres + AuroraAI stay up) → moves `server\`→`server.prev\` and lays the new payload, **carrying `aurora.env` (and every secret) across verbatim** → starts and **verifies the new build is actually serving** (`/healthz` `status=ok` **and** `build == packageCommit`).
+Delivering a new application build **without** re-running the 5 GB installer: a small self-extracting `AuroraUpdate-<ver>-PROTECTED.exe` (just the `server\` payload — no Postgres/model/llama). Update packages are locked with the **same company install password** as the installer (owner's ruling — the newest server binaries must not ship extractable), so the **vendor's engineer** runs it and types the password; the updater (`aurora-update.ps1`) then, in order: **verifies** the package checksums → **guards against version skew** (refuses a downgrade / same-version / DB-ahead / cross-major-without-`-AllowMajor` / non-production package, leaving the system untouched) → takes a **born-verified database backup as the restore point** → stops `AuroraServer` (Postgres + AuroraAI stay up) → moves `server\`→`server.prev\` and lays the new payload, **carrying `aurora.env` (and every secret) across verbatim** → starts and **verifies the new build is actually serving** (`/healthz` `status=ok` **and** `build == packageCommit`).
 
 🔴 **The rollback contract (design §2.5).** EF migrations are forward-only, so the updater computes `migrationWillRun` up front. If the new build does not come up healthy: it restores `server.prev\`, and **if the update advanced the schema it also restores the pre-update database snapshot** (the new `restore` verb — DROP+CREATE the DB and `pg_restore` the snapshot, so no failed-migration object survives) — returning to *exactly* the pre-update state. If automation cannot complete the return, it prints and logs (`installer\update.log`) the exact `server.prev\` path, the verified backup filename, and the one-command manual restore. At every step a known-good binary and a born-verified backup are both on disk. `version.json` (emitted by `build.ps1`) gives the updater the version + migration-set identity it reasons about. See [`UPDATE_AND_ENABLE_AI_DESIGN.md`](./UPDATE_AND_ENABLE_AI_DESIGN.md) §1–§2.
 
 ```powershell
-# build the update package (same toolchain as the full installer; no -PgZip needed)
+# build the SHIPPING update package (same toolchain; no -PgZip needed;
+# prompts for the company install password like the full protected build)
 cd installer
-.\build.ps1 -UpdateOnly            # → installer\Output\AuroraUpdate-1.0.0.exe (small; server payload only)
+.\build-protected.ps1 -UpdateOnly  # → installer\Output\AuroraUpdate-1.0.0-PROTECTED.exe
+# plain smoke-test variant (never ships):
+.\build.ps1 -UpdateOnly            # → installer\Output\AuroraUpdate-1.0.0-UNPROTECTED.exe
 ```
 
 ## Build the installer (on a build machine — SDK/Node/Inno/internet)
@@ -75,13 +78,23 @@ The **build** machine needs the .NET 8 SDK, Node, [Inno Setup 6](https://jrsoftw
 cd installer
 .\build.ps1 -PgZip C:\downloads\postgresql-16.x-windows-x64-binaries.zip `
             -ModelDir C:\aurora-ai\model -LlamaDir C:\aurora-ai\llama
-# → installer\Output\AuroraSetup-1.0.0.exe
+# → installer\Output\AuroraSetup-1.0.0-UNPROTECTED.exe  (plain build: smoke tests only)
 # (omit -ModelDir/-LlamaDir to build an installer that ships with the AI DISABLED)
+# SHIPPING builds use build-protected.ps1 instead — same inputs, plus the company
+# install password typed at a masked prompt → AuroraSetup-1.0.0-PROTECTED.exe.
+# The password is held by the vendor's engineer alone and typed on site at every
+# install; hospitals never receive it. See BUILD_WINDOWS.md.
 ```
 
-## What the hospital does (the whole deployment)
+## The deployment (performed by the vendor's engineer, on site)
 
-1. Copy `AuroraSetup.exe` to the **one server** and double-click it.
+Hospitals do not install Aurora themselves: the shipping installer is
+password-locked and the **install password is held by the vendor's engineer
+alone**, typed in person at every install (see `BUILD_WINDOWS.md`). The
+wizard flow itself is unchanged:
+
+1. The engineer copies `AuroraSetup-<ver>-PROTECTED.exe` to the **one
+   server**, double-clicks it, and enters the install password.
 2. Wizard: install/data locations → **access address** (the server's LAN address + port — the address box is **pre-filled** from this machine's network interface; the port defaults to **8080**, or enter **80** so staff can omit it) → **admin password** → **formulary** (starter/empty). Timezone + GPU are auto-detected.
 3. Click Install. The installer initialises the private database, registers the **AuroraPostgres** and **AuroraServer** Windows services (Automatic start, SCM auto-restart, Aurora depends-on Postgres), seeds catalogues + the bootstrap admin, shows the **backup key once** (record it in three places), registers the **nightly backup**, and opens the firewall. **When the machine has an NVIDIA GPU** (and the AI payload shipped), it also registers the **AuroraAI** service (llama-server, `127.0.0.1` only) — otherwise the AI screen honestly says "no GPU on this server" and everything else runs unchanged.
 4. Finish. The final screen shows the **real, working access URL** (derived from the server's live interface + the port it actually bound — not just what was typed), and drops a **desktop shortcut ("Aurora ICU")** plus an **`ACCESS.txt`** in the install folder so nobody has to retype it. From then on, every clinician opens that URL in a browser. Nobody launches anything; it starts on every boot.
@@ -129,7 +142,7 @@ Because Windows services, the SCM, `initdb`-for-Windows, and Inno Setup **cannot
 13. **AuroraAI is `127.0.0.1`-only** (not reachable from another LAN device — only AuroraServer calls it), and **uninstall removes it** (`sc.exe query AuroraAI` → gone).
 14. **Enable-AI-later** (`aurora-enable-ai.ps1`): on a box that installed with no GPU, fit an NVIDIA GPU, run the script → **AuroraAI registers, `aurora.env` flips to `openai` (secrets untouched, no re-login), the AI screen answers.** Confirm patient data is undisturbed (it is — the script makes no DB call; the pure `aurora.env` edit is already execution-proven above).
 15. 🔴 **On-boot auto-wire — the "just works" ENABLE path** (`aurora-autowire.ps1`, driven by `AiAutoWire.cs`): on a box that installed with no GPU (AI off), **fit an NVIDIA GPU + driver and simply reboot — no command.** On boot, AuroraServer should register `AuroraAI`, flip `aurora.env` to `openai`, clear the stale reason, and the AI screen answers **that same boot** (no second restart). Confirm the reverse: **remove the GPU and reboot** → the AI turns itself off with the honest "GPU is no longer detected" reason and every other screen still runs. Confirm patient data is undisturbed (no DB call; the DISABLE/NO-OP edits are execution-proven above, ENABLE reuses the same proven `Update-AiEnvLines`). And confirm fail-safe: with a **deliberately broken** GPU probe or a missing `llama\`/`model\` payload, the server still boots normally with the AI off — never a blocked HIS. Check `{DataDir}\autowire.log` for the boot's decision line.
-16. **App-only update — the happy path** (`AuroraUpdate-<ver>.exe`): build a `1.1.0` update package (`build.ps1 -UpdateOnly`), double-click it on a `1.0.0` box → progress window → **`AuroraServer` stops, `server\`→`server.prev\`, new payload laid down, `aurora.env` carried across unchanged, service restarts, `/healthz` reports the new `build` commit.** Confirm the database, model, Postgres, backup key, AI service and **every secret in `aurora.env`** are untouched, and **no clinician is logged out**. Confirm the version-skew guard by trying to apply the same-or-older package → it refuses and changes nothing.
+16. **App-only update — the happy path** (`AuroraUpdate-<ver>-PROTECTED.exe`): build a `1.1.0` update package (`build-protected.ps1 -UpdateOnly`), double-click it on a `1.0.0` box — it must **demand the company install password before anything else** → progress window → **`AuroraServer` stops, `server\`→`server.prev\`, new payload laid down, `aurora.env` carried across unchanged, service restarts, `/healthz` reports the new `build` commit.** Confirm the database, model, Postgres, backup key, AI service and **every secret in `aurora.env`** are untouched, and **no clinician is logged out**. Confirm the version-skew guard by trying to apply the same-or-older package → it refuses and changes nothing.
 17. 🔴 **App-only update — the ROLLBACK drill** (the go-live-critical one): apply an update package **rigged to fail its health check** (e.g. a deliberately broken build). Confirm the updater **restores `server.prev\`**, and — for a package that carried a migration — **restores the pre-update database snapshot via the `restore` verb** (proven against Postgres above), returning to exactly `1.0.0` with the pre-update data, service healthy. Then confirm the manual-recovery path: read `installer\update.log`; it must name the `server.prev\` path, the verified backup filename, and the exact one-command restore. This is the whole promise of the updater — **there is always a proven way back.**
 
 ### Measure the real GPU (the `llama-bench` step — design §5.6)
