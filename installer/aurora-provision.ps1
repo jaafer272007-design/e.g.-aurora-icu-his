@@ -269,7 +269,42 @@ if (-not (Test-Path (Join-Path $pgdata 'PG_VERSION'))) {
     'host    all   all   ::1/128        scram-sha-256')
 } else { Say "PostgreSQL cluster already present at $pgdata (leaving it in place)" }
 
+# ---- 1c. the port must be OURS - a postmaster can outlive a deleted service ----
+# Deleting a service while it is STOP_PENDING leaves its postgres.exe running
+# and holding the port. Then OUR service cannot bind, pg_isready happily gets
+# an answer from the WRONG cluster, and step 3 dies with "password
+# authentication failed for user postgres" - which is exactly how two real
+# installs failed on 2026-07-26. postmaster.pid in OUR $pgdata is the proof of
+# ownership: present = the listener is our cluster; absent while the port is
+# busy = a foreign/leftover postgres that must be stopped first.
+$pidFile = Join-Path $pgdata 'postmaster.pid'
+$portBusy = $false
+try { $portBusy = [bool](Get-NetTCPConnection -LocalPort $pgPort -State Listen -ErrorAction SilentlyContinue) } catch {}
+if ($portBusy -and -not (Test-Path $pidFile)) {
+  $who = ''
+  try {
+    $owners = (Get-NetTCPConnection -LocalPort $pgPort -State Listen -ErrorAction SilentlyContinue).OwningProcess | Select-Object -Unique
+    $who = ($owners | ForEach-Object { $p = Get-Process -Id $_ -ErrorAction SilentlyContinue; if ($p) { "$($p.ProcessName) (pid $_)" } }) -join ', '
+  } catch {}
+  Fail ("port $pgPort is already in use by another process ($who) that is NOT this install's database. " +
+        "Usually a PostgreSQL left running after its service was removed. Stop it " +
+        "(Get-Process postgres | Stop-Process -Force) or reboot, then run Setup again")
+}
+
 # ---- 2. register + start the AuroraPostgres service (Automatic) ----
+# pg_ctl register SILENTLY NO-OPS when a service of that name already exists
+# (the machine-global-service gotcha behind the reinstall guard) - so if a
+# leftover AuroraPostgres points at a DIFFERENT data directory, re-register it
+# at ours instead of silently starting the wrong cluster.
+$svcPath = ''
+try { $svcPath = (Get-CimInstance Win32_Service -Filter "Name='AuroraPostgres'" -ErrorAction SilentlyContinue).PathName } catch {}
+if ($svcPath -and ($svcPath -notlike "*$pgdata*")) {
+  Say "an AuroraPostgres service from another location exists - re-registering it for $pgdata"
+  & sc.exe stop AuroraPostgres 2>&1 | Out-Null
+  Start-Sleep 3
+  & sc.exe delete AuroraPostgres 2>&1 | Out-Null
+  Start-Sleep 2
+}
 Say "registering the AuroraPostgres Windows service (Automatic start)"
 & (Join-Path $pgbin 'pg_ctl.exe') register -N 'AuroraPostgres' -D $pgdata -S auto -w | Out-Null
 # SCM recovery: restart on crash (5s / 10s / 30s), reset the failure count after 5 min
@@ -277,12 +312,24 @@ Say "registering the AuroraPostgres Windows service (Automatic start)"
 & sc.exe failure AuroraPostgres reset= 300 actions= restart/5000/restart/10000/restart/30000 | Out-Null
 & sc.exe start AuroraPostgres 2>$null | Out-Null
 Say "waiting for PostgreSQL to accept connections"
+# Two gates, in order. FIRST our own postmaster.pid - proof the cluster that
+# answers is the one at $pgdata; pg_isready alone cannot tell ours from a
+# stranger's. THEN pg_isready for accepting-connections.
+$pidSeen = $false
+for ($i = 0; $i -lt 60; $i++) {
+  if (Test-Path $pidFile) { $pidSeen = $true; break }
+  Start-Sleep 2
+}
+if (-not $pidSeen) {
+  Fail ("the AuroraPostgres service did not start a postmaster for $pgdata (no postmaster.pid). " +
+        "Check $pgdata\log and the Windows event log; if another process holds port $pgPort, stop it and run Setup again")
+}
 for ($i = 0; $i -lt 60; $i++) {
   & (Join-Path $pgbin 'pg_isready.exe') -h 127.0.0.1 -p $pgPort -U postgres *> $null
   if ($LASTEXITCODE -eq 0) { break }
   Start-Sleep 2
 }
-if ($LASTEXITCODE -ne 0) { Fail "PostgreSQL did not become ready" }
+if ($LASTEXITCODE -ne 0) { Fail "PostgreSQL did not become ready (its postmaster is running for $pgdata - check $pgdata\log)" }
 
 # ---- 3. create the aurora role + database (fresh cluster), or REUSE the
 #         existing credentials (pre-existing cluster: a reinstall over live
