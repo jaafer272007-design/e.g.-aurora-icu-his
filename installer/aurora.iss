@@ -484,6 +484,18 @@ begin
   if (Length(path) >= 2) and (path[2] = ':') then Result := Uppercase(Copy(path, 1, 2));
 end;
 
+{ 'C:' or 'C:\' - a whole drive rather than a folder on it. Windows cannot
+  create a drive root as a directory ("The path is not of a legal form"), and
+  applying the backup folder's restrictive ACL to one would re-permission the
+  entire disk. Both are reasons to refuse it for the backup location. }
+function IsDriveRoot(path: String): Boolean;
+begin
+  path := Trim(path);
+  Result := (Length(path) = 2) and (path[2] = ':');
+  if (not Result) and (Length(path) = 3) then
+    Result := (path[2] = ':') and (path[3] = '\');
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var url, dir, dbDrv, bkDrv, usbDrv, t: String; p: Integer;
 begin
@@ -562,6 +574,17 @@ begin
     bkDrv  := DriveOf(DataDirPage.Values[1]);
     if Trim(DataDirPage.Values[1]) = '' then begin
       MsgBox('Choose a backup location.', mbError, MB_OK);
+      Result := False;
+    end else if IsDriveRoot(DataDirPage.Values[1]) then begin
+      { A whole DRIVE cannot be the backup location: provisioning restricts the
+        backup folder to Administrators + SYSTEM, and doing that to a drive root
+        would re-permission the entire disk. Caught here so the operator fixes
+        it in the wizard instead of halfway through the install. }
+      MsgBox('The backup location must be a FOLDER, not a whole drive.'#13#10#13#10 +
+        'Aurora locks the backup folder down so only administrators can read or delete '
+        + 'the backups, and it must never do that to an entire disk.'#13#10#13#10 +
+        'Use a folder on that drive instead, for example ' + Trim(DataDirPage.Values[1]) + 'AuroraBackups',
+        mbError, MB_OK);
       Result := False;
     end else if (dbDrv <> '') and (dbDrv = bkDrv) then begin
       { Warn, do not block: some hospitals genuinely have one disk today. They
