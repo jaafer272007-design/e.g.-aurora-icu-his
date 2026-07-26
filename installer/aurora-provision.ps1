@@ -68,7 +68,18 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 function Say([string]$m) { Write-Host "[aurora-provision] $m" }
-function Fail([string]$m) { try { Stop-Transcript | Out-Null } catch {}; Write-Error "[aurora-provision] $m"; exit 1 }
+function Fail([string]$m) {
+  # Write the REASON into the transcript BEFORE closing it. Stop-Transcript ends
+  # the log, so anything written after it is lost - which meant every explicit
+  # failure reason was missing from provision.log, the file whose entire purpose
+  # is to record where provisioning stalled. A real install died at the database
+  # step with a log that simply ended (2026-07-26), and the message even said
+  # "see provision.log". Say it first, then close, then surface it to the caller.
+  Write-Host "[aurora-provision] FAILED: $m"
+  try { Stop-Transcript | Out-Null } catch {}
+  Write-Error "[aurora-provision] $m"
+  exit 1
+}
 . (Join-Path $PSScriptRoot 'aurora-ai-service.ps1')   # shared AI helpers (Register-AuroraAI, Find-AiModelGguf, ...)
 
 $server   = Join-Path $InstallDir 'server'
@@ -226,17 +237,31 @@ try {
 # cluster's pg_hba requires scram even on 127.0.0.1, so an empty password makes
 # psql prompt "Password for user postgres:" and fail. Never written to disk.
 $superpw = ''
+# Did THIS run create the cluster? If it did and a later step fails, the cluster
+# is brand-new and empty, and its superuser password existed only in memory -
+# so it can never be authenticated to again and Setup's adopt path will refuse
+# it (no aurora.env). The operator has to be TOLD it is safe to delete.
+$freshCluster = $false
 if (-not (Test-Path (Join-Path $pgdata 'PG_VERSION'))) {
   Say "initialising the private PostgreSQL cluster at $pgdata"
+  $freshCluster = $true
   $pwFile = Join-Path $env:TEMP ("aurora-pg-super-" + [Guid]::NewGuid().ToString('N') + '.txt')
   $superpw = New-Secret 24                                           # postgres superuser pw (local only, kept for step 3)
-  Set-Content -Encoding ascii -Path $pwFile -Value $superpw
+  # Byte-exact pwfile (no editor/encoding newline surprises). initdb strips a
+  # trailing CRLF itself, so this is belt-and-braces, not a proven failure
+  # cause - but the password the cluster stores and the one this script keeps
+  # in memory MUST be the same bytes, so write exactly those bytes.
+  [IO.File]::WriteAllText($pwFile, $superpw, [Text.Encoding]::ASCII)
   try {
     & (Join-Path $pgbin 'initdb.exe') -D $pgdata -U postgres -A scram-sha-256 --pwfile=$pwFile -E UTF8 --locale=C | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail "initdb failed ($LASTEXITCODE)" }
   } finally { Remove-Item -Force $pwFile -ErrorAction SilentlyContinue }
-  # local-only + the chosen port; only the API is exposed on the LAN
-  Add-Content -Path (Join-Path $pgdata 'postgresql.conf') -Value "`nlisten_addresses = '127.0.0.1'`nport = $pgPort`n"
+  # local-only + the chosen port; only the API is exposed on the LAN. The logging
+  # collector is ON so database errors land in a FILE the operator (and support)
+  # can read: registered as a Windows service with no -l, Postgres otherwise
+  # writes only to the Windows event log, which is where a real install's
+  # authentication failure had to be dug out of (2026-07-26).
+  Add-Content -Path (Join-Path $pgdata 'postgresql.conf') -Value "`nlisten_addresses = '127.0.0.1'`nport = $pgPort`nlogging_collector = on`nlog_directory = 'log'`nlog_filename = 'postgresql-%Y-%m-%d.log'`nlog_min_messages = warning`n"
   Set-Content  -Path (Join-Path $pgdata 'pg_hba.conf') -Encoding ascii -Value @(
     '# Aurora appliance - local connections only',
     'local   all   all                  scram-sha-256',
@@ -284,6 +309,10 @@ if (-not $superpw) {
   }
 } else {
 Say "creating the aurora role + database"
+# What the operator must do if this step fails on a cluster we just created.
+$freshHint = if ($freshCluster) {
+  ". This cluster was created moments ago by this run and holds NO data, and its superuser password only ever existed in memory - DELETE $pgdata and run Setup again. Check $pgdata\log for the database's own error first."
+} else { " - see provision.log" }
 $env:PGHOST = '127.0.0.1'; $env:PGPORT = "$pgPort"; $env:PGUSER = 'postgres'
 # authenticate as the superuser with the password set at initdb (scram is required
 # on 127.0.0.1). Without this psql prompts for a password and fails the install.
@@ -312,11 +341,11 @@ try {
   & (Join-Path $pgbin 'psql.exe') -v ON_ERROR_STOP=1 -d postgres -f $setup | Out-Null
   # a silent psql failure here used to let provisioning continue and write an
   # aurora.env whose credentials were never applied to any role - fail loudly
-  if ($LASTEXITCODE -ne 0) { Fail "could not create/update the aurora role (psql exit $LASTEXITCODE) - see provision.log" }
+  if ($LASTEXITCODE -ne 0) { Fail ("could not create/update the aurora role (psql exit $LASTEXITCODE)" + $freshHint) }
   $exists = & (Join-Path $pgbin 'psql.exe') -tAc "SELECT 1 FROM pg_database WHERE datname='aurora'" -d postgres
   if (-not $exists) {
     & (Join-Path $pgbin 'createdb.exe') -O aurora aurora | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail "could not create the aurora database (createdb exit $LASTEXITCODE) - see provision.log" }
+    if ($LASTEXITCODE -ne 0) { Fail ("could not create the aurora database (createdb exit $LASTEXITCODE)" + $freshHint) }
   }
 } finally {
   Remove-Item -Force $setup -ErrorAction SilentlyContinue
