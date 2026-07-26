@@ -424,11 +424,27 @@ if (-not $healthy) { Fail "AuroraServer did not become healthy - check the Windo
 # (re-run this script) once llama-bench measures the real card (sec 5.6).
 if ($aiReady) {
   Say "registering the AuroraAI service (llama-server, --parallel $AiParallel, 127.0.0.1:$AiPort)"
-  Register-AuroraAI -NssmExe $aiNssmExe -LlamaExe $aiLlamaExe -ModelGguf $aiModelGguf.FullName `
-    -Port $AiPort -Parallel $AiParallel -CtxSize $AiCtxSize -LogFile (Join-Path $DataDir 'ai.log')
-  # the model loads in tens of seconds - do NOT block the install on it; the AI
-  # screen is honest (server 503/502) until llama-server answers /health
-  Say "AuroraAI starting - the model loads in the background; Aurora is already usable."
+  # The AI is OPTIONAL - "the HIS runs with or without it" (the comment above,
+  # and the honest AI screen). Everything AFTER this block is not optional: the
+  # backup-key ceremony, the nightly backup task and the firewall rule. So a
+  # failure here must never abort provisioning and leave a hospital with no
+  # backups configured - it degrades to the same honest AI-off state the
+  # no-GPU path already produces. (A real install died exactly this way on
+  # 2026-07-26: nssm stderr on a first registration killed the whole run.)
+  try {
+    Register-AuroraAI -NssmExe $aiNssmExe -LlamaExe $aiLlamaExe -ModelGguf $aiModelGguf.FullName `
+      -Port $AiPort -Parallel $AiParallel -CtxSize $AiCtxSize -LogFile (Join-Path $DataDir 'ai.log')
+    # the model loads in tens of seconds - do NOT block the install on it; the AI
+    # screen is honest (server 503/502) until llama-server answers /health
+    Say "AuroraAI starting - the model loads in the background; Aurora is already usable."
+  }
+  catch {
+    $aiReady = $false
+    Say "NOTE: the AI service could not be registered ($($_.Exception.Message))."
+    Say "      Aurora, its database, backups and firewall are configured normally and the"
+    Say "      AI screen will say the AI is off. Fix the cause and run aurora-enable-ai.ps1"
+    Say "      later - no reinstall, no data touched."
+  }
 } elseif ($AiEnabled) {
   Say "GPU present but the AI runtime was not bundled in this build - AI stays disabled; the HIS is unaffected."
 }

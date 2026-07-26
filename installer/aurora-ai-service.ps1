@@ -82,19 +82,35 @@ function Register-AuroraAI {
   )
   $aiArgs = "--model `"$ModelGguf`" --host 127.0.0.1 --port $Port " +
             "--parallel $Parallel --ctx-size $CtxSize --temp 0 --jinja"
-  & $NssmExe stop AuroraAI 2>$null | Out-Null                  # idempotent: drop any prior registration
-  & $NssmExe remove AuroraAI confirm 2>$null | Out-Null
-  & $NssmExe install AuroraAI $LlamaExe | Out-Null
-  & $NssmExe set AuroraAI AppParameters $aiArgs | Out-Null
-  & $NssmExe set AuroraAI AppDirectory (Split-Path $LlamaExe) | Out-Null   # DLLs load beside the exe
-  & $NssmExe set AuroraAI DisplayName 'Aurora ICU AI (llama-server)' | Out-Null
-  & $NssmExe set AuroraAI Description 'Aurora ICU local AI model runtime (llama.cpp llama-server, GPU). Serves 127.0.0.1 only; the HIS runs without it.' | Out-Null
-  & $NssmExe set AuroraAI Start SERVICE_AUTO_START | Out-Null
-  if ($LogFile) {
-    & $NssmExe set AuroraAI AppStdout $LogFile | Out-Null
-    & $NssmExe set AuroraAI AppStderr $LogFile | Out-Null
+  # NSSM writes to STDERR for entirely normal conditions - "Can't open
+  # service!" is what it says when there is nothing to stop or remove, i.e. on
+  # EVERY FIRST INSTALL. Under $ErrorActionPreference='Stop', PowerShell 5.1
+  # turns native stderr into a TERMINATING NativeCommandError, and `2>$null`
+  # does NOT prevent that. So these two idempotency calls killed provisioning
+  # on the first install of any GPU machine - before the backup-key ceremony,
+  # the nightly backup task and the firewall rule. (Same class as the init-key
+  # NativeCommandError closed with the reinstall guard; found on a real
+  # install, 2026-07-26.) Relax the preference around the native calls and
+  # judge the one that MUST succeed - install - by its exit code instead.
+  $prevEap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    & $NssmExe stop AuroraAI 2>&1 | Out-Null                  # idempotent: drop any prior registration
+    & $NssmExe remove AuroraAI confirm 2>&1 | Out-Null
+    & $NssmExe install AuroraAI $LlamaExe 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "nssm could not install the AuroraAI service (exit $LASTEXITCODE) - the AI stays off; Aurora itself is unaffected" }
+    & $NssmExe set AuroraAI AppParameters $aiArgs 2>&1 | Out-Null
+    & $NssmExe set AuroraAI AppDirectory (Split-Path $LlamaExe) 2>&1 | Out-Null   # DLLs load beside the exe
+    & $NssmExe set AuroraAI DisplayName 'Aurora ICU AI (llama-server)' 2>&1 | Out-Null
+    & $NssmExe set AuroraAI Description 'Aurora ICU local AI model runtime (llama.cpp llama-server, GPU). Serves 127.0.0.1 only; the HIS runs without it.' 2>&1 | Out-Null
+    & $NssmExe set AuroraAI Start SERVICE_AUTO_START 2>&1 | Out-Null
+    if ($LogFile) {
+      & $NssmExe set AuroraAI AppStdout $LogFile 2>&1 | Out-Null
+      & $NssmExe set AuroraAI AppStderr $LogFile 2>&1 | Out-Null
+    }
+    & $NssmExe set AuroraAI AppRestartDelay 5000 2>&1 | Out-Null
+    & sc.exe failure AuroraAI reset= 300 actions= restart/5000/restart/10000/restart/30000 2>&1 | Out-Null
+    & $NssmExe start AuroraAI 2>&1 | Out-Null
   }
-  & $NssmExe set AuroraAI AppRestartDelay 5000 | Out-Null
-  & sc.exe failure AuroraAI reset= 300 actions= restart/5000/restart/10000/restart/30000 | Out-Null
-  & $NssmExe start AuroraAI 2>$null | Out-Null
+  finally { $ErrorActionPreference = $prevEap }
 }
