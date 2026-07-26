@@ -1,5 +1,42 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-07-26 · THE APP-ONLY UPDATER COULD NEVER HAVE SUCCEEDED ON WINDOWS
+(/healthz build identity).** Found by reading a live install's `/healthz`
+during an unrelated check: it reported `build: "dev"` while
+`server\version.json` beside it carried the real commit. Cause:
+`Program.cs` sourced the field ONLY from `RENDER_GIT_COMMIT` — a Render
+platform variable that does not exist on a native Windows install — so
+every native install reported the literal string `dev`. Consequence, which
+is the serious part: `aurora-update.ps1:196` proves an update worked by
+polling until `$h.build -eq $package.commit`, a comparison that could
+NEVER be true on Windows. **Every AuroraUpdate run would have swapped in
+the new build, failed its health check, and rolled itself back** —
+restoring `server.prev` and, for a migration-carrying package, the
+pre-update database snapshot. It fails SAFE (the hospital keeps running
+the old build), but the product's entire update mechanism was
+non-functional on its actual deployment target, and README items 16-17
+(update happy path + rollback drill) had never been exercised on Windows
+to reveal it. Fix: `/healthz` reports the commit stamped INTO THE RUNNING
+ASSEMBLY (`AssemblyInformationalVersionAttribute`, `"<version>+<sha>"`),
+with `RENDER_GIT_COMMIT` still winning first and `"dev"` as the honest
+fallback for an unstamped local build; `build.ps1` passes
+`-p:SourceRevisionId=$commit` — the SAME commit it writes into
+version.json, so the updater's comparison is identical-by-construction.
+Deliberately the ASSEMBLY, not `version.json`: a file beside the exe can
+be replaced while the OLD process is still serving, which is precisely
+the case the updater's check exists to catch (and precisely what this
+machine was in — new files on disk, old process live). Executed
+verification, both directions: a build stamped
+`-p:SourceRevisionId=deadbeefcafe1234` served
+`{"build":"deadbeefcafe1234"}`, and a build with
+`IncludeSourceRevisionInInformationalVersion=false` (AssemblyInfo
+`"1.0.0"`, no `+`) served `{"build":"dev"}`. No regression to the
+deployed-E2E content gates: they read `healthz.build` as a commit on
+Render, where `RENDER_GIT_COMMIT` is set and still takes precedence.
+Noted en route: the .NET 8 SDK's implicit Source Link already stamps the
+commit from a git checkout, so the explicit flag is belt-and-braces that
+also guarantees the value equals version.json's exactly.
+
 **2026-07-26 · THE AI-ENABLED INSTALLER CANNOT BE ONE FILE — SLICED OUTPUT
 (`DiskSpanning=yes`).** Found by the owner's FIRST real AI-enabled compile,
 which aborted: *"Disk spanning must be enabled to create an installation

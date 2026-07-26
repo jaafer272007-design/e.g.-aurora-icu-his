@@ -279,7 +279,36 @@ BootGuards.DemoCredentialTripwire(app);
    on it (see AppEnv.cs), healthz must not claim an environment the
    process cannot vouch for. Every data-writing suite asserts this field
    matches its declared target BEFORE running any write leg. */
-var build = Environment.GetEnvironmentVariable("RENDER_GIT_COMMIT") ?? "dev";
+/* build = the identity of the code ACTUALLY RUNNING in this process.
+   On Render the platform supplies it. A native Windows install has no such
+   variable, so it fell back to the literal "dev" — which broke the app-only
+   updater by construction: aurora-update proves an update worked by polling
+   /healthz until `build == package.commit` (aurora-update.ps1:196), a
+   comparison that could NEVER be true on Windows, so every update would time
+   out and roll itself back. (Found 2026-07-26 from a live install reporting
+   build=dev while server\version.json carried the real commit.)
+   The fallback is the commit stamped INTO THIS ASSEMBLY at publish time
+   (build.ps1 passes -p:SourceRevisionId, which .NET appends to
+   InformationalVersion as "<version>+<sha>"). It must come from the loaded
+   assembly rather than a file beside the exe: server\version.json can be
+   replaced while the OLD process is still serving — precisely the case the
+   updater's check exists to catch. Plain local builds still report "dev". */
+static string ResolveRunningBuild()
+{
+    var platform = Environment.GetEnvironmentVariable("RENDER_GIT_COMMIT");
+    if (!string.IsNullOrWhiteSpace(platform)) return platform;
+    var asm = System.Reflection.Assembly.GetEntryAssembly();
+    if (asm != null)
+    {
+        var attr = (System.Reflection.AssemblyInformationalVersionAttribute?)Attribute.GetCustomAttribute(
+            asm, typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+        var info = attr?.InformationalVersion ?? "";
+        var plus = info.IndexOf('+');
+        if (plus >= 0 && plus < info.Length - 1) return info.Substring(plus + 1);
+    }
+    return "dev";
+}
+var build = ResolveRunningBuild();
 if (!AppEnv.IsKnown)
     Console.WriteLine($"[AURORA] APP_ENV is '{AppEnv.Name}' — not a known environment (development|staging|production). " +
         "Authentication is FAIL-CLOSED: no token will be issued or validated until APP_ENV is configured.");

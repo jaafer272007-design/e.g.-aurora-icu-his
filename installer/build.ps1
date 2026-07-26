@@ -46,9 +46,19 @@ try {
 } finally { Pop-Location }
 
 Write-Host '== 2. self-contained server publish (win-x64) =='
+# Stamp the commit INTO the assembly (-p:SourceRevisionId lands in
+# InformationalVersion as "<version>+<sha>"). /healthz reports it back, which
+# is what aurora-update compares against the package commit to prove the new
+# build is really SERVING. Without it healthz says "dev" on Windows and every
+# update rolls itself back. A checkout with no git available still builds -
+# the value is simply absent and healthz falls back to "dev".
+$commit = ''
+try { $commit = (& git -C $root rev-parse HEAD 2>$null).Trim() } catch { }
+$revArgs = @()
+if ($commit) { $revArgs = @("-p:SourceRevisionId=$commit") } else { Write-Host '   (no git commit available - the build will report itself as "dev")' }
 & dotnet publish (Join-Path $root 'server\AuroraIcu.Api.csproj') `
   -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false `
-  -o (Join-Path $payload 'server')
+  @revArgs -o (Join-Path $payload 'server')
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
 Write-Host '== 2b. version identity (server\version.json - for aurora-update) =='
@@ -64,8 +74,6 @@ $migHead = (Get-ChildItem (Join-Path $root 'server\Core\Persistence\Migrations')
   Where-Object { $_.Name -notmatch '\.Designer\.cs$' -and $_.Name -notmatch 'ModelSnapshot\.cs$' } |
   ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) } | Sort-Object | Select-Object -Last 1)
 if (-not $migHead) { throw 'no EF migrations found - cannot stamp migrationHead' }
-$commit = ''
-try { $commit = (& git -C $root rev-parse HEAD 2>$null).Trim() } catch { }
 $version = [ordered]@{
   schema        = 'aurora-app-version/1'
   version       = $appVer
