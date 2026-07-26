@@ -115,6 +115,7 @@ Source: "aurora-autowire.ps1";   DestDir: "{app}\server\scripts"; Flags: ignorev
 [Code]
 var
   DataDirPage: TInputDirWizardPage;
+  OffsitePage: TInputQueryWizardPage;
   UrlPage:     TInputQueryWizardPage;
   PwPage:      TInputQueryWizardPage;
   FormPage:    TInputOptionWizardPage;
@@ -413,14 +414,13 @@ begin
     for the backup target separately (and warns on a same-drive choice), plus
     an optional OFF-SITE disk that the nightly job mirrors to. }
   DataDirPage := CreateInputDirPage(wpSelectDir,
-    'Data and backup locations', 'Where should the database, the backups and the off-site copy live?',
+    'Data and backup locations', 'Where should the database and the backups live?',
     'The DATABASE and the BACKUPS should be on DIFFERENT physical disks - otherwise one disk failure '
-    + 'destroys the patient record AND every backup of it together. The off-site disk is a removable '
-    + 'drive you rotate away from the building; leave it blank if you do not have one yet.',
+    + 'destroys the patient record AND every backup of it together. The off-site disk is asked for '
+    + 'on the next page, and it is optional.',
     False, '');
   DataDirPage.Add('Database + data location:');
   DataDirPage.Add('Backup location (use a DIFFERENT drive):');
-  DataDirPage.Add('Off-site copy - removable/second disk (OPTIONAL, leave blank if none):');
   DataDirPage.Values[0] := 'C:\Aurora\data';
   { Deliberately NOT a subfolder of the data location: the default must not
     quietly put the backups on the same disk as the database. D: is the common
@@ -428,9 +428,26 @@ begin
     same-drive warning fires on Next, which is exactly the conversation we want
     them to have BEFORE the hospital depends on it. }
   DataDirPage.Values[1] := 'D:\AuroraBackups';
-  DataDirPage.Values[2] := '';
 
-  UrlPage := CreateInputQueryPage(DataDirPage.ID,
+  { OFF-SITE TARGET - deliberately its OWN page, NOT a third field on the
+    directory page. Inno's TInputDirWizardPage validates EVERY field as a full
+    path and rejects an empty one ("You must enter a full path with drive
+    letter..."), so the documented "leave it blank if you do not have one yet"
+    was impossible to obey - the wizard simply would not advance. Found on the
+    first real install, 2026-07-26. A query page does no path validation, so
+    blank genuinely means "no off-site disk yet" (which provisioning already
+    supports: BACKUP_USB empty = the nightly job skips the mirror and the
+    Backup screen says NO OFF-SITE COPY IS CONFIGURED, honestly). }
+  OffsitePage := CreateInputQueryPage(DataDirPage.ID,
+    'Off-site copy (optional)', 'The disk you rotate out of the building',
+    'Every night Aurora also copies the backup to this disk, add-only - it never overwrites what is already there. '
+    + 'It should be a REMOVABLE or second physical disk that leaves the building on a rotation; a folder on the '
+    + 'database''s own disk protects against nothing. LEAVE IT BLANK if you do not have one yet - Aurora runs '
+    + 'normally and the Backup screen will say the off-site copy is not configured until you set one.');
+  OffsitePage.Add('Off-site folder (for example E:\AuroraOffsite) - blank for none:', False);
+  OffsitePage.Values[0] := '';
+
+  UrlPage := CreateInputQueryPage(OffsitePage.ID,
     'Access address', 'The address clinicians open in their browser',
     'This server''s address on the hospital network - every device (nurse stations, doctor laptops, tablets) opens http://<this address>. It is filled in automatically from this machine; change it only if you use a fixed hostname. Do not use localhost.');
   UrlPage.Add('Server address (IP or hostname, not localhost):', False);
@@ -522,7 +539,7 @@ begin
       WizardForm.DirEdit.Text := ExistingRoot;
       DataDirPage.Values[0] := ExistingDataDir;
       if ExistingBackupDir <> '' then DataDirPage.Values[1] := ExistingBackupDir;
-      if ExistingUsb <> '' then DataDirPage.Values[2] := ExistingUsb;
+      if ExistingUsb <> '' then OffsitePage.Values[0] := ExistingUsb;
       if StrToIntDef(Trim(ExistingPort), 0) > 0 then UrlPage.Values[1] := Trim(ExistingPort);
       if ExistingTz <> '' then DetectedTz := ExistingTz;
       Exit;
@@ -543,7 +560,6 @@ begin
     end;
     dbDrv  := DriveOf(DataDirPage.Values[0]);
     bkDrv  := DriveOf(DataDirPage.Values[1]);
-    usbDrv := DriveOf(DataDirPage.Values[2]);
     if Trim(DataDirPage.Values[1]) = '' then begin
       MsgBox('Choose a backup location.', mbError, MB_OK);
       Result := False;
@@ -554,12 +570,6 @@ begin
         'If that disk fails, you lose the patient record AND every backup of it AT THE SAME TIME.'#13#10#13#10 +
         'Strongly recommended: put the backups on a different physical disk, and set an off-site copy.'#13#10#13#10 +
         'Continue anyway with both on ' + dbDrv + ' ?', mbConfirmation, MB_YESNO) = IDYES;
-    end;
-    if Result and (Trim(DataDirPage.Values[2]) <> '') and (usbDrv <> '') and (usbDrv = dbDrv) then begin
-      MsgBox('The off-site copy is on the SAME drive (' + usbDrv + ') as the database, so it is not an '
-        + 'off-site copy at all - it dies with the same disk.'#13#10#13#10 +
-        'Pick a removable/second disk, or leave it blank.', mbError, MB_OK);
-      Result := False;
     end;
     { An ORPHANED database at the chosen location (services gone - e.g. after an
       uninstall - but the data deliberately left in place): say out loud that it
@@ -576,6 +586,22 @@ begin
         + 'If that folder is gone, Setup will STOP SAFELY at the database step - restore the original '
         + 'aurora.env or contact support; the database files are not touched either way.',
         mbInformation, MB_OK);
+  end;
+  { OFF-SITE page: blank is legitimate ("no rotated disk yet"), so the only
+    check is the one that matters - a target on the DATABASE's own drive is
+    not an off-site copy at all. Same drive = refuse; blank = pass. }
+  if CurPageID = OffsitePage.ID then begin
+    t := Trim(OffsitePage.Values[0]);
+    if t <> '' then begin
+      dbDrv  := DriveOf(DataDirPage.Values[0]);
+      usbDrv := DriveOf(t);
+      if (usbDrv <> '') and (usbDrv = dbDrv) then begin
+        MsgBox('The off-site copy is on the SAME drive (' + usbDrv + ') as the database, so it is not an '
+          + 'off-site copy at all - it dies with the same disk.'#13#10#13#10 +
+          'Pick a removable/second disk, or leave it BLANK if you do not have one yet.', mbError, MB_OK);
+        Result := False;
+      end;
+    end;
   end;
   if CurPageID = wpSelectDir then begin
     dir := WizardDirValue;
@@ -723,7 +749,7 @@ begin
     ' -InstallDir ' + QArg(ExpandConstant('{app}')) +
     ' -DataDir '    + QArg(DataDirPage.Values[0]) +
     ' -BackupDir '  + QArg(DataDirPage.Values[1]) +
-    (' -BackupUsb ' + QArg(Trim(DataDirPage.Values[2]))) +
+    (' -BackupUsb ' + QArg(Trim(OffsitePage.Values[0]))) +
     ' -Port ' + IntToStr(ChosenPort()) +
     ' -AccessUrl '  + QArg(BuildAccessUrl()) +
     ' -FormularySeed ' + seed +
