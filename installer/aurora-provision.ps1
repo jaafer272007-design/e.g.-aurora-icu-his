@@ -105,7 +105,30 @@ if ($dbVol -and $bkVol -and $dbVol -eq $bkVol) {
 if ($BackupUsb) { Say "Off-site copy target: $BackupUsb (mirrored after every nightly backup)." }
 else { Say "NOTE: no off-site copy configured. Backups will exist ONLY on this machine until BACKUP_USB is set." }
 
-foreach ($p in @($DataDir,$pgdata,$backups,$secrets)) { New-Item -ItemType Directory -Force -Path $p | Out-Null }
+# The BACKUP folder is one of the two we lock down with icacls below (backups +
+# secrets = the hospital's recoverability). Applying "inheritance:r, SYSTEM and
+# Administrators only" to a DRIVE ROOT would re-permission that entire disk -
+# on C: that means breaking the machine for every normal user. A root is never
+# a legitimate backup target for that reason, so refuse it here with an
+# instruction rather than silently skipping the hardening.
+if ($backups -match '^[A-Za-z]:\\?$') {
+  Fail "the backup location must be a FOLDER, not a whole drive ($backups). Aurora restricts the backup folder to Administrators and SYSTEM, and it must never do that to an entire disk - use a folder such as D:\AuroraBackups and run Setup again"
+}
+# A DRIVE ROOT is a legitimate thing for an operator to type elsewhere - 'E:\'
+# is exactly how you name a USB disk - but New-Item cannot create one: Windows
+# answers "The path is not of a legal form", which under EAP=Stop killed
+# provisioning at its first step. (Found on a real install, 2026-07-26, with
+# C:\ as the backup location.) So: create only what is missing, and if a
+# MISSING path is a drive root, say plainly that the disk is not there rather
+# than trying to make it.
+foreach ($p in @($DataDir,$pgdata,$backups,$secrets)) {
+  if ([string]::IsNullOrWhiteSpace($p)) { continue }
+  if (Test-Path -LiteralPath $p) { continue }
+  if ($p -match '^[A-Za-z]:\\?$') {
+    Fail "the location $p is a drive that is not available on this machine - plug the disk in (or choose a folder on a drive that exists) and run Setup again"
+  }
+  New-Item -ItemType Directory -Force -Path $p | Out-Null
+}
 # Lock the two folders that hold the hospital's recoverability: the encrypted
 # backups and the key. SYSTEM + Administrators only - a limited user (or malware
 # running as one) can no longer read or delete them. This is NOT ransomware-proof
