@@ -74,6 +74,38 @@ $migHead = (Get-ChildItem (Join-Path $root 'server\Core\Persistence\Migrations')
   Where-Object { $_.Name -notmatch '\.Designer\.cs$' -and $_.Name -notmatch 'ModelSnapshot\.cs$' } |
   ForEach-Object { [IO.Path]::GetFileNameWithoutExtension($_.Name) } | Sort-Object | Select-Object -Last 1)
 if (-not $migHead) { throw 'no EF migrations found - cannot stamp migrationHead' }
+# requiredEnvKeys = the aurora.env keys THIS build's provisioner always writes.
+# aurora-update.ps1 carries a hospital's aurora.env across UNCHANGED, so a key
+# introduced by a release a hospital skipped is simply absent; the updater
+# compares this list against the live file and warns. Derived from the marked
+# region of aurora-provision.ps1 so a NEW key cannot be forgotten here - the
+# only hand-maintained part is the optional list below (keys that are written
+# CONDITIONALLY, or deliberately removed later; treating those as required
+# would warn on every healthy install).
+$optionalEnvKeys = @(
+  'ADMIN_BOOTSTRAP_PASSWORD',   # removed by the admin's first password change - absence is CORRECT
+  'BACKUP_USB',                 # only when an off-site copy was configured
+  'TZ',                         # only when a hospital clock was chosen
+  'AI_PROVIDER', 'AI_ENDPOINT', 'AI_MODEL', 'AI_TIMEOUT_SECONDS', 'AI_UNAVAILABLE_REASON'
+)
+$provisionSrc = Get-Content -Raw (Join-Path $here 'aurora-provision.ps1')
+$envRegion = [regex]::Match($provisionSrc,
+  '(?s)# AURORA-ENV-KEYS-BEGIN(.*?)# AURORA-ENV-KEYS-END')
+if (-not $envRegion.Success) {
+  throw 'the AURORA-ENV-KEYS-BEGIN/END markers are missing from aurora-provision.ps1 - cannot derive requiredEnvKeys (did a refactor drop them?)'
+}
+$envKeyPattern = '[' + [char]39 + [char]34 + ']([A-Z][A-Z0-9_]{2,})='   # a quoted UPPER_KEY= literal
+$requiredEnvKeys = @([regex]::Matches($envRegion.Groups[1].Value, $envKeyPattern) |
+  ForEach-Object { $_.Groups[1].Value } |
+  Sort-Object -Unique |
+  Where-Object { $optionalEnvKeys -notcontains $_ })
+# sentinels: if the extraction ever silently stops working, fail the BUILD rather
+# than ship a version.json whose check is vacuous.
+foreach ($must in @('DATABASE_URL', 'BACKUP_DIR', 'JWT_SECRET')) {
+  if ($requiredEnvKeys -notcontains $must) {
+    throw "requiredEnvKeys extraction is broken - '$must' not found in the marked aurora.env region of aurora-provision.ps1"
+  }
+}
 $version = [ordered]@{
   schema        = 'aurora-app-version/1'
   version       = $appVer
@@ -81,6 +113,7 @@ $version = [ordered]@{
   commit        = $commit
   migrationHead = $migHead
   environment   = 'production'
+  requiredEnvKeys = $requiredEnvKeys
   builtAt       = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 }
 $version | ConvertTo-Json | Set-Content -Encoding ascii -Path (Join-Path $payload 'server\version.json')

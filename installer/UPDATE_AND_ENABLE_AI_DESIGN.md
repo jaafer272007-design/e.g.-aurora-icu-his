@@ -183,6 +183,73 @@ The updater **refuses and exits 0-change** if any of these hold:
 
 Each refusal prints *why* and leaves the system exactly as it was.
 
+#### 2.4a Skipped releases — confirmed behaviour (amendment, 2026-08-01)
+
+Prompted by a direct question — *"a hospital stays on 4.2 while others take 4.3;
+we later ship 4.4; does 4.2 → 4.4 work in one step?"* — the update path was read
+end-to-end against the code rather than against this design. What follows is what
+the code actually does, plus the four changes made in response.
+
+**Skipping is allowed, deliberately.** The guard above has no adjacency rule, and
+none is wanted: `Test-VersionSkew` accepts 4.2 → 4.4 (newer, same major,
+package's migration head ahead of the DB's). The whole migration set is compiled
+into every build — `migrationHead` is the newest of *all* of them, not a delta —
+so `Database.Migrate()` applies 4.3's **and** 4.4's migrations, in `MigrationId`
+order, in one boot, under the existing advisory lock and *before* `app.Run()`.
+The rollback contract is unaffected by how many migrations ran: `migrationWillRun`
+is the boolean *"will the schema advance at all"*, and the restore replaces the
+whole database from the pre-update snapshot, `__EFMigrationsHistory` included.
+
+**What was wrong, and what changed:**
+
+1. 🔴 **`aurora-update.ps1` could not run at all.** It carried two PowerShell 7
+   ternaries (`$a ? $b : $c`) while `aurora-update.iss` launches it with
+   `powershell.exe` — Windows PowerShell 5.1 — where that syntax is a **parse**
+   error, killing the file at load before any statement runs. Every update on
+   every hospital would have failed (safely: zero changes, but with a misleading
+   "rolled back" dialog). The Linux unit tests passed because they ran on pwsh 7.
+   **Fixed** (if/else), and the class is now closed by the `installer-powershell`
+   CI job, which parses every installer `.ps1` with the real 5.1 engine and runs
+   the pure guard tests there. **Rule: no PowerShell 7-only syntax in
+   `installer/*.ps1` — ever.**
+2. **The health timeout is really the migration-time budget.** Migrations run
+   before the server answers `/healthz`, so at the 120 s default a slow-but-
+   *succeeding* multi-release migration is indistinguishable from a hang — the
+   updater would stop the service mid-migration and restore the snapshot,
+   failing an update that was working. `Test-VersionSkipHop` now detects a
+   multi-release hop and raises the timeout to **600 s** automatically; an
+   explicit `-HealthTimeoutSec` always wins. Honest limit: the updater sees only
+   *installed* and *package* versions, never the release history, so it cannot
+   tell 4.2.5 → 4.3.0 with nothing between from the same hop with 4.2.6–4.2.9
+   skipped. It is certain about a gap it can see and silent about one it cannot;
+   pass `-HealthTimeoutSec` explicitly when in doubt.
+3. **Config-key drift is now visible.** `aurora.env` is carried across
+   **unchanged** — the updater never adds keys — so a key introduced by a
+   release a hospital skipped is simply absent. `build.ps1` now stamps
+   `requiredEnvKeys` into `version.json` (derived from the marked region of
+   `aurora-provision.ps1`, minus keys written conditionally or deliberately
+   removed), and the updater reports any that are missing from the live file.
+   It **warns, never refuses**: the server has fallbacks for some keys, and an
+   install predating a key is exactly the machine that most needs the update —
+   a key that really is required fails the health check and rolls back safely.
+   Packages built before this stamp are handled honestly ("drift NOT checked").
+4. 🔴 **Never squash, rename, or delete an existing EF migration while any
+   hospital may be behind.** Everything above assumes the newest build still
+   contains every older migration. Squashing is ordinary housekeeping elsewhere
+   and is *forbidden here*: a hospital that took every release would be fine
+   while the one that skipped a release would find `__EFMigrationsHistory` rows
+   that no longer exist in the assembly, `Migrate()` would throw at boot, and
+   the update would roll back. Nothing detects this — `migrationHead` is just
+   the newest filename, so a squashed build still stamps a plausible head. If a
+   squash ever becomes unavoidable, that release stops being an app-only update
+   and becomes a supervised full-installer hop, and every hospital behind it
+   must be brought forward first.
+
+**Still unproven:** no `aurora-update.ps1` run against a real Windows install
+exists in the record — which is exactly how (1) survived. The parse defect is
+proven by AST type; the rest of this subsection is code reading plus the pure
+tests in `installer/test-update-pure.ps1`.
+
 ### 2.5 🔴 The rollback contract (the correctness crux)
 
 EF migrations here are **forward-only** — there are no down-migrations. So

@@ -419,6 +419,15 @@ foreach ($o in @($AccessUrl) + @($access.PrimaryUrl) + $access.AltUrls) {
 }
 if ($originList.Count -eq 0) { $originList.Add($AccessUrl) }   # never leave CORS empty
 $corsValue = ($originList -join ';')
+# AURORA-ENV-KEYS-BEGIN
+# Everything between these two markers is the aurora.env contract. build.ps1
+# extracts the KEY= names from THIS REGION ONLY and stamps them into
+# server\version.json as requiredEnvKeys (minus a short declared-optional list),
+# so aurora-update.ps1 can tell a hospital when its carried-across aurora.env is
+# missing a key a newer build expects. Add a key here and it is picked up
+# automatically - but a key added OUTSIDE these markers is invisible to that
+# check, and a key that is only sometimes written must be added to
+# $optionalEnvKeys in build.ps1 or every install will warn about it.
 $lines = @(
   '# Aurora ICU machine config (written by the installer). ACL-locked.',
   '# The server (a Windows service, no compose) reads this via AuroraEnvFile.',
@@ -470,6 +479,7 @@ if ($aiReady) {
   $lines += 'AI_UNAVAILABLE_REASON=AI is turned off on this install - no GPU was detected at setup. Add an NVIDIA GPU and run aurora-enable-ai to turn it on.'
 }
 Set-Content -Encoding ascii -Path $envFile -Value $lines
+# AURORA-ENV-KEYS-END
 # lock it to SYSTEM + Administrators only (contains the bootstrap + DB + JWT secrets)
 & icacls.exe $envFile /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' | Out-Null
 
