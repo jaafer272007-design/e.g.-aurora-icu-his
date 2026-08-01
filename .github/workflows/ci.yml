@@ -168,6 +168,22 @@ jobs:
           }
           Write-Host "confirmed: PowerShell $($PSVersionTable.PSVersion)"
 
+      # A gate that cannot fail proves nothing (the CI-evidence rule again).
+      # Feed the parser the EXACT construct that shipped and assert it is
+      # REJECTED here. If a future runner image ever provided a PS7 parser to
+      # this step, this fails loudly instead of waving the real defect through.
+      - name: Prove the gate has teeth (a PS7 ternary must NOT parse here)
+        run: |
+          $snippet = '$x = $true ? 1 : 2'
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseInput($snippet, [ref]$tokens, [ref]$errors)
+          if (-not $errors -or $errors.Count -eq 0) {
+            Write-Host "FAIL - this parser ACCEPTED: $snippet"
+            Write-Host "That is PowerShell 7-only syntax. A parser that accepts it cannot catch the defect this job exists to catch."
+            exit 1
+          }
+          Write-Host "confirmed: the 5.1 parser rejects a ternary - $($errors[0].Message)"
+
       - name: Every installer .ps1 must PARSE under 5.1
         run: |
           $files = @(Get-ChildItem installer -Filter *.ps1 -File | Sort-Object Name)
