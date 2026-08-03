@@ -135,3 +135,83 @@ jobs:
           echo "exit=$rc"
           grep -q "T2 — MISSING INSTALL DECISION" t2.log && [ "$rc" != 0 ] \
             && echo "  ok  refused (T2)" || { echo "  FAIL — did not refuse the missing FORMULARY_SEED"; tail -20 t2.log; exit 1; }
+
+  # installer-powershell — the Windows PowerShell 5.1 gate.
+  #
+  # Why this job exists: aurora-update.ps1 shipped with PowerShell 7 ternary
+  # syntax (`$a ? $b : $c`). aurora.iss and aurora-update.iss both launch their
+  # scripts with `powershell.exe`, which is Windows PowerShell 5.1 on every
+  # hospital server — and 5.1 rejects that syntax at PARSE time, killing the
+  # whole file before a single statement runs. So NO hospital could have applied
+  # ANY update. It survived because CI ran no PowerShell at all and the unit
+  # tests ran on pwsh 7, which parses it happily. Two things close that gap:
+  #   1. every installer .ps1 is parsed by the real 5.1 engine, and
+  #   2. the update guard's pure unit tests RUN on 5.1, not just on pwsh 7.
+  # The engine matters as much as the assertions — that is the whole lesson.
+  installer-powershell:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell        # Windows PowerShell 5.1 — NOT pwsh 7
+    steps:
+      - uses: actions/checkout@v4
+
+      # CI-evidence rule: a gate that silently ran the wrong engine is
+      # indistinguishable from a gate that passed. Prove the engine first.
+      - name: Prove this really is Windows PowerShell 5.1
+        run: |
+          $PSVersionTable | Format-List | Out-String | Write-Host
+          if ($PSVersionTable.PSVersion.Major -ne 5) {
+            Write-Host "FAIL - expected Windows PowerShell 5.x, got $($PSVersionTable.PSVersion)"
+            Write-Host "This gate would not be testing what hospital servers actually run."
+            exit 1
+          }
+          Write-Host "confirmed: PowerShell $($PSVersionTable.PSVersion)"
+
+      # A gate that cannot fail proves nothing (the CI-evidence rule again).
+      # Feed the parser the EXACT construct that shipped and assert it is
+      # REJECTED here. If a future runner image ever provided a PS7 parser to
+      # this step, this fails loudly instead of waving the real defect through.
+      - name: Prove the gate has teeth (a PS7 ternary must NOT parse here)
+        run: |
+          $snippet = '$x = $true ? 1 : 2'
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseInput($snippet, [ref]$tokens, [ref]$errors)
+          if (-not $errors -or $errors.Count -eq 0) {
+            Write-Host "FAIL - this parser ACCEPTED: $snippet"
+            Write-Host "That is PowerShell 7-only syntax. A parser that accepts it cannot catch the defect this job exists to catch."
+            exit 1
+          }
+          Write-Host "confirmed: the 5.1 parser rejects a ternary - $($errors[0].Message)"
+
+      - name: Every installer .ps1 must PARSE under 5.1
+        run: |
+          $files = @(Get-ChildItem installer -Filter *.ps1 -File | Sort-Object Name)
+          if ($files.Count -lt 5) {
+            Write-Host "FAIL - found only $($files.Count) installer .ps1 file(s); the gate would pass vacuously"
+            exit 1
+          }
+          $bad = 0
+          foreach ($f in $files) {
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors -and $errors.Count -gt 0) {
+              $bad++
+              Write-Host ("FAIL  " + $f.Name)
+              foreach ($e in $errors) {
+                Write-Host ("        line " + $e.Extent.StartLineNumber + ": " + $e.Message)
+              }
+            } else {
+              Write-Host ("ok    " + $f.Name)
+            }
+          }
+          Write-Host ("parsed " + $files.Count + " installer script(s) under PowerShell " + $PSVersionTable.PSVersion)
+          if ($bad -gt 0) {
+            Write-Host ("FAIL - " + $bad + " installer script(s) do not parse under Windows PowerShell 5.1.")
+            Write-Host "They would fail at LOAD time on a hospital server. Common cause: PowerShell 7-only"
+            Write-Host "syntax (the '? :' ternary, '??', '?.') - rewrite with if/else."
+            exit 1
+          }
+
+      - name: Update-guard pure unit tests, ON 5.1
+        run: .\installer\test-update-pure.ps1

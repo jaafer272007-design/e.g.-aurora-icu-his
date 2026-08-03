@@ -1,5 +1,57 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-08-01 · THE UPDATER COULD NOT EVEN PARSE ON A HOSPITAL SERVER —
+PowerShell 7 syntax in a Windows PowerShell 5.1 script + skipped-release
+hardening.** Found by verifying an owner's question rather than answering it
+from the design: *does a hospital on 4.2 correctly take a 4.4 package and
+apply 4.3's and 4.4's migrations in one step?* The behaviour question
+answers **yes** on all three counts — `Test-VersionSkew` has no adjacency
+rule (a skip is accepted by design), every build compiles the WHOLE
+migration set so `Database.Migrate()` applies each pending migration in
+`MigrationId` order in one boot before `app.Run()`, and the rollback
+contract is indifferent to how many ran (`migrationWillRun` is a boolean,
+and the restore replaces the entire database, `__EFMigrationsHistory`
+included). But the question never became reachable: **`aurora-update.ps1`
+carried two PowerShell 7 ternaries** (`aurora-update.ps1:45,55`) while
+`aurora-update.iss:87` launches it with `powershell.exe` — Windows
+PowerShell 5.1 — where `? :` is a **parse** error that kills the entire file
+at LOAD, before one statement runs. Proof, not inference: parsed under pwsh
+7.4.6 the two expressions are `TernaryExpressionAst` nodes, a type that
+exists only in PowerShell 7. It was the ONLY one of ten installer scripts
+using PS7-only syntax; 02 already records several deliberate 5.1
+accommodations elsewhere. It survived because **CI ran no PowerShell at all**
+and the pure unit tests ran on pwsh 7 on Linux, which parses it happily —
+the same "tested on the wrong engine" shape as the /healthz-identity defect
+recorded above, and equally fail-safe in effect (zero changes) but
+accompanied by a misleading "rolled back" dialog and no `update.log`.
+Fixed and hardened: (1) ternaries → `if`/`else`, plus a new
+`installer-powershell` CI job on windows-latest with `shell: powershell`
+that asserts `PSVersion.Major -eq 5`, parses every installer `.ps1` with the
+real 5.1 engine, and runs the new `installer/test-update-pure.ps1` (36
+assertions) THERE; (2) `Test-VersionSkipHop` detects a multi-release hop and
+raises the health timeout 120s → 600s automatically (explicit
+`-HealthTimeoutSec` always wins) because migrations run BEFORE `/healthz`
+answers, so at 120s a slow-but-succeeding multi-release migration is
+indistinguishable from a hang and would be stopped mid-migration and rolled
+back; (3) `build.ps1` stamps `requiredEnvKeys` into `version.json` (derived
+from a marked region of `aurora-provision.ps1`, minus conditionally-written
+keys) and the updater WARNS — never refuses — when the carried-across
+`aurora.env` lacks a key a newer build expects, which is the quiet failure
+mode of skipping a release; (4) a binding rule in 03: **never squash,
+rename or delete a shipped EF migration while any hospital may be behind** —
+the skipper's `__EFMigrationsHistory` would reference migrations no longer
+in the assembly and nothing detects it in advance. Caught by the new tests
+en route: `Get-MissingEnvKeys` rejected blank `aurora.env` lines until
+`[AllowEmptyString()]` was added (a Mandatory `[string[]]` refuses an empty
+element) — a real runtime bug, found because the test used a realistic file.
+**Honest limits recorded:** `aurora-update.ps1` has still never been
+executed against a real Windows install — precisely how the parse defect
+survived — and `Test-VersionSkipHop` cannot see release history, so it
+cannot distinguish 4.2.5 → 4.3.0 with nothing between from the same hop with
+4.2.6–4.2.9 skipped; it is certain about a gap it can see and silent about
+one it cannot. Design record: `installer/UPDATE_AND_ENABLE_AI_DESIGN.md`
+§2.4a.
+
 **2026-07-26 · THE APP-ONLY UPDATER COULD NEVER HAVE SUCCEEDED ON WINDOWS
 (/healthz build identity).** Found by reading a live install's `/healthz`
 during an unrelated check: it reported `build: "dev"` while

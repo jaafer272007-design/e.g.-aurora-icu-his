@@ -65,6 +65,52 @@ evidence only when someone dispatches them), and an assertion whose
 failure is swallowed by its surrounding construct (`cmd && echo` lists,
 `read VAR <<<"$(…assert…)"`) gated nothing.
 
+## Test on the engine that ships (added 2026-08-01)
+
+**CODIFIED RULE — a test that passes on a different runtime than the one
+customers run has tested nothing.** `installer/aurora-update.ps1` shipped
+with PowerShell 7 ternary syntax (`$a ? $b : $c`). Its pure functions were
+unit-tested on Linux under pwsh 7, where they passed. But `aurora.iss` and
+`aurora-update.iss` launch their scripts with **`powershell.exe`** — Windows
+PowerShell 5.1 on every hospital server — and 5.1 rejects that syntax at
+**parse** time, which kills the whole file at load before a single statement
+executes. Every hospital update would have failed. Nothing caught it because
+CI ran no PowerShell at all and the tests ran on the wrong engine.
+
+Consequences, binding:
+
+- **No PowerShell 7-only syntax anywhere in `installer/*.ps1`** — no `? :`
+  ternary, no `??` / `??=`, no `?.` / `?[]`. Write `if`/`else`.
+- The `installer-powershell` CI job (windows-latest, `shell: powershell`)
+  parses **every** installer script with the real 5.1 engine and runs
+  `installer/test-update-pure.ps1` there. It asserts `PSVersion.Major -eq 5`
+  first, because a gate that silently ran pwsh 7 would be indistinguishable
+  from a gate that passed — the CI-evidence rule applied to the runtime
+  itself.
+- Generalise beyond PowerShell: when a script's production interpreter,
+  shell, or runtime version differs from the one used in testing, the
+  difference is the risk, and the test must move to the shipping engine.
+
+## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
+
+**CODIFIED RULE — existing EF migrations are append-only once any install
+exists.** Squashing, renaming, deleting or re-timestamping a migration that
+has already shipped is forbidden, however tidy it would be.
+
+An app-only update carries the **whole** migration set, and a hospital may
+skip releases (4.2 → 4.4 in one step is supported — see
+`installer/UPDATE_AND_ENABLE_AI_DESIGN.md` §2.4a). A hospital that took every
+release would survive a squash; the one that skipped a release would find
+`__EFMigrationsHistory` rows with no matching migration in the assembly,
+`Database.Migrate()` would throw at boot, the health check would fail and the
+update would roll back. Nothing detects it in advance — `migrationHead` is
+just the newest migration filename, so a squashed build still stamps a
+plausible-looking head.
+
+If a squash ever becomes genuinely unavoidable, it is not an app-only update:
+that release becomes a supervised full-installer hop, and every hospital
+behind it must be brought forward **before** the squashed build is cut.
+
 ## Deployed E2E suite disciplines
 
 *[Docs split note: the two codified blocks below moved verbatim from the

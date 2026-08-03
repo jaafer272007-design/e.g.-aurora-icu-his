@@ -50,6 +50,26 @@ Delivering a new application build **without** re-running the 5 GB installer: a 
 
 🔴 **The rollback contract (design §2.5).** EF migrations are forward-only, so the updater computes `migrationWillRun` up front. If the new build does not come up healthy: it restores `server.prev\`, and **if the update advanced the schema it also restores the pre-update database snapshot** (the new `restore` verb — DROP+CREATE the DB and `pg_restore` the snapshot, so no failed-migration object survives) — returning to *exactly* the pre-update state. If automation cannot complete the return, it prints and logs (`installer\update.log`) the exact `server.prev\` path, the verified backup filename, and the one-command manual restore. At every step a known-good binary and a born-verified backup are both on disk. `version.json` (emitted by `build.ps1`) gives the updater the version + migration-set identity it reasons about. See [`UPDATE_AND_ENABLE_AI_DESIGN.md`](./UPDATE_AND_ENABLE_AI_DESIGN.md) §1–§2.
 
+**Skipped releases are supported (design §2.4a).** A hospital that sat out one
+or more releases can go straight to the newest package within the same major —
+4.2 → 4.4 in one step. Every build carries the *whole* migration set, so EF
+applies each intervening migration in order in one boot, and the rollback
+contract is unchanged. Two consequences the updater now handles for you:
+
+- **The health timeout is really the migration budget** — migrations finish
+  before `/healthz` answers, so a multi-release hop raises it automatically
+  from 120 s to **600 s**. Pass `-HealthTimeoutSec` to override (an explicit
+  value always wins); do so for a large database even on a single-release hop.
+- **`aurora.env` is carried across unchanged and never gains keys**, so a key
+  introduced by a release you skipped is simply absent. The updater lists any
+  missing key the new build expects and **warns without refusing** — add the
+  key and re-run, or let the health check catch it and roll back.
+
+🔴 **Never squash, rename or delete a shipped EF migration while any hospital
+may be behind** (see 03_DEVELOPMENT_RULES.md) — the skipper's migration history
+would reference migrations the new assembly no longer contains, and nothing
+detects that in advance.
+
 ```powershell
 # build the SHIPPING update package (same toolchain; no -PgZip needed;
 # prompts for the company install password like the full protected build)
@@ -146,6 +166,17 @@ Because Windows services, the SCM, `initdb`-for-Windows, and Inno Setup **cannot
 14. **Enable-AI-later** (`aurora-enable-ai.ps1`): on a box that installed with no GPU, fit an NVIDIA GPU, run the script → **AuroraAI registers, `aurora.env` flips to `openai` (secrets untouched, no re-login), the AI screen answers.** Confirm patient data is undisturbed (it is — the script makes no DB call; the pure `aurora.env` edit is already execution-proven above).
 15. 🔴 **On-boot auto-wire — the "just works" ENABLE path** (`aurora-autowire.ps1`, driven by `AiAutoWire.cs`): on a box that installed with no GPU (AI off), **fit an NVIDIA GPU + driver and simply reboot — no command.** On boot, AuroraServer should register `AuroraAI`, flip `aurora.env` to `openai`, clear the stale reason, and the AI screen answers **that same boot** (no second restart). Confirm the reverse: **remove the GPU and reboot** → the AI turns itself off with the honest "GPU is no longer detected" reason and every other screen still runs. Confirm patient data is undisturbed (no DB call; the DISABLE/NO-OP edits are execution-proven above, ENABLE reuses the same proven `Update-AiEnvLines`). And confirm fail-safe: with a **deliberately broken** GPU probe or a missing `llama\`/`model\` payload, the server still boots normally with the AI off — never a blocked HIS. Check `{DataDir}\autowire.log` for the boot's decision line.
 16. **App-only update — the happy path** (`AuroraUpdate-<ver>-PROTECTED.exe`): build a `1.1.0` update package (`build-protected.ps1 -UpdateOnly`), double-click it on a `1.0.0` box — it must **demand the company install password before anything else** → progress window → **`AuroraServer` stops, `server\`→`server.prev\`, new payload laid down, `aurora.env` carried across unchanged, service restarts, `/healthz` reports the new `build` commit.** Confirm the database, model, Postgres, backup key, AI service and **every secret in `aurora.env`** are untouched, and **no clinician is logged out**. Confirm the version-skew guard by trying to apply the same-or-older package → it refuses and changes nothing.
+16b. 🔴 **The updater has NEVER been executed on Windows** — no run against a real
+   install exists in the record, which is exactly how a PowerShell 7 ternary
+   (a parse error under the 5.1 engine `powershell.exe` provides) sat in
+   `aurora-update.ps1` undetected, making every hospital update impossible. CI
+   now parses every installer script under real 5.1 and runs the guard's unit
+   tests there, but **parsing is not running**: items 16 and 17 remain the first
+   true end-to-end proof. Add a **skipped-release drill** to them — apply a
+   `1.2.0` package to a `1.0.0` box and confirm the log reports
+   `SKIPPED RELEASES`, the health timeout is auto-raised to 600 s, both
+   releases' migrations apply in one boot, and the config-key check lists any
+   missing `aurora.env` key without refusing the update.
 17. 🔴 **App-only update — the ROLLBACK drill** (the go-live-critical one): apply an update package **rigged to fail its health check** (e.g. a deliberately broken build). Confirm the updater **restores `server.prev\`**, and — for a package that carried a migration — **restores the pre-update database snapshot via the `restore` verb** (proven against Postgres above), returning to exactly `1.0.0` with the pre-update data, service healthy. Then confirm the manual-recovery path: read `installer\update.log`; it must name the `server.prev\` path, the verified backup filename, and the exact one-command restore. This is the whole promise of the updater — **there is always a proven way back.**
 
 ### Measure the real GPU (the `llama-bench` step — design §5.6)
