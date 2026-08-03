@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './Observations.css'
+import { DataAge } from '../../components/DataAge'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { NotFoundCard } from '../../components/NotFoundCard'
@@ -217,11 +218,17 @@ export function Observations() {
      this screen's own list confirms the id resolves) */
   useRememberPatient(patientId, patients)
 
+  /* CHART AGE (step 1): read on open and on this nurse's own charting — it
+     does NOT follow the ward, and the chip says so. Stamped on the settled
+     result, including the failure path: a failed read must not leave a
+     newer age standing than the data actually is. */
+  const [chartAt, setChartAt] = useState<number | null>(null)
   const loadObservations = useCallback(() => {
     if (!patientId) return
     getObservations(patientId).then(list => {
       if (list) { setObs(list); setObsFailed(false) }
       else setObsFailed(true)
+      setChartAt(Date.now())
     })
   }, [patientId])
 
@@ -396,6 +403,7 @@ export function Observations() {
         subtitle="Bedside Observations"
         kpis={kpis}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
+        dataAge={<DataAge at={chartAt} what="This patient's charted observations" />}
       />
       <div className="shell">
         <NavSidebar

@@ -111,6 +111,33 @@ If a squash ever becomes genuinely unavoidable, it is not an app-only update:
 that release becomes a supervised full-installer hop, and every hospital
 behind it must be brought forward **before** the squashed build is cut.
 
+## Data on screen must state its own age (added 2026-08-03)
+
+**CODIFIED RULE — a stale screen and a current screen must never look
+identical.** Aurora is used by several clinicians on several devices at
+once. Until this rule, every screen was fetch-on-mount with no
+revalidation of any kind, and nothing on screen said WHEN it was read: a
+ward monitor showing a bed as empty after another device admitted to it
+was pixel-identical to a correct one.
+
+- **Every screen that reads clinical data renders `<DataAge>`.** A screen
+  that reads nothing (Login, Settings) renders none — inventing an age is
+  its own small lie.
+- **One chip per independently-refreshed source.** Where a screen mixes a
+  polled read with an unpolled one — the bed board's census and its
+  severity scores — it shows BOTH ages. A single combined "as of" lets the
+  fresher number vouch for the staler one, which is the failure this rule
+  exists to prevent.
+- **The chip never claims more than it can prove.** Polled and updating →
+  "Live · HH:MM"; polled but gone quiet → "Not updating · last HH:MM";
+  unpolled → "As of HH:MM" plus a tooltip saying it does not refresh
+  itself; unreadable → "Not read". Never green: green is EARNED by a real
+  clinical score (01 Design System) and a freshness widget must not borrow
+  that meaning.
+- **Decorative liveness words are banned.** The bed board's sidebar
+  carried the literal `Sync: live` while nothing re-read at all. A
+  timestamp that can be checked replaces any adjective that cannot.
+
 ## Deployed E2E suite disciplines
 
 *[Docs split note: the two codified blocks below moved verbatim from the

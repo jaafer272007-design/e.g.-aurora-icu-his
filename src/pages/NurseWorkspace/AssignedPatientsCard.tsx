@@ -31,7 +31,7 @@ export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[]
      scoring/display.ts): the card accent + dot restate the computation,
      never a wire/fixture claim (no-reassuring-default rule). Missing =
      still loading -> the neutral unscored presentation. */
-  const derived = useDerivedSeverities(patients.map(p => p.patientId))
+  const { byId: derived } = useDerivedSeverities(patients.map(p => p.patientId))
   return (
     <Card
       icon={<IconUsers size={15} stroke="var(--blue)" />}

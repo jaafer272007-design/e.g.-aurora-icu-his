@@ -10,6 +10,8 @@ import { Toast, useToast } from '../../components/Toast'
 import { IconFlask, IconNote, IconPencil, IconUsers } from '../../components/icons'
 import { News2Pill } from '../../components/News2Pill'
 import { useDerivedSeverities } from '../../hooks/usePatientScores'
+import { usePollTick } from '../../hooks/useLive'
+import { DataAge } from '../../components/DataAge'
 import {
   acknowledgeResult, getActionQueues, getConsults, getPendingOrders,
   getResultInbox, getRoundingWorklist, signOrder,
@@ -50,7 +52,7 @@ export function DoctorWorkspace() {
      {NEWS2 band, SOFA} — scoring/display.ts): one computation per patient
      feeds the card accent AND the pill; the wire/fixture severity is
      retired (no-reassuring-default rule) */
-  const derived = useDerivedSeverities((rounding?.patients ?? []).map(p => p.patientId))
+  const { byId: derived, fetchedAt: scoresAt } = useDerivedSeverities((rounding?.patients ?? []).map(p => p.patientId))
   /* "Orders to Sign" is a derived view over the canonical Order model
      (Screen 5, status === 'pending'); "Results to Acknowledge" over the
      canonical results store (Screen 6). Only "notes" remains workspace-local. */
@@ -62,14 +64,21 @@ export function DoctorWorkspace() {
   const [consults, setConsults] = useState<Consult[] | null | undefined>(undefined)
   const [qtab, setQtab] = useState<QueueKey>('orders')
 
+  /* LIVE (step 2): the rounding worklist, pending-order queue and result
+     inbox re-read on the shared poll tick — a doctor's list must show an
+     admission made at another station without a manual reload. The SCORES
+     behind the severity pills are not polled (five reads per patient) and
+     carry their own age. */
+  const tick = usePollTick()
+  const [listAt, setListAt] = useState<number | null>(null)
   useEffect(() => {
-    getRoundingWorklist(session.name, session.jobTitle).then(setRounding)
+    getRoundingWorklist(session.name, session.jobTitle).then(r => { setRounding(r); setListAt(Date.now()) })
     getPendingOrders().then(setPendingOrders)
     getResultInbox().then(setResults)
     getActionQueues().then(q =>
       setQueues(q ? { notes: q.notes.map(i => ({ ...i, leaving: false })) } : null))
     getConsults().then(setConsults)
-  }, [])
+  }, [tick])
 
   /* doctor RBAC: signing activates the order in the canonical store */
   const signPending = (orderId: string) => {
@@ -119,6 +128,11 @@ export function DoctorWorkspace() {
         subtitle="Doctor Workspace"
         kpis={kpis}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
+        dataAge={<>
+          <DataAge at={listAt} live label="Lists" what="The rounding worklist, pending orders and result inbox" />
+          {(rounding?.patients?.length ?? 0) > 0 &&
+            <DataAge at={scoresAt} label="Scores" what="NEWS2/SOFA severity for this list (recomputed when a patient joins or leaves it, not when new observations are charted)" />}
+        </>}
       />
       <div className="shell">
         <NavSidebar active="dashboard" alertCount={5} footerLines={['Role: Doctor profile', 'Full order/med authority']} />

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './Alerts.css'
+import { DataAge } from '../../components/DataAge'
+import { usePollTick } from '../../hooks/useLive'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Card } from '../../components/Card'
@@ -74,7 +76,17 @@ export function Alerts() {
       })
       .catch(() => setState('unavailable'))
   }, [])
-  useEffect(() => { load() }, [load])
+  /* LIVE (step 2): the attention board re-reads on the shared poll tick —
+     a result acknowledged or an order signed elsewhere must leave this
+     list without a manual reload. */
+  const tick = usePollTick()
+  const [listAt, setListAt] = useState<number | null>(null)
+  useEffect(() => { load(); }, [load, tick])
+  /* stamp AFTER the load settles: `load` sets state itself, so the age is
+     recorded when the board reaches a terminal state, not when the request
+     left. A failed cycle leaves the PREVIOUS age standing, which is exactly
+     right — the chip then ages into "Not updating" and says so. */
+  useEffect(() => { if (state !== 'loading') setListAt(Date.now()) }, [state, groups])
 
   /* the EXISTING acknowledgment — the same call the results inbox makes;
      on success the item simply disappears on reload (derived, one truth) */
@@ -101,6 +113,7 @@ export function Alerts() {
         subtitle="Alerts · Clinical Attention Center"
         kpis={kpis}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
+        dataAge={<DataAge at={listAt} live what="This attention board" />}
       />
       <div className="shell">
         <NavSidebar active="alerts" footerLines={['Display-only attention board', 'No notifications — D6 (v2)']} />

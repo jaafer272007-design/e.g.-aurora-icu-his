@@ -29,6 +29,13 @@ interface AppHeaderProps {
   subtitle: string
   kpis: KpiSpec[]
   user: { initials: string; name: string; role: string }
+  /** FRESHNESS (step 1 of the multi-user staleness work). One or more
+   *  <DataAge> chips, rendered beside the clock. Optional on purpose: a
+   *  screen that shows no server-read clinical data (Login, Settings) has
+   *  no age to state, and inventing one would be its own small lie. Every
+   *  screen that DOES read clinical data passes it — a wall clock next to
+   *  data of unknown age is precisely the confusion this ends. */
+  dataAge?: ReactNode
 }
 
 /** The in-app BACK control (Settings + Back Button design §2) — the app
@@ -64,7 +71,7 @@ export function BackButton() {
  *  fabricated number. A real count would need the Alerts multi-source
  *  derivation on every screen load (disproportionate); the Alerts page
  *  shows the real attention counts. Never a fabricated number. */
-export function AppHeader({ subtitle, kpis, user }: AppHeaderProps) {
+export function AppHeader({ subtitle, kpis, user, dataAge }: AppHeaderProps) {
   const { time, date } = useClock()
   const navigate = useNavigate()
   return (
@@ -75,6 +82,9 @@ export function AppHeader({ subtitle, kpis, user }: AppHeaderProps) {
         <div>AURORA ICU<small>{subtitle}</small></div>
       </div>
       <div className="datetime"><b>{time}</b><span>{date}</span></div>
+      {/* the age of what is ON SCREEN, next to the time it is being read at
+          — the two must be legible together or neither means much */}
+      {dataAge && <div className="hdage dagerow">{dataAge}</div>}
       <div className="kpis">
         {kpis.map((k, i) => <KpiPill key={i} {...k} />)}
       </div>

@@ -7,6 +7,7 @@ import { Badge } from '../../components/Badge'
 import { BedChip, TagList } from '../../components/Tag'
 import { AlertRow } from '../../components/AlertRow'
 import { BackButton } from '../../components/AppHeader'
+import { DataAge } from '../../components/DataAge'
 import { NotFoundCard } from '../../components/NotFoundCard'
 import { VitalTile } from '../../components/VitalTile'
 import { Sparkline } from '../../components/Sparkline'
@@ -75,6 +76,14 @@ export function MissionControl() {
   const hospIdentity = useHospitalIdentity()
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [detail, setDetail] = useState<PatientDetailResponse | null>(null)
+  /* CHART AGE (step 1): stamped by the chart read that backs this screen's
+     body. Deliberately NOT the score fetch: in an environment where only the
+     observation domain is unreachable the scores are unavailable while the
+     rest of the chart loaded fine, and a single "Not read" chip would
+     overstate that (caught in the rendered sweep). The SOFA/NEWS2 cards
+     already state their own unavailable status — that division of labour is
+     the #154 display-honesty rule, and this chip does not duplicate it. */
+  const [chartAt, setChartAt] = useState<number | null>(null)
   const [missing, setMissing] = useState(false)
   /* ADT disposition of the routed patient, from a REAL encounter read —
      Mission Control is the OPEN-CENSUS view, so a discharged patient does
@@ -272,6 +281,7 @@ export function MissionControl() {
         return
       }
       setDetail(res)
+      setChartAt(Date.now())
       setAlertsAvailable(res.alerts !== null)
       setGoalsAvailable(res.goals !== null)
       setAlerts((res.alerts ?? []).map((a, i) => ({ ...a, key: i, leaving: false })))
@@ -330,6 +340,14 @@ export function MissionControl() {
           </div>
           <div className="spacer" />
           <div className="clock"><b>{time}</b><span>{date}</span></div>
+          {/* FRESHNESS (step 1): this chart is read when it OPENS and does
+              not follow the ward — a Mission Control left up through a shift
+              shows the chart as of the moment it was opened. Beside the wall
+              clock, because a current time next to data of unknown age is
+              exactly the confusion this ends. scores.fetchedAt is the widest
+              read on the page (chart + labs + orders + encounter), so it is
+              the honest age of what is on screen. */}
+          <div className="dagerow"><DataAge at={chartAt} what="This patient's chart" /></div>
           <button className="switchrole" onClick={() => { signOut(); navigate('/login') }}>Switch role</button>
         </div>
         <div className="banner">
