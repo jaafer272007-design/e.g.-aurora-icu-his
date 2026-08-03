@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './Timeline.css'
+import { DataAge } from '../../components/DataAge'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { NotFoundCard } from '../../components/NotFoundCard'
@@ -53,6 +54,9 @@ export function Timeline() {
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [patient, setPatient] = useState<Patient | null>(null)
   const [missing, setMissing] = useState(false)
+  /* CHART AGE (step 1): read on open and on this user's own writes — this
+     screen does NOT follow the ward, and the chip says so. */
+  const [chartAt, setChartAt] = useState<number | null>(null)
   const [events, setEvents] = useState<TimelineEvent[] | null>(null)
   const [cats, setCats] = useState<Set<TimelineCategory>>(new Set())
   const [day, setDay] = useState<'all' | number>('all')
@@ -87,7 +91,7 @@ export function Timeline() {
       }
       setPatient(res)
     })
-    getTimeline(patientId).then(evs => { if (!stale) setEvents(evs) })
+    getTimeline(patientId).then(evs => { if (!stale) { setEvents(evs); setChartAt(Date.now()) } })
     return () => { stale = true }
   }, [patientId])
 
@@ -148,6 +152,7 @@ export function Timeline() {
         subtitle="Clinical Timeline"
         kpis={kpis}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
+        dataAge={<DataAge at={chartAt} what="This patient's timeline" />}
       />
       <div className="shell">
         <NavSidebar

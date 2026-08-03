@@ -1,0 +1,30 @@
+/* DataAge — the freshness chip. Quiet by default (it must not compete with
+   clinical content), louder only when a polled surface has gone quiet.
+   Deliberately NO green: green is earned by a real score on this board
+   (01 Design System), and a freshness widget must not borrow that meaning. */
+.dage{
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.3px;
+  padding:2.5px 8px;
+  border-radius:6px;
+  font-weight:700;
+  white-space:nowrap;
+  cursor:default;
+}
+
+/* first load in flight — says nothing about freshness yet */
+.dage-wait{background:rgba(var(--dim-rgb),.12);color:var(--faint)}
+
+/* polled and updating: informational, not reassuring */
+.dage-live{background:rgba(var(--blue-rgb),.14);color:var(--blue)}
+
+/* polled but gone quiet — the one state that earns attention */
+.dage-stall{background:rgba(var(--amber-rgb),.18);color:var(--amber)}
+
+/* not polled at all: honest, calm, no alarm — this is the normal state of a
+   patient chart, which is read when opened and does not follow the ward */
+.dage-static{background:rgba(var(--dim-rgb),.12);color:var(--dim)}
+
+/* a row of ages (bed board carries two: the census and the scores) */
+.dagerow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

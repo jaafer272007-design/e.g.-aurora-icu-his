@@ -30,3 +30,13 @@
  border:1px solid var(--stroke);background:rgba(var(--lift-rgb),.03);transition:.15s;margin-left:8px}
 .app-header .hsignout:hover,.app-header .hsignout:focus-visible{color:var(--red);border-color:rgba(var(--red-rgb),.4);
  background:rgba(var(--red-rgb),.08)}
+
+/* freshness chips in the header, beside the clock (DataAge.css styles the
+   chips themselves). It gets SMALLER on narrow workstations but is never
+   hidden: a stale board that looks fresh is the failure this exists to
+   prevent, so the one element that says otherwise must survive every
+   breakpoint. */
+.app-header .hdage{margin-left:2px;min-width:0}
+@media (max-width:1180px){
+  .app-header .hdage .dage{font-size:9px;padding:2px 6px;letter-spacing:.2px}
+}

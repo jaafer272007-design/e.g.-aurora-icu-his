@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './LabImaging.css'
+import { DataAge } from '../../components/DataAge'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { NotFoundCard } from '../../components/NotFoundCard'
@@ -57,7 +58,12 @@ export function LabImaging() {
      this screen's own list confirms the id resolves) */
   useRememberPatient(patientId, patients)
 
+  /* CHART AGE (step 1): this screen reads when it opens and on the user's
+     own writes — it does NOT follow the ward. The chip states that plainly
+     so a chart left open through a shift cannot pass for current. */
+  const [chartAt, setChartAt] = useState<number | null>(null)
   const refresh = useCallback(() => {
+    setChartAt(Date.now())
     if (patientId) {
       getLabDraws(patientId).then(setDraws)
       getImagingStudies(patientId).then(setStudies)
@@ -187,6 +193,7 @@ export function LabImaging() {
         subtitle="Laboratory & Imaging"
         kpis={kpis}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
+        dataAge={<DataAge at={chartAt} what="This patient's labs and imaging" />}
       />
       <div className="shell">
         <NavSidebar

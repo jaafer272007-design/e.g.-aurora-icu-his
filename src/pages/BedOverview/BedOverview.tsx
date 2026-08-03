@@ -11,6 +11,8 @@ import { IconAlertTriangle, IconBed, IconSearch, IconVent } from '../../componen
 import { getBeds, getUnitSummary, getUnitSummaryDerived } from '../../lib/api'
 import type { Bed, BedsResponse, DerivedUnitSummary, Severity, UnitSummaryResponse } from '../../lib/api/types'
 import { useDerivedSeverities } from '../../hooks/usePatientScores'
+import { usePollTick } from '../../hooks/useLive'
+import { DataAge } from '../../components/DataAge'
 import { BedCard } from './BedCard'
 import { useHospitalIdentity } from '../../lib/hospitalIdentity'
 
@@ -58,15 +60,24 @@ export function BedOverview() {
   const [filters, setFilters] = useState<Filters>({ q: '', doc: '', area: '', vent: false, iso: false, crit: false })
   const [ringOffset, setRingOffset] = useState(RING_CIRC)
 
+  /* LIVE (step 2): the census re-reads every LIVE_POLL_MS while the tab is
+     visible, and immediately on return. This is the screen the staleness
+     report singled out — a ward monitor left open showed the census as of
+     page load, so a bed admitted to on another device stayed "empty" here
+     until someone navigated. getBeds/getUnitSummary are single cheap reads,
+     so polling them is affordable; the per-patient SCORES are not polled
+     (five reads per patient) and carry their own age below. */
+  const tick = usePollTick()
+  const [bedsAt, setBedsAt] = useState<number | null>(null)
   useEffect(() => {
-    getBeds().then(setData)
+    getBeds().then(d => { setData(d); setBedsAt(Date.now()) })
     getUnitSummary().then(s => {
       setSummary(s)
       /* an unreachable source dispatches the overlay on its own — the
          swallow only silences the duplicate rejection */
       if (s === null) getUnitSummaryDerived().then(setDerived).catch(() => {})
     })
-  }, [])
+  }, [tick])
 
   /* §12 step 4: the live-jitter simulation is GONE — bed-card vitals are
      the latest charted observations, displayed as charted (decision F5:
@@ -82,7 +93,7 @@ export function BedOverview() {
      unit-severity aggregate needs per-patient scoring lifted to this
      level") is exactly this. */
   const patientIds = useMemo(() => occupied.map(b => b.patient!.patientId), [occupied])
-  const scoresById = useDerivedSeverities(patientIds)
+  const { byId: scoresById, fetchedAt: scoresAt } = useDerivedSeverities(patientIds)
   const sevOf = (patientId: string): Severity => scoresById[patientId]?.severity ?? 'unscored'
   /* the Critical count is honest only once every occupied bed has
      resolved (ready or unavailable) — a partial count reads as a total */
@@ -148,8 +159,13 @@ export function BedOverview() {
             capacity COUNTED from the active Bed Registry — the '16 beds'
             literal is dead (bed-registry design §4); while the board is
             loading the count is simply omitted, never fabricated */}
+        {/* the second footer line used to read the literal 'Sync: live' — a
+            hardcoded claim that was simply false (nothing re-read at all).
+            The census now DOES re-read, but the honest statement of that is
+            the <DataAge> chip with a real timestamp, not a decorative word,
+            so the literal is retired rather than made true-ish. */}
         <NavSidebar active="beds" footerLines={[
-          `${hospIdentity?.unitName ? hospIdentity.unitName : 'Unit not configured'}${data ? ` · ${data.capacity} beds` : ''}`, 'Sync: live']} />
+          `${hospIdentity?.unitName ? hospIdentity.unitName : 'Unit not configured'}${data ? ` · ${data.capacity} beds` : ''}`]} />
 
         <main>
           <div className="fbar">
@@ -184,6 +200,18 @@ export function BedOverview() {
             </button>
             <span className="showing">
               Showing <b>{data ? visibleBeds.filter(b => b.patient).length : '—'}</b> of <b>{data ? occupied.length : '—'}</b> occupied beds
+            </span>
+            {/* TWO ages, deliberately: the census re-reads on a timer, the
+                severity dots do not. One combined "as of" would let the
+                fresher number vouch for the staler one — exactly the silent
+                failure this work exists to end. The scores chip is omitted
+                on an empty board (nothing to score). */}
+            <span className="dagerow">
+              <DataAge at={bedsAt} live label="Beds" what="The bed census" />
+              {occupied.length > 0 && (
+                <DataAge at={scoresAt} label="Scores"
+                  what="NEWS2/SOFA severity for this board (recomputed when a patient joins or leaves the board, not when new observations are charted)" />
+              )}
             </span>
           </div>
 

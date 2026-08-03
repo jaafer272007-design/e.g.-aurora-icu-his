@@ -14,6 +14,8 @@ import type {
   HandoffEntry,
 } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
+import { DataAge } from '../../components/DataAge'
+import { usePollTick } from '../../hooks/useLive'
 import { AssignedPatientsCard } from './AssignedPatientsCard'
 import { MarCard } from './MarCard'
 import { OrdersCard } from './OrdersCard'
@@ -57,9 +59,15 @@ export function NurseWorkspace() {
       setHandoffs(prev => ({ ...prev, [patientId]: entries })))
   }
 
+  /* LIVE (step 2): the assigned-patient worklist, its MAR rows and the
+     implementation queue re-read on the shared poll tick — a dose given or
+     an order placed at another station shows here without a reload. */
+  const tick = usePollTick()
+  const [listAt, setListAt] = useState<number | null>(null)
   useEffect(() => {
     getNurseWorklist(session.name, session.jobTitle).then(w => {
       setWorklist(w)
+      setListAt(Date.now())
       const ids = w.patients.map(p => p.patientId)
       getMarRows(ids).then(setMar)
       getImplementationQueue(ids).then(setOrders)
@@ -67,7 +75,7 @@ export function NurseWorkspace() {
     })
     getNursingTasks().then(setTasks)
     getIoEntries().then(setIo)
-  }, [session.name, session.jobTitle])
+  }, [session.name, session.jobTitle, tick])
 
   const patients = worklist?.patients ?? []
   const patientName = (patientId: string) => patients.find(p => p.patientId === patientId)?.name ?? patientId
@@ -162,6 +170,7 @@ export function NurseWorkspace() {
         subtitle="Nurse Workspace"
         kpis={kpis}
         user={{ initials: initialsOf(session.name), name: session.name, role: `${session.jobTitle} · ${profileOf(session.jobTitle)} profile` }}
+        dataAge={<DataAge at={listAt} live label="Lists" what="The assigned-patient worklist, MAR rows and implementation queue" />}
       />
       <div className="shell">
         <NavSidebar
