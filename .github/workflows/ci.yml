@@ -150,6 +150,10 @@ jobs:
   # The engine matters as much as the assertions — that is the whole lesson.
   installer-powershell:
     runs-on: windows-latest
+    # One step deliberately RUNS build-protected.ps1 to prove the version gate
+    # refuses. If a future change ever let it past the gate it would reach an
+    # interactive Read-Host; cap the job rather than let that sit for hours.
+    timeout-minutes: 20
     defaults:
       run:
         shell: powershell        # Windows PowerShell 5.1 — NOT pwsh 7
@@ -215,3 +219,64 @@ jobs:
 
       - name: Update-guard pure unit tests, ON 5.1
         run: .\installer\test-update-pure.ps1
+
+      # Release version gate. A release built at a version that already shipped
+      # is refused by every hospital SILENTLY (aurora-update's "not newer than
+      # installed" skew refusal): the update reports success-by-inaction and
+      # the new code never runs. build-protected.ps1 refuses to compile such a
+      # build by reading installer\SHIPPED_VERSIONS.txt. These tests cover the
+      # gate itself AND assert the committed ledger is valid and that
+      # aurora.iss AppVer is not behind what has already shipped.
+      - name: Release version-gate tests + the committed ledger, ON 5.1
+        run: .\installer\test-version-gate.ps1
+
+      # The gate is only worth having if it can actually stop a build. Prove
+      # that here by running build-protected.ps1's own refusal path against a
+      # version that IS already in the committed ledger, and asserting the
+      # script exits non-zero WITHOUT compiling anything.
+      - name: Prove the gate stops a real build (build-protected.ps1 refuses an already-shipped version)
+        run: |
+          . .\installer\version-gate.ps1
+          $entries = Read-ShippedLedger -Lines (Get-Content .\installer\SHIPPED_VERSIONS.txt)
+          $shipped = Get-NewestShippedVersion -Entries $entries -Kind 'setup'
+          if (-not $shipped) {
+            Write-Host "no setup release recorded yet - nothing to prove the gate against"
+            exit 0
+          }
+          # -PgZip points at a path that does not exist on purpose: if the gate
+          # runs BEFORE staging (as it must), we never get far enough to care.
+          $iss = '.\installer\aurora.iss'
+          $orig = Get-Content -Raw $iss
+          try {
+            (Get-Content -Raw $iss) -replace '(#define\s+AppVer\s+")[^"]+(")', "`${1}$shipped`${2}" |
+              Set-Content -NoNewline -Encoding ascii $iss
+            $out = & powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\build-protected.ps1 `
+                     -PgZip C:\does-not-exist.zip -SkipStage 2>&1 | Out-String
+            $rc = $LASTEXITCODE
+          } finally {
+            Set-Content -NoNewline -Encoding ascii -Path $iss -Value $orig
+          }
+          Write-Host $out
+          if ($rc -eq 0) { Write-Host "FAIL - build-protected.ps1 did NOT refuse an already-shipped version"; exit 1 }
+          if ($out -notmatch 'REFUSED - VERSION GATE') { Write-Host "FAIL - it exited $rc but not via the version gate"; exit 1 }
+          if ($out -notmatch 'HAS ALREADY SHIPPED') { Write-Host "FAIL - the refusal did not name the already-shipped version"; exit 1 }
+          if ($out -match 'Company install password') { Write-Host "FAIL - it reached the password prompt; the gate must refuse BEFORE that"; exit 1 }
+          Write-Host "confirmed: build-protected.ps1 refused $shipped before prompting or compiling (exit $rc)"
+          # The child process exited 1 ON PURPOSE - that is the assertion. Without
+          # this the shell wrapper inherits $LASTEXITCODE and marks the step failed
+          # for proving exactly what it was asked to prove.
+          exit 0
+
+      # aurora.iss must be pure ASCII (the Inno compiler and the 5.1 engine
+      # both read it as such), and so must the ledger the gate parses.
+      - name: aurora.iss and the ledger must restore byte-for-byte after the gate proof
+        run: |
+          $dirty = & git status --porcelain installer
+          if ($dirty) {
+            Write-Host "FAIL - the gate proof left installer\ modified:"
+            $dirty | ForEach-Object { Write-Host "  $_" }
+            & git diff -- installer | Write-Host
+            exit 1
+          }
+          Write-Host "confirmed: installer\ is byte-for-byte unchanged"
+          exit 0

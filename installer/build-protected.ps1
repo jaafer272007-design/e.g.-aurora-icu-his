@@ -65,6 +65,10 @@
     # payload already staged today (skip the slow staging steps):
     ... -SkipStage ...
 
+    # re-cut the release you last shipped WITHOUT a version change (a
+    # corrupted burn, a re-slice) - deliberate, recorded, never silent:
+    ... -RebuildVersion -RebuildReason "re-slice after a bad USB write" ...
+
     # write the (multi-GB, sliced) artifact to another drive when the build
     # drive is tight - the staged payload stays where it is:
     ... -OutputDir E:\aurora-out ...
@@ -79,8 +83,10 @@ param(
   [switch]$UpdateOnly,          # build the ENCRYPTED app-only update package instead of the full installer
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
   [switch]$SkipStage,           # the payload is already staged (a previous run of this or build.ps1)
-  [string]$OutputDir = ''       # write the artifact somewhere other than installer\Output (another drive
+  [string]$OutputDir = '',      # write the artifact somewhere other than installer\Output (another drive
                                 # when the build drive is tight - the AI build emits ~5.5 GB of slices)
+  [switch]$RebuildVersion,      # re-cut the release you last shipped WITHOUT bumping AppVer
+  [string]$RebuildReason = ''   # required with -RebuildVersion; recorded in the ledger
 )
 $ErrorActionPreference = 'Stop'
 $here = $PSScriptRoot
@@ -89,6 +95,45 @@ function Die([string]$m) { Write-Host "[build-protected] $m" -ForegroundColor Re
 if (-not $UpdateOnly -and -not $PgZip) {
   Die '-PgZip is required for the full installer build (it is only optional with -UpdateOnly)'
 }
+if ($RebuildVersion -and -not $RebuildReason) {
+  Die '-RebuildVersion requires -RebuildReason "<why>" - a same-version re-cut is recorded, never silent'
+}
+if ($RebuildReason -and -not $RebuildVersion) {
+  Die '-RebuildReason only means something with -RebuildVersion'
+}
+
+# ---- 0. THE VERSION GATE - before the password, before the 20-60 min compile ----
+# A release built at a version that already shipped is not a small mistake: every
+# hospital already running that version REFUSES the package (aurora-update.ps1's
+# "not newer than installed" skew refusal), so the new code ships and never runs,
+# and nothing anywhere says so. The ledger turns that silent field failure into a
+# loud build failure. See installer\version-gate.ps1 and SHIPPED_VERSIONS.txt.
+. (Join-Path $here 'version-gate.ps1')
+$ledgerPath = Join-Path $here 'SHIPPED_VERSIONS.txt'
+if (-not (Test-Path $ledgerPath)) {
+  Die "the shipped-version ledger is missing: $ledgerPath (it is committed to the repo - restore it rather than building blind)"
+}
+$appVer = ([regex]::Match((Get-Content -Raw (Join-Path $here 'aurora.iss')),
+  '#define\s+AppVer\s+"([^"]+)"').Groups[1].Value)
+if (-not $appVer) { Die 'could not read AppVer from aurora.iss' }
+$artifactKind = 'setup'
+if ($UpdateOnly) { $artifactKind = 'update' }
+
+$ledgerEntries = Read-ShippedLedger -Lines (Get-Content -Path $ledgerPath)
+$ledgerProblems = Test-ShippedLedger -Entries $ledgerEntries
+if ($ledgerProblems.Count -gt 0) {
+  foreach ($lp in $ledgerProblems) { Write-Host "  $lp" -ForegroundColor Red }
+  Die "$ledgerPath is not valid - fix it before building (CI checks the same rules)"
+}
+$gate = Test-ReleaseVersionGate -Entries $ledgerEntries -Kind $artifactKind -Version $appVer -Rebuild:$RebuildVersion
+if (-not $gate.ok) {
+  Write-Host ''
+  Write-Host '  REFUSED - VERSION GATE' -ForegroundColor Red
+  Write-Host "  $($gate.reason)" -ForegroundColor Red
+  Write-Host ''
+  Die 'nothing was compiled'
+}
+Say "version gate: $($gate.reason)"
 
 # ---- 1. the company password, typed blind, twice ----
 # SecureString only shields the CONSOLE (no echo); the value is then held as
@@ -152,10 +197,8 @@ $env:AURORA_INSTALL_PASSWORD = $pw
 try {
   if ($UpdateOnly) {
     # aurora-update.iss expects /DAppVer; the single source of the version is
-    # aurora.iss (the same read build.ps1 does for version.json)
-    $appVer = ([regex]::Match((Get-Content -Raw (Join-Path $here 'aurora.iss')),
-      '#define\s+AppVer\s+"([^"]+)"').Groups[1].Value)
-    if (-not $appVer) { Die 'could not read AppVer from aurora.iss' }
+    # aurora.iss (the same read build.ps1 does for version.json, and the same
+    # value the version gate above already checked)
     Say "compiling the PROTECTED update package AuroraUpdate-$appVer-PROTECTED.exe"
     & $Iscc "/DAppVer=$appVer" @isccOut (Join-Path $here 'aurora-update.iss')
   } else {
@@ -175,6 +218,26 @@ if (-not $exe) {
   Die "ISCC succeeded but produced no fresh $wantFilter in $outDir - the password did NOT reach the compiler (is the .iss current?). Whatever it built is NOT protected; do not ship it."
 }
 $sha = (Get-FileHash -Algorithm SHA256 -Path $exe.FullName).Hash.ToLowerInvariant()
+
+# ---- 4b. record the shipped version (the other half of the gate) ----
+# Appended only after a PROVEN protected artifact exists, so a failed compile
+# never burns a version number. The operator must COMMIT this - the build
+# cannot, and says so loudly below.
+$commitShort = '-'
+try {
+  $c = (& git -C $here rev-parse --short HEAD 2>$null)
+  if ($LASTEXITCODE -eq 0 -and $c) { $commitShort = ($c | Select-Object -First 1).Trim() }
+} catch { $commitShort = '-' }
+$ledgerFlag = 'new'
+$ledgerNote = "sha256 $($sha.Substring(0,16))"
+if ($RebuildVersion) {
+  $ledgerFlag = 'rebuild'
+  $ledgerNote = "$ledgerNote - rebuild: $RebuildReason"
+}
+$ledgerLine = New-ShippedLedgerLine -Version $appVer -Kind $artifactKind -Flag $ledgerFlag `
+  -Utc ((Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')) `
+  -Commit $commitShort -Note $ledgerNote
+Add-Content -Path $ledgerPath -Value $ledgerLine -Encoding ascii
 # The full installer is SLICED (DiskSpanning) - the .bin files beside the .exe
 # are part of the artifact and must ship with it. List them so the operator
 # cannot mistake the .exe for the whole thing.
@@ -189,6 +252,16 @@ if ($slices) {
   foreach ($s in $slices) { Say ("  {0}   ({1} GB)" -f $s.Name, [math]::Round($s.Length / 1GB, 2)) }
   Say 'The .exe alone will NOT install. Keep every file together in one folder.'
 }
+Say ''
+Say "RECORDED  $artifactKind $appVer -> $ledgerPath"
+Say "          $ledgerLine"
+Say 'COMMIT THAT LINE. It is what stops the next release being built at the same'
+Say 'version - and a release built at an already-shipped version is refused by'
+Say 'every hospital silently: the update reports "already up to date" and the new'
+Say 'code never runs. The build cannot commit for you.'
+Say '    git add installer\SHIPPED_VERSIONS.txt'
+Say ("    git commit -m " + [char]34 + "release: $artifactKind $appVer" + [char]34)
+Say ''
 Say 'The install password was NOT written anywhere by this build - it exists'
 Say 'only where you keep it. The hospital never receives it: the engineer'
 Say 'types it on site at every install and update. Without it this file'

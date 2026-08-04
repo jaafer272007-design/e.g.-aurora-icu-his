@@ -1,5 +1,44 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-08-04 · A FORGOTTEN AppVer BUMP WOULD HAVE SHIPPED A RELEASE THAT
+NEVER RAN — the version gate.** Found while preparing the skipped-release
+drill: `#define AppVer` in `installer/aurora.iss` has read `1.0.0` since the
+installer was built and was **never bumped** across PR #184 or #185, and
+nothing anywhere would have objected. That is not a cosmetic slip.
+`aurora-update.ps1`'s `Test-VersionSkew` refuses any package that is not
+newer than the installed version, so a release cut at an already-shipped
+version does not fail at the hospital — it reports "already up to date",
+rolls nothing back, and the new code never executes. The engineer sees a
+clean run. BUILT: `installer/SHIPPED_VERSIONS.txt` (a committed ledger of
+every shipping artifact, keyed `version kind flag utc commit note`) and
+`installer/version-gate.ps1` (a pure, dot-sourceable library — semver
+compare, ledger parse/validate, and the gate itself). `build-protected.ps1`
+now reads the ledger **before** prompting for the install password and
+before ISCC starts, and dies if the version has already shipped, is below the
+forward-only high-water mark across both artifact kinds (`setup` and
+`update`), or is malformed; on a proven-protected artifact it appends its own
+entry and prints the `git` commands to commit it. A deliberate same-version
+re-cut is possible but never silent: `-RebuildVersion -RebuildReason "<why>"`.
+The ledger is seeded with one retroactive `1.0.0 setup` entry — the build
+already installed on the two owner machines — so the next shipping build from
+main must be greater. VERIFIED: 64/64 pure assertions; `build-protected.ps1`
+run for real against the committed ledger and observed refusing 1.0.0 with
+exit 1 *before* the password prompt, refusing `-RebuildVersion` with no
+reason, and passing the gate at 1.0.1 and falling through to the prompt; all
+13 installer scripts parse. CI (`installer-powershell`) gained three steps:
+the gate's unit tests on 5.1, a step that **actually runs
+`build-protected.ps1`** at an already-shipped version and asserts the refusal
+fires before the password prompt, and a byte-for-byte restore check on
+`installer/`. The release routine is codified in 03. Honest residue: the
+ledger is a git file, so a build whose appended line is never committed stays
+invisible to a later clone — no tooling can close that, and 03 says so.
+Also pushed for the drill: branches `test/v1.0` (`e00f3c2`, AppVer 1.0.0),
+`test/v1.1` (AppVer 1.1.0 + empty migration `SkipDrillA`) and `test/v1.2`
+(AppVer 1.2.0 + `SkipDrillA` + `SkipDrillB`) — three distinct versions each
+carrying a migration, so machine A can go 1.0 → 1.1 → 1.2 and machine B
+1.0 → 1.2 with `migrationWillRun` true on every hop. Those branches predate
+this gate and carry no ledger, so the drill is unaffected by it.
+
 **2026-08-03 · NOTHING ON ANY SCREEN AUTO-REFRESHED, AND NOTHING SAID SO —
 data age + polled list reads (steps 1-2 of 4).** Opened by the owner's
 multi-user question (does an admission on one device appear on another?).
