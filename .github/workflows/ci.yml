@@ -262,6 +262,10 @@ jobs:
           if ($out -notmatch 'HAS ALREADY SHIPPED') { Write-Host "FAIL - the refusal did not name the already-shipped version"; exit 1 }
           if ($out -match 'Company install password') { Write-Host "FAIL - it reached the password prompt; the gate must refuse BEFORE that"; exit 1 }
           Write-Host "confirmed: build-protected.ps1 refused $shipped before prompting or compiling (exit $rc)"
+          # The child process exited 1 ON PURPOSE - that is the assertion. Without
+          # this the shell wrapper inherits $LASTEXITCODE and marks the step failed
+          # for proving exactly what it was asked to prove.
+          exit 0
 
       # aurora.iss must be pure ASCII (the Inno compiler and the 5.1 engine
       # both read it as such), and so must the ledger the gate parses.
@@ -275,3 +279,4 @@ jobs:
             exit 1
           }
           Write-Host "confirmed: installer\ is byte-for-byte unchanged"
+          exit 0
