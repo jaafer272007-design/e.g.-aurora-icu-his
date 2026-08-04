@@ -79,6 +79,42 @@ cd installer
 .\build.ps1 -UpdateOnly            # → installer\Output\AuroraUpdate-1.0.0-UNPROTECTED.exe
 ```
 
+## 🔴 Every shipping build starts by bumping `AppVer`
+
+`#define AppVer` in **`aurora.iss`** is the single source of the version —
+`build.ps1` stamps it into `server\version.json`, `build-protected.ps1` names
+the artifact with it, and `aurora-update.ps1` compares it against what is
+installed. **Bump it before every shipping build.** Forgetting is not a small
+mistake and does not look like one: `Test-VersionSkew` refuses any package
+that is not newer than the installed version, so the update runs at the
+hospital, reports the server is already current, and the new code never
+executes. Nothing errors.
+
+`build-protected.ps1` therefore reads **`SHIPPED_VERSIONS.txt`** — a committed
+ledger of every shipping artifact — *before* it asks for the install password
+and *before* ISCC starts, and refuses to build a version that has already
+shipped:
+
+```
+  REFUSED - VERSION GATE
+  setup 1.0.0 HAS ALREADY SHIPPED. Every hospital already running 1.0.0 would
+  REFUSE this package (aurora-update: 'not newer than installed') - the new
+  code would ship and never run. Bump #define AppVer in installer\aurora.iss,
+  or pass -RebuildVersion if you really are re-cutting the same release.
+```
+
+After a successful build it appends its own ledger line and prints the `git`
+commands. **Commit that line** — the build cannot, and an uncommitted line is
+invisible to the next clone. To deliberately re-cut the release you last
+shipped (a corrupted burn, a re-slice) without a version change, pass
+`-RebuildVersion -RebuildReason "<why>"`; it is allowed, and recorded.
+
+The `installer-powershell` CI job validates the ledger, runs the gate's unit
+tests on Windows PowerShell 5.1, and runs `build-protected.ps1` itself at an
+already-shipped version to prove the refusal fires. `build.ps1` /
+`build-all.ps1` produce `-UNPROTECTED` smoke artifacts that never ship and are
+deliberately not gated.
+
 ## Build the installer (on a build machine — SDK/Node/Inno/internet)
 
 The **build** machine needs the .NET 8 SDK, Node, [Inno Setup 6](https://jrsoftware.org/isinfo.php), and internet. The **hospital** machine needs none of it.

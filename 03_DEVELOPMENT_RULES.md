@@ -111,6 +111,56 @@ If a squash ever becomes genuinely unavoidable, it is not an app-only update:
 that release becomes a supervised full-installer hop, and every hospital
 behind it must be brought forward **before** the squashed build is cut.
 
+## 🔴 The release routine — bump AppVer, or the release ships and never runs (added 2026-08-04)
+
+**CODIFIED RULE — no two shipping artifacts may ever carry the same version.**
+`#define AppVer` in `installer/aurora.iss` is the single source of the version:
+`build.ps1` stamps it into `server/version.json`, `build-protected.ps1` names
+the artifact with it, and `aurora-update.ps1` compares it against the installed
+version on the hospital server.
+
+The failure a forgotten bump causes is **silent, not loud**. `Test-VersionSkew`
+refuses any package that is not newer than what is installed (refusal 2). So a
+release built at an already-shipped version does not error at the hospital — the
+update runs, reports that the server is already up to date, rolls nothing back
+because nothing changed, and the new code never executes. The engineer sees a
+successful run. Nothing anywhere says the release did not land. This is the
+worst class of defect the project has: green that was never earned.
+
+**The routine, in order, for every shipping build:**
+
+1. **Bump `#define AppVer` in `installer/aurora.iss`** — patch for a fix,
+   minor for a feature, major only for a break. This is a required step, not
+   a courtesy.
+2. Build with `installer/build-protected.ps1` (never `build.ps1` — that
+   produces the `-UNPROTECTED` smoke artifact, which never ships).
+3. **Commit the appended line in `installer/SHIPPED_VERSIONS.txt`.** The build
+   writes it and prints the exact `git` commands; it cannot commit for you.
+4. Ship the whole `Output` folder — the installer is disk-spanned, and the
+   `.exe` alone will not install.
+
+**Two gates enforce it so it does not rest on memory:**
+
+- **Build time.** `build-protected.ps1` reads `installer/SHIPPED_VERSIONS.txt`
+  before it prompts for the install password and before ISCC starts, and
+  refuses if the version has already shipped, is below the high-water mark
+  across both artifact kinds, or is malformed. Deliberately re-cutting the
+  release you last shipped is possible but never silent:
+  `-RebuildVersion -RebuildReason "<why>"`, recorded in the ledger.
+- **CI.** The `installer-powershell` job runs the gate's unit tests on Windows
+  PowerShell 5.1, validates the committed ledger (semver, no duplicates,
+  strictly increasing per kind, forward-only across kinds), asserts
+  `aurora.iss` AppVer is not *behind* what has already shipped, and then
+  **actually runs `build-protected.ps1`** at an already-shipped version to
+  prove the refusal fires before the password prompt. A gate that cannot be
+  seen failing proves nothing (the CI-evidence rule).
+
+**Honest limit, stated rather than papered over:** the ledger is a file in
+git, so the build-time gate is only as strong as step 3. A build whose ledger
+line is never committed is invisible to a later clone — though not to the
+clone it was built on, where the appended line is right there. Nothing in the
+tooling can close that last gap; committing the line is the discipline.
+
 ## Data on screen must state its own age (added 2026-08-03)
 
 **CODIFIED RULE — a stale screen and a current screen must never look

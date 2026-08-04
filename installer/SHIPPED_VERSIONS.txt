@@ -1,0 +1,37 @@
+# AURORA ICU - SHIPPED VERSION LEDGER
+#
+# Every shipping artifact build-protected.ps1 has ever produced, newest at
+# the bottom. This file is a GATE, not a log: build-protected.ps1 reads it
+# BEFORE compiling and refuses to build a release at a version that has
+# already shipped. That refusal exists because aurora-update.ps1 refuses any
+# package whose version is not newer than the version installed - so a
+# forgotten AppVer bump does not fail loudly at the hospital, it fails
+# SILENTLY: the update runs, reports "already up to date", and the new code
+# never executes. See installer\version-gate.ps1 for the whole argument.
+#
+# YOU MUST COMMIT THIS FILE after a shipping build appends to it. The build
+# prints that instruction and this is the one step the tooling cannot do for
+# you. An uncommitted line means the next clone does not know that version
+# shipped.
+#
+# FORMAT - whitespace separated; '#' and blank lines ignored:
+#
+#   <version>  <kind>  <flag>  <utc>  <commit>  [note...]
+#
+#   version   the AppVer that was compiled (from installer\aurora.iss)
+#   kind      setup   = AuroraSetup-<ver>-PROTECTED.exe   (full installer)
+#             update  = AuroraUpdate-<ver>-PROTECTED.exe  (app-only package)
+#   flag      new     = a new release; must be strictly greater than the
+#                       previous 'new' entry of the same kind
+#             rebuild = the newest release re-cut without a version change
+#                       (a corrupted burn, a re-slice); must EQUAL the
+#                       newest 'new' entry of the same kind
+#   utc       ISO-8601 UTC stamp of the build (YYYY-MM-DDTHH:MM:SSZ)
+#   commit    short commit the build came from, or '-' if unknown
+#   note      free text (optional)
+#
+# UNPROTECTED builds (build.ps1 / build-all.ps1) are smoke tests, never
+# ship, and are deliberately NOT recorded or gated.
+#
+# version    kind    flag     utc                   commit     note
+1.0.0      setup   new      2026-08-04T00:00:00Z -          retroactive - installed on the two owner machines before this gate existed; exact build commit and time not recorded, so the next shipping setup must be greater than 1.0.0
