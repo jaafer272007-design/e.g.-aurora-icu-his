@@ -91,6 +91,48 @@ Consequences, binding:
   shell, or runtime version differs from the one used in testing, the
   difference is the risk, and the test must move to the shipping engine.
 
+### Amendment, 2026-08-05 — parsing is not running
+
+The rule above was written from a **parse**-time defect and its gate was
+built to match. That gate is necessary and not sufficient, and a second
+defect of the same family proved it: `installer/build.ps1` used
+`[IO.Path]::GetRelativePath`, which is **.NET Core 2.1+ only**. Windows
+PowerShell 5.1 runs on .NET Framework, where that method does not exist — so
+the line **parses** perfectly and throws `MethodNotFound` when it executes.
+It broke `build-protected.ps1 -UpdateOnly` outright at step 3u (SHA256SUMS)
+on a real 5.1 build box, after the React bundle, the server publish and
+`version.json` had all succeeded. Every gate in CI was green.
+
+Two things follow, both binding:
+
+- **The 5.1 incompatibility surface is bigger than syntax.** It includes
+  every .NET API added after .NET Framework 4.8 (`[IO.Path]::GetRelativePath`
+  and `::Join`, `[Convert]::ToHexString`, `[Environment]::ProcessPath`,
+  `[Random]::Shared`, `[TimeZoneInfo]::TryConvertWindowsIdToIanaId`, the
+  `System.Text.Json` namespace, .NET-Core-only overloads of otherwise-old
+  methods) and every PowerShell 6/7-only cmdlet or parameter
+  (`ForEach-Object -Parallel`, `ConvertFrom-Json -AsHashtable`, `Test-Json`,
+  `Join-String`, `-Encoding utf8NoBOM`, `Get-Content -AsByteStream`, …).
+  None of these are visible to a parser. When a newer API is genuinely
+  wanted, feature-detect it and degrade honestly — `appliance/run.ps1`'s
+  `TryConvertWindowsIdToIanaId` reflection probe, which warns with the exact
+  line to add instead of guessing a timezone, is the pattern to copy.
+- **CI must EXECUTE the shipping scripts on 5.1, not merely parse them.**
+  The `installer-powershell` job now runs the real update-package staging
+  (`build.ps1 -UpdateOnly -SkipCompile` — npm ci, vite build, `dotnet
+  publish`, `version.json`, `SHA256SUMS`) on windows-latest under 5.1, then
+  replays `aurora-update.ps1`'s own verification loop against the result, so
+  a package that would not verify on a hospital server fails the build.
+  There is deliberately **no test-only branch** in `build.ps1`: a gate that
+  runs a different code path than the shipping one is the very thing this
+  rule exists to forbid.
+
+Stated boundary, so the coverage is not overclaimed: the runtime gate covers
+build.ps1's **update** path. The full-installer steps (Postgres, model and
+llama staging) need multi-GB inputs CI has no copy of, and the ISCC compile
+needs Inno Setup plus the company password. Those remain proven only by an
+engineer running a real build.
+
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install

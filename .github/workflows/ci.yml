@@ -153,7 +153,9 @@ jobs:
     # One step deliberately RUNS build-protected.ps1 to prove the version gate
     # refuses. If a future change ever let it past the gate it would reach an
     # interactive Read-Host; cap the job rather than let that sit for hours.
-    timeout-minutes: 20
+    # The cap also bounds the real update-package staging run at the end
+    # (npm ci + vite build + a self-contained win-x64 publish).
+    timeout-minutes: 30
     defaults:
       run:
         shell: powershell        # Windows PowerShell 5.1 — NOT pwsh 7
@@ -279,4 +281,87 @@ jobs:
             exit 1
           }
           Write-Host "confirmed: installer\ is byte-for-byte unchanged"
+          exit 0
+
+      # ------------------------------------------------------------------
+      # RUNTIME gate. Everything above only PARSES the scripts. That is not
+      # enough: [IO.Path]::GetRelativePath parses perfectly on 5.1 and then
+      # throws MethodNotFound when the line executes, because it is .NET Core
+      # 2.1+ only and 5.1 runs on .NET Framework. It shipped, and it broke the
+      # update-package build outright at step 3u on a real build box
+      # (2026-08-05) - the same 5.1 class as the #184 ternary, one layer down.
+      # A parse gate cannot see that. Only running the thing can.
+      #
+      # So: run the REAL update-package staging under 5.1 - npm ci, vite build,
+      # dotnet publish, version.json, SHA256SUMS - with no test-only branch in
+      # build.ps1. -SkipCompile stops it before ISCC, which needs Inno Setup and
+      # the company password.
+      #
+      # HONEST BOUNDARY, stated rather than implied: this covers build.ps1's
+      # UPDATE path end-to-end. It does NOT cover the full-installer steps 3-5
+      # (Postgres/model/llama staging), which need multi-GB inputs CI has no
+      # copy of, nor the ISCC compile. Those remain unexercised here.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: The update-package staging must RUN on 5.1 (not just parse)
+        run: |
+          Write-Host "PowerShell $($PSVersionTable.PSVersion) / CLR $([System.Environment]::Version)"
+          .\installer\build.ps1 -UpdateOnly -SkipCompile
+          if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          exit 0
+
+      # A staging run that produced a malformed SHA256SUMS would still "pass"
+      # the step above. Replay aurora-update.ps1's OWN verification loop against
+      # what was just written - same regex, same Join-Path resolution, same hash
+      # comparison. If this passes, the package would verify on a hospital server.
+      - name: The SHA256SUMS must verify exactly as aurora-update.ps1 verifies it
+        run: |
+          $pkg   = '.\installer\payload'
+          $sums  = Join-Path $pkg 'SHA256SUMS'
+          if (-not (Test-Path $sums)) { Write-Host "FAIL - no SHA256SUMS was written"; exit 1 }
+          $lines = @(Get-Content $sums)
+          if ($lines.Count -lt 10) { Write-Host "FAIL - SHA256SUMS has only $($lines.Count) line(s); the payload cannot be that small"; exit 1 }
+          # the exact regex from aurora-update.ps1
+          $bad = @(); $checked = 0
+          foreach ($line in $lines) {
+            if ($line -notmatch '^\s*([0-9a-fA-F]{64})\s+(.+?)\s*$') { $bad += "unparseable: $line"; continue }
+            $want = $Matches[1].ToLowerInvariant(); $rel = $Matches[2]
+            if ($rel -notlike 'server\*') { $bad += "not package-relative: '$rel' (expected 'server\...' - a GetRelativePath-style regression)"; continue }
+            if ($rel -match '[A-Za-z]:\\') { $bad += "ABSOLUTE path leaked into the package: '$rel'"; continue }
+            $path = Join-Path $pkg $rel
+            if (-not (Test-Path $path)) { $bad += "$rel (missing)"; continue }
+            $have = (Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLowerInvariant()
+            if ($have -ne $want) { $bad += "$rel (checksum mismatch)" }
+            $checked++
+          }
+          # ...and every file on disk must be COVERED, or the updater would
+          # happily verify a package with an unlisted file swapped in.
+          $onDisk = @(Get-ChildItem -Recurse -File (Join-Path $pkg 'server')).Count
+          if ($checked -ne $onDisk) { $bad += "SHA256SUMS covers $checked file(s) but payload\server holds $onDisk" }
+          if ($bad.Count -gt 0) {
+            Write-Host "FAIL - the staged package would NOT verify on a hospital server:"
+            $bad | Select-Object -First 15 | ForEach-Object { Write-Host "    $_" }
+            exit 1
+          }
+          Write-Host "confirmed: $checked file(s) listed, all present, all hashes match, all paths package-relative"
+          Write-Host ("sample: " + $lines[0])
+          exit 0
+
+      - name: version.json must be well-formed and stamped from aurora.iss
+        run: |
+          $v = Get-Content -Raw '.\installer\payload\server\version.json' | ConvertFrom-Json
+          $iss = ([regex]::Match((Get-Content -Raw '.\installer\aurora.iss'), '#define\s+AppVer\s+"([^"]+)"').Groups[1].Value)
+          $fail = 0
+          if ($v.version -ne $iss) { Write-Host "FAIL - version.json says $($v.version), aurora.iss says $iss"; $fail = 1 }
+          if ($v.environment -ne 'production') { Write-Host "FAIL - environment is '$($v.environment)', not production; aurora-update would refuse it"; $fail = 1 }
+          if (-not $v.migrationHead) { Write-Host "FAIL - no migrationHead"; $fail = 1 }
+          if (-not $v.requiredEnvKeys -or $v.requiredEnvKeys.Count -lt 5) { Write-Host "FAIL - requiredEnvKeys missing or suspiciously short"; $fail = 1 }
+          if ($fail) { exit 1 }
+          Write-Host "confirmed: $($v.version) / migrationHead $($v.migrationHead) / $($v.requiredEnvKeys.Count) required env keys / environment $($v.environment)"
           exit 0

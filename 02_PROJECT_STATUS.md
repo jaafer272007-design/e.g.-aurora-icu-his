@@ -1,5 +1,40 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-08-05 · THE PARSE GATE WAS NECESSARY AND NOT SUFFICIENT — a
+runtime-only 5.1 defect broke the update-package build.** Found by the owner
+on a real Windows PowerShell 5.1 build box while staging the skipped-release
+drill: `build-protected.ps1 -UpdateOnly` died at step 3u with
+`[System.IO.Path] does not contain a method named 'GetRelativePath'`.
+`GetRelativePath` is .NET Core 2.1+ only; 5.1 runs on .NET Framework, so the
+line **parses** and then throws when it executes — the same 5.1 family as the
+#184 ternary, one layer below where the CI parse gate can see. Everything
+before it had succeeded (React bundle, server publish, `version.json` stamped
+1.1.0 / migrationHead `SkipDrillA`), so the failure was confined to the
+checksum step. FIXED with a 5.1-safe substring against the resolved payload
+root, with a guard that refuses rather than emit an unresolvable path; proven
+byte-identical to `GetRelativePath` for nested paths, and the emitted
+`server\<...>` form is unchanged (`aurora-update.ps1` parses it with
+`^\s*([0-9a-fA-F]{64})\s+(.+?)\s*$` and resolves via `Join-Path`). AUDITED
+every tracked `.ps1` (16 files, installer + appliance) two ways: a denylist of
+known .NET-Core-only APIs and PS6/7-only cmdlets/parameters, and — because a
+denylist cannot prove absence — a **census** of all 25 distinct static .NET
+members and all 89 cmdlets with every parameter used, reviewed against .NET
+Framework 4.x / PS 5.1. Result: exactly one genuine defect (this one). The
+census surfaced `[TimeZoneInfo]::TryConvertWindowsIdToIanaId` (.NET 6+) in
+`appliance/run.ps1`, which the denylist missed and which turned out to be
+**already correctly feature-detected** by reflection with an honest warning —
+the pattern now cited in 03 as the one to copy. CI: `installer-powershell`
+gained a RUNTIME half — it now executes the real update-package staging
+(`build.ps1 -UpdateOnly -SkipCompile`) on 5.1 with no test-only branch, then
+replays `aurora-update.ps1`'s own verification loop against the produced
+`SHA256SUMS` (same regex, same `Join-Path` resolution, same hashes, plus a
+coverage check that every file on disk is listed), and asserts `version.json`
+is well-formed and stamped from `aurora.iss`. Stated boundary: this covers
+the update path only — full-installer Postgres/model/llama staging and the
+ISCC compile need inputs CI does not have and remain engineer-proven. The fix
+was also applied to `test/v1.1` and `test/v1.2` so the drill is unblocked
+without waiting on a merge.
+
 **2026-08-04 · A FORGOTTEN AppVer BUMP WOULD HAVE SHIPPED A RELEASE THAT
 NEVER RAN — the version gate.** Found while preparing the skipped-release
 drill: `#define AppVer` in `installer/aurora.iss` has read `1.0.0` since the

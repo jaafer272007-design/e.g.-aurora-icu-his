@@ -127,11 +127,27 @@ if ($UpdateOnly) {
   Write-Host '== 3u. SHA256SUMS over the server payload =='
   $sums = Join-Path $payload 'SHA256SUMS'
   if (Test-Path $sums) { Remove-Item -Force $sums }
+  # 5.1-COMPATIBLE relative path. [IO.Path]::GetRelativePath is .NET Core 2.1+
+  # ONLY: it PARSES on Windows PowerShell 5.1 and then throws MethodNotFound at
+  # RUNTIME, which is what every build machine actually runs. It broke the
+  # update-package build outright (found 2026-08-05 on a real 5.1 build box).
+  # This is the same class as the #184 ternary defect - a 5.1 incompatibility -
+  # but a runtime one, so the CI parse gate could not see it. The substring is
+  # exact, not an approximation: every file here is enumerated from under
+  # $payload, and the guard below refuses rather than emitting a wrong path.
+  # The emitted form must stay 'server\<...>' with backslashes - aurora-update.ps1
+  # parses these lines with '^\s*([0-9a-fA-F]{64})\s+(.+?)\s*$' and resolves each
+  # via Join-Path against the package root.
+  $payloadFull = (Resolve-Path -LiteralPath $payload).ProviderPath.TrimEnd('\')
   Push-Location $payload
   try {
     Get-ChildItem -Recurse -File 'server' | ForEach-Object {
-      $rel = [IO.Path]::GetRelativePath($payload, $_.FullName)
-      "$((Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant())  $rel"
+      $full = $_.FullName
+      if (-not $full.StartsWith(($payloadFull + '\'), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "cannot compute a package-relative path: '$full' is not under '$payloadFull'. Refusing to write a SHA256SUMS the updater could not resolve."
+      }
+      $rel = $full.Substring($payloadFull.Length + 1)
+      "$((Get-FileHash -Algorithm SHA256 -Path $full).Hash.ToLowerInvariant())  $rel"
     } | Set-Content -Encoding ascii $sums
   } finally { Pop-Location }
   Copy-Item -Force (Join-Path $here 'aurora-update.ps1') (Join-Path $payload 'aurora-update.ps1')
