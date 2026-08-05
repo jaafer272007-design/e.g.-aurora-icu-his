@@ -183,10 +183,19 @@ Write-Host '=== no native command may leak stderr under EAP=Stop ==='
 # $ErrorActionPreference='Stop' - so ONE chatty line from psql, pg_restore or the
 # backup engine becomes a terminating error thrown from wherever that call sits.
 # On the rollback path that meant a SUCCESSFUL restore being reported as
-# "CRITICAL: the automatic rollback could not complete". PowerShell 7 does not
-# behave this way, so only the 5.1 leg can ever see it - assert it statically
-# instead of hoping. Every native call must either redirect stderr (2>&1 or
-# 2>file) or sit inside a try{}catch{} that absorbs it.
+# "CRITICAL: the automatic rollback could not complete".
+#
+# REDIRECTION IS NOT THE MITIGATION. This repo has measured, twice, on real
+# installs, that it does not help: aurora-provision.ps1:544-547 ("2>&1 on a
+# native command turns those stderr lines into TERMINATING errors") and
+# aurora-ai-service.ps1:87-89 ("2>$null does NOT prevent that", 2026-07-26).
+# Both were closed by RELAXING $ErrorActionPreference around the call. An
+# earlier draft of this gate accepted a bare 2>&1 and would therefore have
+# certified the unfixed rollback restore as safe - a false green in the repo
+# whose own rule is that a skipped check and a passed check look identical.
+#
+# So: every native call must sit inside a try{}catch{} that absorbs the throw,
+# or be preceded within 5 lines by an explicit relaxation of the preference.
 $updaterLines = Get-Content $updater
 $leaky = @()
 $nativeSeen = 0
@@ -198,9 +207,14 @@ for ($i = 0; $i -lt $updaterLines.Count; $i++) {
   if ($line.TrimStart().StartsWith('#')) { continue }
   if ($line -match '&\s+\$(psql|exe|pkgExe)\b') {
     $nativeSeen++
-    if (-not ($line -match '2>' -or $line -match 'try\s*\{')) {
-      $leaky += ("line " + ($i + 1) + ": " + $line.Trim())
+    $guarded = ($line -match 'try\s*\{')
+    if (-not $guarded) {
+      $from = $i - 5; if ($from -lt 0) { $from = 0 }
+      for ($j = $from; $j -lt $i; $j++) {
+        if ($updaterLines[$j] -match "ErrorActionPreference\s*=\s*'Continue'") { $guarded = $true }
+      }
     }
+    if (-not $guarded) { $leaky += ("line " + ($i + 1) + ": " + $line.Trim()) }
   }
 }
 # Vacuity guard: a regex that matches nothing would "pass" silently.

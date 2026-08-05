@@ -379,11 +379,22 @@ $headErr = Join-Path $env:TEMP ('aurora-dbhead-' + [Guid]::NewGuid().ToString('N
 Set-Content -Encoding ascii -Path $headSql `
   -Value 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId" DESC LIMIT 1;'
 $headRc = 1; $headOut = @(); $headErrText = ''
+#  4. RELAX THE PREFERENCE around the call. This try{} has only a finally{} - no
+#     catch - so a terminating NativeCommandError propagates straight out and
+#     kills the script. psql writes NOTICE/WARNING lines to stderr on perfectly
+#     SUCCESSFUL queries, and 5.1 turns any of them into exactly that (measured
+#     twice in this repo: aurora-provision.ps1:544-547, aurora-ai-service.ps1:87-89
+#     - and redirection, including the 2>$headErr below, is NOT the mitigation).
+#     Without this a benign notice aborts the run with a raw PowerShell error
+#     instead of the honest "could not read the live migration head" message.
+$prevEapH = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 try {
   $headOut = @(& $psql -w -t -A -v ON_ERROR_STOP=1 -d $dbUrl -f $headSql 2>$headErr)
   $headRc  = $LASTEXITCODE
   if (Test-Path $headErr) { $headErrText = ((Get-Content -Raw $headErr) -replace '\s+', ' ').Trim() }
 } finally {
+  $ErrorActionPreference = $prevEapH
   Remove-Item -Force $headSql, $headErr -ErrorAction SilentlyContinue
 }
 if ($headRc -ne 0) {
@@ -459,9 +470,17 @@ try { & $exe audit app-update start --actor update | Out-Null } catch { }
 
 # ---- 4. take the restore point (the SAME born-restore-verified backup engine) ----
 Say "taking a born-verified database backup as the restore point..."
+# Relax the preference around the native call - see the note on the rollback
+# restore below. 2>&1 alone is NOT the mitigation; this repo measured that twice.
+# Capture $LASTEXITCODE IMMEDIATELY: anything between the call and the test can
+# overwrite it.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 $backupOut = & $exe backup --actor update 2>&1
+$backupRc  = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
 $backupOut | ForEach-Object { Say "  $_" }
-if ($LASTEXITCODE -ne 0) { Fail "the pre-update backup FAILED - no restore point, no update. Nothing has changed." }
+if ($backupRc -ne 0) { Fail "the pre-update backup FAILED - no restore point, no update. Nothing has changed." }
 $backupFile = ([regex]::Match(($backupOut -join "`n"), 'BACKUP OK:\s*(\S+)').Groups[1].Value)
 if (-not $backupFile) { Fail "could not determine the backup filename from the backup output - aborting before any change." }
 Say "restore point = $backupFile"
@@ -521,19 +540,26 @@ try {
   if ($migrationWillRun) {
     Say "the update advanced the schema - restoring the pre-update database snapshot ($backupFile)..."
     $env:AURORA_ENV_FILE = $envFile
-    # 2>&1 IS LOAD-BEARING, exactly as on the backup call above. Windows
-    # PowerShell 5.1 turns a NATIVE command's stderr into a NativeCommandError
-    # ErrorRecord, and under $ErrorActionPreference='Stop' that is TERMINATING -
-    # so a single chatty line from pg_restore (which writes progress and benign
-    # warnings to stderr as a matter of course) would be thrown from HERE,
-    # inside the rollback try{}, and reported by its catch{} as "CRITICAL: the
-    # automatic rollback could not complete" on a restore that actually
-    # succeeded. Merging into the success stream captures those lines as data
-    # instead, and puts them in update.log where the worst path needs them most.
-    # PowerShell 7 does not do this, which is why only the 5.1 CI leg can catch
-    # it. The exit code, not the chatter, decides whether this failed.
+    # RELAXING THE PREFERENCE IS THE MITIGATION - redirection is NOT.
+    # Windows PowerShell 5.1 turns a NATIVE command's stderr into a TERMINATING
+    # NativeCommandError under $ErrorActionPreference='Stop'. This repo has
+    # measured TWICE, on real installs, that a redirection does not prevent it:
+    # aurora-provision.ps1:544-547 ("2>&1 on a native command turns those stderr
+    # lines into TERMINATING errors") and aurora-ai-service.ps1:87-89 ("`2>$null`
+    # does NOT prevent that", found 2026-07-26). Both were closed by relaxing the
+    # preference around the call, and so is this one.
+    # It matters most HERE: this call sits inside the rollback try{}, whose
+    # catch{} reports "CRITICAL: the automatic rollback could not complete".
+    # pg_restore writes progress and benign warnings to stderr as a matter of
+    # course, so without this a SUCCESSFUL restore is announced as a catastrophe
+    # and an operator is pushed toward a database restore on a healthy system.
+    # The exit code, not the chatter, decides whether this failed - captured
+    # immediately, because anything in between can overwrite $LASTEXITCODE.
+    $prevEapR = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     $restoreOut = & $pkgExe restore $backupFile --yes --actor update-rollback 2>&1
-    $restoreRc = $LASTEXITCODE
+    $restoreRc  = $LASTEXITCODE
+    $ErrorActionPreference = $prevEapR
     $restoreOut | ForEach-Object { Say "  $_" }
     if ($restoreRc -ne 0) {
       throw "the database restore reported failure (exit $restoreRc)"

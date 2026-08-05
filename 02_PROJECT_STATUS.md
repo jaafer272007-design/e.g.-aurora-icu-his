@@ -48,12 +48,23 @@ called `& $pkgExe restore ...` with **no** stderr redirection, and `pg_restore`
 writes progress and benign warnings to stderr as a matter of course. On 5.1 one
 such line would have thrown from inside the rollback `try{}` and been reported by
 its `catch{}` as *"CRITICAL: the automatic rollback could not complete"* — a
-successful restore, announced as a catastrophe. Fixed with `2>&1` (mirroring the
-backup call that already had it), and the output now lands in `update.log` where
-the worst path needs it most. A new static lint asserts every native invocation
-in the file either redirects stderr or sits inside a `try{}catch{}`, with a
-vacuity guard and a comment-line skip; it was proven to fail on the
-un-redirected form. 15/15 green after the fix, 36/36 pure tests unchanged, all 14
+successful restore, announced as a catastrophe. **The first attempt at this fix
+was wrong and an adversarial audit caught it:** `2>&1` alone was applied, on the
+assumption that merging into the success stream disarms the trap. This repo has
+measured **twice, on real installs**, that it does not — `aurora-provision.ps1:544-547`
+(*"`2>&1` on a native command turns those stderr lines into TERMINATING errors"*)
+and `aurora-ai-service.ps1:87-89` (*"`2>$null` does **NOT** prevent that"*,
+2026-07-26) — and both were closed by **relaxing `$ErrorActionPreference` around
+the call**. Redirection is not the mitigation; the preference is. Corrected to
+the measured pattern at all three native call sites (the migration-head `psql`
+read, whose `try{}` has only a `finally{}` and so absorbs nothing; the pre-update
+backup; and the rollback restore), each capturing `$LASTEXITCODE` immediately
+because anything in between can overwrite it. The static lint was corrected with
+it: an earlier draft accepted a bare `2>&1` and would have **certified the
+unfixed rollback restore as safe** — a false green in the repo whose own rule is
+that a skipped check and a passed check look identical. It now requires a
+`try{}catch{}` or an EAP relaxation within five lines, and was proven to reject
+the `2>&1`-only form. 15/15 green after the fix, 36/36 pure tests unchanged, all 14
 installer scripts parse. Stated limit: no CI can reach codes 2 and 3 end-to-end —
 they need a live `AuroraServer`, a real Postgres and a half-applied swap — so the
 *helpers* are proven and the *call sites* remain engineer-proven. The drill's

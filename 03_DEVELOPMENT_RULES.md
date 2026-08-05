@@ -227,11 +227,26 @@ as *"CRITICAL: the automatic rollback could not complete"*, on a restore that
 succeeded.
 
 **CODIFIED RULE — under `$ErrorActionPreference = 'Stop'`, every native command
-call must redirect stderr (`2>&1` or `2>file`) or sit inside a `try{}catch{}`.**
-Its exit code, not its chatter, decides whether it failed. A static lint in
-`test-update-exitcodes.ps1` enforces this across `aurora-update.ps1`, with a
-vacuity guard (the scan must find calls) and a comment-line skip (the file
-deliberately quotes the old broken `psql` invocation in prose). This is the third
+call must sit inside a `try{}catch{}` that absorbs the throw, or have the
+preference explicitly relaxed around it.** Its exit code, not its chatter,
+decides whether it failed — captured immediately, because anything between the
+call and the test can overwrite `$LASTEXITCODE`.
+
+**Redirection is NOT the mitigation.** `2>&1`, `2>$null` and `2>file` are the
+same mechanism and none of them prevents the terminating error; this repo has
+measured that twice on real installs (`aurora-provision.ps1:544-547`,
+`aurora-ai-service.ps1:87-89`) and closed both by relaxing the preference. The
+first draft of *this very fix* used a bare `2>&1` and a lint that accepted it —
+which would have **certified the unfixed rollback restore as safe**. An
+adversarial audit caught it by noticing the repo contradicted itself in three
+places and that only the redirection claim carried no measurement. A false green
+is worse than a red: it is the skipped-check-looks-like-a-passed-check failure
+with extra confidence attached.
+
+A static lint in `test-update-exitcodes.ps1` enforces the corrected rule across
+`aurora-update.ps1`, with a vacuity guard (the scan must find calls), a
+comment-line skip (the file deliberately quotes the old broken `psql` invocation
+in prose), and proof that it rejects the `2>&1`-only form. This is the third
 distinct 5.1-only defect class after the PS7 ternary and `GetRelativePath`:
 **parse-clean, review-clean, and wrong only when it runs, only on the engine that
 ships.**

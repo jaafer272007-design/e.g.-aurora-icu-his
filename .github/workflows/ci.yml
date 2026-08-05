@@ -259,6 +259,12 @@ jobs:
               $n++
               $t = $line.Trim()
               if ($t.StartsWith('#')) { continue }
+              # A line that TESTS for psql invocations is not one. The exit-code
+              # suite lints aurora-update.ps1's own native calls, so its matcher
+              # contains a psql-shaped regex literal - which this gate read as a
+              # real call and failed on (2026-08-06). A lint must not fail on
+              # another lint's pattern.
+              if ($t -match '-match|-notmatch') { continue }
               # an actual invocation: '&' followed by something naming psql
               if ($t -notmatch '&\s*[^\r\n]*psql') { continue }
               if ($t -notmatch '\bpsql(\.exe)?') { continue }
