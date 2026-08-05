@@ -1,5 +1,41 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-08-05 (second) · THE UPDATER'S FIRST FIELD RUN: IT HUNG, AND THEN LIED
+ABOUT IT.** The owner ran the skipped-release drill on real hardware. All three
+attempts (1.1.0, then 1.2.0 twice) failed; one froze in an installer window that
+could not be closed, one reported *"rolled back … running normally"*, one
+reported *"CRITICAL … may be between states"*. The machine's own diagnostic then
+proved the decisive fact: **nothing had happened at all** — still 1.0.0, no
+`server.prev`, no `update-state.json`, no `update.log`, `/healthz` healthy with
+`build` matching `version.json` `commit` exactly. Every attempt died in preflight.
+ROOT CAUSE, reproduced by the owner in a visible console:
+`& $psql $dbUrl -tAc '<sql>'` — psql's Windows getopt does not permute, so the
+connection URI first ended option parsing, `-tAc` and the SQL became positionals
+(`extra command-line argument … ignored`), psql opened an **interactive session**,
+and under `Exec(..., SW_HIDE)` that prompt was invisible and unanswerable — the
+hang. A second independent bug in the same line: PowerShell strips embedded
+double quotes for native commands, so `"MigrationId"` arrived unquoted and could
+never have matched EF's case-sensitive table. FIXED: options first, `-d` for the
+database, the SQL in a **file** via `-f`, `-w` so psql can never prompt,
+`ON_ERROR_STOP=1`, exit code and stderr both checked. THREE further defects,
+all exposed by the same session and all fixed here: (1) `update.log` was only
+ever written on the rollback-FAILED path while `Say`/`Fail` wrote to the hidden
+console — two real failures were undiagnosable, now a `Start-Transcript` like
+`aurora-provision.ps1:99` has always had; (2) every failure exited 1 and the
+installer asserted *"rolled back … running normally"* even when nothing had
+happened or the service was left stopped — exit codes are now one-meaning-each
+(0/1/2/3) with an honest "outcome UNKNOWN" for anything else, since a false
+catastrophe drives a needless database restore; (3) the update wizard showed a
+**folder picker**, so a wrong choice produced a preflight refusal reported as a
+rollback — the page is gone and the install directory is now resolved from the
+registered `AuroraServer` service, not from a click. CI gained a lint asserting
+`-w` on every psql invocation (refuses to pass vacuously), which immediately
+caught two more unguarded calls in `aurora-provision.ps1` — the same hang class
+in the *installer*, fixed too. Verified: 13/13 installer scripts parse and are
+ternary-free on 5.1; 36/36 + 64/64 pure assertions unchanged; all installer
+files still pure ASCII. Honest state: the updater has still never completed a
+successful hop — this round only removes the reasons it could not start.
+
 **2026-08-05 · THE PARSE GATE WAS NECESSARY AND NOT SUFFICIENT — a
 runtime-only 5.1 defect broke the update-package build.** Found by the owner
 on a real Windows PowerShell 5.1 build box while staging the skipped-release

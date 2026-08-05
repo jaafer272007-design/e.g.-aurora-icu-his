@@ -133,6 +133,50 @@ llama staging) need multi-GB inputs CI has no copy of, and the ISCC compile
 needs Inno Setup plus the company password. Those remain proven only by an
 engineer running a real build.
 
+### Amendment, 2026-08-05 (second) — a hidden console must never wait on stdin
+
+The first field run of `aurora-update.ps1` hung forever and the installer
+window could not be closed. Root cause, from the owner's own reproduction:
+
+```
+& $psql $dbUrl -tAc 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ...'
+```
+
+psql's Windows `getopt` **does not permute** — the first non-option argument
+ends option parsing. With the connection URI first, `-tAc` and the SQL became
+*positional* arguments, psql printed `extra command-line argument ... ignored`,
+never saw a `-c`, and opened an **interactive session**. `aurora-update.iss`
+runs the script via `Exec(..., SW_HIDE)`, so the `aurora=>` prompt was
+invisible and unanswerable: psql waited on stdin, PowerShell waited on psql,
+Inno waited on PowerShell. (Second, independent bug in the same line: Windows
+PowerShell strips embedded double quotes when building a native command line,
+so `"MigrationId"` arrived unquoted — and Postgres folds unquoted identifiers
+to lower case while EF created the table case-sensitively.)
+
+Binding consequences:
+
+- **Any child process launched with a hidden console must be incapable of
+  blocking on stdin.** For psql that means `-w` / `--no-password` on every
+  invocation — it then *fails* instead of waiting. CI asserts this on every
+  psql call in `installer/*.ps1`, and the check refuses to pass vacuously if it
+  finds none. The same reasoning applies to any future tool that can prompt.
+- **Pass options before positionals, and prefer `-d`/`-f` over positional
+  arguments and inline SQL.** `aurora-provision.ps1:388` always did this
+  correctly; the updater is what drifted. SQL containing quoted identifiers
+  goes in a **file**, which no argument parser can corrupt.
+- **An operator message must never assert an outcome the code cannot vouch
+  for.** Every failure used to exit 1, and the installer reported *"rolled back
+  to the previous version, it is running normally"* — for refusals where
+  nothing had happened, and for a swap failure that leaves the service stopped.
+  Exit codes are now one-meaning-each (0 applied · 1 refused, untouched ·
+  2 between states · 3 rolled back and healthy), and an unrecognised code says
+  the outcome is **unknown** rather than claiming catastrophe, because a false
+  catastrophe drives someone to restore a database that was never touched.
+- **An update must never ask where the product is installed.** The wizard's
+  directory page is gone; `aurora-update.ps1` resolves the install directory
+  from the registered `AuroraServer` service, with `-InstallDir` only as
+  fallback and explicit override.
+
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install

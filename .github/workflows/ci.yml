@@ -222,6 +222,43 @@ jobs:
       - name: Update-guard pure unit tests, ON 5.1
         run: .\installer\test-update-pure.ps1
 
+      # A process the installer launches with SW_HIDE must never be able to
+      # block on stdin - there is no console to answer it and the window cannot
+      # be closed. aurora-update.ps1 invoked psql with the connection URI as the
+      # FIRST argument; psql's Windows getopt does not permute, so -tAc and the
+      # SQL became positionals, psql started an INTERACTIVE session, and the
+      # update hung forever (real field failure, 2026-08-05). -w / --no-password
+      # makes psql fail instead of prompting, which kills the whole class
+      # regardless of argument order. Assert it on every psql call.
+      - name: Every psql invocation must pass -w (no process may wait on a hidden stdin)
+        run: |
+          $bad = @(); $seen = 0
+          foreach ($f in Get-ChildItem installer -Filter *.ps1 -File) {
+            $n = 0
+            foreach ($line in (Get-Content $f.FullName)) {
+              $n++
+              $t = $line.Trim()
+              if ($t.StartsWith('#')) { continue }
+              # an actual invocation: '&' followed by something naming psql
+              if ($t -notmatch '&\s*[^\r\n]*psql') { continue }
+              if ($t -notmatch '\bpsql(\.exe)?') { continue }
+              $seen++
+              if ($t -notmatch '\s-w\b' -and $t -notmatch '--no-password') {
+                $bad += ("{0}:{1}  {2}" -f $f.Name, $n, $t)
+              }
+            }
+          }
+          if ($seen -lt 1) { Write-Host "FAIL - found no psql invocations at all; this gate would pass vacuously"; exit 1 }
+          Write-Host "checked $seen psql invocation(s)"
+          if ($bad.Count -gt 0) {
+            Write-Host "FAIL - these psql calls can prompt for a password and hang a hidden console:"
+            $bad | ForEach-Object { Write-Host "    $_" }
+            Write-Host "Add -w (--no-password) so psql FAILS instead of waiting on stdin."
+            exit 1
+          }
+          Write-Host "confirmed: every psql invocation passes -w"
+          exit 0
+
       # Release version gate. A release built at a version that already shipped
       # is refused by every hospital SILENTLY (aurora-update's "not newer than
       # installed" skew refusal): the update reports success-by-inaction and

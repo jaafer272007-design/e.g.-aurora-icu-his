@@ -19,8 +19,23 @@
 AppName={#AppName}
 AppVersion={#AppVer}
 AppPublisher={#Publisher}
-; the operator points this at their existing Aurora install (default C:\Aurora)
+; The update targets the EXISTING install. It must NEVER ask.
+;
+; Until 2026-08-05 this had DefaultDirName but no DisableDirPage, so the wizard
+; showed a folder picker. Picking anything other than the real install sends
+; -InstallDir at a directory with no Aurora in it, the updater refuses in
+; preflight, and the operator was told the update "did not succeed and Aurora
+; was rolled back" - when nothing had even been looked at. An update is not a
+; place to re-choose where the product lives; the answer is already on disk.
+;
+; Note this package is a DIFFERENT Inno application from the full installer
+; ("Aurora ICU Update" vs "Aurora ICU"), so UsePreviousAppDir cannot inherit the
+; full installer's directory - it would silently find nothing. The real
+; resolution therefore happens in aurora-update.ps1, which reads the install
+; location from the REGISTERED AuroraServer SERVICE. {app} below is only the
+; fallback handed to it.
 DefaultDirName=C:\Aurora
+DisableDirPage=yes
 DisableProgramGroupPage=yes
 Uninstallable=no
 ; stop/start of the service + the DB restore need elevation
@@ -89,19 +104,36 @@ begin
     Abort;
   end;
 
-  { rc: 0 = updated (or a no-op skip); 1 = failed but ROLLED BACK to the prior
-    version (system healthy); 2 = rollback could not complete - manual recovery
-    (the updater printed and logged the exact steps to installer\update.log). }
+  { Each code means exactly ONE thing - see the EXIT CODES block in
+    aurora-update.ps1. Until 2026-08-05 every failure exited 1 and this told the
+    operator "rolled back ... running normally" even when NOTHING had happened,
+    or when the swap had died with the service stopped. Two real field failures
+    were reported that way. A message the code cannot vouch for is exactly what
+    the no-reassuring-default rule forbids.
+      0 = applied, or a deliberate no-op
+      1 = REFUSED before any change - the system is untouched
+      2 = between states - manual recovery
+      3 = failed, and successfully rolled back - healthy on the old build
+    Anything else is an UNKNOWN outcome (e.g. PowerShell itself failed to run,
+    or the process was killed): say so honestly rather than assert a
+    catastrophe, which would push someone into a needless database restore. }
+  log := ExpandConstant('{app}\update.log');
   if rc = 0 then
     { success/no-op - the finished page speaks for it }
   else if rc = 1 then
-    MsgBox('The update did not succeed and Aurora was rolled back to the previous version. It is running normally. See installer\update.log.', mbInformation, MB_OK)
-  else begin
-    log := ExpandConstant('{app}\update.log');
+    MsgBox('The update was NOT applied - it stopped before changing anything, so Aurora is exactly as it was and is still running the previous version.' + #13#10#13#10 +
+           'Nothing needs to be recovered. The reason is in:' + #13#10 + log, mbInformation, MB_OK)
+  else if rc = 3 then
+    MsgBox('The update did not succeed and Aurora was rolled back to the previous version. It is running normally.' + #13#10#13#10 +
+           'See ' + log, mbInformation, MB_OK)
+  else if rc = 2 then
     MsgBox('CRITICAL: the update failed AND the automatic rollback could not complete.' + #13#10 +
            'Aurora may be between states - follow the recovery steps in:' + #13#10 + log + #13#10#13#10 +
-           'The previous build (server.prev) and a verified pre-update backup are both intact.', mbCriticalError, MB_OK);
-  end;
+           'The previous build (server.prev) and a verified pre-update backup are both intact.', mbCriticalError, MB_OK)
+  else
+    MsgBox('The updater ended unexpectedly (code ' + IntToStr(rc) + ') - the outcome is UNKNOWN.' + #13#10#13#10 +
+           'This usually means the updater could not run at all, in which case nothing was changed. Do NOT restore anything yet.' + #13#10#13#10 +
+           'Check ' + log + ' and the state of the AuroraServer service before doing anything else.', mbError, MB_OK);
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
