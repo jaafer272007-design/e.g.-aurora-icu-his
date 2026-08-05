@@ -161,8 +161,78 @@ function Get-MissingEnvKeys {
 if ($AuroraUpdatePureTest) { return }
 
 $ErrorActionPreference = 'Stop'
+
+# ---- the transcript. Without this NOTHING is diagnosable. ----------------------
+# aurora-update.iss runs us via Exec(..., SW_HIDE): the console is invisible and
+# is destroyed when we exit. Until 2026-08-05 every Say/Fail went ONLY to that
+# console, so a failed update at a hospital left no trace at all - and the
+# dialog told the operator to read installer\update.log, a file that was only
+# ever written on the rollback-FAILED path. Two real field failures were
+# undiagnosable because of it. aurora-provision.ps1:99 has always done this
+# correctly; the updater simply never got the same treatment.
+# Prefer the install directory; fall back to TEMP so a wrong -InstallDir still
+# leaves evidence somewhere rather than nowhere.
+$script:TranscriptOn = $false
+foreach ($cand in @($InstallDir, $env:TEMP)) {
+  if ($script:TranscriptOn) { break }
+  if ($cand -and (Test-Path $cand)) {
+    try {
+      Start-Transcript -Path (Join-Path $cand 'update.log') -Append -Force | Out-Null
+      $script:TranscriptOn = $true
+    } catch { }
+  }
+}
+function Stop-Log { if ($script:TranscriptOn) { try { Stop-Transcript | Out-Null } catch { } } }
+
 function Say([string]$m)  { Write-Host "[aurora-update] $m" }
-function Fail([string]$m) { Write-Error "[aurora-update] $m"; exit 1 }
+
+# EXIT CODES - aurora-update.iss maps these to what the operator is told, so
+# they must mean exactly one thing each. Until 2026-08-05 every failure exited
+# 1 and the installer reported "rolled back to the previous version, it is
+# running normally" - including for refusals where NOTHING had happened and for
+# a swap failure that leaves the service STOPPED. A reassuring message that the
+# code cannot vouch for is the exact failure 01_ARCHITECTURE's no-reassuring-
+# default rule exists to forbid.
+#   0 = applied, or a deliberate no-op
+#   1 = REFUSED before anything changed - the system is untouched
+#   2 = between states - manual recovery needed
+#   3 = failed, and successfully rolled back - the system is healthy on the old build
+function Fail([string]$m)         { Write-Error "[aurora-update] $m"; Stop-Log; exit 1 }
+function FailBetweenStates([string]$m) { Write-Error "[aurora-update] $m"; Stop-Log; exit 2 }
+function FailRolledBack([string]$m)    { Write-Error "[aurora-update] $m"; Stop-Log; exit 3 }
+
+# ---- where Aurora ACTUALLY lives ----------------------------------------------
+# Never trust a wizard page for this. The registered AuroraServer service knows
+# the real path; a folder picker only knows what someone clicked. Before
+# 2026-08-05 aurora-update.iss showed a directory page, and choosing anything
+# but the true install produced a preflight refusal reported to the operator as
+# "the update did not succeed and Aurora was rolled back" - for a run that never
+# touched anything. The service is the authority; -InstallDir is the fallback,
+# and an explicitly passed -InstallDir still wins (supervised override).
+function Get-AuroraInstallDirFromService {
+  try {
+    $svc = Get-CimInstance Win32_Service -Filter "Name='AuroraServer'" -ErrorAction Stop
+    if (-not $svc) { return '' }
+    $cmd = [string]$svc.PathName
+    if (-not $cmd) { return '' }
+    $cmd = $cmd.Trim()
+    if ($cmd.StartsWith('"')) { $exePath = ($cmd -split '"')[1] } else { $exePath = ($cmd -split '\s+')[0] }
+    if (-not $exePath) { return '' }
+    $srvDir = Split-Path -Parent $exePath          # ...\Aurora\server
+    if (-not $srvDir) { return '' }
+    return (Split-Path -Parent $srvDir)            # ...\Aurora
+  } catch { return '' }
+}
+if (-not $PSBoundParameters.ContainsKey('InstallDir')) {
+  $fromSvc = Get-AuroraInstallDirFromService
+  if ($fromSvc -and (Test-Path (Join-Path $fromSvc 'server\version.json'))) {
+    if ($fromSvc -ne $InstallDir) {
+      Say "install directory resolved from the AuroraServer service: $fromSvc (the wizard offered $InstallDir)"
+    }
+    $InstallDir = $fromSvc
+  }
+}
+Say "updating the Aurora install at: $InstallDir"
 
 $server    = Join-Path $InstallDir 'server'
 $serverPrev= Join-Path $InstallDir 'server.prev'
@@ -210,16 +280,60 @@ $dbUrl     = Env-Value $envLines 'DATABASE_URL'
 $srvPort   = Env-Value $envLines 'PORT'; if (-not $srvPort) { $srvPort = '8080' }
 if (-not $dbUrl) { Fail "DATABASE_URL is not set in aurora.env - cannot read the live migration head." }
 
-# the DB's applied migration head, read live via the bundled psql
+# The DB's applied migration head, read live via the bundled psql.
+#
+# EVERY detail of this invocation is load-bearing. The original one-liner
+#   & $psql $dbUrl -tAc 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ...'
+# HUNG THE UPDATER FOREVER on a real Windows box (found 2026-08-05, first
+# field run), for two INDEPENDENT reasons:
+#
+#  1. ARGUMENT ORDER. psql's Windows getopt does NOT permute: the first
+#     non-option argument ends option parsing. With the connection URI first,
+#     -tAc and the SQL were treated as POSITIONAL arguments - psql printed
+#     "extra command-line argument ... ignored", never saw a -c, and started
+#     an INTERACTIVE SESSION. aurora-update.iss runs us via Exec(..., SW_HIDE),
+#     so that "aurora=>" prompt is invisible and unanswerable: psql waits on
+#     stdin, PowerShell waits on psql, Inno waits on PowerShell. The installer
+#     window could not even be closed. Options now come FIRST and the database
+#     is passed with -d, matching aurora-provision.ps1:388 which had it right.
+#
+#  2. QUOTE MANGLING. Windows PowerShell strips embedded double quotes when
+#     building a native command line, so "MigrationId" arrived as MigrationId.
+#     Postgres folds unquoted identifiers to lower case while EF Core created
+#     the table case-sensitively, so the query could never have matched even
+#     if -c had been honoured. The SQL is therefore passed in a FILE (-f),
+#     which no argument parser can corrupt.
+#
+#  3. -w (--no-password) so psql can NEVER block on a password prompt. A
+#     process launched with a hidden console must not be able to wait on
+#     stdin - that is the whole class of defect, not just this instance.
 $psql = Join-Path $pgbin 'psql.exe'
 if (-not (Test-Path $psql)) { Fail "bundled psql not found at $psql." }
-$dbHead = (& $psql $dbUrl -tAc 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId" DESC LIMIT 1').Trim()
-if (-not $dbHead) { Fail "could not read the live migration head from the database." }
+$headSql = Join-Path $env:TEMP ('aurora-dbhead-' + [Guid]::NewGuid().ToString('N') + '.sql')
+$headErr = Join-Path $env:TEMP ('aurora-dbhead-' + [Guid]::NewGuid().ToString('N') + '.err')
+Set-Content -Encoding ascii -Path $headSql `
+  -Value 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId" DESC LIMIT 1;'
+$headRc = 1; $headOut = @(); $headErrText = ''
+try {
+  $headOut = @(& $psql -w -t -A -v ON_ERROR_STOP=1 -d $dbUrl -f $headSql 2>$headErr)
+  $headRc  = $LASTEXITCODE
+  if (Test-Path $headErr) { $headErrText = ((Get-Content -Raw $headErr) -replace '\s+', ' ').Trim() }
+} finally {
+  Remove-Item -Force $headSql, $headErr -ErrorAction SilentlyContinue
+}
+if ($headRc -ne 0) {
+  Fail "could not read the live migration head from the database (psql exit $headRc). $headErrText"
+}
+$dbHead = ''
+foreach ($line in $headOut) {
+  if ($null -ne $line -and $line.ToString().Trim()) { $dbHead = $line.ToString().Trim(); break }
+}
+if (-not $dbHead) { Fail "the database returned no migration head (is __EFMigrationsHistory empty?). $headErrText" }
 Say "installed $($installed.version) (migrationHead $($installed.migrationHead)) - package $($package.version) (migrationHead $($package.migrationHead)) - DB head $dbHead"
 
 # ---- 3. version-skew guard (pure) - refuse-and-exit-0-change on any skew ----
 $skew = Test-VersionSkew -Installed $installed -Package $package -DbHead $dbHead -AllowMajor:$AllowMajor
-if (-not $skew.ok) { Say "NO UPDATE APPLIED - $($skew.reason)"; exit 0 }
+if (-not $skew.ok) { Say "NO UPDATE APPLIED - $($skew.reason)"; Stop-Log; exit 0 }
 $migrationWillRun = $skew.migrationWillRun
 Say "update $($installed.version) -> $($package.version) accepted (migrationWillRun=$migrationWillRun)"
 
@@ -300,7 +414,7 @@ try {
   Copy-Item -Force (Join-Path $serverPrev 'aurora.env') $envFile  # the machine config + secrets, verbatim
   & icacls.exe $envFile /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' 2>$null | Out-Null
 } catch {
-  Fail "the binary swap failed ($($_.Exception.Message)). The old build is at $serverPrev; restore it with 'Move-Item `"$serverPrev`" `"$server`"' and 'sc start AuroraServer'."
+  FailBetweenStates "the binary swap failed ($($_.Exception.Message)). The old build is at $serverPrev; restore it with 'Move-Item `"$serverPrev`" `"$server`"' and 'sc start AuroraServer'."
 }
 
 # ---- 7. start + verify: healthy AND actually the new build (sec CI-evidence rule) ----
@@ -321,6 +435,7 @@ if ($healthy) {
     ConvertTo-Json | Set-Content -Encoding ascii $stateFile
   try { & $exe audit app-update success --actor update | Out-Null } catch { }
   Say "UPDATE COMPLETE - Aurora is running version $($package.version). The previous build is kept at $serverPrev until the next successful update."
+  Stop-Log
   exit 0
 }
 
@@ -358,7 +473,7 @@ try {
   @{ phase='rolled-back'; version=$installed.version; at=(Get-Date).ToUniversalTime().ToString('s') } |
     ConvertTo-Json | Set-Content -Encoding ascii $stateFile
   try { & $exe audit app-update rolled-back --actor update | Out-Null } catch { }
-  Fail "UPDATE FAILED - the system was rolled back to $($installed.version) and is running normally. The failed package was not applied."
+  FailRolledBack "UPDATE FAILED - the system was rolled back to $($installed.version) and is running normally. The failed package was not applied."
 }
 catch {
   # the nightmare case, made recoverable: everything needed to return by hand is on disk.
@@ -384,5 +499,6 @@ always return to exactly the pre-update state. See installer/UPDATE_AND_ENABLE_A
   Write-Host $msg
   try { Add-Content -Path (Join-Path $InstallDir 'update.log') -Value ((Get-Date).ToString('s') + " ROLLBACK-FAILED`n" + $msg) } catch { }
   try { & $pkgExe audit app-update rollback-failed --actor update | Out-Null } catch { }
+  Stop-Log
   exit 2
 }

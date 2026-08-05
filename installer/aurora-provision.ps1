@@ -385,11 +385,11 @@ SELECT 'ensure-db' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='au
 "@
 # createdb is separate (CREATE DATABASE cannot run inside a DO block)
 try {
-  & (Join-Path $pgbin 'psql.exe') -v ON_ERROR_STOP=1 -d postgres -f $setup | Out-Null
+  & (Join-Path $pgbin 'psql.exe') -w -v ON_ERROR_STOP=1 -d postgres -f $setup | Out-Null
   # a silent psql failure here used to let provisioning continue and write an
   # aurora.env whose credentials were never applied to any role - fail loudly
   if ($LASTEXITCODE -ne 0) { Fail ("could not create/update the aurora role (psql exit $LASTEXITCODE)" + $freshHint) }
-  $exists = & (Join-Path $pgbin 'psql.exe') -tAc "SELECT 1 FROM pg_database WHERE datname='aurora'" -d postgres
+  $exists = & (Join-Path $pgbin 'psql.exe') -w -tAc "SELECT 1 FROM pg_database WHERE datname='aurora'" -d postgres
   if (-not $exists) {
     & (Join-Path $pgbin 'createdb.exe') -O aurora aurora | Out-Null
     if ($LASTEXITCODE -ne 0) { Fail ("could not create the aurora database (createdb exit $LASTEXITCODE)" + $freshHint) }
