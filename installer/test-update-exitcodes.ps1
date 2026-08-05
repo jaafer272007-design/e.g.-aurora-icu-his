@@ -58,13 +58,28 @@ function Check([string]$name, $expected, $actual) {
 }
 
 # Run a script body in a child process and return its EXIT CODE.
+#
+# $ErrorActionPreference = 'Continue' around the call IS LOAD-BEARING, and this
+# harness learned it the way everything else in this file was learned - by
+# failing on the engine that ships. Windows PowerShell 5.1 turns a NATIVE
+# command's stderr into a NativeCommandError ErrorRecord; under EAP='Stop' that
+# is TERMINATING. Every child here deliberately writes its failure message to
+# stderr, so on 5.1 the FIRST assertion killed the whole harness before
+# $LASTEXITCODE could be read, while on pwsh 7 (which does not do this) all 13
+# passed locally. Suppressing with 2>$null is NOT enough - the preference fires
+# before the redirection can discard it.
 function Get-ChildExitCode([string]$body) {
   $f = Join-Path $tmp ("aurora-exitcode-" + [Guid]::NewGuid().ToString('N') + ".ps1")
   Set-Content -Encoding ascii -Path $f -Value $body
+  $prev = $ErrorActionPreference
   try {
+    $ErrorActionPreference = 'Continue'
     & $psExe -NoProfile -ExecutionPolicy Bypass -File $f 2>$null 1>$null
     return $LASTEXITCODE
-  } finally { Remove-Item -Force $f -ErrorAction SilentlyContinue }
+  } finally {
+    $ErrorActionPreference = $prev
+    Remove-Item -Force $f -ErrorAction SilentlyContinue
+  }
 }
 
 # Preamble every harness shares: load the REAL definitions, then reproduce the
@@ -159,6 +174,39 @@ Check 'aurora-update.iss no longer builds args with -InstallDir' `
   'True' (-not $iss.Contains("' -InstallDir """))
 Check 'aurora-update.iss reads the real log path back from the relay' `
   'True' ($iss.Contains('aurora-update-log.txt'))
+
+Write-Host ''
+Write-Host '=== no native command may leak stderr under EAP=Stop ==='
+
+# Windows PowerShell 5.1 turns a NATIVE command's stderr into a
+# NativeCommandError ErrorRecord, and aurora-update.ps1 runs under
+# $ErrorActionPreference='Stop' - so ONE chatty line from psql, pg_restore or the
+# backup engine becomes a terminating error thrown from wherever that call sits.
+# On the rollback path that meant a SUCCESSFUL restore being reported as
+# "CRITICAL: the automatic rollback could not complete". PowerShell 7 does not
+# behave this way, so only the 5.1 leg can ever see it - assert it statically
+# instead of hoping. Every native call must either redirect stderr (2>&1 or
+# 2>file) or sit inside a try{}catch{} that absorbs it.
+$updaterLines = Get-Content $updater
+$leaky = @()
+$nativeSeen = 0
+for ($i = 0; $i -lt $updaterLines.Count; $i++) {
+  $line = $updaterLines[$i]
+  # Skip comments. This file deliberately QUOTES the old broken psql invocation
+  # in a comment to explain the hang it caused; linting that would be a false
+  # positive on the very documentation that prevents the defect recurring.
+  if ($line.TrimStart().StartsWith('#')) { continue }
+  if ($line -match '&\s+\$(psql|exe|pkgExe)\b') {
+    $nativeSeen++
+    if (-not ($line -match '2>' -or $line -match 'try\s*\{')) {
+      $leaky += ("line " + ($i + 1) + ": " + $line.Trim())
+    }
+  }
+}
+# Vacuity guard: a regex that matches nothing would "pass" silently.
+Check 'the native-call scan actually found calls to check' 'True' ($nativeSeen -ge 5)
+if ($leaky.Count -gt 0) { $leaky | ForEach-Object { Write-Host ("        " + $_) } }
+Check 'every native invocation redirects stderr or is wrapped' 0 $leaky.Count
 
 Write-Host ''
 Write-Host ("RESULT: " + $script:Pass + " passed, " + $script:Fail + " failed")

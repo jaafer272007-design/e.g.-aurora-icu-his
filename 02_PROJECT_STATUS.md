@@ -35,11 +35,29 @@ argument contract that no single-file test can see; the failure helpers moved
 above the pure-test boundary so a test can reach them at all. Teeth measured,
 not claimed: against the pre-fix code the suite fails, and with only the
 exit-code fix reverted it reports `expected 2, got 1` and `expected 3, got 99`.
-13/13 green after the fix, 36/36 pure tests unchanged, all 14 installer scripts
-parse. Stated limit: no CI can reach codes 2 and 3 end-to-end — they need a live
-`AuroraServer`, a real Postgres and a half-applied swap — so the *helpers* are
-proven and the *call sites* remain engineer-proven. The drill's packages predate
-this fix and must be rebuilt before the drill counts.
+**AND THEN THE 5.1 CI LEG CAUGHT A FOURTH, WHICH IS THE POINT.** The suite
+passed 13/13 locally on pwsh 7 and **failed immediately** on `windows-latest`.
+Windows PowerShell 5.1 converts a **native command's stderr** into a
+`NativeCommandError` record; under `EAP='Stop'` that is TERMINATING — and
+`2>$null` does **not** save you, the preference fires before the redirection can
+discard it. PowerShell 7 does not do this at all. The test harness died on its
+first assertion because every child deliberately writes to stderr. Fixed by
+scoping `$ErrorActionPreference = 'Continue'` around the child invocation — but
+the same quirk was then found **in the product**: `aurora-update.ps1`'s rollback
+called `& $pkgExe restore ...` with **no** stderr redirection, and `pg_restore`
+writes progress and benign warnings to stderr as a matter of course. On 5.1 one
+such line would have thrown from inside the rollback `try{}` and been reported by
+its `catch{}` as *"CRITICAL: the automatic rollback could not complete"* — a
+successful restore, announced as a catastrophe. Fixed with `2>&1` (mirroring the
+backup call that already had it), and the output now lands in `update.log` where
+the worst path needs it most. A new static lint asserts every native invocation
+in the file either redirects stderr or sits inside a `try{}catch{}`, with a
+vacuity guard and a comment-line skip; it was proven to fail on the
+un-redirected form. 15/15 green after the fix, 36/36 pure tests unchanged, all 14
+installer scripts parse. Stated limit: no CI can reach codes 2 and 3 end-to-end —
+they need a live `AuroraServer`, a real Postgres and a half-applied swap — so the
+*helpers* are proven and the *call sites* remain engineer-proven. The drill's
+packages predate this fix and must be rebuilt before the drill counts.
 
 **2026-08-05 (second) · THE UPDATER'S FIRST FIELD RUN: IT HUNG, AND THEN LIED
 ABOUT IT.** The owner ran the skipped-release drill on real hardware. All three

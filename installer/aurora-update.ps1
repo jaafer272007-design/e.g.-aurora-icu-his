@@ -521,9 +521,22 @@ try {
   if ($migrationWillRun) {
     Say "the update advanced the schema - restoring the pre-update database snapshot ($backupFile)..."
     $env:AURORA_ENV_FILE = $envFile
-    & $pkgExe restore $backupFile --yes --actor update-rollback
-    if ($LASTEXITCODE -ne 0) {
-      throw "the database restore reported failure"
+    # 2>&1 IS LOAD-BEARING, exactly as on the backup call above. Windows
+    # PowerShell 5.1 turns a NATIVE command's stderr into a NativeCommandError
+    # ErrorRecord, and under $ErrorActionPreference='Stop' that is TERMINATING -
+    # so a single chatty line from pg_restore (which writes progress and benign
+    # warnings to stderr as a matter of course) would be thrown from HERE,
+    # inside the rollback try{}, and reported by its catch{} as "CRITICAL: the
+    # automatic rollback could not complete" on a restore that actually
+    # succeeded. Merging into the success stream captures those lines as data
+    # instead, and puts them in update.log where the worst path needs them most.
+    # PowerShell 7 does not do this, which is why only the 5.1 CI leg can catch
+    # it. The exit code, not the chatter, decides whether this failed.
+    $restoreOut = & $pkgExe restore $backupFile --yes --actor update-rollback 2>&1
+    $restoreRc = $LASTEXITCODE
+    $restoreOut | ForEach-Object { Say "  $_" }
+    if ($restoreRc -ne 0) {
+      throw "the database restore reported failure (exit $restoreRc)"
     }
   }
 

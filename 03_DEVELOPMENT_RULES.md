@@ -214,6 +214,28 @@ against the pre-fix code before being trusted — with the exit-code fix reverte
 isolation it reports `expected 2, got 1` and `expected 3, got 99`, so its teeth are
 measured rather than asserted.
 
+**And then the 5.1 leg immediately earned its keep, on the test itself.** The new
+suite passed 13/13 on pwsh 7 locally and died on its *first* assertion on
+`windows-latest`. Windows PowerShell 5.1 turns a **native command's stderr** into
+a `NativeCommandError` record, which under `EAP='Stop'` is **terminating** — and
+`2>$null` does not help, because the preference fires before the redirection can
+discard it. PowerShell 7 does not do this at all. The same quirk was then found
+**in the product**: the rollback's `& $pkgExe restore …` had no stderr
+redirection, and `pg_restore` is chatty on stderr by design — one such line would
+have thrown from inside the rollback `try{}` and been reported by its `catch{}`
+as *"CRITICAL: the automatic rollback could not complete"*, on a restore that
+succeeded.
+
+**CODIFIED RULE — under `$ErrorActionPreference = 'Stop'`, every native command
+call must redirect stderr (`2>&1` or `2>file`) or sit inside a `try{}catch{}`.**
+Its exit code, not its chatter, decides whether it failed. A static lint in
+`test-update-exitcodes.ps1` enforces this across `aurora-update.ps1`, with a
+vacuity guard (the scan must find calls) and a comment-line skip (the file
+deliberately quotes the old broken `psql` invocation in prose). This is the third
+distinct 5.1-only defect class after the PS7 ternary and `GetRelativePath`:
+**parse-clean, review-clean, and wrong only when it runs, only on the engine that
+ships.**
+
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install
