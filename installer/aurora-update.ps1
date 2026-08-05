@@ -20,7 +20,12 @@
 
   USAGE (normally invoked by AuroraUpdate-<ver>.exe; runnable standalone):
     powershell -ExecutionPolicy Bypass -File aurora-update.ps1 -PackageDir <extracted-bundle>
-      [-InstallDir C:\Aurora] [-AllowMajor] [-HealthTimeoutSec 120]
+      [-InstallDir C:\Aurora] [-FallbackInstallDir C:\Aurora] [-AllowMajor] [-HealthTimeoutSec 120]
+
+    -InstallDir is a SUPERVISED OVERRIDE - pass it only when you mean "use exactly
+    this directory, do not ask the service". -FallbackInstallDir is what the wizard
+    passes: a guess used ONLY when the AuroraServer service cannot be read. See the
+    resolution block below for why the two must be different parameters.
 
   WINDOWS-ONLY at run time (services/SCM/psql/the health probe). The pure
      version-skew guard (Compare-SemVer / Test-VersionSkew / Test-VersionSkipHop /
@@ -39,7 +44,17 @@
 [CmdletBinding()]
 param(
   [string]$PackageDir = $PSScriptRoot,      # the extracted update bundle: server\ + SHA256SUMS
-  [string]$InstallDir = 'C:\Aurora',
+  # SUPERVISED OVERRIDE ONLY. Passing this suppresses the service lookup entirely.
+  # aurora-update.iss must NOT pass it - see $FallbackInstallDir.
+  [string]$InstallDir = '',
+  # The wizard's guess ({app}). Used ONLY when the service cannot be read. Until
+  # 2026-08-06 aurora-update.iss passed its guess as -InstallDir, which made the
+  # service lookup below unreachable in the ONLY path that ships: every install
+  # not at C:\Aurora was refused at the version.json preflight, and update.log was
+  # written into the guessed directory rather than the real one. Two parameters,
+  # because "the operator insisted" and "nobody asked, here is a default" are
+  # different facts and only one of them may outrank the service.
+  [string]$FallbackInstallDir = 'C:\Aurora',
   [switch]$AllowMajor,                       # permit a cross-major update (supervised only)
   # Seconds to wait for the NEW build to answer /healthz with its own build stamp.
   # Migrations run BEFORE the server serves anything, so this is really "how long
@@ -153,6 +168,63 @@ function Get-MissingEnvKeys {
   }
   return @($RequiredKeys | Where-Object { -not $present.ContainsKey($_) })
 }
+# ---- install-directory resolution ORDER (pure; the CIM lookup is separate) -----
+# Kept pure and unit-tested precisely because the previous version of this rule
+# was WRONG IN THE ONLY PATH THAT SHIPS and nothing noticed. Three candidates,
+# strictly ranked:
+#   1. Explicit  - an operator ran the .ps1 by hand and named a directory. They
+#                  outrank everything, including the service (that is what a
+#                  supervised override means).
+#   2. Service   - the registered AuroraServer's ImagePath. This is the ONLY
+#                  authoritative source: it is what Windows actually starts.
+#   3. Fallback  - the wizard's {app}, which is just DefaultDirName unless the
+#                  operator was shown a folder page. A guess, used last.
+function Select-AuroraInstallDir {
+  param(
+    [AllowEmptyString()][string]$Explicit,
+    [AllowEmptyString()][string]$FromService,
+    [AllowEmptyString()][string]$Fallback
+  )
+  if ($Explicit)    { return $Explicit }
+  if ($FromService) { return $FromService }
+  return $Fallback
+}
+
+# ---- failure reporting + EXIT CODES -------------------------------------------
+# These live ABOVE the pure-test boundary so installer\test-update-exitcodes.ps1
+# can dot-source THE REAL DEFINITIONS and invoke them in a real process. They
+# were previously below it, which is why nothing caught the defect described
+# next: the only tests that existed could not reach them.
+#
+# aurora-update.iss maps these codes to what the operator is told, so each must
+# mean exactly one thing:
+#   0 = applied, or a deliberate no-op
+#   1 = REFUSED before anything changed - the system is untouched
+#   2 = between states - manual recovery needed
+#   3 = failed, and successfully rolled back - the system is healthy on the old build
+#
+# -ErrorAction Continue IS LOAD-BEARING. The live script sets
+# $ErrorActionPreference = 'Stop', under which a bare Write-Error raises a
+# TERMINATING error - so `Stop-Log; exit N` never ran and PowerShell exited 1
+# for EVERY failure. Codes 2 and 3 were unreachable, and the wizard therefore
+# showed the rc=1 text ("NOT applied ... Nothing needs to be recovered") even
+# for a swap that died with the service stopped. Worse, FailRolledBack is called
+# from INSIDE the rollback try{} (see the ROLLBACK section): its terminating
+# error was caught by that block's catch{}, so a SUCCESSFUL rollback reported
+# "CRITICAL: the automatic rollback could not complete" and exited 2, pushing an
+# operator toward a database restore on a healthy system. Measured, not
+# theorised - both directions reproduced in a real PowerShell before this fix.
+# `exit` is not an exception, so it passes through that catch{} untouched.
+#
+# Write-Error (not [Console]::Error.WriteLine) because Start-Transcript captures
+# error records but NOT direct console writes, and update.log is the file the
+# wizard tells the operator to read.
+$script:TranscriptOn = $false
+function Stop-Log { if ($script:TranscriptOn) { try { Stop-Transcript | Out-Null } catch { } } }
+function Say([string]$m)  { Write-Host "[aurora-update] $m" }
+function Fail([string]$m)              { Write-Error "[aurora-update] $m" -ErrorAction Continue; Stop-Log; exit 1 }
+function FailBetweenStates([string]$m) { Write-Error "[aurora-update] $m" -ErrorAction Continue; Stop-Log; exit 2 }
+function FailRolledBack([string]$m)    { Write-Error "[aurora-update] $m" -ErrorAction Continue; Stop-Log; exit 3 }
 # ========================== END PURE, UNIT-TESTED CORE =========================
 
 # The Windows-only orchestration runs only when NOT dot-sourced for tests. A test
@@ -162,53 +234,16 @@ if ($AuroraUpdatePureTest) { return }
 
 $ErrorActionPreference = 'Stop'
 
-# ---- the transcript. Without this NOTHING is diagnosable. ----------------------
-# aurora-update.iss runs us via Exec(..., SW_HIDE): the console is invisible and
-# is destroyed when we exit. Until 2026-08-05 every Say/Fail went ONLY to that
-# console, so a failed update at a hospital left no trace at all - and the
-# dialog told the operator to read installer\update.log, a file that was only
-# ever written on the rollback-FAILED path. Two real field failures were
-# undiagnosable because of it. aurora-provision.ps1:99 has always done this
-# correctly; the updater simply never got the same treatment.
-# Prefer the install directory; fall back to TEMP so a wrong -InstallDir still
-# leaves evidence somewhere rather than nowhere.
-$script:TranscriptOn = $false
-foreach ($cand in @($InstallDir, $env:TEMP)) {
-  if ($script:TranscriptOn) { break }
-  if ($cand -and (Test-Path $cand)) {
-    try {
-      Start-Transcript -Path (Join-Path $cand 'update.log') -Append -Force | Out-Null
-      $script:TranscriptOn = $true
-    } catch { }
-  }
-}
-function Stop-Log { if ($script:TranscriptOn) { try { Stop-Transcript | Out-Null } catch { } } }
-
-function Say([string]$m)  { Write-Host "[aurora-update] $m" }
-
-# EXIT CODES - aurora-update.iss maps these to what the operator is told, so
-# they must mean exactly one thing each. Until 2026-08-05 every failure exited
-# 1 and the installer reported "rolled back to the previous version, it is
-# running normally" - including for refusals where NOTHING had happened and for
-# a swap failure that leaves the service STOPPED. A reassuring message that the
-# code cannot vouch for is the exact failure 01_ARCHITECTURE's no-reassuring-
-# default rule exists to forbid.
-#   0 = applied, or a deliberate no-op
-#   1 = REFUSED before anything changed - the system is untouched
-#   2 = between states - manual recovery needed
-#   3 = failed, and successfully rolled back - the system is healthy on the old build
-function Fail([string]$m)         { Write-Error "[aurora-update] $m"; Stop-Log; exit 1 }
-function FailBetweenStates([string]$m) { Write-Error "[aurora-update] $m"; Stop-Log; exit 2 }
-function FailRolledBack([string]$m)    { Write-Error "[aurora-update] $m"; Stop-Log; exit 3 }
-
 # ---- where Aurora ACTUALLY lives ----------------------------------------------
+# Resolved BEFORE the transcript starts, because update.log must be written into
+# the REAL install directory - not into the wizard's guess. Until 2026-08-06 the
+# order was reversed and a machine installed at D:\Aurora wrote its log to
+# C:\Aurora\update.log (which on the owner's box was a git working tree).
+#
 # Never trust a wizard page for this. The registered AuroraServer service knows
-# the real path; a folder picker only knows what someone clicked. Before
-# 2026-08-05 aurora-update.iss showed a directory page, and choosing anything
-# but the true install produced a preflight refusal reported to the operator as
-# "the update did not succeed and Aurora was rolled back" - for a run that never
-# touched anything. The service is the authority; -InstallDir is the fallback,
-# and an explicitly passed -InstallDir still wins (supervised override).
+# the real path; a folder picker only knows what someone clicked. aurora-update.iss
+# passes its guess as -FallbackInstallDir; it must NEVER pass -InstallDir, which
+# is reserved for a human running this script deliberately.
 function Get-AuroraInstallDirFromService {
   try {
     $svc = Get-CimInstance Win32_Service -Filter "Name='AuroraServer'" -ErrorAction Stop
@@ -223,16 +258,46 @@ function Get-AuroraInstallDirFromService {
     return (Split-Path -Parent $srvDir)            # ...\Aurora
   } catch { return '' }
 }
-if (-not $PSBoundParameters.ContainsKey('InstallDir')) {
-  $fromSvc = Get-AuroraInstallDirFromService
-  if ($fromSvc -and (Test-Path (Join-Path $fromSvc 'server\version.json'))) {
-    if ($fromSvc -ne $InstallDir) {
-      Say "install directory resolved from the AuroraServer service: $fromSvc (the wizard offered $InstallDir)"
-    }
-    $InstallDir = $fromSvc
+$fromSvc = ''
+if (-not $InstallDir) {
+  $cand = Get-AuroraInstallDirFromService
+  # only believe the service if the directory it names actually looks installed
+  if ($cand -and (Test-Path (Join-Path $cand 'server\version.json'))) { $fromSvc = $cand }
+}
+$resolvedFrom = 'the -FallbackInstallDir the wizard supplied'
+if ($InstallDir)     { $resolvedFrom = 'an explicit -InstallDir (supervised override)' }
+elseif ($fromSvc)    { $resolvedFrom = 'the registered AuroraServer service' }
+$InstallDir = Select-AuroraInstallDir -Explicit $InstallDir -FromService $fromSvc -Fallback $FallbackInstallDir
+
+# ---- the transcript. Without this NOTHING is diagnosable. ----------------------
+# aurora-update.iss runs us via Exec(..., SW_HIDE): the console is invisible and
+# is destroyed when we exit. Until 2026-08-05 every Say/Fail went ONLY to that
+# console, so a failed update at a hospital left no trace at all - and the
+# dialog told the operator to read installer\update.log, a file that was only
+# ever written on the rollback-FAILED path. Two real field failures were
+# undiagnosable because of it. aurora-provision.ps1:99 has always done this
+# correctly; the updater simply never got the same treatment.
+# Prefer the install directory; fall back to TEMP so a wrong directory still
+# leaves evidence somewhere rather than nowhere.
+$script:LogPath = ''
+foreach ($cand in @($InstallDir, $env:TEMP)) {
+  if ($script:TranscriptOn) { break }
+  if ($cand -and (Test-Path $cand)) {
+    try {
+      $script:LogPath = Join-Path $cand 'update.log'
+      Start-Transcript -Path $script:LogPath -Append -Force | Out-Null
+      $script:TranscriptOn = $true
+    } catch { $script:LogPath = '' }
   }
 }
-Say "updating the Aurora install at: $InstallDir"
+# Tell the wizard where the log ACTUALLY is. Its [Code] cannot know: {app} is
+# only DefaultDirName. Same relay pattern aurora.iss uses for {tmp}\aurora-url.txt.
+# Written beside the extracted package, i.e. Inno's {tmp}.
+if ($script:LogPath) {
+  try { Set-Content -Encoding ascii -Path (Join-Path (Split-Path -Parent $PackageDir) 'aurora-update-log.txt') -Value $script:LogPath } catch { }
+}
+
+Say "updating the Aurora install at: $InstallDir (resolved from $resolvedFrom)"
 
 $server    = Join-Path $InstallDir 'server'
 $serverPrev= Join-Path $InstallDir 'server.prev'
@@ -314,11 +379,22 @@ $headErr = Join-Path $env:TEMP ('aurora-dbhead-' + [Guid]::NewGuid().ToString('N
 Set-Content -Encoding ascii -Path $headSql `
   -Value 'SELECT "MigrationId" FROM "__EFMigrationsHistory" ORDER BY "MigrationId" DESC LIMIT 1;'
 $headRc = 1; $headOut = @(); $headErrText = ''
+#  4. RELAX THE PREFERENCE around the call. This try{} has only a finally{} - no
+#     catch - so a terminating NativeCommandError propagates straight out and
+#     kills the script. psql writes NOTICE/WARNING lines to stderr on perfectly
+#     SUCCESSFUL queries, and 5.1 turns any of them into exactly that (measured
+#     twice in this repo: aurora-provision.ps1:544-547, aurora-ai-service.ps1:87-89
+#     - and redirection, including the 2>$headErr below, is NOT the mitigation).
+#     Without this a benign notice aborts the run with a raw PowerShell error
+#     instead of the honest "could not read the live migration head" message.
+$prevEapH = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 try {
   $headOut = @(& $psql -w -t -A -v ON_ERROR_STOP=1 -d $dbUrl -f $headSql 2>$headErr)
   $headRc  = $LASTEXITCODE
   if (Test-Path $headErr) { $headErrText = ((Get-Content -Raw $headErr) -replace '\s+', ' ').Trim() }
 } finally {
+  $ErrorActionPreference = $prevEapH
   Remove-Item -Force $headSql, $headErr -ErrorAction SilentlyContinue
 }
 if ($headRc -ne 0) {
@@ -394,9 +470,17 @@ try { & $exe audit app-update start --actor update | Out-Null } catch { }
 
 # ---- 4. take the restore point (the SAME born-restore-verified backup engine) ----
 Say "taking a born-verified database backup as the restore point..."
+# Relax the preference around the native call - see the note on the rollback
+# restore below. 2>&1 alone is NOT the mitigation; this repo measured that twice.
+# Capture $LASTEXITCODE IMMEDIATELY: anything between the call and the test can
+# overwrite it.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 $backupOut = & $exe backup --actor update 2>&1
+$backupRc  = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
 $backupOut | ForEach-Object { Say "  $_" }
-if ($LASTEXITCODE -ne 0) { Fail "the pre-update backup FAILED - no restore point, no update. Nothing has changed." }
+if ($backupRc -ne 0) { Fail "the pre-update backup FAILED - no restore point, no update. Nothing has changed." }
 $backupFile = ([regex]::Match(($backupOut -join "`n"), 'BACKUP OK:\s*(\S+)').Groups[1].Value)
 if (-not $backupFile) { Fail "could not determine the backup filename from the backup output - aborting before any change." }
 Say "restore point = $backupFile"
@@ -456,9 +540,29 @@ try {
   if ($migrationWillRun) {
     Say "the update advanced the schema - restoring the pre-update database snapshot ($backupFile)..."
     $env:AURORA_ENV_FILE = $envFile
-    & $pkgExe restore $backupFile --yes --actor update-rollback
-    if ($LASTEXITCODE -ne 0) {
-      throw "the database restore reported failure"
+    # RELAXING THE PREFERENCE IS THE MITIGATION - redirection is NOT.
+    # Windows PowerShell 5.1 turns a NATIVE command's stderr into a TERMINATING
+    # NativeCommandError under $ErrorActionPreference='Stop'. This repo has
+    # measured TWICE, on real installs, that a redirection does not prevent it:
+    # aurora-provision.ps1:544-547 ("2>&1 on a native command turns those stderr
+    # lines into TERMINATING errors") and aurora-ai-service.ps1:87-89 ("`2>$null`
+    # does NOT prevent that", found 2026-07-26). Both were closed by relaxing the
+    # preference around the call, and so is this one.
+    # It matters most HERE: this call sits inside the rollback try{}, whose
+    # catch{} reports "CRITICAL: the automatic rollback could not complete".
+    # pg_restore writes progress and benign warnings to stderr as a matter of
+    # course, so without this a SUCCESSFUL restore is announced as a catastrophe
+    # and an operator is pushed toward a database restore on a healthy system.
+    # The exit code, not the chatter, decides whether this failed - captured
+    # immediately, because anything in between can overwrite $LASTEXITCODE.
+    $prevEapR = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $restoreOut = & $pkgExe restore $backupFile --yes --actor update-rollback 2>&1
+    $restoreRc  = $LASTEXITCODE
+    $ErrorActionPreference = $prevEapR
+    $restoreOut | ForEach-Object { Say "  $_" }
+    if ($restoreRc -ne 0) {
+      throw "the database restore reported failure (exit $restoreRc)"
     }
   }
 

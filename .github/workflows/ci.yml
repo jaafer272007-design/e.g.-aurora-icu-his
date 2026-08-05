@@ -222,6 +222,26 @@ jobs:
       - name: Update-guard pure unit tests, ON 5.1
         run: .\installer\test-update-pure.ps1
 
+      # The pure tests above run IN-PROCESS and therefore cannot see an exit
+      # code. Three defects shipped through that blind spot and were found in
+      # the field on 2026-08-06, all in aurora-update.ps1's failure path:
+      #   - $ErrorActionPreference='Stop' made the bare Write-Error in Fail /
+      #     FailBetweenStates / FailRolledBack TERMINATING, so the `exit N`
+      #     after it never ran. Every failure exited 1; codes 2 and 3 were
+      #     unreachable and the wizard showed "NOT applied ... Nothing needs to
+      #     be recovered" for a swap that died with the service stopped.
+      #   - FailRolledBack is called from INSIDE the rollback try{}, so that
+      #     terminating error hit its catch{} and a SUCCESSFUL rollback was
+      #     reported as "CRITICAL: the automatic rollback could not complete".
+      #   - aurora-update.iss always passed -InstallDir, which the script read
+      #     as a supervised override, so the AuroraServer service lookup was
+      #     dead code in the only path that ships.
+      # This step runs the REAL definitions in REAL child processes and asserts
+      # the REAL exit codes, plus the .iss <-> .ps1 argument contract that no
+      # single-file test can see. Verified to FAIL against the pre-fix code.
+      - name: Updater EXIT CODES + install-dir resolution, end-to-end ON 5.1
+        run: .\installer\test-update-exitcodes.ps1
+
       # A process the installer launches with SW_HIDE must never be able to
       # block on stdin - there is no console to answer it and the window cannot
       # be closed. aurora-update.ps1 invoked psql with the connection URI as the
@@ -239,6 +259,12 @@ jobs:
               $n++
               $t = $line.Trim()
               if ($t.StartsWith('#')) { continue }
+              # A line that TESTS for psql invocations is not one. The exit-code
+              # suite lints aurora-update.ps1's own native calls, so its matcher
+              # contains a psql-shaped regex literal - which this gate read as a
+              # real call and failed on (2026-08-06). A lint must not fail on
+              # another lint's pattern.
+              if ($t -match '-match|-notmatch') { continue }
               # an actual invocation: '&' followed by something naming psql
               if ($t -notmatch '&\s*[^\r\n]*psql') { continue }
               if ($t -notmatch '\bpsql(\.exe)?') { continue }

@@ -177,6 +177,80 @@ Binding consequences:
   from the registered `AuroraServer` service, with `-InstallDir` only as
   fallback and explicit override.
 
+### 🔴 Amendment (2026-08-06) — both rules above shipped INERT. A rule the code does not execute is not a rule.
+
+The first field run of the fixed updater failed, and the log showed **neither
+rule had ever taken effect**. Three defects, all in the failure path, all
+invisible to every existing test:
+
+1. `$ErrorActionPreference = 'Stop'` makes a bare `Write-Error` a **terminating**
+   error, so the `exit N` after it in `Fail` / `FailBetweenStates` /
+   `FailRolledBack` never ran. Every failure exited **1**. Codes 2 and 3 were
+   unreachable, so the wizard showed the *most reassuring* text — "NOT applied …
+   Nothing needs to be recovered" — for a swap that died with the service down.
+2. Worse in the other direction: `FailRolledBack` is called from **inside** the
+   rollback `try{}`, so its terminating error hit that block's `catch{}` and a
+   **successful** rollback reported *"CRITICAL: the automatic rollback could not
+   complete"* (exit 2) — driving an operator toward a database restore on a
+   healthy system. Exactly the false catastrophe the rule above forbids.
+3. `aurora-update.iss` always passed `-InstallDir`, which the script read as a
+   supervised override, so the service lookup was **dead code in the only path
+   that ships**. Any install not at `C:\Aurora` was refused, and `update.log`
+   was written into the guessed directory.
+
+**The lesson is about the shape of the test, not the bugs.** `test-update-pure.ps1`
+dot-sources and calls functions in-process: it can never observe an exit code, and
+the helpers sat below its early-return boundary so it could not even see them. A
+guard whose only caller always defeats it, and an exit code that never executes,
+are both **runtime-only** facts that parse cleanly and review cleanly.
+
+**CODIFIED RULE — an exit code that the operator's message depends on must be
+asserted by running the real code in a real process.** `installer/test-update-exitcodes.ps1`
+spawns child processes, invokes the **real** definitions, and asserts the **real**
+process exit code, including the `FailRolledBack`-inside-`try{}` shape. It also
+asserts the `.iss` ↔ `.ps1` argument contract, because defect 3 lived in the gap
+*between* two files that each looked correct alone. The suite was verified to FAIL
+against the pre-fix code before being trusted — with the exit-code fix reverted in
+isolation it reports `expected 2, got 1` and `expected 3, got 99`, so its teeth are
+measured rather than asserted.
+
+**And then the 5.1 leg immediately earned its keep, on the test itself.** The new
+suite passed 13/13 on pwsh 7 locally and died on its *first* assertion on
+`windows-latest`. Windows PowerShell 5.1 turns a **native command's stderr** into
+a `NativeCommandError` record, which under `EAP='Stop'` is **terminating** — and
+`2>$null` does not help, because the preference fires before the redirection can
+discard it. PowerShell 7 does not do this at all. The same quirk was then found
+**in the product**: the rollback's `& $pkgExe restore …` had no stderr
+redirection, and `pg_restore` is chatty on stderr by design — one such line would
+have thrown from inside the rollback `try{}` and been reported by its `catch{}`
+as *"CRITICAL: the automatic rollback could not complete"*, on a restore that
+succeeded.
+
+**CODIFIED RULE — under `$ErrorActionPreference = 'Stop'`, every native command
+call must sit inside a `try{}catch{}` that absorbs the throw, or have the
+preference explicitly relaxed around it.** Its exit code, not its chatter,
+decides whether it failed — captured immediately, because anything between the
+call and the test can overwrite `$LASTEXITCODE`.
+
+**Redirection is NOT the mitigation.** `2>&1`, `2>$null` and `2>file` are the
+same mechanism and none of them prevents the terminating error; this repo has
+measured that twice on real installs (`aurora-provision.ps1:544-547`,
+`aurora-ai-service.ps1:87-89`) and closed both by relaxing the preference. The
+first draft of *this very fix* used a bare `2>&1` and a lint that accepted it —
+which would have **certified the unfixed rollback restore as safe**. An
+adversarial audit caught it by noticing the repo contradicted itself in three
+places and that only the redirection claim carried no measurement. A false green
+is worse than a red: it is the skipped-check-looks-like-a-passed-check failure
+with extra confidence attached.
+
+A static lint in `test-update-exitcodes.ps1` enforces the corrected rule across
+`aurora-update.ps1`, with a vacuity guard (the scan must find calls), a
+comment-line skip (the file deliberately quotes the old broken `psql` invocation
+in prose), and proof that it rejects the `2>&1`-only form. This is the third
+distinct 5.1-only defect class after the PS7 ternary and `GetRelativePath`:
+**parse-clean, review-clean, and wrong only when it runs, only on the engine that
+ships.**
+
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install
