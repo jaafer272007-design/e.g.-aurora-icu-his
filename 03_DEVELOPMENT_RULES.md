@@ -177,6 +177,43 @@ Binding consequences:
   from the registered `AuroraServer` service, with `-InstallDir` only as
   fallback and explicit override.
 
+### 🔴 Amendment (2026-08-06) — both rules above shipped INERT. A rule the code does not execute is not a rule.
+
+The first field run of the fixed updater failed, and the log showed **neither
+rule had ever taken effect**. Three defects, all in the failure path, all
+invisible to every existing test:
+
+1. `$ErrorActionPreference = 'Stop'` makes a bare `Write-Error` a **terminating**
+   error, so the `exit N` after it in `Fail` / `FailBetweenStates` /
+   `FailRolledBack` never ran. Every failure exited **1**. Codes 2 and 3 were
+   unreachable, so the wizard showed the *most reassuring* text — "NOT applied …
+   Nothing needs to be recovered" — for a swap that died with the service down.
+2. Worse in the other direction: `FailRolledBack` is called from **inside** the
+   rollback `try{}`, so its terminating error hit that block's `catch{}` and a
+   **successful** rollback reported *"CRITICAL: the automatic rollback could not
+   complete"* (exit 2) — driving an operator toward a database restore on a
+   healthy system. Exactly the false catastrophe the rule above forbids.
+3. `aurora-update.iss` always passed `-InstallDir`, which the script read as a
+   supervised override, so the service lookup was **dead code in the only path
+   that ships**. Any install not at `C:\Aurora` was refused, and `update.log`
+   was written into the guessed directory.
+
+**The lesson is about the shape of the test, not the bugs.** `test-update-pure.ps1`
+dot-sources and calls functions in-process: it can never observe an exit code, and
+the helpers sat below its early-return boundary so it could not even see them. A
+guard whose only caller always defeats it, and an exit code that never executes,
+are both **runtime-only** facts that parse cleanly and review cleanly.
+
+**CODIFIED RULE — an exit code that the operator's message depends on must be
+asserted by running the real code in a real process.** `installer/test-update-exitcodes.ps1`
+spawns child processes, invokes the **real** definitions, and asserts the **real**
+process exit code, including the `FailRolledBack`-inside-`try{}` shape. It also
+asserts the `.iss` ↔ `.ps1` argument contract, because defect 3 lived in the gap
+*between* two files that each looked correct alone. The suite was verified to FAIL
+against the pre-fix code before being trusted — with the exit-code fix reverted in
+isolation it reports `expected 2, got 1` and `expected 3, got 99`, so its teeth are
+measured rather than asserted.
+
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install

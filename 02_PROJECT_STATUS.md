@@ -1,5 +1,46 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-08-06 · THE #188 FIX SHIPPED INERT — the updater's exit codes could not
+execute, and its install-dir resolution was dead code.** The owner re-ran the
+drill on a freshly wiped machine installed at `D:\Aurora`. The 1.1.0 package
+refused with *"NOT applied … Nothing needs to be recovered"* and wrote its log
+to `C:\Aurora\update.log`. Both facts were wrong, and the log named the cause:
+`updating the Aurora install at: C:\Aurora` with **no** "resolved from the
+AuroraServer service" line — the branch had never run. Root cause: the
+resolution was guarded by `if (-not $PSBoundParameters.ContainsKey('InstallDir'))`
+while `aurora-update.iss` **always** passed `-InstallDir "{app}"`, so the guard
+was permanently false in the only path that ships. Investigating that exposed
+two more, both worse. `$ErrorActionPreference = 'Stop'` makes a bare
+`Write-Error` **terminating**, so the `exit N` in `Fail`/`FailBetweenStates`/
+`FailRolledBack` never executed: every failure exited **1**, codes 2 and 3 were
+unreachable, and the wizard's four-way honest mapping from #188 collapsed to the
+single most reassuring message. And because `FailRolledBack` is called from
+*inside* the rollback `try{}`, its terminating error hit that block's `catch{}`
+— so a **successful** rollback reported *"CRITICAL: the automatic rollback could
+not complete"* and exited 2, pushing an operator toward a needless database
+restore on a healthy system. All three measured in a real PowerShell before any
+edit, not inferred. FIXED: `-FallbackInstallDir` added so the wizard's guess can
+never outrank the service (`-InstallDir` is now a genuine supervised override
+only); resolution moved **above** the transcript so `update.log` lands in the
+real install directory; the script relays that path via `{tmp}\aurora-update-log.txt`
+and the `.iss` reads it back (the `aurora-url.txt` pattern) so the dialogs stop
+naming a directory the product was never installed in; and the three helpers use
+`Write-Error … -ErrorAction Continue` — chosen over `[Console]::Error.WriteLine`
+because `Start-Transcript` captures error records but **not** direct console
+writes, and `update.log` is the file the dialog tells the operator to read. NEW
+GATE: `installer/test-update-exitcodes.ps1` (13 assertions) runs the **real**
+definitions in **real child processes** and asserts the **real** exit codes,
+including the `FailRolledBack`-inside-`try{}` shape, plus the `.iss` ↔ `.ps1`
+argument contract that no single-file test can see; the failure helpers moved
+above the pure-test boundary so a test can reach them at all. Teeth measured,
+not claimed: against the pre-fix code the suite fails, and with only the
+exit-code fix reverted it reports `expected 2, got 1` and `expected 3, got 99`.
+13/13 green after the fix, 36/36 pure tests unchanged, all 14 installer scripts
+parse. Stated limit: no CI can reach codes 2 and 3 end-to-end — they need a live
+`AuroraServer`, a real Postgres and a half-applied swap — so the *helpers* are
+proven and the *call sites* remain engineer-proven. The drill's packages predate
+this fix and must be rebuilt before the drill counts.
+
 **2026-08-05 (second) · THE UPDATER'S FIRST FIELD RUN: IT HUNG, AND THEN LIED
 ABOUT IT.** The owner ran the skipped-release drill on real hardware. All three
 attempts (1.1.0, then 1.2.0 twice) failed; one froze in an installer window that

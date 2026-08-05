@@ -33,7 +33,13 @@ AppPublisher={#Publisher}
 ; full installer's directory - it would silently find nothing. The real
 ; resolution therefore happens in aurora-update.ps1, which reads the install
 ; location from the REGISTERED AuroraServer SERVICE. {app} below is only the
-; fallback handed to it.
+; fallback handed to it - passed as -FallbackInstallDir, never as -InstallDir.
+;
+; Until 2026-08-06 it WAS passed as -InstallDir, which the script treated as a
+; supervised override and therefore never consulted the service at all. The
+; folder page had been disabled but its value still won, so the whole point of
+; resolving from the service was defeated: an install at D:\Aurora was refused
+; with "no installed server\version.json" and its log went to C:\Aurora.
 DefaultDirName=C:\Aurora
 DisableDirPage=yes
 DisableProgramGroupPage=yes
@@ -89,14 +95,37 @@ Source: "payload\manifest.json"; DestDir: "{tmp}\pkg";        Flags: ignoreversi
 Source: "aurora-update.ps1";     DestDir: "{tmp}\pkg";        Flags: ignoreversion
 
 [Code]
+{ Where the updater ACTUALLY wrote its transcript. We cannot compute it: {app} is
+  only DefaultDirName, while the script resolves the real install directory from
+  the AuroraServer service. So the script writes the path it used into
+  {tmp}\aurora-update-log.txt and we read it back - the same relay aurora.iss uses
+  for {tmp}\aurora-url.txt. Falls back to the old guess if the file is absent
+  (e.g. PowerShell never started), which is the only case where it is right. }
+function ResolvedLogPath(): String;
+var lines: TArrayOfString;
+begin
+  Result := ExpandConstant('{app}\update.log');
+  if LoadStringsFromFile(ExpandConstant('{tmp}\aurora-update-log.txt'), lines) then
+    if GetArrayLength(lines) > 0 then
+      if Trim(lines[0]) <> '' then
+        Result := Trim(lines[0]);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var args, log: String; rc: Integer;
 begin
   if CurStep <> ssPostInstall then Exit;
 
+  { -FallbackInstallDir, NOT -InstallDir. {app} here is only DefaultDirName (the
+    folder page is disabled), so it is a GUESS. Passing a guess as -InstallDir is
+    exactly what broke this: aurora-update.ps1 treated any supplied -InstallDir as
+    a supervised override and skipped the AuroraServer service lookup entirely, so
+    every install not at C:\Aurora was refused at the version.json preflight and
+    its update.log was written into the guessed folder. The script now asks the
+    service first and uses this value only if the service cannot be read. }
   args := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\pkg\aurora-update.ps1') + '"' +
     ' -PackageDir "' + ExpandConstant('{tmp}\pkg') + '"' +
-    ' -InstallDir "' + ExpandConstant('{app}') + '"';
+    ' -FallbackInstallDir "' + ExpandConstant('{app}') + '"';
 
   WizardForm.StatusLabel.Caption := 'Updating Aurora (backup -> swap -> verify)...';
   if not Exec('powershell.exe', args, '', SW_HIDE, ewWaitUntilTerminated, rc) then begin
@@ -117,7 +146,7 @@ begin
     Anything else is an UNKNOWN outcome (e.g. PowerShell itself failed to run,
     or the process was killed): say so honestly rather than assert a
     catastrophe, which would push someone into a needless database restore. }
-  log := ExpandConstant('{app}\update.log');
+  log := ResolvedLogPath();
   if rc = 0 then
     { success/no-op - the finished page speaks for it }
   else if rc = 1 then
