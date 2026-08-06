@@ -123,6 +123,9 @@ function Test-ShippedLedger {
   $problems = @()
   $seen = @{}
   $newestNew = @{}
+  # every "<kind>/<version>" ever recorded as a NEW release - a rebuild may
+  # target any of them, so the newest is not enough to validate against.
+  $recordedNew = @{}
   foreach ($e in $Entries) {
     $where = "line $($e.lineNo)"
     if ($e.fields -lt 5) {
@@ -175,16 +178,32 @@ function Test-ShippedLedger {
         continue
       }
       $newestNew[$e.kind] = $e
+      $recordedNew["$($e.kind)/$($e.version)"] = $e.lineNo
     } else {
-      # A rebuild re-cuts the release that is already the newest one of its
-      # kind. Rebuilding anything older would produce an artifact that the
-      # field would refuse anyway, so it is a ledger error, not a choice.
+      # A rebuild re-cuts an artifact at a version that WAS recorded as a
+      # release of this kind. It may be any of them, not only the newest.
+      #
+      # Until 2026-08-06 this demanded the newest, on the reasoning that an
+      # older re-cut "would be refused in the field anyway". That reasoning
+      # only holds for a release a hospital is actually RUNNING. It fails for
+      # the case that turned up the first time it mattered: two update
+      # packages, 1.1.0 and 1.2.0, were cut minutes apart from a build that
+      # could never complete an update (the -replace/AutomationNull defect,
+      # PR #191). Neither reached a hospital. Re-cutting 1.2.0 was permitted
+      # and re-cutting 1.1.0 was refused - so the ledger blocked the fix to a
+      # defect and left the ONLY buildable package the broken one.
+      #
+      # What the rule was really protecting is "never re-cut a version by
+      # accident", and -RebuildReason already carries that: it is mandatory,
+      # it is recorded on this line, and it cannot be supplied silently. The
+      # forward-only guarantee is untouched - it lives on the 'new' branch
+      # above, and a rebuild introduces no new version.
       if (-not $newestNew.ContainsKey($e.kind)) {
         $problems += "$where - rebuild of $($e.kind) $($e.version) but no $($e.kind) release has been recorded yet"
         continue
       }
-      if ($e.version -ne $newestNew[$e.kind].version) {
-        $problems += "$where - rebuild of $($e.kind) $($e.version) but the newest $($e.kind) release is $($newestNew[$e.kind].version); only the newest release may be rebuilt"
+      if (-not $recordedNew.ContainsKey("$($e.kind)/$($e.version)")) {
+        $problems += "$where - rebuild of $($e.kind) $($e.version) but no $($e.kind) release at that version has been recorded; a rebuild re-cuts a version that shipped, it never introduces one"
         continue
       }
     }
@@ -210,15 +229,36 @@ function Get-NewestShippedVersion {
   return $newest
 }
 
+# Every version recorded as a NEW release of this kind, oldest-first. A rebuild
+# may target ANY of them - see the note on the rebuild branch of
+# Test-ShippedLedger for why "only the newest" was wrong.
+function Get-RecordedReleaseVersions {
+  param(
+    [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Entries,
+    [Parameter(Mandatory)][string]$Kind
+  )
+  $out = @()
+  foreach ($e in $Entries) {
+    if ($e.kind -ne $Kind) { continue }
+    if ($e.flag -ne 'new') { continue }
+    if (-not (Test-ShippableVersion $e.version)) { continue }
+    if ($out -notcontains $e.version) { $out += $e.version }
+  }
+  return ,$out
+}
+
 # THE GATE. Returns @{ ok = <bool>; reason = <string>; newest = <string> }.
 #
 #   normal build (-Rebuild absent): $Version must be STRICTLY GREATER than
 #     the newest recorded release of this kind. Equal is the forgotten-bump
 #     case and is exactly what we refuse.
-#   rebuild (-Rebuild present): $Version must EQUAL the newest recorded
-#     release of this kind - re-cutting the artifact you last shipped
-#     (a corrupted burn, a re-slice, a rebuilt payload). Deliberate,
-#     recorded, and never silent.
+#   rebuild (-Rebuild present): $Version must MATCH SOME recorded release of
+#     this kind - re-cutting an artifact that was already released (a
+#     corrupted burn, a re-slice, a rebuilt payload, or a package withdrawn
+#     because the code inside it was defective). Any recorded version, not
+#     only the newest: see the note on the rebuild branch of
+#     Test-ShippedLedger for the case that proved "newest only" wrong.
+#     Deliberate, recorded, and never silent - -RebuildReason is mandatory.
 function Test-ReleaseVersionGate {
   param(
     [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Entries,
@@ -238,10 +278,19 @@ function Test-ReleaseVersionGate {
     if ($null -eq $newest) {
       return @{ ok = $false; newest = $null; reason = "-RebuildVersion was given but no $Kind release has ever been recorded; this build IS the first one - drop -RebuildVersion" }
     }
-    if ($Version -ne $newest) {
-      return @{ ok = $false; newest = $newest; reason = "-RebuildVersion re-cuts the release you last shipped, which is $Kind $newest, but aurora.iss says $Version" }
+    # NO @() WRAPPER. Get-RecordedReleaseVersions returns ",$out" - the leading
+    # comma keeps an EMPTY array from vanishing on the pipeline, but it also
+    # means the function emits ONE object (the array). Wrapping that in @()
+    # produces an array containing an array, so -notcontains compares against
+    # "System.Object[]" and every rebuild is refused. Assign it directly.
+    $recorded = Get-RecordedReleaseVersions -Entries $Entries -Kind $Kind
+    if ($recorded -notcontains $Version) {
+      return @{ ok = $false; newest = $newest
+        reason = "-RebuildVersion re-cuts a $Kind release that was already recorded, but aurora.iss says $Version and no $Kind release at that version exists. Recorded: $($recorded -join ', '). A rebuild never introduces a version - drop -RebuildVersion to cut a new one." }
     }
-    return @{ ok = $true; newest = $newest; reason = "rebuild of $Kind $Version (the newest recorded release)" }
+    $which = 'the newest recorded release'
+    if ($Version -ne $newest) { $which = "an EARLIER recorded release; the newest is $newest" }
+    return @{ ok = $true; newest = $newest; reason = "rebuild of $Kind $Version ($which)" }
   }
 
   # Forward-only across BOTH kinds. Without this floor the first update
