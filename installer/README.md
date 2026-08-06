@@ -228,6 +228,34 @@ Because Windows services, the SCM, `initdb`-for-Windows, and Inno Setup **cannot
    `SKIPPED RELEASES`, the health timeout is auto-raised to 600 s, both
    releases' migrations apply in one boot, and the config-key check lists any
    missing `aurora.env` key without refusing the update.
+
+   **SUPERSEDED 2026-08-06 — the drill was RUN, and it passed.** Three hops on
+   two machines, all applied, zero rollbacks: `1.0.0 -> 1.1.0 -> 1.2.0` on
+   machine A (`D:\auroa\Aurora`) and the skip `1.0.0 -> 1.2.0` on machine B
+   (`E:\Aurora`). Every claim above was checked against the RUNNING process,
+   not a file beside it: `/healthz build` became exactly the package commit on
+   each hop (`e00f3c2f...` -> `ecac7ef3...` -> `d2fade81...`). Only the skip hop
+   logged `SKIPPED RELEASES` and raised the health timeout `120s -> 600s`; the
+   two adjacent hops correctly did not, and machine B's DB head went
+   `AddAttachments` straight to `SkipDrillB` in one boot. All 10 required
+   `aurora.env` keys were present on both machines, so the config-drift WARNING
+   path is still unexercised - stated, not glossed. The wizard passed
+   `-FallbackInstallDir C:\Aurora` every time and the script resolved the real
+   directory from the `AuroraServer` service on all three installs.
+
+   **HOW AN OPERATOR CHECKS WHAT IS INSTALLED.** Not Task Manager, and not the
+   exe's file properties before 2026-08-06: the build passed no version, so
+   .NET stamped its default `1.0.0.0` into every build of every release. An
+   owner who checked there after a successful `1.2.0` update read "1.0.0" and
+   reasonably concluded the update had failed. Fixed by stamping
+   `-p:Version`, but the authoritative answer is and always was the running
+   process:
+
+       (Invoke-RestMethod 'http://127.0.0.1:8080/healthz').build   # the COMMIT that is serving
+       Get-Content '<install dir>\server\version.json'            # the version that was laid down
+
+   If those two disagree, the files were replaced but the old process is still
+   serving - which is precisely what the updater's health check exists to catch.
 17. 🔴 **App-only update — the ROLLBACK drill** (the go-live-critical one): apply an update package **rigged to fail its health check** (e.g. a deliberately broken build). Confirm the updater **restores `server.prev\`**, and — for a package that carried a migration — **restores the pre-update database snapshot via the `restore` verb** (proven against Postgres above), returning to exactly `1.0.0` with the pre-update data, service healthy. Then confirm the manual-recovery path: read `installer\update.log`; it must name the `server.prev\` path, the verified backup filename, and the exact one-command restore. This is the whole promise of the updater — **there is always a proven way back.**
 
 ### Measure the real GPU (the `llama-bench` step — design §5.6)
