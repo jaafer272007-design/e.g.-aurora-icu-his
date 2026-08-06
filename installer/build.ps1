@@ -74,18 +74,33 @@ if ($commit) { $revArgs = @("-p:SourceRevisionId=$commit") } else { Write-Host '
 if ($UpdateOnly -and -not $commit) {
   throw 'refusing to build an update package with no git commit: /healthz would report "dev", the updater health check could never pass, and every update from this package would roll itself back. Run from a git checkout with git on PATH.'
 }
+# AppVer is read HERE, before the publish, because it is stamped INTO the
+# assembly. Until 2026-08-06 nothing set a version at all: AuroraIcu.Api.csproj
+# declares none and the build passed only SourceRevisionId, so .NET fell back to
+# its default and every build of every release stamped FileVersion 1.0.0.0. An
+# owner checking the running exe in Task Manager after a successful 1.2.0 update
+# saw "1.0.0" and reasonably concluded the update had not applied. Hospital IT
+# will look in exactly the same place.
+$appVer = ([regex]::Match((Get-Content -Raw (Join-Path $here 'aurora.iss')),
+  '#define\s+AppVer\s+"([^"]+)"').Groups[1].Value)
+if (-not $appVer) { throw 'could not read AppVer from aurora.iss' }
+# -p:Version sets AssemblyVersion/FileVersion/InformationalVersion together.
+# SourceRevisionId still appends "+<sha>" to InformationalVersion, which is what
+# Program.cs ResolveRunningBuild parses and /healthz reports - and what
+# aurora-update.ps1 compares against the package commit to prove the new build is
+# really serving. If that suffix were ever lost, EVERY update would fail its
+# health check and roll back, so ci.yml asserts both halves on the real publish.
 & dotnet publish (Join-Path $root 'server\AuroraIcu.Api.csproj') `
   -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false `
-  @revArgs -o (Join-Path $payload 'server')
+  "-p:Version=$appVer" @revArgs -o (Join-Path $payload 'server')
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
 
 Write-Host '== 2b. version identity (server\version.json - for aurora-update) =='
 # A real version + migration-set identity the app-only updater reasons about (see
 # installer/UPDATE_AND_ENABLE_AI_DESIGN.md sec 1). Nothing reads it at RUNTIME; it is
 # consumed by aurora-update.ps1. Single source of the version: aurora.iss AppVer.
-$appVer = ([regex]::Match((Get-Content -Raw (Join-Path $here 'aurora.iss')),
-  '#define\s+AppVer\s+"([^"]+)"').Groups[1].Value)
-if (-not $appVer) { throw 'could not read AppVer from aurora.iss' }
+# $appVer was read above, before the publish, so it could be stamped into the
+# assembly as well as into version.json. One read, one source of truth.
 # migrationHead = the NEWEST EF migration compiled into this build. The ids are
 # timestamp-prefixed, so the lexical max is the head.
 $migHead = (Get-ChildItem (Join-Path $root 'server\Core\Persistence\Migrations') -Filter '*.cs' |

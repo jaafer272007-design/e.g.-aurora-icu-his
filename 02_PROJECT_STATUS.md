@@ -1,5 +1,57 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-08-06 · THE SKIPPED-RELEASE UPDATE DRILL PASSED, ON TWO REAL MACHINES.
+The app-only updater has now applied an update in the field — for the first
+time in this product's life.** Three hops, all applied, zero rollbacks:
+
+| # | machine | install dir | hop | evidence |
+|---|---------|-------------|-----|----------|
+| 1 | A | `D:\auroa\Aurora` | 1.0.0 → 1.1.0 | `/healthz build` `e00f3c2f…` → `ecac7ef3…`; DB head → `SkipDrillA` |
+| 2 | A | `D:\auroa\Aurora` | 1.1.0 → 1.2.0 | `build` → `d2fade81…`; DB head `SkipDrillA` → `SkipDrillB` |
+| 3 | B | `E:\Aurora` | 1.0.0 → **1.2.0 SKIP** | `build` → `d2fade81…`; DB head `AddAttachments` → `SkipDrillB` in ONE boot |
+
+The evidence that matters is `/healthz build`, because it comes from the
+**running process**, not from a file lying next to it: on every hop it changed
+to exactly the package's commit. `version.json`, the `update.log` tail and the
+wizard agreed, in that order of authority.
+
+**The skip hop behaved differently, which is the whole point of the test.** Only
+machine B logged `SKIPPED RELEASES: 1.0.0 -> 1.2.0 is not the next release -
+every intervening migration applies in ONE boot` and
+`health timeout raised automatically 120s -> 600s`. Machine A's two adjacent
+hops correctly did NOT — so `Test-VersionSkipHop` discriminates, rather than
+labelling everything a skip. Both of B's migrations applied in a single boot,
+`AddAttachments` straight to `SkipDrillB`, never stopping at `SkipDrillA`.
+
+**Three install directories, none of them the wizard's guess.** The wizard
+passed `-FallbackInstallDir C:\Aurora` every time; the script resolved
+`D:\auroa\Aurora` and `E:\Aurora` from the registered `AuroraServer` service.
+That is the #189 fix proven on a second, independent machine.
+
+Every hop took a born-verified backup FIRST (206 → 211 → 213 rows across the
+three, restore-verified at creation, machine-specific keys and BACKUP_DIRs),
+`server.prev` was kept, `aurora.env` carried across, all 10 required env keys
+present, downtime ~14 seconds per hop.
+
+**Closes the drill leg of README checklist item 16.** Item 17 — the ROLLBACK
+drill, a package rigged to fail its health check — remains UNPROVEN in the
+field and is still the go-live-critical one. Nothing here exercised the
+rollback path; it has still never run outside a test harness.
+
+**One real defect surfaced by the drill, from the owner looking in the obvious
+place.** After a successful 1.2.0 update, Task Manager showed `1.0.0`.
+`AuroraIcu.Api.csproj` declares no version and `build.ps1` passed only
+`SourceRevisionId`, so .NET stamped its default `1.0.0.0` into **every build of
+every release, forever** — the running exe's file version was never the product
+version. Hospital IT would read the same misleading number. Fixed by stamping
+`-p:Version=$appVer`, with a CI assertion on the real Windows publish proving
+both that `FileVersion` now carries the release version **and** that
+`ProductVersion` still ends `+<sha>` — because that suffix is what
+`ResolveRunningBuild` parses, what `/healthz` reports, and what the updater
+compares; losing it would make every future update fail its health check and
+roll back. Also committed: the four update-package ledger rows that until now
+existed only in the build machine's working tree.
+
 **2026-08-06 (later) · THE FIXED UPDATER REACHED THE FIELD AND DIED ON ITS OWN
 HAPPY PATH.** With #189 and #190 merged and fresh 1.1.0 / 1.2.0 packages built,
 the owner ran the first hop. The install-directory work was **vindicated**: the

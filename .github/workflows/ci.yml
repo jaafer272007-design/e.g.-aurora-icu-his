@@ -428,3 +428,39 @@ jobs:
           if ($fail) { exit 1 }
           Write-Host "confirmed: $($v.version) / migrationHead $($v.migrationHead) / $($v.requiredEnvKeys.Count) required env keys / environment $($v.environment)"
           exit 0
+
+      # TWO facts about the PUBLISHED assembly, both load-bearing, asserted on the
+      # real Windows publish because neither can be checked by reading source.
+      #
+      #  1. FileVersion must be the release version. Until 2026-08-06 nothing set
+      #     a version at all, so every build of every release stamped 1.0.0.0 and
+      #     an owner who checked the running exe after a successful 1.2.0 update
+      #     saw "1.0.0" and concluded the update had not applied.
+      #  2. ProductVersion (= InformationalVersion) must STILL carry "+<sha>".
+      #     Program.cs ResolveRunningBuild parses everything after the '+' and
+      #     /healthz reports it; aurora-update.ps1 polls until that equals the
+      #     package commit. Adding -p:Version could have displaced the suffix -
+      #     if it ever does, EVERY update fails its health check and rolls back,
+      #     which is precisely the class of defect this repo keeps finding only
+      #     in the field. So it is proven here, not reasoned about.
+      - name: The published assembly carries the release version AND the commit suffix
+        run: |
+          $dll = '.\installer\payload\server\AuroraIcu.Api.dll'
+          if (-not (Test-Path $dll)) { Write-Host "FAIL - no published assembly at $dll"; exit 1 }
+          $iss = ([regex]::Match((Get-Content -Raw '.\installer\aurora.iss'), '#define\s+AppVer\s+"([^"]+)"').Groups[1].Value)
+          $sha = (& git rev-parse HEAD).Trim()
+          $fi  = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $dll))
+          Write-Host "FileVersion    = $($fi.FileVersion)"
+          Write-Host "ProductVersion = $($fi.ProductVersion)"
+          $fail = 0
+          # FileVersion is always 4-part; AppVer is 3-part (plus an optional tag).
+          $core = ($iss -split '-', 2)[0]
+          if ($fi.FileVersion -notlike "$core*") {
+            Write-Host "FAIL - FileVersion '$($fi.FileVersion)' does not carry aurora.iss AppVer '$iss'"; $fail = 1
+          }
+          if ($fi.ProductVersion -notlike "*+$sha") {
+            Write-Host "FAIL - ProductVersion '$($fi.ProductVersion)' does not end '+$sha'. /healthz would stop reporting the commit and EVERY update would fail its health check and roll back."; $fail = 1
+          }
+          if ($fail) { exit 1 }
+          Write-Host "confirmed: the running build will report version $iss and commit $sha"
+          exit 0
