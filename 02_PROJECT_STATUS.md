@@ -47,6 +47,22 @@ does not exist on an installed machine — it is now derived from the exit code,
 with a `UpdateRan` guard so Pascal's zero-initialised `UpdateRc` cannot read as
 success. Suites: 47 pure + 28 exit-code/lint + 64 version-gate, all green.
 **Still true: no full successful update hop has ever completed on Windows.**
+**AND THE LEDGER THEN BLOCKED ITS OWN FIX.** Rebuilding the two drill packages
+hit `version-gate.ps1`: `-RebuildVersion` re-cut only the **newest** recorded
+release of a kind, so `update 1.2.0` could be re-cut and `update 1.1.0` could
+not - the exact pair that had just been cut, minutes apart, from the defective
+build, neither of which reached a hospital. The gate's stated reasoning ("an
+older re-cut would be refused in the field anyway") only holds for a release a
+hospital is RUNNING; here it left the broken 1.1.0 as the only buildable one.
+A rebuild may now target any release recorded for its kind. Forward-only is
+untouched - it lives on the `new` branch and a rebuild introduces no version -
+and the mandatory `-RebuildReason` is what makes a rebuild deliberate. Teeth
+measured: 6 assertions fail against the old gate, 0 against the new. One
+self-inflicted bug on the way, of the family this session keeps producing:
+`Get-RecordedReleaseVersions` returns `,$out` to protect the empty case, and
+wrapping that call in `@()` nested the array, so `-notcontains` compared
+against `System.Object[]` and refused every rebuild - caught because a
+previously-passing assertion went red.
 
 **2026-08-06 · THE #188 FIX SHIPPED INERT — the updater's exit codes could not
 execute, and its install-dir resolution was dead code.** The owner re-ran the

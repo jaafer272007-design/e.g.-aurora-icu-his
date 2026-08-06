@@ -95,11 +95,34 @@ Assert ($p.Count -eq 1 -and $p[0] -match 'strictly increase') 'going BACKWARDS i
 $p = Problems @('1.0.0 setup rebuild 2026-08-04T00:00:00Z abc1234')
 Assert ($p.Count -eq 1 -and $p[0] -match 'no setup release has been recorded') 'a rebuild with nothing to rebuild is rejected'
 
+# SUPERSEDED 2026-08-06: this used to assert that rebuilding anything but the
+# newest release was a LEDGER ERROR. It is not. Two update packages, 1.1.0 and
+# 1.2.0, were cut minutes apart from a build carrying a defect that made every
+# update impossible (PR #191); neither reached a hospital. Re-cutting 1.2.0 was
+# allowed and re-cutting 1.1.0 was refused, so the ledger blocked the fix and
+# left the only buildable package the broken one. A rebuild may now target any
+# recorded release of its kind - the forward-only guarantee is unaffected,
+# because a rebuild introduces no new version.
 $p = Problems @(
   '1.0.0 setup new     2026-08-04T00:00:00Z abc1234',
   '1.1.0 setup new     2026-08-05T00:00:00Z def5678',
   '1.0.0 setup rebuild 2026-08-06T00:00:00Z abc1234')
-Assert ($p.Count -eq 1 -and $p[0] -match 'only the newest release may be rebuilt') 'rebuilding a superseded release is rejected'
+Assert ($p.Count -eq 0) 'rebuilding an EARLIER recorded release is allowed'
+
+# ...but a rebuild still may not invent a version that never shipped.
+$p = Problems @(
+  '1.0.0 setup new     2026-08-04T00:00:00Z abc1234',
+  '1.1.0 setup new     2026-08-05T00:00:00Z def5678',
+  '1.0.5 setup rebuild 2026-08-06T00:00:00Z abc1234')
+Assert ($p.Count -eq 1 -and $p[0] -match 'no setup release at that version has been recorded') 'rebuilding a version that never shipped is rejected'
+
+# and the two chains stay independent: an update 1.1.0 rebuild is not satisfied
+# by a setup 1.1.0 release.
+$p = Problems @(
+  '1.0.0 update new     2026-08-04T00:00:00Z abc1234',
+  '1.1.0 setup  new     2026-08-05T00:00:00Z def5678',
+  '1.1.0 update rebuild 2026-08-06T00:00:00Z def5678')
+Assert ($p.Count -eq 1 -and $p[0] -match 'no update release at that version has been recorded') 'a rebuild does not borrow the other chain'
 
 $p = Problems @(
   '1.0.0 setup new     2026-08-04T00:00:00Z abc1234',
@@ -174,10 +197,18 @@ Assert ($g.ok -and $g.reason -match 'first setup release') 'the first ever relea
 Section 'Test-ReleaseVersionGate -Rebuild'
 $g = Test-ReleaseVersionGate -Entries $led -Kind 'setup' -Version '1.1.0' -Rebuild
 Assert ($g.ok) 'a rebuild of the newest release is allowed'
+# SUPERSEDED 2026-08-06 - this asserted the opposite, and the rule it encoded
+# blocked a defect fix. See the note in the ledger section above.
 $g = Test-ReleaseVersionGate -Entries $led -Kind 'setup' -Version '1.0.0' -Rebuild
-Assert (-not $g.ok -and $g.reason -match 'you last shipped') 'a rebuild of a superseded release is refused'
+Assert ($g.ok) 'a rebuild of an EARLIER recorded release is allowed'
+Assert ($g.reason -match 'EARLIER recorded release') 'and the reason says which it is, not just "ok"'
 $g = Test-ReleaseVersionGate -Entries $led -Kind 'setup' -Version '1.2.0' -Rebuild
 Assert (-not $g.ok) 'a rebuild at a NEW version is refused (that is not a rebuild)'
+Assert ($g.reason -match 'Recorded: 1\.0\.0, 1\.1\.0') 'the refusal lists what COULD be rebuilt'
+# the chains stay independent at the gate too: update 1.0.0 was never released,
+# even though setup 1.0.0 was.
+$g = Test-ReleaseVersionGate -Entries $led -Kind 'update' -Version '1.0.0' -Rebuild
+Assert (-not $g.ok) 'a rebuild does not borrow the other kind''s releases'
 $g = Test-ReleaseVersionGate -Entries (Read-ShippedLedger -Lines @()) -Kind 'setup' -Version '1.0.0' -Rebuild
 Assert (-not $g.ok -and $g.reason -match 'first one') 'a rebuild with an empty ledger is refused'
 

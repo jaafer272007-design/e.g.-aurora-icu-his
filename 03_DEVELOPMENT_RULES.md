@@ -349,9 +349,14 @@ worst class of defect the project has: green that was never earned.
 - **Build time.** `build-protected.ps1` reads `installer/SHIPPED_VERSIONS.txt`
   before it prompts for the install password and before ISCC starts, and
   refuses if the version has already shipped, is below the high-water mark
-  across both artifact kinds, or is malformed. Deliberately re-cutting the
-  release you last shipped is possible but never silent:
-  `-RebuildVersion -RebuildReason "<why>"`, recorded in the ledger.
+  across both artifact kinds, or is malformed. Deliberately re-cutting a release
+  that was already recorded is possible but never silent:
+  `-RebuildVersion -RebuildReason "<why>"`, recorded in the ledger. Any
+  recorded release of that kind, not only the newest (amended 2026-08-06: the
+  "newest only" rule blocked the re-cut of a withdrawn, defective 1.1.0 while
+  permitting 1.2.0, leaving the broken package the only buildable one). The
+  mandatory reason is what makes a rebuild deliberate; the version ordering is
+  guarded separately and a rebuild introduces no version.
 - **CI.** The `installer-powershell` job runs the gate's unit tests on Windows
   PowerShell 5.1, validates the committed ledger (semver, no duplicates,
   strictly increasing per kind, forward-only across kinds), asserts

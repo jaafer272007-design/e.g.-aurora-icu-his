@@ -105,9 +105,19 @@ shipped:
 
 After a successful build it appends its own ledger line and prints the `git`
 commands. **Commit that line** — the build cannot, and an uncommitted line is
-invisible to the next clone. To deliberately re-cut the release you last
-shipped (a corrupted burn, a re-slice) without a version change, pass
+invisible to the next clone. To deliberately re-cut a release that was
+already recorded (a corrupted burn, a re-slice, or a package withdrawn because
+the code inside it was defective) without a version change, pass
 `-RebuildVersion -RebuildReason "<why>"`; it is allowed, and recorded.
+
+Until 2026-08-06 a rebuild had to target the **newest** recorded release. That
+rule blocked a defect fix the first time it mattered: update packages 1.1.0 and
+1.2.0 were cut minutes apart from a build that could never complete an update
+(PR #191) and neither reached a hospital, but only 1.2.0 could be re-cut - so
+the ledger's only buildable 1.1.0 was the broken one. A rebuild may now target
+any recorded release of its kind. The forward-only guarantee is untouched: it
+lives on the `new` branch of the ledger check, and a rebuild introduces no
+version.
 
 The `installer-powershell` CI job validates the ledger, runs the gate's unit
 tests on Windows PowerShell 5.1, and runs `build-protected.ps1` itself at an
