@@ -176,6 +176,40 @@ Check 'aurora-update.iss reads the real log path back from the relay' `
   'True' ($iss.Contains('aurora-update-log.txt'))
 
 Write-Host ''
+Write-Host '=== [Code] brace comments must not name an Inno constant ==='
+
+# Pascal's { ... } comments do NOT nest. A brace comment in an [Code] section that
+# mentions {app} or {tmp} therefore ENDS at that constant's closing brace, and the
+# rest of the sentence is parsed as code. This shipped on 2026-08-06 and ISCC died
+# with "'BEGIN' expected" on the first real compile - the .iss has no off-Windows
+# syntax gate (no Linux Inno compiler exists), so review was the only check, and
+# review does not see brace nesting. Cheap static rule: inside [Code], a line that
+# opens or continues a brace comment must not contain '{'. Use // instead.
+$issConstPattern = '\{(app|tmp|commondesktop|commonpf|sys|win|userdocs|group)\}'
+$braceLeaks = @()
+$inCode = $false
+$inBrace = $false
+$issLines = Get-Content $issFile
+for ($i = 0; $i -lt $issLines.Count; $i++) {
+  $l = $issLines[$i]
+  if ($l -match '^\s*\[Code\]') { $inCode = $true; continue }
+  if ($l -match '^\s*\[[A-Za-z]+\]') { $inCode = $false; continue }
+  if (-not $inCode) { continue }
+  $t = $l.TrimStart()
+  # a line that STARTS a brace comment, or continues one already open
+  $starts = $t.StartsWith('{') -and (-not $t.StartsWith('{$'))   # {$ is a compiler directive
+  if ($starts) { $inBrace = $true }
+  if ($inBrace) {
+    if ($l -match $issConstPattern) { $braceLeaks += ("line " + ($i + 1) + ": " + $t) }
+    # the comment closes on the first '}' AFTER the opening brace
+    $afterOpen = if ($starts) { $t.Substring(1) } else { $t }
+    if ($afterOpen.Contains('}')) { $inBrace = $false }
+  }
+}
+if ($braceLeaks.Count -gt 0) { $braceLeaks | ForEach-Object { Write-Host ("        " + $_) } }
+Check 'no [Code] brace comment names an Inno constant' 0 $braceLeaks.Count
+
+Write-Host ''
 Write-Host '=== no native command may leak stderr under EAP=Stop ==='
 
 # Windows PowerShell 5.1 turns a NATIVE command's stderr into a
