@@ -175,6 +175,21 @@ Check 'aurora-update.iss no longer builds args with -InstallDir' `
 Check 'aurora-update.iss reads the real log path back from the relay' `
   'True' ($iss.Contains('aurora-update-log.txt'))
 
+# ---- 12-15. The FINISHED PAGE must be derived from the exit code -------------
+# It used to assert "The Aurora update has been applied." unconditionally - after
+# a refusal, after a rollback, after a crash - and it is the last thing the
+# operator reads. It also pointed at installer\update.log, which does not exist
+# on an installed machine. Both are contract facts between the two files, so
+# assert them here rather than trusting a future reader to notice.
+Check 'the finished page records the updater exit code' `
+  'True' ($iss.Contains('UpdateRc := rc'))
+Check 'the finished page distinguishes "never ran" from "succeeded"' `
+  'True' ($iss.Contains('UpdateRan'))
+Check 'the finished page branches on the code, not one fixed sentence' `
+  'True' ((([regex]::Matches($iss, 'FinishedLabel\.Caption')).Count) -ge 4)
+Check 'the finished page no longer cites the non-existent installer\update.log' `
+  'True' (-not $iss.Contains('installer\update.log'))
+
 Write-Host ''
 Write-Host '=== [Code] brace comments must not name an Inno constant ==='
 
@@ -255,6 +270,99 @@ for ($i = 0; $i -lt $updaterLines.Count; $i++) {
 Check 'the native-call scan actually found calls to check' 'True' ($nativeSeen -ge 5)
 if ($leaky.Count -gt 0) { $leaky | ForEach-Object { Write-Host ("        " + $_) } }
 Check 'every native invocation redirects stderr or is wrapped' 0 $leaky.Count
+
+Write-Host ''
+Write-Host '=== -replace on a command that emitted NOTHING (the AutomationNull trap) ==='
+
+# THE DEFECT THAT BROKE THE FIRST REAL FIELD RUN (2026-08-06).
+#
+# aurora-update.ps1 formatted psql's stderr with an inline
+#     ((Get-Content -Raw $headErr) -replace '\s+', ' ').Trim()
+# A SUCCESSFUL psql writes nothing to stderr, so 2>$headErr leaves a ZERO-BYTE
+# file, Get-Content -Raw emits NO OBJECTS AT ALL (AutomationNull, not $null), and
+# PowerShell's -replace on that returns an EMPTY System.Object[] - which has no
+# .Trim(). Under EAP=Stop that killed the updater at the precise moment every
+# preceding step had succeeded, and the wizard reported exit 1: "the update was
+# NOT applied". No update could ever have completed.
+#
+# WHY THIS GATE IS STATIC AND NOT A UNIT TEST. AutomationNull cannot survive
+# being bound to a parameter - PowerShell converts it to a plain $null, and
+# `$null -replace` is harmless. So calling any helper with the offending value
+# CANNOT reproduce the defect; test-update-pure.ps1's ConvertTo-SingleLine
+# assertions stay green even with the fix reverted (verified, which is why they
+# are labelled as contract tests there). The hazard only exists at the SYNTAX
+# level - -replace applied directly to the result of a command - so that is what
+# is checked here.
+
+# 1. Prove the hazard is real, in a real process, before trusting a lint about it.
+$hazardBody = @"
+`$ErrorActionPreference = 'Stop'
+`$f = Join-Path '$tmp' ('aurora-an-' + [Guid]::NewGuid().ToString('N') + '.err')
+Set-Content -Path `$f -Value '' -NoNewline
+try {
+  `$x = ((Get-Content -Raw `$f) -replace '\s+', ' ').Trim()
+  Remove-Item -Force `$f -ErrorAction SilentlyContinue
+  exit 0
+} catch {
+  Remove-Item -Force `$f -ErrorAction SilentlyContinue
+  exit 42
+}
+"@
+Check 'the inline -replace form really does throw on a 0-byte file' 42 (Get-ChildExitCode $hazardBody)
+
+# 2. And that the shipped helper survives exactly that input.
+$safeBody = $preamble + @"
+
+`$f = Join-Path '$tmp' ('aurora-an-' + [Guid]::NewGuid().ToString('N') + '.err')
+Set-Content -Path `$f -Value '' -NoNewline
+try {
+  `$x = ConvertTo-SingleLine (Get-Content -Raw `$f)
+  Remove-Item -Force `$f -ErrorAction SilentlyContinue
+  if (`$x -ne '') { exit 43 }
+  exit 0
+} catch {
+  Remove-Item -Force `$f -ErrorAction SilentlyContinue
+  exit 44
+}
+"@
+Check 'ConvertTo-SingleLine returns empty for a 0-byte file' 0 (Get-ChildExitCode $safeBody)
+
+# 3. The lint. A method may not be called on a -replace result unless the
+#    left-hand side was cast to [string] first ([string]$null is '', and
+#    '' -replace ... is a String, so .Trim() is safe).
+$badReplace = '-replace[^)]*\)\s*\.\w+\('
+
+# NON-VACUITY, PROVEN AGAINST THE TWO REAL HISTORICAL LINES. A lint whose regex
+# silently stops matching is indistinguishable from a clean repo - the same
+# failure mode as a skipped CI check. These four assertions pin it permanently.
+$histUpdater = "  if (Test-Path `$headErr) { `$headErrText = ((Get-Content -Raw `$headErr) -replace '\s+', ' ').Trim() }"
+$histAutowire = "  `$curProvider = ((`$envLines | Where-Object { `$_ -match '^AI_PROVIDER=' } | Select-Object -First 1) -replace '^AI_PROVIDER=', '').Trim()"
+$fixedUpdater = "  if (Test-Path `$headErr) { `$headErrText = ConvertTo-SingleLine (Get-Content -Raw `$headErr) }"
+$fixedAutowire = "  `$curProvider = ([string]((`$envLines | Where-Object { `$_ -match '^AI_PROVIDER=' } | Select-Object -First 1)) -replace '^AI_PROVIDER=', '').Trim()"
+Check 'lint catches the historical aurora-update.ps1 line'  'True'  ($histUpdater  -match $badReplace)
+Check 'lint catches the historical aurora-autowire.ps1 line' 'True' ($histAutowire -match $badReplace)
+Check 'lint clears the fixed aurora-update.ps1 line'        'False' ($fixedUpdater -match $badReplace)
+Check 'lint clears the fixed aurora-autowire.ps1 line (cast)' 'True' (($fixedAutowire -match $badReplace) -and ($fixedAutowire -match '\[string\]'))
+
+# Scan every SHIPPING installer script (test-*.ps1 are excluded: this file quotes
+# the broken forms above on purpose, and linting the documentation that prevents
+# the defect would be a false positive on itself).
+$offenders = @()
+$scanned   = 0
+foreach ($f in (Get-ChildItem -Path $here -Filter '*.ps1' | Where-Object { $_.Name -notlike 'test-*' })) {
+  $scanned++
+  $ls = Get-Content $f.FullName
+  for ($i = 0; $i -lt $ls.Count; $i++) {
+    $l = $ls[$i]
+    if ($l.TrimStart().StartsWith('#')) { continue }
+    if ($l -notmatch $badReplace) { continue }
+    if ($l -match '\[string\]') { continue }        # the cast IS the fix
+    $offenders += ($f.Name + ":" + ($i + 1) + ": " + $l.Trim())
+  }
+}
+Check 'the -replace scan actually read the installer scripts' 'True' ($scanned -ge 4)
+if ($offenders.Count -gt 0) { $offenders | ForEach-Object { Write-Host ("        " + $_) } }
+Check 'no method is called on an uncast -replace result' 0 $offenders.Count
 
 Write-Host ''
 Write-Host ("RESULT: " + $script:Pass + " passed, " + $script:Fail + " failed")

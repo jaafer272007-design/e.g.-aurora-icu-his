@@ -1,5 +1,53 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**2026-08-06 (later) · THE FIXED UPDATER REACHED THE FIELD AND DIED ON ITS OWN
+HAPPY PATH.** With #189 and #190 merged and fresh 1.1.0 / 1.2.0 packages built,
+the owner ran the first hop. The install-directory work was **vindicated**: the
+wizard passed `-FallbackInstallDir "C:\Aurora"`, the script resolved
+`D:\auroa\Aurora` *from the AuroraServer service*, and the log relay carried
+that real path back into the dialog. It then refused with exit 1 and this in
+`update.log`:
+`Method invocation failed because [System.Object[]] does not contain a method
+named 'Trim'.` — immediately after `package verified (371 files checksum-match)`.
+ROOT CAUSE, and it is the happy path: `aurora-update.ps1` formatted psql's
+stderr with an inline `((Get-Content -Raw $headErr) -replace '\s+',' ').Trim()`.
+A **successful** psql writes nothing, so `2>$headErr` leaves a **zero-byte**
+file, `Get-Content -Raw` emits **no objects at all**, and PowerShell's
+`-replace` on that returns an **empty `System.Object[]`** — which has no
+`.Trim()`. Under `EAP=Stop` that is terminating. **No update could ever have
+completed**, on any machine, since the line was written; every preceding step
+had succeeded and the operator was told "the update was NOT applied". Measured
+and reproduced on a 0-byte file before any edit. FIXED via a pure
+`ConvertTo-SingleLine` (the `[string]` cast is the whole fix: `[string]$null`
+is `''`), plus the same defect class killed at `aurora-autowire.ps1:99` (the
+not-yet-fired twin, when `aurora.env` has no `AI_PROVIDER` line) and
+`build.ps1:56` (where a silent `''` commit produces a package whose `/healthz`
+reports `dev` and whose health check can therefore *never* pass — `-UpdateOnly`
+now refuses to build it). **A HONEST NOTE ON THE TEST DESIGN:** the first
+regression test was worthless and was replaced. The hazard is *AutomationNull*,
+which PowerShell converts to a plain `$null` when bound to a parameter, so
+calling any helper with it **cannot** reproduce the defect — the unit tests stay
+green with the fix reverted (verified; they are now labelled contract tests).
+The teeth are a **static lint** forbidding a method call on an uncast `-replace`
+result across every shipping `installer\*.ps1`, pinned non-vacuous against the
+two real historical lines, plus a child-process proof that the inline form
+really throws. Reinstating both defects fails the suite (2 offenders, exit 1).
+ALSO FIXED, from the #149 backlog, because each states something false to a
+hospital: a version-skew refusal exited **0**, which the `.iss` maps to an empty
+branch — a downgrade or a re-run of an installed package announced *"The Aurora
+update has been applied"* (now exit 1); `Start-Service` sat outside any `try`,
+so a new build that would not start died with PowerShell's exit 1 = *"Aurora is
+exactly as it was"* **after** the swap, with the service down (now falls through
+to the health loop and the honest rollback, exit 3); `Stop-Service` likewise;
+the `icacls` call inside the swap `try{}` could turn one benign stderr line into
+*"CRITICAL … rollback could not complete"* (preference now relaxed, and a
+failure warns instead of rolling back a working update); and the finished page
+asserted success **unconditionally** on every path while citing a log path that
+does not exist on an installed machine — it is now derived from the exit code,
+with a `UpdateRan` guard so Pascal's zero-initialised `UpdateRc` cannot read as
+success. Suites: 47 pure + 28 exit-code/lint + 64 version-gate, all green.
+**Still true: no full successful update hop has ever completed on Windows.**
+
 **2026-08-06 · THE #188 FIX SHIPPED INERT — the updater's exit codes could not
 execute, and its install-dir resolution was dead code.** The owner re-ran the
 drill on a freshly wiped machine installed at `D:\Aurora`. The 1.1.0 package

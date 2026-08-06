@@ -145,6 +145,49 @@ Assert-Equal 'empty required list is trivially satisfied' @() `
 Assert-Equal 'empty env file misses everything' @('APP_ENV') `
   (Get-MissingEnvKeys -EnvLines @() -RequiredKeys @('APP_ENV'))
 
+# ---------------------------------------------------------------------------
+# ConvertTo-SingleLine - the $null -replace trap.
+#
+# The helper exists because of a defect that reached a hospital server: the
+# updater formatted psql's stderr with an inline
+#     ((Get-Content -Raw $errFile) -replace '\s+',' ').Trim()
+# and a SUCCESSFUL psql writes nothing, so that file is zero bytes,
+# Get-Content -Raw emits NOTHING, and -replace on nothing yields an empty
+# Object[] with no .Trim(). The update died at the moment everything had worked.
+#
+# READ THIS BEFORE TRUSTING THESE ASSERTIONS. They test the helper's CONTRACT.
+# They do NOT and CANNOT reproduce the field defect, and it would be dishonest to
+# label them as if they did: the hazard is AutomationNull (the "no objects at
+# all" value a command yields), and PowerShell converts AutomationNull to a plain
+# $null when it is bound to a parameter. So the defect is laundered by the
+# function boundary - measured, not assumed (installer\test-update-exitcodes.ps1
+# proves both halves in a real process). Reverting the [string] cast leaves every
+# assertion below GREEN.
+#
+# The teeth for the actual defect are therefore in test-update-exitcodes.ps1:
+# a static lint that forbids the inline form anywhere in installer\*.ps1, plus a
+# child-process proof that the inline form really does throw. What these
+# assertions buy is that the helper each call site now uses is itself correct.
+# ---------------------------------------------------------------------------
+Write-Host 'ConvertTo-SingleLine (contract only - see the note above)'
+Assert-Equal 'null becomes empty string'                     '' (ConvertTo-SingleLine $null)
+Assert-Equal 'empty array becomes empty string'              '' (ConvertTo-SingleLine @())
+Assert-Equal 'empty string stays empty'                      '' (ConvertTo-SingleLine '')
+Assert-Equal 'whitespace-only collapses to empty'            '' (ConvertTo-SingleLine "  `r`n `t ")
+Assert-Equal 'plain text passes through'          'psql: FATAL' (ConvertTo-SingleLine 'psql: FATAL')
+Assert-Equal 'leading/trailing whitespace trimmed'       'oops' (ConvertTo-SingleLine "  oops`r`n")
+Assert-Equal 'internal newlines collapse to one space' 'a b c' (ConvertTo-SingleLine "a`r`nb`n`nc")
+Assert-Equal 'multi-line array joins to one line'      'a b c' (ConvertTo-SingleLine @('a', 'b', 'c'))
+Assert-Equal 'array with blank elements does not double-space' 'a b' (ConvertTo-SingleLine @('a', '', 'b'))
+# and the real shape: a zero-byte file, read exactly as the updater reads it.
+$zeroByte = Join-Path ([IO.Path]::GetTempPath()) ('aurora-zero-' + [Guid]::NewGuid().ToString('N') + '.err')
+Set-Content -Path $zeroByte -Value '' -NoNewline
+try {
+  Assert-Equal 'zero-byte file length is really 0' 0 (Get-Item $zeroByte).Length
+  Assert-Equal 'zero-byte file via Get-Content -Raw' '' `
+    (ConvertTo-SingleLine (Get-Content -Raw $zeroByte))
+} finally { Remove-Item -Force $zeroByte -ErrorAction SilentlyContinue }
+
 Write-Host ''
 Write-Host ("RESULT: " + $script:Pass + " passed, " + $script:Fail + " failed")
 if ($script:Fail -gt 0) { exit 1 }

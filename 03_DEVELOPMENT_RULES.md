@@ -251,6 +251,51 @@ distinct 5.1-only defect class after the PS7 ternary and `GetRelativePath`:
 **parse-clean, review-clean, and wrong only when it runs, only on the engine that
 ships.**
 
+### 🔴 Amendment 2 (2026-08-06, later) — the fixed updater then died on its HAPPY path, and the first regression test for it was worthless
+
+The next field run proved the two rules above (the resolution and the log relay
+both worked, on a real `D:\auroa\Aurora` install). It then failed at
+`package verified` with
+`[System.Object[]] does not contain a method named 'Trim'`.
+
+`-replace` **does not return `''` for an empty left-hand side — it returns an
+empty `System.Object[]`.** The updater formatted psql's stderr with an inline
+`((Get-Content -Raw $headErr) -replace '\s+',' ').Trim()`, and a *successful*
+psql writes nothing, so the file is zero bytes and `Get-Content -Raw` emits no
+objects at all. Every step had gone right; the operator was told the update was
+not applied. **No update could ever have completed, on any machine.**
+
+**CODIFIED RULE — never call a method on the result of `-replace` unless the
+left-hand side is cast to `[string]` first.** `[string]$null` is `''`, and
+`'' -replace …` is a `String`. Prefer a named helper (`ConvertTo-SingleLine`)
+over an inline chain, so the reasoning lives in one place.
+
+**The more important lesson is about the test.** The obvious regression test —
+call the helper with the offending value and assert `''` — is **vacuous**, and
+it took reverting the fix to discover that. The hazard is `AutomationNull` (the
+"no objects at all" value), and PowerShell **converts `AutomationNull` to a
+plain `$null` when binding it to a parameter**. So the defect cannot survive a
+function call: the unit tests stay green with the fix removed. They are now
+labelled contract tests, and say so in the file.
+
+**CODIFIED RULE — a regression test must be shown to fail with the fix
+reverted, and when it cannot, say so in the test file and build a gate that
+can.** Here that gate is static: a lint across every shipping
+`installer\*.ps1` rejecting a method call on an uncast `-replace` result,
+pinned non-vacuous by asserting it matches the two **real historical lines**
+and clears their fixed forms — so the regex silently ceasing to match is itself
+a failure — plus a child-process proof that the inline form really throws.
+Reinstating both defects fails the suite with 2 named offenders.
+
+**Corollary — a refusal must never exit 0.** The same pass found that a
+version-skew refusal exited 0, which `aurora-update.iss` maps to an empty branch
+whose finished page then announced *"The Aurora update has been applied."* The
+one code path whose entire purpose is to refuse said the opposite. Exit 0 now
+means **applied, and nothing else**; every wizard-facing message, including the
+finished page, is derived from the code rather than assumed, with an explicit
+"the updater never ran" state because Pascal initialises integers to 0 — and 0
+was the success code.
+
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install

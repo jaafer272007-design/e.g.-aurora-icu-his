@@ -190,6 +190,32 @@ function Select-AuroraInstallDir {
   return $Fallback
 }
 
+# Collapse an arbitrary captured value (file text, native output, $null) into ONE
+# trimmed single-line string, safely.
+#
+# PowerShell's -replace operator DOES NOT return '' for a $null left-hand side -
+# it returns an EMPTY System.Object[]. Calling .Trim() on that throws
+#   "Method invocation failed because [System.Object[]] does not contain a
+#    method named 'Trim'."
+# which under $ErrorActionPreference='Stop' kills the script outright.
+#
+# This shipped, and it broke the HAPPY PATH. aurora-update.ps1 formatted psql's
+# stderr with ((Get-Content -Raw $headErr) -replace '\s+',' ').Trim(). When psql
+# SUCCEEDS it writes nothing, so the redirection leaves a ZERO-BYTE file,
+# Get-Content -Raw returns $null, and the update died at the exact moment
+# everything had gone right - reported to the operator as exit 1, "the update was
+# NOT applied". No update could ever complete. Found 2026-08-06 on the first real
+# field run that got past package verification; reproduced and measured before
+# this fix, on a 0-byte file, in a real PowerShell.
+#
+# The [string] cast is the whole fix: [string]$null is '', and '' -replace ...
+# is a String. PURE - unit-tested in installer\test-update-pure.ps1.
+function ConvertTo-SingleLine {
+  param([Parameter(Mandatory)][AllowNull()][AllowEmptyString()][AllowEmptyCollection()]$Value)
+  if ($Value -is [array]) { $Value = ($Value -join ' ') }
+  return (([string]$Value) -replace '\s+', ' ').Trim()
+}
+
 # ---- failure reporting + EXIT CODES -------------------------------------------
 # These live ABOVE the pure-test boundary so installer\test-update-exitcodes.ps1
 # can dot-source THE REAL DEFINITIONS and invoke them in a real process. They
@@ -198,7 +224,8 @@ function Select-AuroraInstallDir {
 #
 # aurora-update.iss maps these codes to what the operator is told, so each must
 # mean exactly one thing:
-#   0 = applied, or a deliberate no-op
+#   0 = APPLIED. Nothing else may exit 0 - the wizard treats 0 as proof of
+#       success and says so on its finished page. A refusal is 1, never 0.
 #   1 = REFUSED before anything changed - the system is untouched
 #   2 = between states - manual recovery needed
 #   3 = failed, and successfully rolled back - the system is healthy on the old build
@@ -392,7 +419,11 @@ $ErrorActionPreference = 'Continue'
 try {
   $headOut = @(& $psql -w -t -A -v ON_ERROR_STOP=1 -d $dbUrl -f $headSql 2>$headErr)
   $headRc  = $LASTEXITCODE
-  if (Test-Path $headErr) { $headErrText = ((Get-Content -Raw $headErr) -replace '\s+', ' ').Trim() }
+  # ConvertTo-SingleLine, NOT an inline -replace + .Trim(). A SUCCESSFUL psql
+  # writes nothing, so this file is ZERO BYTES, Get-Content -Raw returns $null,
+  # and $null -replace returns an empty Object[] that has no .Trim(). See the
+  # function's note - that inline form is what killed the first real field run.
+  if (Test-Path $headErr) { $headErrText = ConvertTo-SingleLine (Get-Content -Raw $headErr) }
 } finally {
   $ErrorActionPreference = $prevEapH
   Remove-Item -Force $headSql, $headErr -ErrorAction SilentlyContinue
@@ -409,7 +440,16 @@ Say "installed $($installed.version) (migrationHead $($installed.migrationHead))
 
 # ---- 3. version-skew guard (pure) - refuse-and-exit-0-change on any skew ----
 $skew = Test-VersionSkew -Installed $installed -Package $package -DbHead $dbHead -AllowMajor:$AllowMajor
-if (-not $skew.ok) { Say "NO UPDATE APPLIED - $($skew.reason)"; Stop-Log; exit 0 }
+# Fail (exit 1 - "REFUSED before anything changed"), NOT exit 0.
+#
+# Until 2026-08-06 a skew refusal exited 0. aurora-update.iss maps 0 to an EMPTY
+# branch and then its finished page says "The Aurora update has been applied."
+# So the one path whose entire purpose is to refuse - a downgrade, a re-run of a
+# package already installed, a package behind the live schema, an unapproved
+# cross-major hop - told the operator the opposite of what happened, and the
+# refusal reason existed only in a log nobody was sent to. Exit 1 is not a
+# demotion of this case; it is precisely what 1 already means, and it is true.
+if (-not $skew.ok) { Fail "NO UPDATE APPLIED - $($skew.reason)" }
 $migrationWillRun = $skew.migrationWillRun
 Say "update $($installed.version) -> $($package.version) accepted (migrationWillRun=$migrationWillRun)"
 
@@ -487,7 +527,13 @@ Say "restore point = $backupFile"
 
 # ---- 5. stop AuroraServer (Postgres + AuroraAI stay up) - the DB is now quiescent ----
 Say "stopping AuroraServer (clinicians briefly offline)..."
-Stop-Service AuroraServer -Force
+# Wrapped. Bare, this ran under $ErrorActionPreference='Stop' outside any try, so
+# a service that would not stop killed the script with a RAW PowerShell error and
+# PowerShell's own exit 1 - which the wizard renders as the tidy "the update was
+# NOT applied ... nothing needs to be recovered". True here by luck, but stated by
+# accident rather than by the code. Say it deliberately instead.
+try { Stop-Service AuroraServer -Force }
+catch { Fail "could not stop AuroraServer ($($_.Exception.Message)) - nothing has been changed and the binaries were not touched. The pre-update backup ($backupFile) is on disk." }
 
 # ---- 6. swap the binaries; carry aurora.env across UNCHANGED ----
 try {
@@ -496,14 +542,45 @@ try {
   New-Item -ItemType Directory -Force -Path $server | Out-Null
   Copy-Item -Recurse -Force (Join-Path $pkgServer '*') $server    # lay the new payload
   Copy-Item -Force (Join-Path $serverPrev 'aurora.env') $envFile  # the machine config + secrets, verbatim
-  & icacls.exe $envFile /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' 2>$null | Out-Null
+  # NATIVE CALL INSIDE A try{} WHOSE catch{} REPORTS "between states". Relax the
+  # preference: 5.1 turns a native command's stderr into a TERMINATING
+  # NativeCommandError under EAP=Stop, and the 2>$null does NOT prevent it (this
+  # repo measured exactly that twice - aurora-provision.ps1:544-547,
+  # aurora-ai-service.ps1:87-89). Without this, one chatty-but-harmless icacls
+  # line on a SUCCESSFUL swap lands in the catch below and the operator is shown
+  # "CRITICAL: the update failed AND the automatic rollback could not complete",
+  # which invites a database restore on a system that is perfectly fine.
+  $prevEapI = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $aclOut = & icacls.exe $envFile /inheritance:r /grant:r 'SYSTEM:F' 'Administrators:F' 2>&1
+  $aclRc  = $LASTEXITCODE
+  $ErrorActionPreference = $prevEapI
+  # Not fatal: the swap succeeded and aurora.env is already in place. Permission
+  # hardening that did not take is a thing to SAY, not a reason to roll back a
+  # working update - but it must never pass silently either.
+  if ($aclRc -ne 0) {
+    Say "WARNING - could not re-apply aurora.env permissions (icacls exit $aclRc): $(ConvertTo-SingleLine $aclOut)"
+    Say "  aurora.env holds the database password and JWT secret. Check its ACL by hand after this update."
+  }
 } catch {
   FailBetweenStates "the binary swap failed ($($_.Exception.Message)). The old build is at $serverPrev; restore it with 'Move-Item `"$serverPrev`" `"$server`"' and 'sc start AuroraServer'."
 }
 
 # ---- 7. start + verify: healthy AND actually the new build (sec CI-evidence rule) ----
 Say "starting AuroraServer (applying any database updates)..."
-Start-Service AuroraServer
+# THIS IS THE SEVERE ONE. Bare, under $ErrorActionPreference='Stop' and outside
+# any try, a service that refuses to start killed the script with PowerShell's
+# exit 1 - and 1 is the code the wizard renders as "the update was NOT applied,
+# so Aurora is exactly as it was and is still running the previous version.
+# Nothing needs to be recovered." At this point the binaries have ALREADY been
+# swapped and the service is DOWN. That message is false in every clause, and it
+# is shown for the single most likely real failure: a new build that will not run.
+#
+# A failed start is not a reason to abort - it is precisely the condition the
+# rollback below exists for. Record it and fall through to the health loop, which
+# will time out and roll back, giving the operator the honest exit 3.
+try { Start-Service AuroraServer }
+catch { Say "WARNING - Start-Service failed ($($_.Exception.Message)). Treating this as an unhealthy start; the health check below will time out and the rollback will run." }
 $healthy = $false
 for ($i = 0; $i -lt [Math]::Ceiling($HealthTimeoutSec / 2); $i++) {
   try {
