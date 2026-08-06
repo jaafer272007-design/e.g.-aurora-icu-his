@@ -12,7 +12,7 @@
 ;    script is CODE-REVIEWED here; verify the wizard + install on the machine.
 
 #define AppName "Aurora ICU"
-#define AppVer  "1.0.0"
+#define AppVer  "1.1.0"
 #define Publisher "Aurora HIS"
 
 [Setup]
