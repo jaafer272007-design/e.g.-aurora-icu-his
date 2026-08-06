@@ -96,7 +96,13 @@ try {
   $envLines = @(Get-Content -Path $envFile)
 
   # current AI provider + data dir (for the AI log), read from aurora.env
-  $curProvider = (($envLines | Where-Object { $_ -match '^AI_PROVIDER=' } | Select-Object -First 1) -replace '^AI_PROVIDER=', '').Trim()
+  # The [string] cast is load-bearing. When aurora.env has NO AI_PROVIDER line the
+  # pipeline yields nothing, and PowerShell's -replace on a $null left-hand side
+  # returns an empty System.Object[], not '' - so .Trim() throws "[System.Object[]]
+  # does not contain a method named 'Trim'" and, under EAP=Stop, kills the script.
+  # Same defect class as the one that broke aurora-update.ps1's happy path on the
+  # first real field run (2026-08-06); this site is the not-yet-fired twin.
+  $curProvider = ([string](($envLines | Where-Object { $_ -match '^AI_PROVIDER=' } | Select-Object -First 1)) -replace '^AI_PROVIDER=', '').Trim()
   $backupDir   = (($envLines | Where-Object { $_ -match '^BACKUP_DIR=' }  | Select-Object -First 1) -replace '^BACKUP_DIR=', '')
   $dataDir     = if ($backupDir) { Split-Path -Parent $backupDir } else { Join-Path $InstallDir 'data' }
   $aiIsOn      = ($curProvider -eq 'openai')

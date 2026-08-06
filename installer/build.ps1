@@ -52,10 +52,28 @@ Write-Host '== 2. self-contained server publish (win-x64) =='
 # build is really SERVING. Without it healthz says "dev" on Windows and every
 # update rolls itself back. A checkout with no git available still builds -
 # the value is simply absent and healthz falls back to "dev".
+# [string] cast + relaxed preference, for two independent reasons. (a) If git
+# emits nothing the subexpression is $null and .Trim() throws on it. (b) Under
+# EAP=Stop, 5.1 turns git's stderr into a TERMINATING NativeCommandError and the
+# 2>$null does NOT prevent it. Either way $commit stayed '' and the package built
+# ANYWAY with healthz reporting "dev" - a package whose health check can never
+# pass, so every update made from it would roll itself back with no stated cause.
 $commit = ''
-try { $commit = (& git -C $root rev-parse HEAD 2>$null).Trim() } catch { }
+$prevEapC = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try { $commit = ([string](& git -C $root rev-parse HEAD 2>$null)).Trim() } catch { }
+$ErrorActionPreference = $prevEapC
 $revArgs = @()
 if ($commit) { $revArgs = @("-p:SourceRevisionId=$commit") } else { Write-Host '   (no git commit available - the build will report itself as "dev")' }
+# A full installer with build="dev" is merely unlabelled. An UPDATE package with
+# build="dev" is broken by construction: aurora-update.ps1 proves the new build is
+# really serving by polling /healthz until build == package.commit, and "dev" can
+# never equal the commit in version.json. Every update made from such a package
+# would time out and roll itself back, with the operator told only that the new
+# build "did not become healthy". Refuse to produce it.
+if ($UpdateOnly -and -not $commit) {
+  throw 'refusing to build an update package with no git commit: /healthz would report "dev", the updater health check could never pass, and every update from this package would roll itself back. Run from a git checkout with git on PATH.'
+}
 & dotnet publish (Join-Path $root 'server\AuroraIcu.Api.csproj') `
   -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false `
   @revArgs -o (Join-Path $payload 'server')

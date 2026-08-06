@@ -108,6 +108,15 @@ Source: "aurora-update.ps1";     DestDir: "{tmp}\pkg";        Flags: ignoreversi
 // {tmp}\aurora-update-log.txt and we read it back - the same relay aurora.iss
 // uses for {tmp}\aurora-url.txt. Falls back to the old guess if the file is
 // absent (e.g. PowerShell never started), which is the only case where it fits.
+// What the updater actually reported, carried from CurStepChanged to the
+// finished page. UpdateRan guards the case where CurStepChanged never got to
+// run at all: a Pascal Integer starts at 0, and 0 is the SUCCESS code, so
+// without this flag an aborted install would end on "the update has been
+// applied" purely because nobody had written to the variable.
+var
+  UpdateRc: Integer;
+  UpdateRan: Boolean;
+
 function ResolvedLogPath(): String;
 var lines: TArrayOfString;
 begin
@@ -142,13 +151,19 @@ begin
     Abort;
   end;
 
+  UpdateRc := rc;
+  UpdateRan := True;
+
   { Each code means exactly ONE thing - see the EXIT CODES block in
     aurora-update.ps1. Until 2026-08-05 every failure exited 1 and this told the
     operator "rolled back ... running normally" even when NOTHING had happened,
     or when the swap had died with the service stopped. Two real field failures
     were reported that way. A message the code cannot vouch for is exactly what
     the no-reassuring-default rule forbids.
-      0 = applied, or a deliberate no-op
+      0 = APPLIED, and nothing else - a refusal is 1. Until 2026-08-06 the
+          script's version-skew refusal exited 0, so a downgrade or a re-run of
+          an already-installed package fell into the empty branch below and then
+          the finished page announced success. The script now exits 1 there.
       1 = REFUSED before any change - the system is untouched
       2 = between states - manual recovery
       3 = failed, and successfully rolled back - healthy on the old build
@@ -157,7 +172,7 @@ begin
     catastrophe, which would push someone into a needless database restore. }
   log := ResolvedLogPath();
   if rc = 0 then
-    { success/no-op - the finished page speaks for it }
+    { success - the finished page speaks for it }
   else if rc = 1 then
     MsgBox('The update was NOT applied - it stopped before changing anything, so Aurora is exactly as it was and is still running the previous version.' + #13#10#13#10 +
            'Nothing needs to be recovered. The reason is in:' + #13#10 + log, mbInformation, MB_OK)
@@ -174,10 +189,44 @@ begin
            'Check ' + log + ' and the state of the AuroraServer service before doing anything else.', mbError, MB_OK);
 end;
 
+// The finished page must state the outcome the updater actually reported.
+//
+// Until 2026-08-06 this asserted "The Aurora update has been applied" on EVERY
+// path - after a refusal, after a rollback, after a crash - and softened the rest
+// to a conditional aside. It is the last thing the operator reads, so it is the
+// thing they remember, and it was the one message in the whole flow that was
+// never derived from the exit code. It also sent them to a path under the source
+// tree's installer folder, which does not exist on an installed machine - the
+// updater's transcript is <install dir>\update.log, which ResolvedLogPath knows.
+// (That literal is absent here on purpose: test-update-exitcodes.ps1 asserts the
+// whole file no longer contains it.)
 procedure CurPageChanged(CurPageID: Integer);
+var log: String;
 begin
-  if CurPageID = wpFinished then
+  if CurPageID <> wpFinished then Exit;
+  log := ResolvedLogPath();
+
+  if not UpdateRan then
     WizardForm.FinishedLabel.Caption :=
-      'The Aurora update has been applied. If it did not succeed, Aurora was automatically returned to the previous version - see the message shown and installer\update.log. ' + #13#10#13#10 +
-      'Aurora continues to run as a Windows service; clinicians can reopen the access URL.';
+      'Setup finished WITHOUT running the updater, so Aurora was not changed and is still running the previous version.'
+  else if UpdateRc = 0 then
+    WizardForm.FinishedLabel.Caption :=
+      'The Aurora update has been applied, and the new version answered its health check before this page appeared.' + #13#10#13#10 +
+      'Aurora continues to run as a Windows service; clinicians can reopen the access URL.'
+  else if UpdateRc = 1 then
+    WizardForm.FinishedLabel.Caption :=
+      'The update was NOT applied. Aurora is untouched and is still running the previous version - nothing needs to be recovered.' + #13#10#13#10 +
+      'The reason is in ' + log
+  else if UpdateRc = 3 then
+    WizardForm.FinishedLabel.Caption :=
+      'The update did not succeed. Aurora was automatically returned to the previous version and is running normally.' + #13#10#13#10 +
+      'See ' + log
+  else if UpdateRc = 2 then
+    WizardForm.FinishedLabel.Caption :=
+      'The update FAILED and the automatic rollback did not complete. Aurora may be between states and needs attention now.' + #13#10#13#10 +
+      'Follow the recovery steps in ' + log
+  else
+    WizardForm.FinishedLabel.Caption :=
+      'The updater ended unexpectedly (code ' + IntToStr(UpdateRc) + ') and the outcome is UNKNOWN. Do not restore anything yet.' + #13#10#13#10 +
+      'Check ' + log + ' and the state of the AuroraServer service.';
 end;
