@@ -95,12 +95,19 @@ Source: "payload\manifest.json"; DestDir: "{tmp}\pkg";        Flags: ignoreversi
 Source: "aurora-update.ps1";     DestDir: "{tmp}\pkg";        Flags: ignoreversion
 
 [Code]
-{ Where the updater ACTUALLY wrote its transcript. We cannot compute it: {app} is
-  only DefaultDirName, while the script resolves the real install directory from
-  the AuroraServer service. So the script writes the path it used into
-  {tmp}\aurora-update-log.txt and we read it back - the same relay aurora.iss uses
-  for {tmp}\aurora-url.txt. Falls back to the old guess if the file is absent
-  (e.g. PowerShell never started), which is the only case where it is right. }
+// USE // COMMENTS IN [Code] WHEN THE TEXT NAMES AN INNO CONSTANT. Pascal's
+// { ... } comments do NOT nest, so a brace comment mentioning {app} ends at that
+// constant's closing brace and the rest of the sentence is parsed as code. This
+// exact block shipped that way and ISCC died with "'BEGIN' expected" on the
+// FIRST real compile (2026-08-06) - the .iss has no off-Windows syntax gate, so
+// review was the only check and review does not see brace nesting.
+//
+// Where the updater ACTUALLY wrote its transcript. We cannot compute it: {app}
+// is only DefaultDirName, while the script resolves the real install directory
+// from the AuroraServer service. So the script writes the path it used into
+// {tmp}\aurora-update-log.txt and we read it back - the same relay aurora.iss
+// uses for {tmp}\aurora-url.txt. Falls back to the old guess if the file is
+// absent (e.g. PowerShell never started), which is the only case where it fits.
 function ResolvedLogPath(): String;
 var lines: TArrayOfString;
 begin
@@ -116,13 +123,15 @@ var args, log: String; rc: Integer;
 begin
   if CurStep <> ssPostInstall then Exit;
 
-  { -FallbackInstallDir, NOT -InstallDir. {app} here is only DefaultDirName (the
-    folder page is disabled), so it is a GUESS. Passing a guess as -InstallDir is
-    exactly what broke this: aurora-update.ps1 treated any supplied -InstallDir as
-    a supervised override and skipped the AuroraServer service lookup entirely, so
-    every install not at C:\Aurora was refused at the version.json preflight and
-    its update.log was written into the guessed folder. The script now asks the
-    service first and uses this value only if the service cannot be read. }
+  // -FallbackInstallDir, NOT -InstallDir. {app} here is only DefaultDirName (the
+  // folder page is disabled), so it is a GUESS. Passing a guess as -InstallDir is
+  // exactly what broke this: aurora-update.ps1 treated any supplied -InstallDir
+  // as a supervised override and skipped the AuroraServer service lookup
+  // entirely, so every install not at C:\Aurora was refused at the version.json
+  // preflight and its update.log was written into the guessed folder. The script
+  // now asks the service first and uses this value only if the service cannot be
+  // read. (// comments here, not { }, because this text names {app} - see the
+  // note above ResolvedLogPath.)
   args := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\pkg\aurora-update.ps1') + '"' +
     ' -PackageDir "' + ExpandConstant('{tmp}\pkg') + '"' +
     ' -FallbackInstallDir "' + ExpandConstant('{app}') + '"';
