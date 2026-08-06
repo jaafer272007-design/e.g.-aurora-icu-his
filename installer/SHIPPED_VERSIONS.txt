@@ -35,3 +35,7 @@
 #
 # version    kind    flag     utc                   commit     note
 1.0.0      setup   new      2026-08-04T00:00:00Z -          retroactive - installed on the two owner machines before this gate existed; exact build commit and time not recorded, so the next shipping setup must be greater than 1.0.0
+1.1.0      update  new      2026-08-06T00:13:41Z 12f4fc1    sha256 8a817ab56ed74acb
+1.2.0      update  new      2026-08-06T00:16:14Z 33ba49a    sha256 1aa4624fdacf3835
+1.1.0      update  rebuild  2026-08-06T00:59:22Z ecac7ef    sha256 86aef7e587b93c4b - rebuild: re-cut: 12f4fc1 shipped the updater defect fixed in PR #191
+1.2.0      update  rebuild  2026-08-06T01:02:33Z d2fade8    sha256 67c714b3fa09a92a - rebuild: re-cut: 33ba49a shipped the updater defect fixed in PR #191
