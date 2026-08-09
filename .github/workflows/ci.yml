@@ -462,5 +462,56 @@ jobs:
             Write-Host "FAIL - ProductVersion '$($fi.ProductVersion)' does not end '+$sha'. /healthz would stop reporting the commit and EVERY update would fail its health check and roll back."; $fail = 1
           }
           if ($fail) { exit 1 }
-          Write-Host "confirmed: the running build will report version $iss and commit $sha"
+          Write-Host "confirmed: the published assembly reports version $iss and commit $sha"
+          exit 0
+
+      # NEGATIVE CONTROL - because the step above CANNOT FAIL on main, and a
+      # check that cannot fail is worth nothing.
+      #
+      # main's aurora.iss AppVer is 1.0.0, and 1.0.0.0 is ALSO what the .NET SDK
+      # stamps when no version is passed at all. So "FileVersion starts 1.0.0"
+      # holds identically whether -p:Version is plumbed through or was silently
+      # dropped. The first run of that assertion (2026-08-09, PR #194) printed
+      # FileVersion = 1.0.0.0 and passed, proving nothing about the flag.
+      #
+      # This step builds the SAME project with a version that is NOT the SDK
+      # default and requires the assembly to carry it, which fails loudly if
+      # -p:Version stops being honoured. It also re-checks that SourceRevisionId
+      # still appends "+<sha>" ALONGSIDE an explicit Version - the coexistence
+      # that actually matters, since losing that suffix makes every update fail
+      # its health check and roll back.
+      - name: -p:Version is really plumbed through (negative control, non-default version)
+        run: |
+          $sha = (& git rev-parse HEAD).Trim()
+          $out = Join-Path $env:RUNNER_TEMP 'verstamp-control'
+          Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+          & dotnet build '.\server\AuroraIcu.Api.csproj' -c Release --nologo `
+              -p:Version=9.9.9 "-p:SourceRevisionId=$sha" -o $out 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { Write-Host "FAIL - the control build did not compile (exit $LASTEXITCODE); the stamp cannot be verified"; exit 1 }
+          $dll = Join-Path $out 'AuroraIcu.Api.dll'
+          if (-not (Test-Path $dll)) { Write-Host "FAIL - no control assembly at $dll"; exit 1 }
+          $fi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($dll)
+          Write-Host "control FileVersion    = $($fi.FileVersion)"
+          Write-Host "control ProductVersion = $($fi.ProductVersion)"
+          $fail = 0
+          if ($fi.FileVersion -notlike '9.9.9*') {
+            Write-Host "FAIL - asked for Version=9.9.9 and got FileVersion '$($fi.FileVersion)'. -p:Version is NOT reaching the compiler, so build.ps1 stamps nothing and every release reports the SDK default."; $fail = 1
+          }
+          if ($fi.ProductVersion -notlike "*+$sha") {
+            Write-Host "FAIL - control ProductVersion '$($fi.ProductVersion)' does not end '+$sha'. An explicit Version has displaced the commit suffix: /healthz would stop reporting the commit and EVERY update would fail its health check and roll back."; $fail = 1
+          }
+          if ($fail) { exit 1 }
+          Write-Host "confirmed: an explicit -p:Version reaches the assembly AND coexists with the +<sha> suffix"
+          exit 0
+
+      # And that build.ps1 still PASSES it. The control above proves the SDK
+      # honours the flag; this proves the shipping build still supplies it.
+      - name: build.ps1 must pass -p:Version to the publish
+        run: |
+          $b = Get-Content -Raw '.\installer\build.ps1'
+          if ($b -notmatch '-p:Version=\$appVer') {
+            Write-Host "FAIL - installer\build.ps1 no longer passes -p:Version=`$appVer; the shipped exe would report the SDK default 1.0.0.0 at every release."
+            exit 1
+          }
+          Write-Host 'confirmed: build.ps1 stamps the release version into the assembly'
           exit 0
