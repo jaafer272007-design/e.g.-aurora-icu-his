@@ -47,6 +47,62 @@ each cites where the underlying claim is recorded.]*
   owner; the "Last updated / current through" marker at the top of 02
   is refreshed with each such update.)*
 
+## 🔴 A design is recorded before it is built — no versioned source, no build (added 2026-08-17)
+
+**CODIFIED RULE — a design document is committed VERBATIM to `docs/design/`
+BEFORE implementation starts, and a build whose design has no versioned source
+does not begin.** Verbatim means as received from the clinical/operational
+source: no reformatting, no heading changes, no tidying, no "while I'm here"
+edits. It lands in its own commit, alone.
+
+**This was already the practice for 20 design files** — the observation model,
+SOFA, NEWS2, the MAR schedule, the print templates and fifteen more — and
+02_PROJECT_STATUS.md describes it about thirty times, in those words:
+"recorded verbatim", "committed verbatim", "transcribed verbatim from the
+clinical source".
+
+**And it still did not hold, because it lived only in the record.** 02 is the
+CHANGING RECORD: it documents what was done, design by design, after the fact.
+Nothing in THIS file — the working discipline, the one consulted to know what
+must happen — required it, and CLAUDE.md's documentation map does not mention
+`docs/design/` at all. Twenty precedents in a status log do not stop the
+twenty-first build; a rule does. So when the **Inpatient Reception** design was
+never committed, nothing objected, and the Ward module's step 3 stood one step
+from being built out of a chat log. **A practice evidenced thirty times and
+required zero times is a habit, not a discipline** — that gap is the general
+lesson, and it is why this rule is here rather than in 02 with the others.
+
+Why it matters, stated as the failures it prevents:
+
+- **A design that exists only in a conversation cannot be diffed, cited, or
+  superseded.** The supersede-don't-rewrite rule above has nothing to operate
+  on — there is no original text to keep. Every later decision silently BECOMES
+  the design, and no reader can separate what a clinician approved from what
+  was assumed on their behalf.
+- **It cannot be verified against.** "Built per the design" is unfalsifiable
+  when the design is not a file. This is the CI-evidence rule applied to
+  specifications: a claim nobody can check is not evidence.
+- **Reconstruction is worse than absence.** A design rebuilt from memory, from
+  a conversation, or from the code meant to implement it is a FABRICATED RECORD
+  in the one folder whose whole convention is that its contents came verbatim
+  from a clinical source. It would be indistinguishable from a real one, and
+  the physician whose name is on it never saw it. **If the source cannot be
+  found, stop and ask for it. Never rebuild it.**
+
+Binding consequences:
+
+- **Provenance is stated exactly as strong as it is, and no stronger.** Say
+  where the copy came from and what was actually verified about it. If it could
+  not be diffed against a source file, say that — never let "verbatim" imply a
+  comparison that did not happen. Publishing a hash and a byte count lets
+  someone else make the stronger claim later.
+- **Later decisions are APPENDED, never merged into the approved text.** An
+  `Amendments` section that quotes each item it resolves, so the diff is a pure
+  append and the approved document stays byte-identical — provable by hashing
+  the original's byte range and by `0` deletions in the diff.
+  `docs/design/inpatient-reception.md` is the worked example.
+- **Open items stay open where they were written.** Resolving one edits the
+  amendment, not the item.
 ## CI evidence — skipped ≠ passed (codified rule)
 
 *[Docs split note: moved verbatim from the "CI Evidence" section, whose
