@@ -22,6 +22,34 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-17 (later still) · THE FIRST REAL HOSPITAL CONTRADICTED §4 OF THE
+RECEPTION DESIGN — the ward model is superseded and three questions go back to
+them (#200, docs only).** No code changed and step 3 is unaffected: reception
+records Department and Service and never chooses a bed, so nothing shipped
+depended on §4. The hospital under contract has **single-bed rooms, no
+specialty-separated wards, and every bed serving every department** — surgical
+and gynaecology patients go into any room — so the Service→Ward mapping becomes
+**OPTIONAL master data, and when it is unset the boarding concept is ABSENT**,
+not merely permissive: all empty beds are offered and no reason is asked,
+because a boarding reason recorded on 100% of admissions records nothing.
+
+**Three questions are now open for the hospital, one line each:**
+
+1. **Every bed explicitly tagged with both departments, or no mapping at all?**
+   Identical today; they diverge when a third department is added.
+2. **Is a day case an inpatient admission here, or same-day in-and-out?** The
+   answer decides whether the multi-bed day-case rooms are in this flow at all.
+3. **Is the admitting doctor selected manually or derived from the Service?** If
+   derived, it must be a visible, editable default — never a silent assignment.
+
+**The reasoning for each is NOT repeated here.** It lives in
+`docs/design/inpatient-reception.md` § Amendments, in the entry
+"§4 superseded by the first real hospital", appended there byte-identically to
+the approved text. This marker exists to say the questions EXIST and where they
+are; restating them in two places is how two records start disagreeing. The
+bed-registry consequence — no ROOM concept — is on the Known Feature Gaps shelf
+below, with the `/adt/attendings` leg.
+
 **2026-08-17 (later) · INPATIENT RECEPTION MASTER DATA — step 3: four governed
 vocabularies, one of which the compiler cannot protect.** Built from
 `docs/design/inpatient-reception.md` §2 and its Amendments — the first build
@@ -11273,6 +11301,23 @@ loud failure beats an unrecoverable silent pass.
 *[Attributed addition 2026-07-12 — recorded per the project owner's
 instruction, source stated per the documentation rule.]*
 
+- **🔴 The bed registry has no ROOM concept** (recorded 2026-08-17 with the
+  reception design's §4 amendment, #200; owed to the Ward design). `BedRow` is
+  `BedId` · `Area` · `Seq` · `Active` plus the append-only audit — there is no
+  room, and **`Area` is not one**: it is a board GROUPING, seeded as
+  `Pod A` / `Pod B`, and the bed board derives its groups as the distinct set of
+  areas (`src/lib/api/bedboard.ts:57`). Single-bed rooms make **room ≈ bed**, so
+  for most of the contracted hospital's stock nothing is missing. **The day-case
+  surgery areas are where it bites: one room number over several beds is a
+  relationship the model cannot express**, and `Area` cannot be made to carry it
+  without the bed board silently turning into a room list.
+  **OWED:** a real Room concept, decided in the Ward design — not in the
+  reception design, which never chooses a bed. Its scope depends on an open
+  question recorded with it: if a day case is not an inpatient admission at this
+  hospital, those multi-bed rooms may fall outside this flow entirely and the
+  gap may not need closing for admissions at all. Full context:
+  `docs/design/inpatient-reception.md` § Amendments, "§4 superseded by the first
+  real hospital", item 2.
 - **🔴 `/adt/attendings` is consultant-only by ONE LINE, and nothing in CI pins
   it** (recorded 2026-08-17, with the Inpatient Reception step-3 build; owed to
   the ward doctor-list build). The endpoint is gated on `adt.admit`, which
