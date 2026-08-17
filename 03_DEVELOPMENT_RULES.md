@@ -65,6 +65,68 @@ evidence only when someone dispatches them), and an assertion whose
 failure is swallowed by its surrounding construct (`cmd && echo` lists,
 `read VAR <<<"$(…assert…)"`) gated nothing.
 
+## 🔴 A check that never ran reads as a check that passed — look at WHICH workflow answered (added 2026-08-17)
+
+The twin of the rule above, and the sharper one, because the existing rule
+assumes a run happened at all.
+
+**`ci.yml` triggers on `pull_request` and on pushes to `main` — and nothing
+else.** A commit pushed to a feature branch *before its PR exists* is therefore
+evaluated by **nothing**. The branch still shows activity: other workflows
+(Pages `deploy`, `check`) do fire on the push and report **success**. Query
+"the latest run on this branch" without scoping it to `ci.yml` and a green
+comes back that was never about the change.
+
+**CODIFIED RULE — a green is only evidence if you can name the workflow, the
+job and the commit sha that produced it.** "The branch is green" is not a
+claim; "`ci.yml`'s `server` job passed on `<sha>`" is.
+
+**THE STAKES INVERT WHEN THE PROOF IS A RED RUN.** This is why it needs its own
+rule rather than a footnote. A gate demonstrated by deliberately breaking it —
+the discipline this file already requires — depends on seeing the failure. If
+the run never happened, the absence of a failure is indistinguishable from the
+defect being impossible, and the conclusion drawn is the exact opposite of the
+truth: **a red that never ran reads as a green.** Found 2026-08-17 while proving
+the generic vocabulary mapper (#197): the deliberate wrong-`DbSet` commit was
+pushed with no PR open, `ci.yml` did not run, an unrelated workflow reported
+success, and that success was very nearly read as "the compile-time guarantee
+holds". Opening the PR is what made CI evaluate the commit; it then failed with
+the expected `CS0029`. The proof was intact only because the run was checked
+per-workflow rather than per-branch.
+
+## 🔴 Closing one instance of a defect class is not closing the class (added 2026-08-17)
+
+**CODIFIED RULE — before declaring a class of defect closed, enumerate the ways
+IN and say which ones the fix covers.** A fix that removes the route you
+happened to find, while another route to the identical outcome stays open, is a
+fix — but calling it a closed class converts a known hole into an unknown one,
+because nobody looks again at something recorded as solved.
+
+**Worked example — #195, declared closed, was not.** `VocabApi.MapVocab`'s
+create path switched on a tenant string and ended `_ => db.Shifts.Add(...)`, so
+a vocabulary registered without editing that switch silently wrote `ShiftRow`s:
+wrong table, HTTP 200, nothing thrown. #195 made the row factory a REQUIRED
+parameter, so **omission** became a compile error, added a static gate proven
+against the real historical line, and recorded the class as shut.
+
+It was not. The factory returned `Func<object>` and the row types shared no
+interface, so a **copy-pasted** factory naming another tenant's `DbSet`
+compiled cleanly and produced the identical wrong-table write. Two routes to
+one outcome; one was closed and the class was declared closed. The owner asked
+the question that surfaced it — *does the return type let a copy-paste return
+the wrong row type and still compile?* — and the answer was yes. #197 closes it
+by construction (`MapVocab<TRow>` owns the insert; the caller supplies a `DbSet`
+selector, never an `Add`), proven by a deliberate wrong-`DbSet` commit failing
+to compile in CI before the fix commit made it green.
+
+The enumeration that should have accompanied #195: a tenant may reach the wrong
+table by (1) omitting the factory, (2) supplying a factory for another tenant,
+(3) supplying the right factory with the wrong `DbSet`, (4) registering without
+pinning the row type so inference silently accepts a mismatched `DbSet`. #195
+closed (1). #197 closes (2), (3) and (4) — (4) via the registration gate, since
+an omitted `<TRow>` lets C# infer the type from whatever `DbSet` was pasted in
+and the mismatch disappears.
+
 ## Test on the engine that ships (added 2026-08-01)
 
 **CODIFIED RULE — a test that passes on a different runtime than the one
