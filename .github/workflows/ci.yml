@@ -105,6 +105,16 @@ jobs:
           checkpos() { local n; n=$(PSQL "select count(*) from \"$1\""); [ "$n" -gt 0 ] 2>/dev/null && echo "  ok  $1=$n" || { echo "  FAIL $1=$n (expected > 0)"; fail=1; }; }
           echo "clinical tables must be EMPTY:"
           for t in AdtPatients Encounters Orders Observations LabDraws Handoffs Patients; do check0 "$t"; done
+          # The Inpatient Reception master data seeds NOTHING in production, on
+          # purpose: admission types, departments, services and admission
+          # sources are 100% hospital-specific, so there is no honest starting
+          # set (the hospital-identity precedent, NOT the dispositions /
+          # isolation / shifts one — those are clinically universal and seed in
+          # both modes, and are asserted PRESENT on the line below).
+          # Asserted here rather than merely done: an absence with no assertion
+          # behind it is indistinguishable from a seed somebody forgot.
+          echo "reception master data must be EMPTY on a production boot:"
+          for t in AdmissionTypes Departments Services AdmissionSources; do check0 "$t"; done
           echo "catalogues/config must be PRESENT:"
           for t in Beds LabTests OrderSets CodeStatuses Dispositions IsolationTypes Shifts NamedFrequencies InteractionRules ImagingCatalog ObservationTypes; do checkpos "$t"; done
           echo "users must be exactly admin + system:"
@@ -306,6 +316,103 @@ jobs:
           # moved nothing of its neighbour's
           assert_added IsolationTypes "$BEFORE_IsolationTypes" "$ISO"
           echo "both vocabularies wrote to their OWN table; every sibling is byte-identical to its pre-POST code set"
+
+          # ---- SERVICE: the one insert the type system CANNOT reach --------
+          # Everything above proves the MAPPER routes correctly, and #197 makes
+          # a mapper registration naming the wrong DbSet a compile error. The
+          # services POST is different in kind: it carries an immutable parent
+          # at creation, so it maps its own POST and its `db.Services.Add(row)`
+          # is HAND-WRITTEN. Writing db.Shifts.Add(...) there would compile
+          # perfectly. That escape hatch is the only surviving route to the
+          # wrong-table class, so it gets the runtime assertion the compiler
+          # cannot give it.
+          #
+          # Reception master data is hospital.configure — the OFFICE
+          # Administrator's atom. The Consultant above does not hold it and
+          # neither does the bootstrap System Administrator, so this leg mints
+          # its own office-Administrator account (a Hospital Administrator
+          # title needs no justification: the profile is neither clinical nor
+          # SysAdmin).
+          echo "SERVICE (bespoke POST, outside the compile-time guarantee):"
+          for t in AdmissionTypes Departments Services AdmissionSources; do
+            n=$(PSQL "select count(*) from \"$t\"")
+            [ "$n" = "0" ] || die "$t should be EMPTY before this leg (production seeds none), found $n"
+          done
+          echo "  ok   all four reception tables start empty"
+          curl -sf -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"username":"ci.vocab.adm","name":"CI Vocab Office Admin","roles":["Hospital Administrator"],"initialPassword":"CI-Vocab-Off-9xTmp"}' \
+            "$API/api/icu/users" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["roles"]==["Hospital Administrator"], d; print("  ok   office Administrator created (no justification needed — neither clinical nor SysAdmin)")'
+          resp=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
+            -d '{"username":"ci.vocab.adm","password":"CI-Vocab-Off-9xTmp"}')
+          CT3=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["changeToken"])')
+          OFF=$(curl -sf -X POST "$API/api/auth/change-password" -H 'Content-Type: application/json' \
+            -d "{\"token\":\"$CT3\",\"newPassword\":\"CI-Vocab-Off-9x\"}" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["jobTitle"]=="Hospital Administrator", d; print(d["token"])')
+          [ -n "$OFF" ] || die "no session token for the office Administrator"
+
+          # NEGATIVE CONTROLS, both directions. Without these a green run cannot
+          # tell "hospital.configure gated this" from "anyone could have".
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"label":"a consultant must not configure departments"}' "$API/api/icu/departments")
+          [ "$rc" = "403" ] || die "Consultant POST /api/icu/departments -> HTTP $rc, expected 403"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"label":"a system administrator must not configure departments"}' "$API/api/icu/departments")
+          [ "$rc" = "403" ] || die "bootstrap SysAdmin POST /api/icu/departments -> HTTP $rc, expected 403"
+          echo "  ok   Consultant AND System Administrator are both 403 on /departments (hospital.configure is the office atom)"
+
+          DEP="dep-ci-$GITHUB_RUN_ID"; SVC="svc-ci-$GITHUB_RUN_ID"
+          curl -sf -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"code\":\"$DEP\",\"label\":\"CI department probe $GITHUB_RUN_ID\"}" "$API/api/icu/departments" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']=='$DEP' and d['active'] is True, d; print('  ok   DepartmentDto returned for '+d['code'])"
+
+          # unknown parent -> 400 that NAMES what is valid (the GroupCode
+          # precedent); a service may not exist without a real department
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"code\":\"svc-orphan-$GITHUB_RUN_ID\",\"label\":\"orphan $GITHUB_RUN_ID\",\"departmentCode\":\"no-such-dept\"}" "$API/api/icu/services")
+          [ "$(echo "$out" | tail -1)" = "400" ] || die "service with unknown departmentCode -> HTTP $(echo "$out" | tail -1), expected 400"
+          echo "$out" | head -1 | grep -q "$DEP" || die "the 400 did not name the valid departments: $(echo "$out" | head -1)"
+          echo "  ok   unknown departmentCode -> 400 naming the active departments"
+          [ "$(PSQL "select count(*) from \"Services\"")" = "0" ] || die "the refused service was written anyway"
+
+          curl -sf -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"code\":\"$SVC\",\"label\":\"CI service probe $GITHUB_RUN_ID\",\"departmentCode\":\"$DEP\"}" "$API/api/icu/services" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']=='$SVC' and d['departmentCode']=='$DEP' and d['active'] is True, d; print('  ok   ServiceDto returned for '+d['code']+' under '+d['departmentCode'])"
+
+          # THE ASSERTION THIS LEG EXISTS FOR — by SQL, not by the response the
+          # same hand-written code produced.
+          landed=$(PSQL "select count(*) from \"Services\" where \"Code\" = '$SVC' and \"DepartmentCode\" = '$DEP'")
+          [ "$landed" = "1" ] || die "'$SVC' is NOT in Services with parent '$DEP' (found $landed)"
+          [ "$(PSQL "select count(*) from \"Services\"")" = "1" ] || die "Services holds more than the one row this leg created"
+          echo "  ok   Services = exactly '$SVC', parent '$DEP'"
+          # every table the hand-written Add could have named instead
+          for t in AdmissionTypes AdmissionSources; do
+            n=$(PSQL "select count(*) from \"$t\"")
+            [ "$n" = "0" ] || die "the services insert wrote $n row(s) into $t — the wrong table"
+          done
+          absent Shifts "$SVC"; absent IsolationTypes "$SVC"; absent Dispositions "$SVC"
+          assert_added Shifts "$BEFORE_Shifts" "$SHF"
+          assert_added IsolationTypes "$BEFORE_IsolationTypes" "$ISO"
+          assert_unchanged Dispositions "$BEFORE_Dispositions"
+          [ "$(PSQL "select count(*) from \"Departments\"")" = "1" ] || die "Departments moved"
+          echo "  ok   the hand-written insert touched Services and nothing else"
+
+          # NO REPARENTING — the edit contract has no departmentCode member, so
+          # Disallow turns naming it into a binding 400. Asserted, not assumed.
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"label\":\"CI service probe $GITHUB_RUN_ID renamed\",\"departmentCode\":\"$DEP\"}" "$API/api/icu/services/$SVC")
+          [ "$(echo "$out" | tail -1)" = "400" ] || die "PUT naming departmentCode -> HTTP $(echo "$out" | tail -1), expected a binding 400"
+          [ "$(PSQL "select \"DepartmentCode\" from \"Services\" where \"Code\" = '$SVC'")" = "$DEP" ] || die "the parent moved"
+          echo "  ok   a PUT naming departmentCode is a binding 400 — no reparenting path exists"
+
+          # THE HIERARCHY GUARD (the half that can be built): a department with
+          # an active service refuses to retire.
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/departments/$DEP/deactivate")
+          [ "$(echo "$out" | tail -1)" = "409" ] || die "retiring a department with an active service -> HTTP $(echo "$out" | tail -1), expected 409"
+          echo "$out" | head -1 | grep -q "active service" || die "the 409 did not name the blocking services: $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"Active\" from \"Departments\" where \"Code\" = '$DEP'")" = "t" ] || die "the department was retired despite the guard"
+          echo "  ok   department with an active service refuses to retire (409, department still active)"
+          echo "the bespoke services insert is covered by SQL — the one path #197's compiler guarantee cannot reach"
 
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #
