@@ -22,6 +22,121 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-17 (later) · INPATIENT RECEPTION MASTER DATA — step 3: four governed
+vocabularies, one of which the compiler cannot protect.** Built from
+`docs/design/inpatient-reception.md` §2 and its Amendments — the first build
+under 03's new rule that a design is committed verbatim before implementation
+starts. Server-side only; PR #199.
+
+**THREE OF THE FOUR ARE #197's MAPPER, UNCHANGED.** Admission Type, Department
+and Source of Admission are `Code/Label/Seq/Active/EventsJson` and nothing
+else, so they are three `MapVocab<TRow>` registrations: a registration naming
+another tenant's `DbSet` is still a compile error. **SERVICE IS NOT**, and the
+design's §2.1 worry — that a hierarchy would need the flat vocabulary manager
+extended — turns out to be unnecessary. A service carries its immutable parent
+at creation and the shared `CreateVocabEntryRequest` has no field for it, so it
+takes the SAME explicit exception dispositions already take (`toDto: null` plus
+its own POST). #195 built that escape hatch and #197 preserved it; Service is
+its second user. GET/PUT/deactivate/reactivate still come from the mapper.
+
+**🔴 THE BESPOKE INSERT SITS OUTSIDE THE COMPILE-TIME GUARANTEE, AND THAT WAS
+DEMONSTRATED RATHER THAN ASSERTED.** `MapVocab` owns the `Add` for the other
+three; in the services POST `db.Services.Add(row)` is a line a human chose, and
+`db.Shifts.Add(...)` compiles equally well. So the wrong-table class #195 and
+#197 closed is reachable again through exactly this hatch and nowhere else.
+`ci.yml`'s production-seed leg now covers it by SQL, and its teeth were
+measured by reinstating the precise defect the hatch permits — the services
+POST building its `ServiceRow`, writing a `ShiftRow` to `db.Shifts`, and
+returning the `ServiceDto` anyway:
+
+- **it COMPILED** (`Build succeeded, 0 Error(s)`) — which is what "outside the
+  guarantee" means, shown instead of claimed;
+- **the API returned a correct-looking `ServiceDto`** — right code, right
+  `departmentCode`, `active: true`, HTTP 200 — **and the response assertion
+  PASSED**;
+- **only the SQL caught it**: `FAIL 'svc-ci-…' is NOT in Services with parent
+  'dep-ci-…' (found 0)`, exit 1.
+
+A response-shape check would have certified the wrong-table write as correct.
+That is the whole reason the assertion reads the TABLE rather than the JSON the
+same hand-written code produced. Dispositions' own POST has always had this
+property; both are now exercised by that leg, along with an unknown-parent 400
+that names the valid departments, a binding 400 on a reparenting PUT, and the
+department retire guard's 409.
+
+**THE SEEDING ASYMMETRY, RECORDED WITH ITS REASON — because four vocabularies
+seeded and four not, unexplained, reads as a forgotten seed.** Dispositions,
+isolation types and shifts seed in BOTH modes because they are CLINICALLY
+UNIVERSAL: every ICU discharges home, to a ward, or to a death; every hospital
+isolates for contact and droplet. The four reception lists seed **nothing in
+production** because they are 100% HOSPITAL-SPECIFIC — one hospital's
+departments are meaningless to another, so there is no honest starting set, and
+a seeded "General Surgery" the hospital does not have would be a fabricated
+fact in the one place a clerk would trust it. The precedent followed is
+**hospital identity** (demo only, asserted empty on a production boot), not the
+vocabulary one. Demo/staging seeds the design's own §2 table and §2.1 tree as
+DATA so staging renders. `ci.yml` asserts the emptiness with **`check0`, not
+`checkpos`**: an absence with no assertion behind it is indistinguishable from
+a seed somebody forgot.
+
+**MIGRATION `AddReceptionVocabularies`, HAND-READ — and the outcome is not what
+the two recorded bites predict.** Both of those were `AddColumn` on POPULATED
+tables (`AddBedRegistry:25,32`; `AddConfigVocabularies:24,31,38`), where EF
+scaffolds `defaultValue: false` / `""` and the values had to be hand-corrected
+to `true` / `"[]"` or the upgrade would have retired every bed and every named
+frequency. These four are `CreateTable` on NEW tables, where EF emits no
+defaults at all — and the precedent sits in that same migration: Dispositions,
+IsolationTypes and Shifts were created at `AddConfigVocabularies:40-79` with
+`Active`/`EventsJson` `nullable: false` and no `defaultValue`, exactly like
+this one. **No hand-edit was needed; adding defaults would have DEVIATED from
+the three sibling tables.** The invariant rests where theirs does — on the CLR
+initializers (`= true`, `= "[]"`). Recorded in this shape deliberately: "the
+defaults were checked" would imply something was changed, and nothing was.
+
+**FOUR OF FIVE, AND THE FIFTH IS A DECISION.** The referring-doctor typeahead
+and the `admissions.create` atom defer to the Configuration-screen step. The
+decisive argument was the RBAC matrix: `01_ARCHITECTURE.md`'s table is
+maintained as a mirror of `Rbac.cs`, so introducing the atom now would show the
+office Administrator holding `admissions.create` while no endpoint accepts them
+— a false row in a table whose entire value is that it matches the code.
+Secondarily, ruling 5 gates the referrer list on that atom *because* the save
+happens mid-admission while typing, an interaction that does not exist yet, so
+the gate could not be tested for the reason it was chosen. Recorded in the
+design's own Amendments under "Build sequencing", where a reader counting the
+five lists arrives.
+
+**STEP 4 IS NAMED, NOT LEFT IMPLICIT: the Configuration screens.** After step 3
+a hospital has four correctly-governed tables and **no way to populate them** —
+every endpoint is an API call. Reception is unusable until those screens exist,
+which is the honest consequence of seeding nothing in production rather than a
+defect in step 3. Step 4 carries the referrer typeahead and `admissions.create`
+with it. Named because an unnamed gap becomes an invisible one.
+
+**TWO ITEMS OWED, both stated where they are missing rather than left silent:**
+
+- **The department retire guard is HALF BUILT.** §2.1 asks for retirement to be
+  refused while a department has active SERVICES *or* OPEN ADMISSIONS. The
+  services half is built and asserted (409 naming the blockers, department
+  still active afterwards). The admissions half **cannot** be built: an
+  admission does not carry a department until the admission build lands, so
+  there is nothing to count. Named at the guard itself in `VocabApi.cs` and
+  owed to the admission build. A half-guard that reads as a whole one is the
+  exact shape this repo keeps paying for.
+- **OPEN QUESTION, flagged rather than silently decided: the services
+  duplicate-label check is TABLE-WIDE, not per-department**, so "Emergency"
+  cannot exist under two departments at once. The design does not decide this.
+  Table-wide was chosen because the shared mapper's PUT enforces table-wide on
+  every edit — scoping CREATE per-department while EDIT stayed table-wide would
+  let a row be created that can never be edited. A uniform stricter rule costs
+  an occasional precise 409; a split rule costs a trap. Relaxing it later means
+  Service mapping its own PUT as well.
+
+**Verified locally before the push** (real PostgreSQL 16, production-mode boot
+of this tree): clean-slate step green including the four new `check0` lines;
+the full runtime leg green at 44 assertions; the defect run red at the intended
+line with everything before it passing; the restored run green again on a fresh
+database.
+
 **2026-08-17 · A VOCABULARY TENANT COULD SILENTLY WRITE TO ANOTHER TENANT'S
 TABLE — closed by construction, then PROVEN, in three PRs (#195, #196, #197).**
 Opened by the owner's question ahead of the Inpatient Reception build, which
@@ -11157,6 +11272,26 @@ loud failure beats an unrecoverable silent pass.
 
 *[Attributed addition 2026-07-12 — recorded per the project owner's
 instruction, source stated per the documentation rule.]*
+
+- **🔴 `/adt/attendings` is consultant-only by ONE LINE, and nothing in CI pins
+  it** (recorded 2026-08-17, with the Inpatient Reception step-3 build; owed to
+  the ward doctor-list build). The endpoint is gated on `adt.admit`, which
+  **both** Doctor and SeniorDoctor tokens hold (`AdtApi.cs:57`, and the comment
+  at `:48` says so outright) — so the gate is not what narrows it. The
+  narrowing is the single filter `Rbac.ProfileOf(t) == "SeniorDoctor"` at
+  `AdtApi.cs:62`. **The deployed suite cannot detect that line changing.**
+  `deployed-adt-e2e.yml:167` asserts `maya.chen` is ABSENT from the list, and
+  `maya.chen` is a Staff Nurse → Nurse profile: widening the filter to include
+  the Doctor profile would admit `liam.osei` (Specialist), `yara.haddad`,
+  `jonas.weber` and `amina.diallo`, and `maya.chen` would STILL be absent,
+  because Nurse is neither profile. The assertion survives the widening intact
+  and therefore pins nothing.
+  **OWED:** when the ward's Doctor+SeniorDoctor admitting list is built (the
+  reception design's Amendment 2 — a NEW endpoint, with `/adt/attendings`
+  staying byte-identical), the ADT suite needs a leg asserting the seeded
+  **Specialist `liam.osei` is ABSENT** from `/adt/attendings`. That is the
+  assertion that fails if ICU's picker is ever silently widened, and the one
+  the current nurse-absence check only appears to provide.
 
 - **Imaging ordering is not implemented.** Source: identified by the
   project's clinical validator (the ICU physician) during hands-on

@@ -389,3 +389,42 @@ hold `hospital.configure`** (`Rbac.cs`: it sits on the office Administrator).
 Gating the save on the configuration atom would 403 every doctor on the
 save-while-typing path the design asks for, on the one interaction it was
 designed around.
+
+### Build sequencing — which of the five lists step 3 ships (recorded 2026-08-17)
+
+Amendment A above splits §2's five lists into four governed vocabularies and
+one typeahead source. **Step 3 builds the four. It does not build the fifth**,
+and that is a decision with a reason rather than an omission — recorded here,
+beside the split, because this is where a reader counting the lists arrives.
+
+**Referring doctors, and the `admissions.create` atom with it, defer to the
+Configuration-screen step.** Ruling 5 gates the referrer list on
+`admissions.create` precisely because the save happens *mid-admission, under a
+Doctor token, while typing* — and that interaction does not exist yet. Two
+consequences follow:
+
+- **The gate could not be tested for the reason it was chosen.** With no
+  reception screen, an assertion can only show that a Doctor may POST a
+  referrer — true, and silent about the 403-on-save-while-typing hazard the
+  atom exists to avoid. A gate whose justification cannot be exercised is the
+  shape this project already refuses elsewhere.
+- **The atom would publish a capability the code does not honour.**
+  `01_ARCHITECTURE.md`'s RBAC matrix is maintained as a mirror of `Rbac.cs`, so
+  introducing `admissions.create` now would show the office Administrator
+  holding it while no endpoint accepts them — a false row in a table whose
+  whole value is that it matches the code. This was the decisive argument.
+
+The design also argues against pre-loading on its own terms: §3.4 wants
+referrers to accumulate by typing, *"without an admin having to pre-load
+them."* An empty referrer list with no screen to fill it has no consumer.
+
+**THE CONFIGURATION UI IS ITS OWN STEP, NAMED HERE SO THE GAP IS VISIBLE.**
+After step 3 a hospital has four correctly-governed tables and **no way to
+populate them** — every endpoint is an API call. Reception cannot be used until
+those screens exist, which is the honest consequence of seeding nothing in
+production (§2, and the seeding record in 02_PROJECT_STATUS.md), not a defect
+in step 3. An unnamed gap becomes an invisible one, so it is named: **step 4 is
+the Configuration screens for the four vocabularies, and it carries the
+referrer typeahead and `admissions.create` with it.**
+
+Nothing in §§0–8, in Amendment A, or in rulings 1–5 is altered by this entry.
