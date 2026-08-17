@@ -34,7 +34,22 @@ namespace Aurora.Core.MasterData;
      the API — a rule in code, like the q<n>h pattern), so recording a
      death is always possible and the mortality numerator can never be
      silently configured away. */
-class DispositionRow
+/* THE SHARED SHAPE. Every vocabulary row carries exactly these five columns;
+   the mapper computes Seq and stamps the audit event ONCE against this
+   interface instead of five times at five call sites. It also pins TRow, which
+   is what makes MapVocab<TRow> reject a registration whose DbSet belongs to a
+   different tenant - see the header of VocabApi.MapVocab for the defect that
+   made this necessary. */
+interface IVocabRow
+{
+    string Code { get; set; }
+    string Label { get; set; }
+    int Seq { get; set; }
+    bool Active { get; set; }
+    string EventsJson { get; set; }
+}
+
+class DispositionRow : IVocabRow
 {
     [Key]
     public string Code { get; set; } = "";
@@ -56,7 +71,7 @@ class DispositionRow
    target for pre-vocabulary `isolation: true` patients — the recorded
    fact was "isolated", not which kind; a clinician refines it. A type
    is never guessed. */
-class IsolationTypeRow
+class IsolationTypeRow : IVocabRow
 {
     [Key]
     public string Code { get; set; } = "";
@@ -76,7 +91,7 @@ class IsolationTypeRow
    audit record): retiring a shift never touches existing assignments —
    they keep rendering through the label resolver (retired entries
    resolve forever), and only NEW assignments are refused it. */
-class ShiftRow
+class ShiftRow : IVocabRow
 {
     [Key]
     public string Code { get; set; } = "";
