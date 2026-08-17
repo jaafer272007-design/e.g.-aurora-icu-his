@@ -287,7 +287,7 @@ jobs:
           # for: IsolationTypeRow and ShiftRow are field-for-field identical, so a mapper
           # that routed by anything other than the caller's own DbSet would have written
           # the shift table here and returned exactly the same 200.
-          for t in IsolationTypes Dispositions; do
+          for t in Shifts Dispositions; do
             eval "b=\$BEFORE_$t"
             assert_unchanged "$t" "$b"
           done
