@@ -146,6 +146,167 @@ jobs:
           grep -q "T2 — MISSING INSTALL DECISION" t2.log && [ "$rc" != 0 ] \
             && echo "  ok  refused (T2)" || { echo "  FAIL — did not refuse the missing FORMULARY_SEED"; tail -20 t2.log; exit 1; }
 
+      # ---- THE MAPPER WRITES TO THE TENANT'S OWN TABLE (runtime proof) ----
+      #
+      # #195 and #197 made a wrong-table vocabulary write a COMPILE error, and
+      # the deliberate wrong-DbSet commit on #197 proved the compiler answers.
+      # Neither proves the mapper, when it compiles, actually routes each POST
+      # to the DbSet its caller supplied. That is a RUNTIME fact and nothing
+      # asserted it: the vocabulary MANAGEMENT endpoints have no E2E coverage
+      # at all (only the disposition CONSUMPTION path is exercised, in
+      # deployed-adt-e2e.yml). This leg is that assertion.
+      #
+      # isolation-types and shifts, deliberately: IsolationTypeRow and ShiftRow
+      # are field-for-field identical (Code/Label/Seq/Active/EventsJson), which
+      # is exactly the confusion the retired `_ => db.Shifts.Add(...)` default
+      # lived in. DispositionRow carries IsDeath, so it would be a weaker probe.
+      #
+      # LAST STEP, deliberately. The clean-slate step above asserts the user set
+      # is EXACTLY admin,system; minting the Consultant this leg needs any
+      # earlier would turn that assertion red for an unrelated reason. Step 1
+      # also kills its server, so this one boots its own against the database
+      # step 1 already seeded.
+      #
+      # PRODUCTION-SEED ONLY. This job gets a fresh Postgres service container
+      # per run, so these writes die with the job. It must NEVER move into a
+      # deployed suite: vocabulary entries are deactivate-never-delete, so every
+      # dispatch would leave two permanent rows in the durable staging record.
+      - name: The vocabulary mapper writes to the tenant's OWN table (runtime, on the seeded DB)
+        run: |
+          export APP_ENV=production
+          export DATABASE_URL="postgres://aurora:ci@localhost:5432/aurora"
+          export FORMULARY_SEED=starter
+          export ADMIN_BOOTSTRAP_PASSWORD='CI-Bootstrap-Xk-2026'
+          API=http://localhost:8080
+          die() { echo "  FAIL $*"; exit 1; }
+          # step 1 killed its server; boot our own against the SAME, already-seeded database
+          dotnet "$DLL" > vocab.log 2>&1 &
+          SRV=$!
+          trap 'kill $SRV 2>/dev/null || true' EXIT
+          up=""; for i in $(seq 1 90); do
+            if curl -sf -m2 "$API/healthz" >/dev/null; then up=1; break; fi
+            kill -0 $SRV 2>/dev/null || { echo "server exited during boot"; cat vocab.log; exit 1; }
+            sleep 2
+          done
+          [ -n "$up" ] || { echo "no healthz after 180s"; tail -30 vocab.log; exit 1; }
+
+          PSQL() { PGPASSWORD=ci psql -h localhost -U aurora -d aurora -tAc "$1"; }
+          # "<count>|<comma-joined codes>" — the code set is ordered BY POSTGRES, and every
+          # later comparison re-reads it the same way, so no client-side sort can disagree
+          # with the database's collation.
+          snap() { echo "$(PSQL "select count(*) from \"$1\"")|$(PSQL "select coalesce(string_agg(\"Code\", ',' order by \"Code\"), '') from \"$1\"")"; }
+          assert_unchanged() { # table, its BEFORE snapshot
+            now=$(snap "$1")
+            [ "$now" = "$2" ] || die "$1 CHANGED: before [$2] now [$now]"
+            echo "  ok   $1 unchanged [$now]"
+          }
+          assert_added() { # table, its BEFORE snapshot, the one code this POST must have added
+            bn=${2%%|*}; bc=${2#*|}
+            n=$(PSQL "select count(*) from \"$1\"")
+            hits=$(PSQL "select count(*) from \"$1\" where \"Code\" = '$3'")
+            others=$(PSQL "select coalesce(string_agg(\"Code\", ',' order by \"Code\"), '') from \"$1\" where \"Code\" <> '$3'")
+            [ "$n" = "$((bn + 1))" ] || die "$1 count is $n, expected $((bn + 1))"
+            [ "$hits" = "1" ] || die "$1 does not carry '$3' (found $hits)"
+            [ "$others" = "$bc" ] || die "$1's OTHER codes moved: before [$bc] now [$others]"
+            echo "  ok   $1 = before($bn) + exactly '$3'"
+          }
+          absent() { # table, code that must NOT be in it
+            hits=$(PSQL "select count(*) from \"$1\" where \"Code\" = '$2'")
+            [ "$hits" = "0" ] || die "'$2' landed in $1 — the wrong table"
+            echo "  ok   '$2' is absent from $1"
+          }
+
+          # BEFORE — never a hardcoded seed count; and a snapshot of nothing would make
+          # every "unchanged" assertion below pass vacuously, so refuse an empty one.
+          BEFORE_Dispositions=$(snap Dispositions)
+          BEFORE_IsolationTypes=$(snap IsolationTypes)
+          BEFORE_Shifts=$(snap Shifts)
+          for t in Dispositions IsolationTypes Shifts; do
+            eval "b=\$BEFORE_$t"
+            [ "${b%%|*}" -gt 0 ] 2>/dev/null || die "BEFORE snapshot of $t is [$b] — the scan is not reading the database"
+            echo "  before $t = [$b]"
+          done
+
+          # ---- the auth path, four steps, none of them assumable ----
+          # 1. the bootstrap admin ships MustChangePassword, so login returns ONLY a
+          #    pw-change STEP token (audience <env>#pw-change) — never a session.
+          resp=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
+            -d '{"username":"admin","password":"CI-Bootstrap-Xk-2026"}')
+          echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("mustChangePassword") is True and "token" not in d, d; print("  ok   bootstrap login -> change token only, no session")'
+          CT=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["changeToken"])')
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $CT" "$API/api/icu/users")
+          [ "$rc" = "401" ] || die "the pw-change step token authenticated an API endpoint (HTTP $rc, expected 401)"
+          echo "  ok   step token is structurally invalid on the API (401)"
+          # 2. change-password ends in Proceed(), and a single-role account skips the
+          #    chooser — so the SESSION comes back from this one call.
+          ADM=$(curl -sf -X POST "$API/api/auth/change-password" -H 'Content-Type: application/json' \
+            -d "{\"token\":\"$CT\",\"newPassword\":\"CI-Vocab-Adm-9x\"}" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["jobTitle"]=="System Administrator" and d["roles"]==["System Administrator"], d; print(d["token"])')
+          [ -n "$ADM" ] || die "no session token from change-password"
+          echo "  ok   change-password returned the session directly (one call, no chooser)"
+
+          # THE ADMIN-403 LEG. Without it a green run cannot tell "the Consultant's atom
+          # made this work" from "it would have worked anyway": the System Administrator
+          # holds users.manage/users.view/backup.manage and NO vocabulary atom.
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"label":"the system administrator must not be able to add a shift"}' "$API/api/icu/shifts")
+          [ "$rc" = "403" ] || die "bootstrap admin POST /api/icu/shifts -> HTTP $rc, expected 403"
+          echo "  ok   bootstrap admin POST /api/icu/shifts -> 403 (holds no vocabulary atom)"
+
+          # 3. a clinical JobTitle needs an explicit justification
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"username":"ci.vocab.doc","name":"CI Vocab Consultant","roles":["Consultant"],"initialPassword":"CI-Vocab-Doc-9xTmp"}' \
+            "$API/api/icu/users")
+          [ "$(echo "$out" | tail -1)" = "400" ] || die "Consultant create without justification -> HTTP $(echo "$out" | tail -1), expected 400"
+          echo "$out" | head -1 | grep -q "requires a justification" || die "the 400 did not name the missing justification: $(echo "$out" | head -1)"
+          echo "  ok   Consultant create without justification -> 400 naming it"
+          curl -sf -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"username":"ci.vocab.doc","name":"CI Vocab Consultant","roles":["Consultant"],"initialPassword":"CI-Vocab-Doc-9xTmp","justification":"production-seed CI — vocabulary mapper table-routing proof"}' \
+            "$API/api/icu/users" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["roles"]==["Consultant"] and d["mustChangePassword"] is True, d; print("  ok   Consultant created (justified), first-login change forced")'
+          # 4. the created account carries the same forced change
+          resp=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
+            -d '{"username":"ci.vocab.doc","password":"CI-Vocab-Doc-9xTmp"}')
+          echo "$resp" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("mustChangePassword") is True and "token" not in d, d'
+          CT2=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["changeToken"])')
+          DOC=$(curl -sf -X POST "$API/api/auth/change-password" -H 'Content-Type: application/json' \
+            -d "{\"token\":\"$CT2\",\"newPassword\":\"CI-Vocab-Doc-9x\"}" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["jobTitle"]=="Consultant", d; print(d["token"])')
+          [ -n "$DOC" ] || die "no session token for the Consultant"
+          echo "  ok   Consultant session (SeniorDoctor -> isolation.manage + shifts.manage)"
+
+          ISO="iso-ci-$GITHUB_RUN_ID"; SHF="shf-ci-$GITHUB_RUN_ID"
+
+          # ---- the write that the retired `_ => db.Shifts.Add(...)` default got wrong ----
+          echo "POST /api/icu/isolation-types:"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"code\":\"$ISO\",\"label\":\"CI isolation probe $GITHUB_RUN_ID\"}" "$API/api/icu/isolation-types" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']=='$ISO' and d['active'] is True, d; assert 'isDeath' not in d, d; print('  ok   IsolationTypeDto returned for '+d['code'])"
+          assert_added IsolationTypes "$BEFORE_IsolationTypes" "$ISO"
+          # EVERY SIBLING TABLE IS UNCHANGED. This is the assertion the whole leg exists
+          # for: IsolationTypeRow and ShiftRow are field-for-field identical, so a mapper
+          # that routed by anything other than the caller's own DbSet would have written
+          # the shift table here and returned exactly the same 200.
+          for t in IsolationTypes Dispositions; do
+            eval "b=\$BEFORE_$t"
+            assert_unchanged "$t" "$b"
+          done
+          absent Shifts "$ISO"
+          absent Dispositions "$ISO"
+
+          echo "POST /api/icu/shifts:"
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"code\":\"$SHF\",\"label\":\"CI shift probe $GITHUB_RUN_ID\"}" "$API/api/icu/shifts" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['code']=='$SHF' and d['active'] is True, d; assert 'isDeath' not in d, d; print('  ok   ShiftDto returned for '+d['code'])"
+          assert_added Shifts "$BEFORE_Shifts" "$SHF"
+          assert_unchanged Dispositions "$BEFORE_Dispositions"
+          absent IsolationTypes "$SHF"
+          absent Dispositions "$SHF"
+          # and the isolation row is still exactly where it landed — the shifts write
+          # moved nothing of its neighbour's
+          assert_added IsolationTypes "$BEFORE_IsolationTypes" "$ISO"
+          echo "both vocabularies wrote to their OWN table; every sibling is byte-identical to its pre-POST code set"
+
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #
   # Why this job exists: aurora-update.ps1 shipped with PowerShell 7 ternary
