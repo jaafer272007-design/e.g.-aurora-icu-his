@@ -317,6 +317,10 @@ static class Seeder
         SeedDispositions(app, db);
         SeedIsolationTypes(app, db);
         SeedShifts(app, db);
+        /* DEMO/STAGING ONLY — deliberately absent from SeedProduction. See the
+           function's own header for why these four break the vocabulary
+           precedent and follow the hospital-identity one instead. */
+        SeedDemoReceptionVocabularies(app, db);
         SeedDemoHospitalIdentity(app, db);
         SeedImagingCatalog(app, db, demo: true);
     }
@@ -775,6 +779,96 @@ static class Seeder
     /** shifts — verbatim the day/night labels the assignment dialog
         displayed, so existing assignment rows (which store the codes)
         stay valid as data; three-shift hospitals edit the list live */
+    /* ---- Inpatient Reception master data — DEMO / STAGING ONLY ----
+       (docs/design/inpatient-reception.md §2; step 3.)
+
+       PRODUCTION SEEDS NOTHING HERE, ON PURPOSE, and this function is
+       deliberately absent from SeedProduction. Admission types, departments,
+       services and admission sources are 100% HOSPITAL-SPECIFIC — one
+       hospital's departments are meaningless to another — so there is no
+       honest starting set to ship. A real install configures them before
+       reception can be used, and reception being unusable until then is the
+       correct behaviour rather than a gap: a seeded "General Surgery" that the
+       hospital does not have is a fabricated fact in the one place a clerk
+       would trust it.
+
+       THIS BREAKS THE PRECEDENT SET BY THE ICU VOCABULARIES, and the break is
+       the point. SeedDispositions / SeedIsolationTypes / SeedShifts run in BOTH
+       modes because they are CLINICALLY UNIVERSAL: every ICU discharges home,
+       to a ward, or to a death; every hospital isolates for contact and
+       droplet. The precedent these four follow is SeedDemoHospitalIdentity
+       above — demo only, and asserted EMPTY on a production boot by ci.yml's
+       production-seed job. Four vocabularies seeded and four not, unexplained,
+       would read as a forgotten seed, so the asymmetry and its reason are also
+       recorded in 02_PROJECT_STATUS.md.
+
+       The values below are EXAMPLES AS DATA, taken from the design's own §2
+       table and §2.1 tree, so staging renders something recognisable. They are
+       not a recommendation to any hospital. */
+    static void SeedDemoReceptionVocabularies(WebApplication app, AuroraDb db)
+    {
+        if (!db.AdmissionTypes.Any())
+        {
+            var types = new (string Code, string Label)[]
+            {
+                ("elective", "Elective"), ("emergency", "Emergency"), ("urgent", "Urgent"),
+                ("transfer", "Transfer"), ("readmission", "Readmission"), ("other", "Other"),
+            };
+            db.AdmissionTypes.AddRange(types.Select((e, i) => new Aurora.Core.MasterData.AdmissionTypeRow
+            {
+                Code = e.Code, Label = e.Label, Seq = i + 1, Active = true, EventsJson = "[]",
+            }));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} DEMO admission-type entries", types.Length);
+        }
+        if (!db.Departments.Any())
+        {
+            var depts = new (string Code, string Label)[]
+            {
+                ("obgyn", "Gynaecology & Obstetrics"), ("gensurg", "General Surgery"),
+                ("paeds", "Paediatrics"), ("intmed", "Internal Medicine"), ("ortho", "Orthopaedics"),
+            };
+            db.Departments.AddRange(depts.Select((e, i) => new Aurora.Core.MasterData.DepartmentRow
+            {
+                Code = e.Code, Label = e.Label, Seq = i + 1, Active = true, EventsJson = "[]",
+            }));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} DEMO department entries", depts.Length);
+        }
+        /* the design's own §2.1 tree — three services under General Surgery, so
+           staging exercises the hierarchy rather than only the flat lists */
+        if (!db.Services.Any())
+        {
+            var services = new (string Code, string Label, string Dept)[]
+            {
+                ("upper_gi", "Upper GI", "gensurg"),
+                ("colorectal", "Colorectal", "gensurg"),
+                ("vascular", "Vascular", "gensurg"),
+            };
+            db.Services.AddRange(services.Select((e, i) => new Aurora.Core.MasterData.ServiceRow
+            {
+                Code = e.Code, Label = e.Label, DepartmentCode = e.Dept,
+                Seq = i + 1, Active = true, EventsJson = "[]",
+            }));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} DEMO service entries (all under 'gensurg')", services.Length);
+        }
+        if (!db.AdmissionSources.Any())
+        {
+            var sources = new (string Code, string Label)[]
+            {
+                ("home", "Home"), ("clinic", "Clinic"), ("ed", "Emergency Dept"),
+                ("other_hospital", "Another hospital"), ("icu_transfer", "Transfer from ICU"),
+            };
+            db.AdmissionSources.AddRange(sources.Select((e, i) => new Aurora.Core.MasterData.AdmissionSourceRow
+            {
+                Code = e.Code, Label = e.Label, Seq = i + 1, Active = true, EventsJson = "[]",
+            }));
+            db.SaveChanges();
+            app.Logger.LogInformation("Seeded {Count} DEMO admission-source entries", sources.Length);
+        }
+    }
+
     static void SeedShifts(WebApplication app, AuroraDb db)
     {
         if (db.Shifts.Any()) return;

@@ -81,6 +81,82 @@ static class VocabApi
             db => db.Shifts.AsNoTracking().AsEnumerable().Select(s => (s.Code, s.Label, s.Active)),
             toDto: r => r.ToDto());
 
+        /* ---------- Inpatient Reception master data (design §2) ----------
+           Four hospital-configured lists, all gated on hospital.configure —
+           the office Administrator's ADMINISTRATIVE atom, never a clinical
+           profile: a department is how a hospital describes itself, not a
+           clinical judgement (the hospital-identity precedent).
+           Three of the four drop straight onto this mapper. The fourth,
+           SERVICE, carries an immutable parent at creation and therefore maps
+           its own POST below — the same explicit exception dispositions take,
+           not a new mechanism. */
+        MapVocab<AdmissionTypeRow>(app, "admission-types", "hospital.configure", "admission type", "atp",
+            db => db.AdmissionTypes,
+            db => db.AdmissionTypes.OrderBy(t => t.Seq).AsNoTracking().AsEnumerable().Select(t => (object)t.ToDto()),
+            (db, code) => db.AdmissionTypes.FirstOrDefault(t => t.Code == code) is AdmissionTypeRow r
+                ? new VocabHandle(r.Code, r.Label, r.Active,
+                    () => { r.Active = false; }, () => { r.Active = true; },
+                    l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
+                : null,
+            db => db.AdmissionTypes.AsNoTracking().AsEnumerable().Select(t => (t.Code, t.Label, t.Active)),
+            toDto: r => r.ToDto());
+
+        MapVocab<DepartmentRow>(app, "departments", "hospital.configure", "department", "dep",
+            db => db.Departments,
+            db => db.Departments.OrderBy(d => d.Seq).AsNoTracking().AsEnumerable().Select(d => (object)d.ToDto()),
+            (db, code) => db.Departments.FirstOrDefault(d => d.Code == code) is DepartmentRow r
+                ? new VocabHandle(r.Code, r.Label, r.Active,
+                    () => { r.Active = false; }, () => { r.Active = true; },
+                    l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
+                : null,
+            db => db.Departments.AsNoTracking().AsEnumerable().Select(d => (d.Code, d.Label, d.Active)),
+            toDto: r => r.ToDto(),
+            /* THE HIERARCHY GUARD, HALF OF IT (design §2.1). Retiring a
+               department is refused while it still has ACTIVE SERVICES — the
+               occupied-bed precedent, and the reason a Service may never be
+               left pointing at a retired parent.
+               THE OTHER HALF — refused while the department has OPEN
+               ADMISSIONS — IS NOT BUILT AND CANNOT BE: an admission does not
+               carry a department until the admission build lands, so there is
+               nothing to count. It is recorded as owed in 02_PROJECT_STATUS.md
+               rather than left silently absent. A half-guard that reads as a
+               whole one is exactly the false-green shape this repo keeps
+               paying for, so it is named here at the guard itself. */
+            deactivateGuard: (db, code) =>
+            {
+                var kids = db.Services.AsNoTracking().Where(s => s.DepartmentCode == code && s.Active)
+                    .OrderBy(s => s.Seq).Select(s => s.Label).ToList();
+                return kids.Count == 0 ? null
+                    : $"department '{code}' still has {kids.Count} active service(s) — {string.Join(", ", kids)} — "
+                      + "retire those services first; a service may never point at a retired department";
+            });
+
+        /* SERVICE — GET/PUT/deactivate/reactivate come from the mapper; only
+           POST is its own (the parent is immutable at creation and the shared
+           CreateVocabEntryRequest has no field for it). Explicit null, not an
+           omission — the parameter is required. */
+        MapVocab<ServiceRow>(app, "services", "hospital.configure", "service", "svc",
+            db => db.Services,
+            db => db.Services.OrderBy(s => s.Seq).AsNoTracking().AsEnumerable().Select(s => (object)s.ToDto()),
+            (db, code) => db.Services.FirstOrDefault(s => s.Code == code) is ServiceRow r
+                ? new VocabHandle(r.Code, r.Label, r.Active,
+                    () => { r.Active = false; }, () => { r.Active = true; },
+                    l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
+                : null,
+            db => db.Services.AsNoTracking().AsEnumerable().Select(s => (s.Code, s.Label, s.Active)),
+            toDto: null);
+
+        MapVocab<AdmissionSourceRow>(app, "admission-sources", "hospital.configure", "admission source", "src",
+            db => db.AdmissionSources,
+            db => db.AdmissionSources.OrderBy(s => s.Seq).AsNoTracking().AsEnumerable().Select(s => (object)s.ToDto()),
+            (db, code) => db.AdmissionSources.FirstOrDefault(s => s.Code == code) is AdmissionSourceRow r
+                ? new VocabHandle(r.Code, r.Label, r.Active,
+                    () => { r.Active = false; }, () => { r.Active = true; },
+                    l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
+                : null,
+            db => db.AdmissionSources.AsNoTracking().AsEnumerable().Select(s => (s.Code, s.Label, s.Active)),
+            toDto: r => r.ToDto());
+
         /* dispositions POST is mapped separately (it carries the
            immutable isDeath attribute at creation — see MapVocab's
            create for the other tenants) */
@@ -108,6 +184,92 @@ static class VocabApi
                         req.IsDeath == true ? "counts as death (deceased guard + mortality) — immutable" : null) }, JsonOpts.Web),
             };
             db.Dispositions.Add(row);
+            db.SaveChanges();
+            return Results.Json(row.ToDto(), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* ---------------- services POST (the design's one hierarchy) --------
+           MAPPED SEPARATELY because a service carries its immutable parent
+           `departmentCode` at creation, and the shared CreateVocabEntryRequest
+           has no field for it.
+
+           🔴 THIS INSERT SITS OUTSIDE #197's COMPILE-TIME GUARANTEE, and that
+           is the whole reason the production-seed job asserts this path by SQL.
+           MapVocab<TRow> OWNS the Add for every other tenant, so a registration
+           naming another tenant's DbSet cannot compile. Here the Add is
+           HAND-WRITTEN — `db.Services.Add(row)` is a line a human chose, and
+           writing `db.Shifts.Add(...)` instead would compile perfectly. The
+           wrong-table class #195 and #197 closed is reachable again through
+           exactly this escape hatch and nowhere else in the mapper, so the one
+           path the type system cannot reach is the one covered by a runtime
+           assertion instead. Dispositions' own POST has the same property; both
+           are now exercised by that leg.
+
+           THE PARENT IS VALIDATED IN APPLICATION CODE — this database has no
+           foreign keys. The precedent is ObservationType.GroupCode
+           (ObservationCatalogApi.cs:51-54): an unknown parent is a payload
+           reference resolving to nothing → 400 that NAMES what is valid; a
+           RETIRED parent is resource state → 409 (reactivate it and the same
+           request succeeds). The four-code rule, unchanged. */
+        app.MapPost("/api/icu/services", (CreateServiceRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "hospital.configure") is IResult denied) return denied;
+            if (ValidateCodeLabel(req.Code, req.Label, out var code, out var label) is string err)
+                return ApiError.BadRequest(err);
+            var deptCode = (req.DepartmentCode ?? "").Trim();
+            if (deptCode.Length == 0)
+                return ApiError.BadRequest(
+                    "departmentCode is required — a service cannot exist without a parent department");
+            var dept = db.Departments.AsNoTracking().FirstOrDefault(d => d.Code == deptCode);
+            if (dept is null)
+            {
+                var known = db.Departments.AsNoTracking().Where(d => d.Active)
+                    .OrderBy(d => d.Seq).Select(d => d.Code).ToList();
+                return ApiError.BadRequest(
+                    $"departmentCode '{deptCode}' does not match any department — "
+                    + (known.Count == 0
+                        ? "no departments are configured yet; add one before adding services under it"
+                        : $"active departments: {string.Join(", ", known)}"));
+            }
+            if (!dept.Active)
+                return ApiError.StateConflict(
+                    $"department '{deptCode}' ({dept.Label}) is retired — reactivate it before adding services under it");
+            if (code.Length == 0)
+                code = FormularyLogic.NewKey("svc", c => db.Services.AsNoTracking().Any(s => s.Code == c));
+            if (db.Services.FirstOrDefault(s => s.Code == code) is ServiceRow existing)
+                return ApiError.StateConflict(
+                    $"service '{code}' already exists ({existing.Label}, {(existing.Active ? "active" : "inactive")}) — codes are permanent");
+            /* FLAGGED, and deliberately the STRICTER rule: the duplicate-label
+               check is TABLE-WIDE, not per-department, so "Emergency" cannot
+               exist under two departments at once. The design does not decide
+               this. Table-wide is chosen because the shared mapper's PUT
+               enforces exactly that on every edit — scoping CREATE
+               per-department while EDIT stayed table-wide would let a row be
+               created that can never be edited. A uniform stricter rule costs
+               an occasional precise 409; a split rule costs a trap. Relaxing it
+               later means Service mapping its own PUT too, and is recorded in
+               02_PROJECT_STATUS.md as the open question it is. */
+            if (ActiveLabelDup(db.Services.AsNoTracking().AsEnumerable()
+                    .Select(s => (s.Code, s.Label, s.Active)), label, null) is string dupLabel)
+                return ApiError.StateConflict(
+                    $"an active service labelled '{dupLabel}' already exists — two identical entries would be "
+                    + "indistinguishable when selecting; edit or retire the existing one");
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var row = new ServiceRow
+            {
+                Code = code, Label = label,
+                /* the RESOLVED row's code, never the raw request string */
+                DepartmentCode = dept.Code,
+                Seq = (db.Services.Max(s => (int?)s.Seq) ?? 0) + 1, Active = true,
+                /* the audit SNAPSHOTS the parent's label as it read at this
+                   moment — a later rename of the department cannot rewrite what
+                   this entry was filed under (a code is identity, never
+                   meaning) */
+                EventsJson = System.Text.Json.JsonSerializer.Serialize(
+                    new List<FormularyEventDto> { new(FormularyLogic.Now(), actor, "added to vocabulary",
+                        $"under department {dept.Label} ({dept.Code})") }, JsonOpts.Web),
+            };
+            db.Services.Add(row);
             db.SaveChanges();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
