@@ -26,7 +26,14 @@
 .cfg .cfgblurb{font-size:12px;line-height:1.55;color:var(--dim);
  border:1px solid var(--stroke);border-radius:13px;padding:10px 14px;
  background:rgba(var(--lift-rgb),.03)}
-.cfg .cfgblurb b{color:var(--ink)}
+/* --ink is "dark ink ON A BRIGHT ACCENT FILL" (tokens.css) and it FLIPS
+   between themes: #06121f dark, #f7fafd light. Used on the blurb's own
+   transparent surface it painted dark-on-dark in the dark theme and
+   white-on-white in the light one, so every bold emphasis in every section
+   blurb was invisible in BOTH themes — including the Observations blurb's
+   "NEWS2/SOFA score inputs are locked". --text is the primary text token and
+   is the one that belongs here. Found by rendering both themes. */
+.cfg .cfgblurb b{color:var(--text)}
 
 /* shared-manager extras: the reserved marker (a rule in code — no
    action to take) and the create-time attribute checkbox */
@@ -36,7 +43,8 @@
 .cfg .uacheck{display:flex;gap:9px;align-items:flex-start;font-size:11.5px;color:var(--dim);
  line-height:1.5;cursor:pointer}
 .cfg .uacheck input{width:15px;height:15px;margin-top:2px;accent-color:var(--amber);cursor:pointer;flex:none}
-.cfg .uacheck b{color:var(--ink)}
+/* same token misuse as .cfgblurb b above — the isDeath emphasis was invisible */
+.cfg .uacheck b{color:var(--text)}
 
 /* the rail collapses above the body on narrow viewports */
 @media (max-width: 900px){
