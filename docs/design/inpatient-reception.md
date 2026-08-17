@@ -211,3 +211,181 @@ hospital installs the same code and defines its own structure. Reception stops a
 admission; the ward assigns the bed, the resident writes the note and the diagnosis, and the
 OR transfer is a lifecycle state Aurora does not yet have and must design deliberately. This
 document is the specification Claude Code builds from, after it reports the five open items.*
+
+---
+
+## Amendments
+
+*[Appended 2026-08-17. SUPERSEDE, NEVER REWRITE — nothing above this line is
+altered: §§0–8 and all five open items stand byte-identical to the approved
+document, and this commit's diff is a pure append (0 lines removed). Each
+ruling below quotes the item it resolves and records the decision beneath it,
+so "what was approved" and "what was decided later" stay separately readable.
+Source: the project owner's rulings. Every mechanism cited was verified against
+the shipped code before being written down, with the file and line named, so a
+reader can check rather than trust.]*
+
+### A · §2 — the five lists are FOUR governed vocabularies plus ONE typeahead source
+
+§2's table lists five kinds of master data under one sentence: *"add/retire
+(never rename or delete once referenced), in-use guards, audited."* That
+sentence is correct for four of them and **not** for the fifth.
+
+- **Governed vocabularies (four)** — **Admission Type**, **Department**,
+  **Service**, **Source of Admission**. These follow the established
+  add/retire-never-delete pattern with in-use guards and an append-only audit,
+  exactly as §2 states.
+- **Typeahead source (one)** — **Referring doctors**. Not a governed
+  vocabulary, and it has **no in-use guard** — see ruling 5, where the reason
+  and the consequence are stated in full.
+
+### 1 · Admission with no bed assigned — RESOLVED 2026-08-17
+
+> 1. Admission with **no bed assigned** — new lifecycle state or existing? (§3.5)
+
+**Existing. No new lifecycle state.** `bedId` becomes **optional** on
+`POST /api/icu/adt/admissions`; the required-field check that today lists
+`bedId` alongside `diagnosis` and `attending` (`AdtApi.cs:638-640`) becomes
+conditional on it being supplied.
+
+**The four gates that concern a supplied bed still fire, unchanged** — this
+ruling relaxes *whether a bed is named*, never *what happens once one is*:
+
+| gate | code | where |
+|---|---|---|
+| length bound | 400 | `AdtApi.cs:653-656` |
+| unknown bedId | 400 | `AdtApi.cs:727-729` |
+| retired bed | 409 | `AdtApi.cs:737-739` |
+| occupied bed | 409 | `AdtApi.cs:741-743` |
+
+**`Status` stays `open | discharged`.** The two values the endpoint already
+validates (`AdtApi.cs:78`) are the whole set; no third value is introduced.
+**"Awaiting bed" is DERIVED, never stored** — `Status == "open" && BedId == ""`
+— which keeps it on the right side of the locked rule that time- and
+state-relative labels are computed at read, never persisted.
+
+**A pending view is part of this ruling, not a later nicety.** An admission
+with no bed and no worklist that surfaces it is a patient who exists only in
+the database. §3.5 already says the ward's worklist is what surfaces them; this
+records it as a requirement of allowing the state at all.
+
+**Bed assignment is NOT a transfer.** It gets its own path, its own action
+string and its own atom, specified in the **Ward design** — not here, and not
+by reusing `POST /adt/encounters/{id}/transfer`. The reason is a mechanism
+fact, not a preference: `AdtEventDto` is
+`(string Time, string Actor, string Action, string? Detail)` —
+**four strings, with no structured from/to** (`AdtModels.cs:317`). Every ADT
+event's provenance lives in `Detail` as prose the writer concatenates:
+`$"to {req.BedId}"` on admit (`AdtApi.cs:886`),
+`$"from {enc.BedId}…"` on discharge (`AdtApi.cs:955`). **The concatenated
+string IS the audit record** — there is no second, structured copy to fall back
+on. Route a first bed assignment through transfer and the permanent record
+reads *"from  to W-12"*: a sentence asserting an origin that never existed,
+unfalsifiable afterwards because nothing else was stored. A distinct action
+string is the only way the audit reads true.
+
+### 2 · Ward admitting doctor tier — RESOLVED 2026-08-17
+
+> 2. **Ward admitting doctor tier** — consultant-only like ICU, or wider? (§3.3)
+
+**Wider for the ward, via a NEW ward-scoped list returning both the Doctor and
+SeniorDoctor profiles.** `/api/icu/adt/attendings` **stays consultant-only and
+byte-identical**; ICU's picker does not move.
+
+§3.3 warns against silently widening a deliberately narrow endpoint. Verifying
+what actually narrows it sharpens that warning rather than softening it: the
+endpoint is gated on `adt.admit`, and **both Doctor and SeniorDoctor tokens
+already hold that atom** (`AdtApi.cs:57`, and the comment at `:48` says so
+outright). The gate was never the narrowing. The narrowing is the filter
+`Rbac.ProfileOf(t) == "SeniorDoctor"` at `AdtApi.cs:62`. So widening for the
+ward is not a matter of relaxing a permission — it would mean editing the one
+line that makes ICU's list consultant-only, and every ICU admission form would
+silently gain registrars. A second endpoint is the only change that leaves the
+first one provably untouched.
+
+### 3 · Hierarchical master data — RESOLVED 2026-08-17
+
+> 3. **Hierarchical master data** — Service under Department; the vocabulary
+>    manager is flat today. (§2.1)
+
+**Service sits under Department. The parent is validated in application code**,
+consistent with how every existing vocabulary reference is validated, and
+**there is no reparenting**.
+
+Reparenting is prevented **structurally, not by a guard**: the edit contract
+carries **no `departmentCode` field at all**. This copies the mechanism already
+proven by `isDeath` — `CreateDispositionRequest(Code, Label, IsDeath)` versus
+`EditVocabEntryRequest(Label)` (`VocabModels.cs`), where the request record
+simply has no such member and `JsonUnmappedMemberHandling.Disallow` turns
+sending one into a 400. Immutability that lives in the shape of the contract
+cannot be forgotten by a future edit path; a guard can.
+
+**No surface may switch, compare or style on a department or service code —
+ever.** A code is identity, not meaning. Labels resolve at read; the admission
+event **snapshots the label** at the moment it is written, so a later edit
+cannot rewrite history; and a change of MEANING is a **new entry plus a
+retire**, never a rename. This is the rule that keeps "the hospital renamed
+General Surgery" from silently reinterpreting every admission ever recorded
+under it.
+
+**Retiring a Department while it has active Services or open admissions stays
+refused**, as §2.1 requires — the in-use guard that ruling A confirms applies
+to all four governed vocabularies.
+
+### 4 · Receptionist RBAC — RESOLVED 2026-08-17
+
+> 4. **Receptionist RBAC** — existing Administrator or a new profile? (§6)
+
+**A new `admissions.create` atom, held by Doctor, SeniorDoctor and
+Administrator.** No new profile. **`adt.admit` is unchanged and is still
+required to place a patient in a bed.**
+
+**The split is by BED, not by endpoint.** There is ONE admission path and no
+fork: reception calls the same endpoint every clinician calls. What it cannot
+do is name a bed — that still costs `adt.admit`, which the office Administrator
+does not hold and does not gain here. This is what §6's concern ("an
+Administrator can create the object the whole clinical record hangs from")
+resolves to: they can open the episode, and they cannot place the patient.
+
+A second, reception-only endpoint was the alternative and is rejected: two
+admission paths is the fork §1 exists to forbid, and the two would drift.
+
+**Reception still cannot reach a clinical pane.** The office Administrator
+profile holds `admin.view, patients.view, identity.correct, hospital.configure,
+beds.manage` and no clinical atom (`Rbac.cs`); `admissions.create` is added to
+that set and nothing is removed from the exclusion. Orders, results,
+attachments and AI stay closed to them, exactly as the locked constraint
+requires.
+
+### 5 · Internal staff as referrer — RESOLVED 2026-08-17
+
+> 5. Internal staff as referrer — id vs free text. (§3.4)
+
+**Both, as two nullable columns.** `ReferrerUserId` — validated against `Users`,
+so an internal referral is traceable to a real account. `ReferrerName` — free
+text, for the external GP who must never become an Aurora user account (§3.4).
+
+- **Both set → 400.** Two answers to one question is a malformed request, not a
+  merge to be guessed at.
+- **Neither set → honestly not recorded.** Never a default, never a
+  placeholder — the never-fabricate rule of §5.
+
+**THE REFERRER LIST IS A TYPEAHEAD SOURCE, NOT A GOVERNED VOCABULARY, AND IT
+HAS NO IN-USE GUARD.** Stated here, in full, at the point a reader arrives
+looking for the guard — because §2's table lists "Referring doctors" among the
+master data covered by *"in-use guards"*, and a reader who checks will
+otherwise find the guard missing and have to decide whether that is a decision
+or an oversight. It is a decision. **Nothing references those rows.** The
+admission stores the id or the text; it never holds a foreign key into the
+referrer list. So there is no in-use relationship for a guard to detect, and
+retiring or removing a referrer entry cannot orphan anything. A guard here
+would not be a safety net — it would be a check that can never fire, which this
+project treats as worse than no check at all.
+
+**Gated on `admissions.create`, NOT `hospital.configure`.** §3.4 requires that
+typing a new referrer offers to save it for next time. That save happens
+mid-admission, under whatever token is filling the form — and **Doctor does not
+hold `hospital.configure`** (`Rbac.cs`: it sits on the office Administrator).
+Gating the save on the configuration atom would 403 every doctor on the
+save-while-typing path the design asks for, on the one interaction it was
+designed around.
