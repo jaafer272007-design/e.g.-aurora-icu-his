@@ -35,7 +35,8 @@ static class VocabApi
        table, atom, and domain wording, so the mechanics live once */
     public static void Map(WebApplication app)
     {
-        MapVocab(app, "dispositions", "dispositions.manage", "disposition", "dsp",
+        MapVocab<DispositionRow>(app, "dispositions", "dispositions.manage", "disposition", "dsp",
+            db => db.Dispositions,
             db => db.Dispositions.OrderBy(d => d.Seq).AsNoTracking().AsEnumerable().Select(d => (object)d.ToDto()),
             (db, code) => db.Dispositions.FirstOrDefault(d => d.Code == code) is DispositionRow r
                 ? new VocabHandle(r.Code, r.Label, r.Active,
@@ -47,7 +48,7 @@ static class VocabApi
                the entry carries the immutable isDeath attribute at creation and
                the shared CreateVocabEntryRequest has no field for it. Explicit
                null, not an omission — the parameter is required. */
-            create: null,
+            toDto: null,
             /* THE RESERVED RULE (design §1): 'died' is structural — the
                deceased guard and the mortality numerator depend on a
                death disposition always being recordable. A rule in code,
@@ -58,7 +59,8 @@ static class VocabApi
                   + "outcome always being recordable"
                 : null);
 
-        MapVocab(app, "isolation-types", "isolation.manage", "isolation type", "iso",
+        MapVocab<IsolationTypeRow>(app, "isolation-types", "isolation.manage", "isolation type", "iso",
+            db => db.IsolationTypes,
             db => db.IsolationTypes.OrderBy(t => t.Seq).AsNoTracking().AsEnumerable().Select(t => (object)t.ToDto()),
             (db, code) => db.IsolationTypes.FirstOrDefault(t => t.Code == code) is IsolationTypeRow r
                 ? new VocabHandle(r.Code, r.Label, r.Active,
@@ -66,17 +68,15 @@ static class VocabApi
                     l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
                 : null,
             db => db.IsolationTypes.AsNoTracking().AsEnumerable().Select(t => (t.Code, t.Label, t.Active)),
-            create: (db, code, label, events) =>
-            {
-                var r = db.IsolationTypes.Add(new IsolationTypeRow
-                {
-                    Code = code, Label = label, Active = true, EventsJson = events,
-                    Seq = (db.IsolationTypes.Max(t => (int?)t.Seq) ?? 0) + 1,
-                }).Entity;
-                return () => r.ToDto();
-            });
+            toDto: r => r.ToDto());
 
-        MapVocab(app, "shifts", "shifts.manage", "shift", "shf",
+        /* DELIBERATE DEFECT - PROOF COMMIT, REMOVED IN THE NEXT COMMIT.
+           The row type is pinned to ShiftRow but the DbSet is the isolation
+           table. Under the OLD non-generic mapper this compiled and every
+           POST /api/icu/shifts would have written an IsolationTypeRow.
+           It must now be a COMPILE ERROR - that is what this commit proves. */
+        MapVocab<ShiftRow>(app, "shifts", "shifts.manage", "shift", "shf",
+            db => db.IsolationTypes,
             db => db.Shifts.OrderBy(s => s.Seq).AsNoTracking().AsEnumerable().Select(s => (object)s.ToDto()),
             (db, code) => db.Shifts.FirstOrDefault(s => s.Code == code) is ShiftRow r
                 ? new VocabHandle(r.Code, r.Label, r.Active,
@@ -84,15 +84,7 @@ static class VocabApi
                     l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
                 : null,
             db => db.Shifts.AsNoTracking().AsEnumerable().Select(s => (s.Code, s.Label, s.Active)),
-            create: (db, code, label, events) =>
-            {
-                var r = db.Shifts.Add(new ShiftRow
-                {
-                    Code = code, Label = label, Active = true, EventsJson = events,
-                    Seq = (db.Shifts.Max(s => (int?)s.Seq) ?? 0) + 1,
-                }).Entity;
-                return () => r.ToDto();
-            });
+            toDto: r => r.ToDto());
 
         /* dispositions POST is mapped separately (it carries the
            immutable isDeath attribute at creation — see MapVocab's
@@ -177,12 +169,14 @@ static class VocabApi
        isDeath at creation) passes an explicit `null`: an omission is now
        impossible, but a deliberate exception is still expressible and visible.
        scripts/vocab-registration-gate.mjs is the belt to this braces. */
-    static void MapVocab(WebApplication app, string path, string atom, string noun, string prefix,
+    static void MapVocab<TRow>(WebApplication app, string path, string atom, string noun, string prefix,
+        Func<AuroraDb, DbSet<TRow>> set,
         Func<AuroraDb, IEnumerable<object>> list,
         Func<AuroraDb, string, VocabHandle?> resolve,
         Func<AuroraDb, IEnumerable<(string Code, string Label, bool Active)>> snapshot,
-        Func<AuroraDb, string, string, string, Func<object>>? create,
+        Func<TRow, object>? toDto,
         Func<AuroraDb, string, string?>? deactivateGuard = null)
+        where TRow : class, IVocabRow, new()
     {
         /* GET — all entries incl. inactive (management needs them, and a
            RETIRED entry must keep resolving on records that carry it;
@@ -197,7 +191,7 @@ static class VocabApi
         /* POST — add an entry. The condition is now "did this tenant supply a
            row factory?", not a string comparison against one tenant's name:
            dispositions map their own create above (isDeath at creation). */
-        if (create is not null)
+        if (toDto is not null)
             app.MapPost($"/api/icu/{path}", (CreateVocabEntryRequest req, ClaimsPrincipal user, AuroraDb db) =>
             {
                 if (Rbac.Deny(user, atom) is IResult denied) return denied;
@@ -219,9 +213,20 @@ static class VocabApi
                    followed: `(ShiftRow)row` was the fallback cast, so a new
                    tenant would have been serialised as a shift or thrown an
                    InvalidCastException at the very end of a successful write. */
-                var toDto = create(db, code, label, events);
+                /* THE MAPPER OWNS THE INSERT. The caller supplies the DbSet and a
+                   row->DTO projection; it never writes an Add of its own, so it
+                   cannot name the wrong table. Seq and the audit stamp are
+                   computed here once for every tenant. The DTO is still built
+                   AFTER SaveChanges, exactly as before. */
+                var rows = set(db);
+                var row = new TRow
+                {
+                    Code = code, Label = label, Active = true, EventsJson = events,
+                    Seq = (rows.Max(r => (int?)r.Seq) ?? 0) + 1,
+                };
+                rows.Add(row);
                 db.SaveChanges();
-                return Results.Json(toDto(), JsonOpts.Web);
+                return Results.Json(toDto(row), JsonOpts.Web);
             }).RequireAuthorization();
 
         /* PUT — edit the label; the code is the immutable natural key

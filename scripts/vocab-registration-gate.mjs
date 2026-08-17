@@ -112,7 +112,7 @@ for (const file of csFiles(ROOT)) {
   /* MapVocab references are counted on the RAW text (the definition and the
      call sites are code, and counting them is only a vacuity guard). The
      forbidden shape is matched on comment-stripped code only. */
-  raw.split('\n').forEach(line => { if (/\bMapVocab\s*\(/.test(line)) mapVocabCallSites++ })
+  raw.split('\n').forEach(line => { if (/\bMapVocab\s*[<(]/.test(line)) mapVocabCallSites++ })
   stripComments(raw).split('\n').forEach((line, i) => {
     if (FORBIDDEN.test(line)) offenders.push(`${file}:${i + 1}: ${line.trim()}`)
   })
@@ -130,6 +130,32 @@ if (mapVocabCallSites < 4) {
   /* 1 definition + at least 3 registrations */
   console.log(`FAIL - found ${mapVocabCallSites} MapVocab reference(s); expected the definition plus >=3 tenants. The mapper moved or was renamed and this gate is no longer looking at it.`)
   vacuous = true
+}
+
+/* EVERY REGISTRATION MUST PIN ITS ROW TYPE EXPLICITLY — MapVocab<ShiftRow>(...),
+   never MapVocab(...). This is not style. With an explicit type argument, a
+   registration that names another tenant's DbSet is a COMPILE ERROR
+   (DbSet<IsolationTypeRow> is not DbSet<DepartmentRow>). Without one, C# simply
+   INFERS TRow from whichever DbSet was pasted in, the mismatch disappears, and
+   the wrong-table write compiles again — the exact hole this whole change
+   exists to close, reopened by an omitted `<>`. */
+const unpinned = []
+for (const file of csFiles(ROOT)) {
+  const code = stripComments(readFileSync(file, 'utf8'))
+  code.split('\n').forEach((line, i) => {
+    if (/\bMapVocab\s*\(/.test(line) && !/\bstatic\s+void\s+MapVocab/.test(line)) {
+      unpinned.push(`${file}:${i + 1}: ${line.trim()}`)
+    }
+  })
+}
+if (unpinned.length > 0) {
+  console.log('FAIL - a MapVocab registration does not pin its row type.')
+  console.log('       Without MapVocab<TRow>(...), C# infers TRow from the DbSet that was')
+  console.log('       passed, so pasting another tenant\'s DbSet compiles and writes that')
+  console.log('       tenant\'s table. The explicit type argument is what makes the mismatch')
+  console.log('       a compile error.')
+  for (const u of unpinned) console.log(`         ${u}`)
+  process.exit(1)
 }
 
 if (offenders.length > 0) {
