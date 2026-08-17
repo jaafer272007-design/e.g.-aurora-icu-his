@@ -11398,6 +11398,42 @@ loud failure beats an unrecoverable silent pass.
 *[Attributed addition 2026-07-12 — recorded per the project owner's
 instruction, source stated per the documentation rule.]*
 
+- **🔴 The two-theme contrast auditor is not in the repository, so the only
+  mechanism that catches token-resolution defects cannot run** (recorded
+  2026-08-17 with the step-4 screens, #202; owed as a standing check).
+  **THE `--ink` DEFECT WAS THE THIRD INSTANCE OF ONE CLASS.** A theme token
+  resolves to the wrong value for the surface it is used on, and text becomes
+  invisible — compiling, bundling and shipping cleanly every time:
+  1. the **DARK-THEME DROPDOWN OPTIONS** (Polish Batch 2): the `--optbg`
+     option-background token existed but was applied by only three page-scoped
+     rules, so 42 selects across 16 files had no option styling and their text
+     was invisible in dark;
+  2. the **TWO-THEME CONTRAST SWEEP**, which found **638 flagged elements** and
+     drove them to 0 (ALL_CONTRAST_PASS);
+  3. the **`--ink` BLURB EMPHASIS** (#202): `--ink` means "dark ink ON A BRIGHT
+     ACCENT FILL" and FLIPS between themes, so on the blurb's transparent
+     surface it painted dark-on-dark in dark and white-on-white in light. Every
+     section blurb's bold emphasis was unreadable in BOTH themes — including the
+     Observations blurb's "🔒 NEWS2/SOFA score inputs are locked", **a safety
+     statement hidden in both themes for months.**
+  **VERIFIED, and it is worse than "the sweep is not a standing check": the
+  auditor does not exist as an artifact at all.** `ci.yml` runs **no browser** —
+  zero references to playwright, chromium, screenshots or contrast. The only
+  Playwright in `.github/workflows/` is `deployed-print-e2e.yml`, which is
+  `workflow_dispatch`-only and renders a Discharge Summary to check identity
+  fields, not themes or contrast. `scripts/` holds no contrast checker,
+  `package.json` declares no browser driver, and the only repo-wide matches for
+  "contrast"/"WCAG" are a palette comment in `preferences.ts` and a
+  `Contrast dye` allergy string in the roster mock. So the sweep that fixed 638
+  elements survives only as a DESCRIPTION in this file — it cannot be re-run
+  even manually without being rewritten from scratch.
+  **OWED:** re-establish that auditor as a committed script and run it as a
+  standing check over both themes. Until it exists, this class is caught only
+  when somebody happens to render the right screen in the right theme and look —
+  which is how instance 3 was found, and why it took months. Not built now
+  (#202 fixed the instance, not the class — see "Closing one instance of a
+  defect class is not closing the class" in 03).
+
 - **🔴 The bed registry has no ROOM concept** (recorded 2026-08-17 with the
   reception design's §4 amendment, #200; owed to the Ward design). `BedRow` is
   `BedId` · `Area` · `Seq` · `Active` plus the append-only audit — there is no

@@ -414,6 +414,61 @@ finished page, is derived from the code rather than assumed, with an explicit
 "the updater never ran" state because Pascal initialises integers to 0 — and 0
 was the success code.
 
+## 🔴 Verification proves the tree you rendered, not the tree you pushed (added 2026-08-17)
+
+The sibling of "Test on the engine that ships" above, and the same mistake one
+layer over: that rule is about testing the wrong RUNTIME, this one is about
+testing the wrong TREE.
+
+**CODIFIED RULE — verification by rendering verifies the tree you rendered; only
+a clean checkout of the pushed commit proves that is the tree you pushed.**
+
+**A claim in a commit message is an assertion about the tree that commit
+CONTAINS**, not about the working tree it was written in. Those are the same
+thing only when everything was staged, and "everything was staged" is an
+assumption until it is read.
+
+**Evidence produced from the working tree proves nothing about the pushed
+commit.** Screenshots, browser probes, measured computed values, a passing local
+script — every one of them describes files on disk at that moment. When such
+evidence IS the justification for a fix, take it from a clean checkout of the
+commit that carries the fix, or say plainly that it came from the working tree.
+
+**WORKED EXAMPLE — `ad769e0` → `9651930`, in this repo's own history.** A render
+pass across both themes found a real defect: `Configuration.css` styled
+section-blurb emphasis with `var(--ink)`, a token meaning "dark ink ON A BRIGHT
+ACCENT FILL" that FLIPS between themes, so on the blurb's transparent surface it
+painted dark-on-dark in dark and white-on-white in light. Every section blurb's
+bold emphasis was invisible in BOTH themes, including the Observations blurb's
+"NEWS2/SOFA score inputs are locked". The fix was applied, the render was
+re-run, the corrected colours were MEASURED — `rgb(233,241,251)` dark,
+`rgb(21,37,56)` light — and the commit message described all of it accurately.
+
+**The commit did not contain the CSS file.** It was staged by explicit path list
+and that path was not in it. Every measured value in the message was true of the
+working tree and false of the commit; the screenshots showed a fix that was not
+being shipped. `9651930` is the follow-up that actually carries the two-line
+change. Both commits stay in the history, because the pair is the evidence.
+
+**CI WAS GREEN EITHER WAY, AND THAT IS THE POINT WORTH NAMING.** A CSS custom
+property is invisible to `tsc` and to the bundle build: the wrong token compiles,
+bundles, and ships. `ci.yml` runs **no browser at all**, so this layer had no
+gate — not a weak one, none. **The absence of a failing check is not coverage.**
+Green told the truth about what it measures and nothing about what broke; the
+defect had survived in a shipped surface for months precisely because nothing
+was looking.
+
+Practice, binding on any commit whose message cites rendered or measured
+evidence:
+
+- **Stage with `git add -A`**, not a path list, unless there is a stated reason
+  to exclude something. A path list is a second chance to forget a file, and it
+  fails silently.
+- **Read `git diff --cached` against every claim in the message before
+  committing.** Not the working diff — the staged one. If the message says a
+  file changed, that file is in the staged diff or the message is wrong.
+- A `git status` that still shows modified files after the commit you believed
+  was complete is the signal; do not explain it away.
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install
