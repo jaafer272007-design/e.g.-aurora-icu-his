@@ -1430,6 +1430,52 @@ export interface ShiftEntry {
   history: FormularyEvent[]
 }
 
+/* ---------- Inpatient Reception master data (Configuration step 4) ----------
+   The four GOVERNED VOCABULARIES of docs/design/inpatient-reception.md §2,
+   shipped server-side in #199. Three are flat and identical in shape to the
+   ICU vocabularies above; ServiceEntry is the one hierarchy in this schema.
+   All four are gated on hospital.configure — administrative structure, not
+   clinical governance. PRODUCTION SEEDS NONE OF THEM: they are 100%
+   hospital-specific, so every list starts EMPTY on a real install and the
+   Configuration screens carry that as a first-class state. */
+
+export interface AdmissionTypeEntry {
+  code: string
+  label: string
+  seq: number
+  active: boolean
+  history: FormularyEvent[]
+}
+
+export interface DepartmentEntry {
+  code: string
+  label: string
+  seq: number
+  active: boolean
+  history: FormularyEvent[]
+}
+
+export interface ServiceEntry {
+  code: string
+  label: string
+  /** the parent department's CODE — IMMUTABLE after creation. It is on the
+   *  read contract because reception picks the department first and filters
+   *  services to it; it is absent from the EDIT contract by construction, so
+   *  a PUT naming it is a binding 400 and there is no reparenting path. */
+  departmentCode: string
+  seq: number
+  active: boolean
+  history: FormularyEvent[]
+}
+
+export interface AdmissionSourceEntry {
+  code: string
+  label: string
+  seq: number
+  active: boolean
+  history: FormularyEvent[]
+}
+
 export interface FrequencyEntry {
   /** the value itself is the permanent identity AND the display (it is
    *  what orders store) — managers add/retire/reactivate, never edit */

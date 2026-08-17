@@ -11,6 +11,7 @@ import type {
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   MineWorklist, Removal, RosterRecordDto, RoundingPatient, TimelineEvent, UnitSummaryResponse, UserAccount,
   DispositionEntry, FrequencyEntry, IsolationTypeEntry, ShiftEntry,
+  AdmissionTypeEntry, DepartmentEntry, ServiceEntry, AdmissionSourceEntry,
 } from './types'
 import { runtimeApiBase } from '../runtimeConfig'
 import { composeBedsResponse } from './bedboard'
@@ -1939,6 +1940,104 @@ export function deactivateShift(code: string): Promise<AdtWriteResult<ShiftEntry
 }
 export function reactivateShift(code: string): Promise<AdtWriteResult<ShiftEntry>> {
   return usersWrite<ShiftEntry>(`/api/icu/shifts/${encodeURIComponent(code)}/reactivate`, 'shift reactivate')
+}
+
+/* ---------- Inpatient Reception master data (step 4 screens) ----------
+   The four governed vocabularies from #199, all on hospital.configure.
+
+   THE MOCK FALLBACK IS DELIBERATELY EMPTY, unlike every vocabulary above.
+   The others fall back to a seeded demo list because they are clinically
+   universal — every ICU discharges home or to a ward. These four are 100%
+   hospital-specific: one hospital's departments are meaningless to another,
+   so there is no honest default to invent, and production seeds none of
+   them. An empty fallback is the same answer the server gives a real
+   install, which also means the Configuration screens' empty states are
+   reachable without a server rather than being a state nobody ever sees. */
+
+/** GET /api/icu/admission-types — all entries incl. inactive. */
+export async function getAdmissionTypes(): Promise<AdmissionTypeEntry[]> {
+  const real = await apiGet<AdmissionTypeEntry[]>('/api/icu/admission-types', 'admission types')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond([], 120)
+  throw apiUnavailable('admission-type vocabulary')
+}
+export function createAdmissionType(draft: { code?: string; label: string }): Promise<AdtWriteResult<AdmissionTypeEntry>> {
+  return usersWrite<AdmissionTypeEntry>('/api/icu/admission-types', 'admission-type create', draft)
+}
+export function updateAdmissionType(code: string, draft: { label: string }): Promise<AdtWriteResult<AdmissionTypeEntry>> {
+  return usersWrite<AdmissionTypeEntry>(`/api/icu/admission-types/${encodeURIComponent(code)}`, 'admission-type edit', draft, 'PUT')
+}
+export function deactivateAdmissionType(code: string): Promise<AdtWriteResult<AdmissionTypeEntry>> {
+  return usersWrite<AdmissionTypeEntry>(`/api/icu/admission-types/${encodeURIComponent(code)}/deactivate`, 'admission-type retire')
+}
+export function reactivateAdmissionType(code: string): Promise<AdtWriteResult<AdmissionTypeEntry>> {
+  return usersWrite<AdmissionTypeEntry>(`/api/icu/admission-types/${encodeURIComponent(code)}/reactivate`, 'admission-type reactivate')
+}
+
+/** GET /api/icu/departments — all entries incl. inactive. */
+export async function getDepartments(): Promise<DepartmentEntry[]> {
+  const real = await apiGet<DepartmentEntry[]>('/api/icu/departments', 'departments')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond([], 120)
+  throw apiUnavailable('department vocabulary')
+}
+export function createDepartment(draft: { code?: string; label: string }): Promise<AdtWriteResult<DepartmentEntry>> {
+  return usersWrite<DepartmentEntry>('/api/icu/departments', 'department create', draft)
+}
+export function updateDepartment(code: string, draft: { label: string }): Promise<AdtWriteResult<DepartmentEntry>> {
+  return usersWrite<DepartmentEntry>(`/api/icu/departments/${encodeURIComponent(code)}`, 'department edit', draft, 'PUT')
+}
+/** Refused with a 409 while the department still has ACTIVE SERVICES — the
+ *  message names them, and the caller surfaces it on the row. */
+export function deactivateDepartment(code: string): Promise<AdtWriteResult<DepartmentEntry>> {
+  return usersWrite<DepartmentEntry>(`/api/icu/departments/${encodeURIComponent(code)}/deactivate`, 'department retire')
+}
+export function reactivateDepartment(code: string): Promise<AdtWriteResult<DepartmentEntry>> {
+  return usersWrite<DepartmentEntry>(`/api/icu/departments/${encodeURIComponent(code)}/reactivate`, 'department reactivate')
+}
+
+/** GET /api/icu/services — all entries incl. inactive, each carrying its
+ *  immutable parent departmentCode. */
+export async function getServices(): Promise<ServiceEntry[]> {
+  const real = await apiGet<ServiceEntry[]>('/api/icu/services', 'services')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond([], 120)
+  throw apiUnavailable('service vocabulary')
+}
+/** departmentCode is REQUIRED and set once — the server validates the parent
+ *  in application code (unknown → 400 naming the active departments; retired
+ *  → 409). There is deliberately no update() counterpart carrying it. */
+export function createService(draft: { code?: string; label: string; departmentCode: string }): Promise<AdtWriteResult<ServiceEntry>> {
+  return usersWrite<ServiceEntry>('/api/icu/services', 'service create', draft)
+}
+export function updateService(code: string, draft: { label: string }): Promise<AdtWriteResult<ServiceEntry>> {
+  return usersWrite<ServiceEntry>(`/api/icu/services/${encodeURIComponent(code)}`, 'service edit', draft, 'PUT')
+}
+export function deactivateService(code: string): Promise<AdtWriteResult<ServiceEntry>> {
+  return usersWrite<ServiceEntry>(`/api/icu/services/${encodeURIComponent(code)}/deactivate`, 'service retire')
+}
+export function reactivateService(code: string): Promise<AdtWriteResult<ServiceEntry>> {
+  return usersWrite<ServiceEntry>(`/api/icu/services/${encodeURIComponent(code)}/reactivate`, 'service reactivate')
+}
+
+/** GET /api/icu/admission-sources — all entries incl. inactive. */
+export async function getAdmissionSources(): Promise<AdmissionSourceEntry[]> {
+  const real = await apiGet<AdmissionSourceEntry[]>('/api/icu/admission-sources', 'admission sources')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond([], 120)
+  throw apiUnavailable('admission-source vocabulary')
+}
+export function createAdmissionSource(draft: { code?: string; label: string }): Promise<AdtWriteResult<AdmissionSourceEntry>> {
+  return usersWrite<AdmissionSourceEntry>('/api/icu/admission-sources', 'admission-source create', draft)
+}
+export function updateAdmissionSource(code: string, draft: { label: string }): Promise<AdtWriteResult<AdmissionSourceEntry>> {
+  return usersWrite<AdmissionSourceEntry>(`/api/icu/admission-sources/${encodeURIComponent(code)}`, 'admission-source edit', draft, 'PUT')
+}
+export function deactivateAdmissionSource(code: string): Promise<AdtWriteResult<AdmissionSourceEntry>> {
+  return usersWrite<AdmissionSourceEntry>(`/api/icu/admission-sources/${encodeURIComponent(code)}/deactivate`, 'admission-source retire')
+}
+export function reactivateAdmissionSource(code: string): Promise<AdtWriteResult<AdmissionSourceEntry>> {
+  return usersWrite<AdmissionSourceEntry>(`/api/icu/admission-sources/${encodeURIComponent(code)}/reactivate`, 'admission-source reactivate')
 }
 
 /** POST /api/icu/adt/encounters/:id/isolation — set the OPEN encounter's
