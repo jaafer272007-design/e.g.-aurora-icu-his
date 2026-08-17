@@ -22,6 +22,196 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-17 · A VOCABULARY TENANT COULD SILENTLY WRITE TO ANOTHER TENANT'S
+TABLE — closed by construction, then PROVEN, in three PRs (#195, #196, #197).**
+Opened by the owner's question ahead of the Inpatient Reception build, which
+adds five tenants to this exact mapper: `server/Core/MasterData/VocabApi.cs`
+maps every configurable vocabulary through one shared `MapVocab`. Its
+list/resolve/snapshot halves already took delegates from the caller. The CREATE
+half did not — it switched on the `path` STRING and ended
+`_ => db.Shifts.Add(new ShiftRow { ... })`, with `(ShiftRow)row` as the matching
+fallback cast on the return line. So registering a new tenant WITHOUT also
+editing that switch did not fail. It inserted a `ShiftRow`: wrong table, HTTP
+200, an entry that then appeared in the shift picker and nowhere else. Nothing
+threw, nothing logged, no test noticed — the false-green class this repo keeps
+paying for, a default nobody chose and cannot see when it is wrong.
+
+**#195 — the omission route, closed at COMPILE time.** `create` became a
+REQUIRED positional parameter with no default, so omitting it cannot compile;
+the switch and the cast were deleted. It returns a THUNK rather than a DTO, so
+the DTO is still built AFTER `SaveChanges` and the wire bytes are unchanged by
+construction. Dispositions, which map their own POST because the entry carries
+the immutable `isDeath` at creation, pass an explicit `create: null` — an
+omission is impossible, a deliberate exception stays visible — and the guard
+`if (path != "dispositions")` became `if (create is not null)`, which states the
+real rule instead of naming one tenant. TEETH MEASURED, NOT ASSERTED:
+`scripts/vocab-registration-gate.mjs` was written FIRST and run against the
+UNFIXED tree, where it failed on the real historical line `VocabApi.cs:183` —
+not a synthetic reproduction. Re-inserting the default arm as CODE fails it
+again; the same literal quoted in the new explanatory comment does not, because
+the gate strips `/* */` blocks as well as `//` lines (a line-prefix check was
+not enough — this repo's block comments are plain prose with no leading
+asterisk, so the gate's first post-fix run flagged its own documentation).
+Vacuity guards refuse a scan that read too few files or found too few `MapVocab`
+references. Wired into `ci.yml`'s `server` job.
+
+**#196 — DOCS ONLY: this file was carrying its whole body twice.** Recorded
+here because the finding is not the line count. THE DIFF CAME FIRST, precisely
+because a diverging line might have been the only copy of a real correction and
+supersede-don't-rewrite would then have applied: lines 345-11125 and
+11177-21957 were ONE contiguous, byte-identical run of 10,781 lines at a fixed
+offset of 10,832, ZERO lines differing, verified line-for-line before anything
+was cut and re-verified on the checkout the cut was made from. An earlier
+remark — "9,511 unique of 18,687, so a clean doubling would be exact halves" —
+implied divergence and was WRONG; the arithmetic is fully explained by the
+344-line header and a 51-line orphan, neither of which is duplicated.
+**THE ORPHAN IS THE SUBSTANTIVE FINDING, and it decided which copy to delete.**
+The 51-line **2026-08-01** record — the PowerShell-5.1 parse defect that made
+every hospital update impossible — appears EXACTLY ONCE in the file, stranded
+BETWEEN the two copies. The dated markers ran 08-06, 08-06, 08-06, 08-05,
+08-05, 08-04, 08-03 and then jumped straight to 07-26: 08-01 was missing from
+the timeline entirely. Deleting the FIRST copy (what was done) returns it to
+its chronological slot; deleting the second would have left it orphaned after
+the PR-history table; and **deleting "everything after the first copy" — the
+obvious move, and the one a reader who trusted the line count would have
+made — would have destroyed the only copy of it.** The general lesson is that
+a de-duplication is a CONTENT question before it is a size question: the
+region that is not duplicated is the one that decides the cut. Verified after:
+21,958 → 11,177 lines (exactly the duplicated run removed), `## Current Status`
+and `## PR history` once each, every DISTINCT line of the old file still
+present (0 lost, by set difference), the 15 remaining duplicate long lines
+identified as one 3-line supersede note carried by five separate records, and
+no record's text altered, reordered or removed.
+
+**#197 — the class was NOT closed, and saying so was the point.** #195 shut the
+OMISSION route and recorded the class as closed. It was not: the factory
+returned `Func<object>` and the three row types shared no interface, so a
+COPY-PASTED factory naming another tenant's `DbSet` compiled cleanly and
+produced the identical wrong-table write. Two routes to one outcome; one was
+closed and the class declared shut. The owner asked the question that surfaced
+it — *does the return type let a copy-paste return the wrong row type and still
+compile?* — and the answer was yes. BUILT: `IVocabRow` (Code/Label/Seq/Active/
+EventsJson) on all three row classes, so `Seq` and the audit stamp are computed
+ONCE in the mapper rather than per tenant; and `MapVocab<TRow>` now OWNS the
+insert — callers pass a `DbSet` selector and a row→DTO projection and never
+write an `Add` of their own, so they cannot name the wrong table. The DTO is
+still built after `SaveChanges`. The registration gate gained a second rule: a
+call site must PIN its row type (`MapVocab<ShiftRow>(…)`, never `MapVocab(…)`).
+Not style — without the explicit type argument C# INFERS `TRow` from whichever
+`DbSet` was pasted in, the mismatch vanishes, and the wrong-table write
+compiles again. The hole would reopen through an omitted `<>`.
+
+The enumeration that should have accompanied #195, now in 03: a tenant may
+reach the wrong table by (1) omitting the factory, (2) supplying a factory for
+another tenant, (3) supplying the right factory with the wrong `DbSet`, (4)
+registering without pinning the row type so inference silently accepts a
+mismatched `DbSet`. #195 closed (1); #197 closes (2), (3) and (4).
+
+**THE COMPILE-TIME GUARANTEE WAS DEMONSTRATED, NOT ASSERTED.** `dbb95b5` pins
+`MapVocab<ShiftRow>` while handing it `db.IsolationTypes`. Under the #195
+mapper that compiled and every `POST /api/icu/shifts` would have inserted an
+`IsolationTypeRow`. CI's `server` job failed on it at the right file, line and
+cause — `VocabApi.cs(79,19): error CS0029: Cannot implicitly convert type
+'DbSet<IsolationTypeRow>' to 'DbSet<ShiftRow>'`, plus the consequent CS1662,
+`Build FAILED. 2 Error(s)` — and `9557df1` removed the line and went green.
+Both runs stay in this PR's history.
+
+**TWO CI-EVIDENCE FINDINGS CAME OUT OF PROVING IT, both now rules in 03.**
+First: the defect commit's FIRST push produced NO `ci.yml` run at all — the
+workflow triggers on `pull_request` and pushes to `main`, and no PR was open on
+the branch yet, so a commit whose entire purpose was to fail was evaluated by
+nothing while an unrelated workflow reported success on the same branch. **A
+red that never ran reads as a green**, and the conclusion drawn is the exact
+opposite of the truth. Opening the PR is what made CI evaluate it. Second, and
+recorded here as an observation rather than a new rule: the run that DID carry
+the failure concluded **`cancelled` at RUN level** — `server` and
+`production-seed` both genuinely FAILED (the same compile error), the four
+`production-seed` assertion steps then showed `skipped`, and
+`installer-powershell` was the only true cancellation, killed mid-step by
+fail-fast. A run-level read of that history reports "cancelled — inconclusive"
+and loses the proof entirely. Job-level conclusions are the evidence; the run
+level is a summary that can disagree with every job under it. The first rule's
+shape then repeated itself in plain sight on the runtime leg's own red commit:
+`Deploy to GitHub Pages` reported **success** on `d805e03` while `ci.yml`
+reported failure on the same sha — two workflows, two answers, one branch.
+
+**THE RUNTIME LEG — because a compile error is not a routing proof.** #195 and
+#197 make a wrong-table write a compile error, and the red/green pair proves
+the compiler answers. Neither proves that the mapper, once it compiles, routes
+each POST to the `DbSet` its caller supplied. That is a RUNTIME fact and
+nothing asserted it: the vocabulary MANAGEMENT endpoints have **no E2E coverage
+at all** — only the disposition CONSUMPTION path is exercised
+(`deployed-adt-e2e.yml:462`, `{"disposition":"died"}` at discharge). Added as
+the LAST step of `ci.yml`'s `production-seed` job, against the database that
+job already seeded: a Consultant POSTs one entry to `/api/icu/isolation-types`
+and one to `/api/icu/shifts` — those two because `IsolationTypeRow` and
+`ShiftRow` are field-for-field identical, which is exactly the confusion the
+retired `_ => db.Shifts.Add(...)` default lived in (`DispositionRow`'s
+`IsDeath` makes it a weaker probe). Every vocabulary table's count AND code set
+is snapshotted BEFORE the POSTs and compared after — no seed count is
+hardcoded, and an empty snapshot is refused, because a scan that read nothing
+would make every "unchanged" assertion pass vacuously. Each row must be found
+in its own table, addressed by a run-id-suffixed code, absent from both
+siblings, and every sibling's code set byte-identical to its pre-POST value.
+
+Two legs stop that proving less than it appears to. The bootstrap admin's token
+must be **403** on `POST /api/icu/shifts`: without it a green run cannot
+distinguish "the Consultant's atom made this work" from "it would have worked
+anyway" — the seeded admin is JobTitle "System Administrator" →
+SystemAdministrator → `users.manage`/`users.view`/`backup.manage` and NO
+vocabulary atom. And the Consultant create is probed WITHOUT a justification
+first: **400** naming it (a clinical JobTitle is a justified grant). The auth
+path itself was re-verified rather than assumed: the bootstrap admin ships
+`MustChangePassword`, so login returns ONLY a pw-change STEP token (audience
+`<env>#pw-change`, asserted 401 against a real API endpoint), and
+`change-password` ends in `Proceed()` where a single-role account skips the
+chooser — so the session comes back from that ONE call, not two.
+
+**AND THE UNCHANGED-CHECK WAS ITSELF PROVEN ABLE TO FAIL, in two commits inside
+this PR.** The first aims the sibling loop after the isolation-types POST at
+`IsolationTypes` — the table that POST just changed — and `production-seed`
+went RED at exactly that line with every assertion before it passing, so the
+red is red for the intended reason and not an incidental break. The second
+points the loop at `Shifts` and the job goes green. Both runs stay in this PR's
+history, beside the `dbb95b5` → `9557df1` compile pair, for the same reason:
+an assertion whose failure was never demonstrated is a claim, not a gate. Both
+variants were run locally first against a real PostgreSQL 16 and a
+production-mode boot of this exact tree before either was pushed.
+
+Named, because a green is only evidence if you can name the workflow, the job
+and the sha (03's own rule, applied to this record): RED = `ci.yml` run
+`31985831108`, job `production-seed` (`95260583982`), sha `d805e03` —
+**failure**, with `server` and `frontend` green beside it. GREEN = `ci.yml` run
+`31985981734`, job `production-seed` (`95260989414`), sha `1f7ca14` —
+**success**, and the new step's own conclusion is `success`, i.e. it EXECUTED;
+a skipped step would have shown the same job-level green. 19 assertions plus
+the 3 non-empty snapshot guards, and in the same job the clean-slate step still
+read `ok  users=[admin,system]` — which is why the leg is last.
+
+**PRODUCTION-SEED ONLY, deliberately.** That job gets a fresh Postgres service
+container per run, so the two writes die with the job. The leg must NEVER move
+into a deployed suite: vocabulary entries are deactivate-never-delete, so every
+dispatch would leave two permanent rows in the durable staging record — the
+single-environment constraint, not a style preference. It is also the job's
+LAST step for a stated reason: the clean-slate step asserts the user set is
+EXACTLY `admin,system`, and minting the Consultant any earlier would turn that
+assertion red for an unrelated reason.
+
+**Honest limits, stated rather than papered over.** BYTE-PARITY on the four
+existing tenants is argued from the diff, not measured — the management
+endpoints had no coverage to compare against, and this leg asserts ROUTING and
+the response's shape (an `IsolationTypeDto` carries no `isDeath`), not
+field-by-field equality with the pre-#197 wire bytes. The leg covers the two
+identical-shaped tenants; dispositions' own POST path and the named-frequency
+mapper are untouched by it. And the registration gate is static: it catches an
+unpinned `MapVocab(` and a returning default arm, not every conceivable way a
+future tenant could be misregistered — which is precisely the enumeration
+discipline #197 added to 03, applied to itself.
+
+**Last updated: 2026-08-17 · current through the configuration-vocabulary
+mapper (#195 omission route closed at compile time, #196 de-duplication of this
+file, #197 copy-paste route closed by construction + the runtime table-routing
+proof with its own positive control).**
 **2026-08-06 · THE SKIPPED-RELEASE UPDATE DRILL PASSED, ON TWO REAL MACHINES.
 The app-only updater has now applied an update in the field — for the first
 time in this product's life.** Three hops, all applied, zero rollbacks:
