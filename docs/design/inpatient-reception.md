@@ -428,3 +428,116 @@ the Configuration screens for the four vocabularies, and it carries the
 referrer typeahead and `admissions.create` with it.**
 
 Nothing in §§0–8, in Amendment A, or in rulings 1–5 is altered by this entry.
+
+### §4 superseded by the first real hospital — no wards, so no boarding concept (recorded 2026-08-17)
+
+**A DESIGN CHANGE, NOT A CODE CHANGE.** Nothing has been built from §4, and step
+3 (#199) is unaffected: reception records Department and Service and never
+chooses a bed (§3.5), so no shipped code depends on the model this entry
+supersedes. Source: the hospital under contract, via the project owner.
+
+**The constraint as reported:** rooms are single-bed; there are **no
+specialty-separated wards**; surgical and gynaecology patients go into any room,
+so **every bed serves every department**; only some **day-case surgery areas**
+have a room number with multiple beds; and **the system must show all the empty
+beds**.
+
+#### 1 · The recommended model is contradicted, and the boarding machinery must be ABSENT rather than permissive
+
+§4 recommends *"the service's ward is offered first; other wards allowed with a
+reason recorded"*, with boarding *"permitted … but the system records that it
+happened and why — a free-text reason, audited."* **At this hospital there are
+no wards to board out of.**
+
+**The Service→Ward mapping becomes OPTIONAL master data. When it is unset there
+is no boarding concept at all**: every empty bed is offered, and **no reason is
+asked**.
+
+**This is deliberately NOT "offer all beds first, reason still optional."** The
+machinery has to be *absent*, not merely lenient. A boarding reason that is
+recorded on 100% of admissions **records nothing** — it becomes a field whose
+only possible content is noise, and it makes every routine admission's audit
+trail assert a clinical exception that did not occur. That is the design's own
+§5 rule (*"No field defaults to a clinically meaningful value nobody
+entered"*) applied to a field that would always be entered and never mean
+anything. A permanent audit line reading "boarded, reason: n/a" on every
+admission is worse than no line: it trains every future reader to ignore the
+one place a genuine exception would appear.
+
+**§4 is not wrong — it is CONDITIONAL, and that is the correction.** A hospital
+that *does* separate its wards by specialty still wants exactly what §4
+describes. So the mapping is optional, and the boarding path exists **only when
+the mapping does**: one code path selected by configuration, never two products.
+That also makes the hospital's *"show all the empty beds"* requirement satisfied
+by construction rather than by a setting someone has to get right.
+
+#### 2 · The bed registry has no ROOM — recorded as a Ward-design input, not solved here
+
+`BedRow` is `BedId` · `Area` · `Seq` · `Active` (plus the append-only audit) —
+**there is no room.** And `Area` is not one: it is a **board grouping**. The
+seeded values are `Pod A` / `Pod B`, and the bed board derives its groups as the
+distinct set of areas (`src/lib/api/bedboard.ts:57`).
+
+Single-bed rooms make **room ≈ bed**, so for the great majority of this
+hospital's stock the missing concept costs nothing — the bed id *is* the room.
+
+**The day-case areas are where it bites.** One room number over several beds is
+a relationship the model cannot express today. `Area` could be made to carry the
+room number, but `Area` is already the board's grouping key, and one field
+cannot be both without the bed board silently turning into a room list.
+
+**Recorded as an input to the Ward design; deliberately not solved here.**
+Reception never chooses a bed, and introducing a Room entity in the document
+about the front door is precisely the scope creep §0 draws its boundary
+against. Whether it needs solving at all depends on the day-case question
+below.
+
+#### 3 · OPEN, for the hospital to answer: every bed tagged with both departments, or no mapping at all?
+
+Two configurations, **identical behaviour today** — every bed available to every
+department either way. They diverge the moment a **third department** is added:
+
+- **Explicit tagging** — every existing bed must be re-tagged for the new
+  department. A bed nobody re-tags is invisible to it, and **a forgotten one
+  leaves the new department with nowhere to admit.** The failure is silent and
+  misattributed: it surfaces as "no beds available" at 2am, not as
+  "configuration incomplete".
+- **No mapping at all** — the new department inherits every bed with no action
+  taken, and nothing can be forgotten because there is nothing to do.
+
+Recorded as open rather than decided, because it is the hospital's call. The
+asymmetry above is the fact that makes it worth asking now instead of
+discovering later: the two options cost the same today and diverge only under a
+change that is certain to happen eventually.
+
+#### 4 · UNRESOLVED: is a day case an inpatient admission here, or same-day in-and-out?
+
+If a day case is **not** an admission, the multi-bed day-case rooms sit outside
+this flow entirely and item 2's gap may not need solving for reception at all.
+If it **is** an admission, a multi-bed room is a real reception concern and item
+2 becomes load-bearing.
+
+Recorded beside item 2 rather than deferred to the Ward design because the
+answer sets item 2's scope — asking it later means solving a problem that might
+not exist, or missing one that does.
+
+#### 5 · UNRESOLVED: is the admitting doctor selected manually, or derived from the Service?
+
+§3.2 lists Admitting Doctor as required and §3.3 has it chosen from the staff
+directory, which reads as manual. If the hospital would rather it were
+**derived** from the chosen Service, one constraint is binding:
+
+**it must be a VISIBLE, EDITABLE DEFAULT — never a silent assignment.**
+
+Not a preference. The admitting doctor is an **attribution**, in a record that
+is audited and permanent. A silently derived value would **attribute an
+admission to a doctor who did not make it**, and nothing on the screen would
+have told the clerk that a name had been chosen on their behalf. §5's
+never-fabricate rule covers exactly this: no field defaults to a clinically
+meaningful value nobody entered. A visible, editable default is a *suggestion
+the clerk confirms*; a silent one is a fabricated fact carrying a real person's
+name.
+
+Nothing in §§0–8, in Amendment A, in rulings 1–5, or in the Build-sequencing
+entry is altered by this entry. §4's original text stands unchanged above, as
+the model it was — superseded here, not rewritten.
