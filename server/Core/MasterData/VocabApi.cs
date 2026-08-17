@@ -70,13 +70,8 @@ static class VocabApi
             db => db.IsolationTypes.AsNoTracking().AsEnumerable().Select(t => (t.Code, t.Label, t.Active)),
             toDto: r => r.ToDto());
 
-        /* DELIBERATE DEFECT - PROOF COMMIT, REMOVED IN THE NEXT COMMIT.
-           The row type is pinned to ShiftRow but the DbSet is the isolation
-           table. Under the OLD non-generic mapper this compiled and every
-           POST /api/icu/shifts would have written an IsolationTypeRow.
-           It must now be a COMPILE ERROR - that is what this commit proves. */
         MapVocab<ShiftRow>(app, "shifts", "shifts.manage", "shift", "shf",
-            db => db.IsolationTypes,
+            db => db.Shifts,
             db => db.Shifts.OrderBy(s => s.Seq).AsNoTracking().AsEnumerable().Select(s => (object)s.ToDto()),
             (db, code) => db.Shifts.FirstOrDefault(s => s.Code == code) is ShiftRow r
                 ? new VocabHandle(r.Code, r.Label, r.Active,
