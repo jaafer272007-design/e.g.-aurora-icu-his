@@ -80,6 +80,20 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
     public DbSet<DispositionRow> Dispositions => Set<DispositionRow>();
     public DbSet<IsolationTypeRow> IsolationTypes => Set<IsolationTypeRow>();
     public DbSet<ShiftRow> Shifts => Set<ShiftRow>();
+    /* Inpatient Reception master data (docs/design/inpatient-reception.md §2 —
+       Module #2 Ward, step 3). The same catalogue pattern, gated on
+       hospital.configure instead: departments and services are how a hospital
+       describes ITSELF, not clinical governance. Services carry an immutable
+       DepartmentCode — the one HIERARCHY in this schema, validated in
+       application code because this database has no foreign keys (the
+       ObservationType.GroupCode precedent).
+       PRODUCTION SEEDS NONE OF THESE FOUR: they are 100% hospital-specific, so
+       there is no honest starting set (the hospital-identity precedent, not
+       the dispositions/isolation/shifts one — see ReceptionVocabModels.cs). */
+    public DbSet<AdmissionTypeRow> AdmissionTypes => Set<AdmissionTypeRow>();
+    public DbSet<DepartmentRow> Departments => Set<DepartmentRow>();
+    public DbSet<ServiceRow> Services => Set<ServiceRow>();
+    public DbSet<AdmissionSourceRow> AdmissionSources => Set<AdmissionSourceRow>();
     /* Backup & DR (the hard go-live gate): the immutable audit of every
        backup/restore/verify/key-rotation/prune event — append-only by
        construction (insert + read only; no update/delete surface exists).
