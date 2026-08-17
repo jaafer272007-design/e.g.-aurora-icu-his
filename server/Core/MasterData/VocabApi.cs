@@ -43,6 +43,11 @@ static class VocabApi
                     l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
                 : null,
             db => db.Dispositions.AsNoTracking().AsEnumerable().Select(d => (d.Code, d.Label, d.Active)),
+            /* no shared create: dispositions map their own POST below, because
+               the entry carries the immutable isDeath attribute at creation and
+               the shared CreateVocabEntryRequest has no field for it. Explicit
+               null, not an omission — the parameter is required. */
+            create: null,
             /* THE RESERVED RULE (design §1): 'died' is structural — the
                deceased guard and the mortality numerator depend on a
                death disposition always being recordable. A rule in code,
@@ -60,7 +65,16 @@ static class VocabApi
                     () => { r.Active = false; }, () => { r.Active = true; },
                     l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
                 : null,
-            db => db.IsolationTypes.AsNoTracking().AsEnumerable().Select(t => (t.Code, t.Label, t.Active)));
+            db => db.IsolationTypes.AsNoTracking().AsEnumerable().Select(t => (t.Code, t.Label, t.Active)),
+            create: (db, code, label, events) =>
+            {
+                var r = db.IsolationTypes.Add(new IsolationTypeRow
+                {
+                    Code = code, Label = label, Active = true, EventsJson = events,
+                    Seq = (db.IsolationTypes.Max(t => (int?)t.Seq) ?? 0) + 1,
+                }).Entity;
+                return () => r.ToDto();
+            });
 
         MapVocab(app, "shifts", "shifts.manage", "shift", "shf",
             db => db.Shifts.OrderBy(s => s.Seq).AsNoTracking().AsEnumerable().Select(s => (object)s.ToDto()),
@@ -69,7 +83,16 @@ static class VocabApi
                     () => { r.Active = false; }, () => { r.Active = true; },
                     l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
                 : null,
-            db => db.Shifts.AsNoTracking().AsEnumerable().Select(s => (s.Code, s.Label, s.Active)));
+            db => db.Shifts.AsNoTracking().AsEnumerable().Select(s => (s.Code, s.Label, s.Active)),
+            create: (db, code, label, events) =>
+            {
+                var r = db.Shifts.Add(new ShiftRow
+                {
+                    Code = code, Label = label, Active = true, EventsJson = events,
+                    Seq = (db.Shifts.Max(s => (int?)s.Seq) ?? 0) + 1,
+                }).Entity;
+                return () => r.ToDto();
+            });
 
         /* dispositions POST is mapped separately (it carries the
            immutable isDeath attribute at creation — see MapVocab's
@@ -139,10 +162,26 @@ static class VocabApi
         return null;
     }
 
+    /* `create` is REQUIRED and positional — it has no default ON PURPOSE.
+       Until 2026-08-09 there was no such parameter: the POST half switched on
+       the `path` STRING and ended `_ => db.Shifts.Add(new ShiftRow ...)`. A new
+       tenant registered here without also editing that switch therefore did not
+       fail — every POST to it silently inserted a ShiftRow. Wrong table, a
+       200 response, and an entry that then showed up in the shift picker and
+       nowhere else. Nothing threw, nothing logged, no test noticed.
+       Now the row factory is supplied by the caller like list/resolve/snapshot
+       already were, so forgetting it is a COMPILE ERROR rather than a silent
+       write to somebody else's table. It returns a THUNK, not a DTO, so the
+       DTO is still built AFTER SaveChanges exactly as before.
+       A tenant that maps its own POST (dispositions — it carries the immutable
+       isDeath at creation) passes an explicit `null`: an omission is now
+       impossible, but a deliberate exception is still expressible and visible.
+       scripts/vocab-registration-gate.mjs is the belt to this braces. */
     static void MapVocab(WebApplication app, string path, string atom, string noun, string prefix,
         Func<AuroraDb, IEnumerable<object>> list,
         Func<AuroraDb, string, VocabHandle?> resolve,
         Func<AuroraDb, IEnumerable<(string Code, string Label, bool Active)>> snapshot,
+        Func<AuroraDb, string, string, string, Func<object>>? create,
         Func<AuroraDb, string, string?>? deactivateGuard = null)
     {
         /* GET — all entries incl. inactive (management needs them, and a
@@ -155,8 +194,10 @@ static class VocabApi
             return Results.Json(list(db), JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* POST — add an entry (dispositions map their own create above) */
-        if (path != "dispositions")
+        /* POST — add an entry. The condition is now "did this tenant supply a
+           row factory?", not a string comparison against one tenant's name:
+           dispositions map their own create above (isDeath at creation). */
+        if (create is not null)
             app.MapPost($"/api/icu/{path}", (CreateVocabEntryRequest req, ClaimsPrincipal user, AuroraDb db) =>
             {
                 if (Rbac.Deny(user, atom) is IResult denied) return denied;
@@ -173,21 +214,14 @@ static class VocabApi
                 var actor = user.FindFirst("name")?.Value ?? "Unknown";
                 var events = System.Text.Json.JsonSerializer.Serialize(
                     new List<FormularyEventDto> { new(FormularyLogic.Now(), actor, "added to vocabulary", null) }, JsonOpts.Web);
-                object row = path switch
-                {
-                    "isolation-types" => db.IsolationTypes.Add(new IsolationTypeRow
-                    {
-                        Code = code, Label = label, Active = true, EventsJson = events,
-                        Seq = (db.IsolationTypes.Max(t => (int?)t.Seq) ?? 0) + 1,
-                    }).Entity,
-                    _ => db.Shifts.Add(new ShiftRow
-                    {
-                        Code = code, Label = label, Active = true, EventsJson = events,
-                        Seq = (db.Shifts.Max(s => (int?)s.Seq) ?? 0) + 1,
-                    }).Entity,
-                };
+                /* the caller's own factory — no switch, no default, no cast.
+                   The old return line had the SAME hazard as the switch it
+                   followed: `(ShiftRow)row` was the fallback cast, so a new
+                   tenant would have been serialised as a shift or thrown an
+                   InvalidCastException at the very end of a successful write. */
+                var toDto = create(db, code, label, events);
                 db.SaveChanges();
-                return Results.Json(row is IsolationTypeRow it ? it.ToDto() : (object)((ShiftRow)row).ToDto(), JsonOpts.Web);
+                return Results.Json(toDto(), JsonOpts.Web);
             }).RequireAuthorization();
 
         /* PUT — edit the label; the code is the immutable natural key

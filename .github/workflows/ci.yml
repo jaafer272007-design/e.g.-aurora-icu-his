@@ -40,6 +40,16 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - run: dotnet build server --nologo
+      # A vocabulary tenant registered without its own row factory used to
+      # write a ShiftRow instead — wrong table, HTTP 200, no exception, no
+      # failing test. The mapper now takes the factory as a REQUIRED
+      # parameter, so the compiler catches an omission; this gate catches the
+      # default arm ever coming back, here or anywhere else in server/.
+      # Its teeth are measured, not asserted: it was written before the fix and
+      # failed on the real line (VocabApi.cs:183), and re-inserting that arm as
+      # code fails it again while the comment that quotes it does not.
+      - name: No tenant-create path may fall back to a concrete table
+        run: node scripts/vocab-registration-gate.mjs
 
   # production-seed — the install guarantee, protected on every change: a
   # PRODUCTION boot must seed catalogues + configuration + ONE bootstrap
