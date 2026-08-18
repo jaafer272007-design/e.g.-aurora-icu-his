@@ -48,6 +48,16 @@ export interface VocabSpec {
   /** placeholder examples for the add form */
   codePlaceholder: string
   labelPlaceholder?: string
+  /** what an EMPTY list means for THIS tenant, replacing the generic line.
+      Every vocabulary above this point is seeded, so "empty" was never a
+      state a real install could reach. The Inpatient Reception tenants seed
+      NOTHING in production (they are 100% hospital-specific), so empty is
+      their first-run state — and what it costs differs per tenant: three of
+      the four are REQUIRED on the admission form and one is OPTIONAL.
+      Saying "reception cannot be used until this is filled" on the optional
+      one would be a false statement on a configuration screen, which is the
+      same class of defect as any other fabricated line. */
+  emptyNote?: React.ReactNode
 }
 
 export interface VocabApiAdapter {
@@ -216,7 +226,11 @@ export function VocabManager({ title, icon, accent, spec, rows, api, onChanged, 
               </div>
             )
           })}
-          {rows?.length === 0 && <div className="uaempty">No entries — add the hospital&apos;s own below.</div>}
+          {rows?.length === 0 && (
+            <div className="uaempty" role="note">
+              {spec.emptyNote ?? <>No entries — add the hospital&apos;s own below.</>}
+            </div>
+          )}
         </div>
       </Card>
 

@@ -14,6 +14,10 @@ import {
   deactivateFrequency, deactivateImagingStudy, deactivateIsolationType, deactivateShift,
   deleteImagingStudy, getAdtBeds, getCodeStatuses, getDispositions, getFrequencyEntries,
   clearHospitalLogo, getHospitalIdentityHistory, getImagingCatalog, getIsolationTypes, getObservationCatalog,
+  getAdmissionTypes, createAdmissionType, updateAdmissionType, deactivateAdmissionType, reactivateAdmissionType,
+  getDepartments, createDepartment, updateDepartment, deactivateDepartment, reactivateDepartment,
+  getServices,
+  getAdmissionSources, createAdmissionSource, updateAdmissionSource, deactivateAdmissionSource, reactivateAdmissionSource,
   getShifts, reactivateBed,
   reactivateCodeStatus, reactivateDisposition, reactivateFrequency, reactivateImagingStudy,
   reactivateIsolationType, reactivateShift, retireBed, updateCodeStatus, updateDisposition,
@@ -23,6 +27,7 @@ import {
 import type { AdtWriteResult } from '../../lib/api'
 import type {
   AdtBed, CodeStatusEntry, DispositionEntry, FrequencyEntry, HospitalIdentityWithHistory,
+  AdmissionTypeEntry, DepartmentEntry, ServiceEntry, AdmissionSourceEntry,
   ImagingStudyDef, IsolationTypeEntry, ObsCatalogGroup, ShiftEntry,
 } from '../../lib/api/types'
 import { IMAGING_MODALITIES } from '../../lib/api/types'
@@ -30,6 +35,7 @@ import { invalidateHospitalIdentity } from '../../lib/hospitalIdentity'
 import { getSession, hasPermission, initialsOf, profileOf, type Permission } from '../../lib/session'
 import { ObservationCatalogManager } from './ObservationCatalogManager'
 import { VocabManager, type VocabRow } from './VocabManager'
+import { ServicesManager } from './ServicesManager'
 
 /* ==================== Configuration (/config) ====================
    The per-hospital CONFIGURATION AREA — what varies from one hospital to
@@ -59,6 +65,11 @@ import { VocabManager, type VocabRow } from './VocabManager'
 type SectionId =
   | 'identity' | 'codestatus' | 'dispositions' | 'isolation' | 'shifts' | 'frequencies'
   | 'imaging' | 'beds' | 'obscatalog'
+  /* Inpatient Reception master data (step 4) — administrative structure, all
+     on hospital.configure. Departments is listed BEFORE Services because a
+     service cannot exist without a parent: the rail makes the dependency
+     visible instead of leaving it to be discovered by hitting a blocked form. */
+  | 'admissiontypes' | 'departments' | 'services' | 'admissionsources'
 
 export function Configuration() {
   const { toast, showToast } = useToast()
@@ -69,7 +80,19 @@ export function Configuration() {
   const groups: { title: string; items: { id: SectionId; title: string; allowed: boolean }[] }[] = [
     {
       title: 'Hospital',
-      items: [{ id: 'identity', title: 'Hospital Identity', allowed: can('hospital.configure') }],
+      /* The four Inpatient Reception vocabularies join IDENTITY here rather
+         than getting a group of their own: this rail groups by GOVERNANCE,
+         not by consuming screen, and they share identity's governance exactly
+         (administrative configuration on hospital.configure). They also
+         outlive reception — the ward, discharge and statistics all read
+         Department. Departments precedes Services deliberately. */
+      items: [
+        { id: 'identity', title: 'Hospital Identity', allowed: can('hospital.configure') },
+        { id: 'admissiontypes', title: 'Admission Types', allowed: can('hospital.configure') },
+        { id: 'departments', title: 'Departments', allowed: can('hospital.configure') },
+        { id: 'services', title: 'Services', allowed: can('hospital.configure') },
+        { id: 'admissionsources', title: 'Sources of Admission', allowed: can('hospital.configure') },
+      ],
     },
     {
       title: 'Clinical vocabularies',
@@ -107,6 +130,11 @@ export function Configuration() {
   const [bedRows, setBedRows] = useState<AdtBed[] | null>(null)
   const [ident, setIdent] = useState<HospitalIdentityWithHistory | null>(null)
   const [identLoaded, setIdentLoaded] = useState(false)
+  /* Inpatient Reception master data — all four EMPTY on a real install */
+  const [admTypes, setAdmTypes] = useState<AdmissionTypeEntry[] | null>(null)
+  const [departments, setDepartments] = useState<DepartmentEntry[] | null>(null)
+  const [services, setServices] = useState<ServiceEntry[] | null>(null)
+  const [admSources, setAdmSources] = useState<AdmissionSourceEntry[] | null>(null)
 
   const reload = useCallback(() => {
     if (can('codestatus.manage')) getCodeStatuses().then(setCodeStatuses).catch(() => setCodeStatuses(null))
@@ -116,6 +144,12 @@ export function Configuration() {
     if (can('frequencies.manage')) getFrequencyEntries().then(setFrequencies).catch(() => setFrequencies(null))
     if (can('imagingcatalog.manage')) getImagingCatalog().then(setImgStudies).catch(() => setImgStudies(null))
     if (can('observations.configure')) getObservationCatalog().then(setObsGroups).catch(() => setObsGroups(null))
+    if (can('hospital.configure')) {
+      getAdmissionTypes().then(setAdmTypes).catch(() => setAdmTypes(null))
+      getDepartments().then(setDepartments).catch(() => setDepartments(null))
+      getServices().then(setServices).catch(() => setServices(null))
+      getAdmissionSources().then(setAdmSources).catch(() => setAdmSources(null))
+    }
     if (can('beds.manage')) getAdtBeds().then(setBedRows).catch(() => setBedRows(null))
     if (can('hospital.configure')) {
       getHospitalIdentityHistory().then(r => {
@@ -141,6 +175,10 @@ export function Configuration() {
       : undefined,
     beds: bedRows ? `${bedRows.filter(b => b.active).length}/${bedRows.length}` : undefined,
     identity: identLoaded ? (ident?.configured ? 'set' : 'unset') : undefined,
+    admissiontypes: admTypes ? `${admTypes.filter(e => e.active).length}/${admTypes.length}` : undefined,
+    departments: departments ? `${departments.filter(e => e.active).length}/${departments.length}` : undefined,
+    services: services ? `${services.filter(e => e.active).length}/${services.length}` : undefined,
+    admissionsources: admSources ? `${admSources.filter(e => e.active).length}/${admSources.length}` : undefined,
   }
 
   const kpis: KpiSpec[] = [
@@ -167,6 +205,19 @@ export function Configuration() {
     ...(can('codestatus.manage') ? [{
       icon: <IconPulse size={14} stroke="var(--red)" />, iconBg: 'rgba(var(--red-rgb),.13)',
       value: counts.codestatus ?? '—', label: 'Code Statuses (active)',
+    } satisfies KpiSpec] : []),
+    ...(can('hospital.configure') ? [{
+      icon: <IconSettings size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.13)',
+      value: counts.admissiontypes ?? '—', label: 'Admission Types (active)',
+    } satisfies KpiSpec, {
+      icon: <IconSettings size={14} stroke="var(--cyan)" />, iconBg: 'rgba(var(--cyan-rgb),.13)',
+      value: counts.departments ?? '—', label: 'Departments (active)',
+    } satisfies KpiSpec, {
+      icon: <IconSettings size={14} stroke="var(--green)" />, iconBg: 'rgba(var(--green-rgb),.13)',
+      value: counts.services ?? '—', label: 'Services (active)',
+    } satisfies KpiSpec, {
+      icon: <IconSettings size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.13)',
+      value: counts.admissionsources ?? '—', label: 'Admission Sources (active)',
     } satisfies KpiSpec] : []),
     ...(can('imagingcatalog.manage') ? [{
       icon: <IconFlask size={14} stroke="var(--violet)" />, iconBg: 'rgba(var(--violet-rgb),.13)',
@@ -210,6 +261,38 @@ export function Configuration() {
         ? [`listed by ${e.referencedBy.length} drug${e.referencedBy.length === 1 ? '' : 's'}: ${e.referencedBy.slice(0, 4).join(', ')}${e.referencedBy.length > 4 ? '…' : ''}`]
         : undefined,
     }))
+    : null
+
+  /* ---- Inpatient Reception master data (step 4) ----
+     Three flat tenants normalize onto VocabRow with nothing left over —
+     Code/Label/Seq/Active/EventsJson is exactly what it carries. SERVICES do
+     NOT: a service has an immutable parent, which VocabRow has no field for
+     and the shared create adapter has no argument for. Threading it through
+     would widen the shared contract for one tenant, so services get their own
+     section below — the same seam the server took, at the same joint, for the
+     same reason (imaging, beds and identity are the existing precedents). */
+  const admTypeRows: VocabRow[] | null = admTypes
+    ? admTypes.map(e => ({ key: e.code, label: e.label, active: e.active, history: e.history }))
+    : null
+  const activeDepartments = departments?.filter(d => d.active) ?? []
+  const departmentLabel = (code: string) =>
+    departments?.find(d => d.code === code)?.label ?? code
+  const departmentRows: VocabRow[] | null = departments
+    ? departments.map(e => {
+      const kids = (services ?? []).filter(sv => sv.departmentCode === e.code && sv.active)
+      return {
+        key: e.code, label: e.label, active: e.active, history: e.history,
+        /* the SERVICES half of the retire guard, surfaced BEFORE the attempt —
+           the row says why Retire will refuse, and the server says it again
+           with its own words if it is attempted anyway */
+        tags: kids.length > 0
+          ? [`${kids.length} active service${kids.length === 1 ? '' : 's'}: ${kids.map(k => k.label).join(', ')} — retire those first`]
+          : undefined,
+      }
+    })
+    : null
+  const admSourceRows: VocabRow[] | null = admSources
+    ? admSources.map(e => ({ key: e.code, label: e.label, active: e.active, history: e.history }))
     : null
 
   /* ---- imaging catalogue (CORRECTED model: modality + free-text name
@@ -372,6 +455,10 @@ export function Configuration() {
     frequencies: { blurb: <>The NAMED medication frequencies (&ldquo;daily&rdquo;, &ldquo;with meals&rdquo;…) orders and per-drug lists validate against — pharmacy governance. The structured <b className="num">q1h–q48h</b> pattern is a safety rule in code, never a hospital list.</> },
     imaging: { blurb: <>The coded imaging study definitions ordering reads — clinical, on the lab-catalogue gating (radiology + Senior Doctor). Retired studies leave the menu; historical orders keep rendering.</> },
     beds: { blurb: <>The unit&apos;s physical beds. Retiring an <b>occupied</b> bed is refused by live occupancy, and beds are <b>never renamed</b> (a renamed occupied bed is a wrong-patient-location risk) — add, retire, reactivate only.</> },
+    admissiontypes: { blurb: <>How an admission ARRIVES — elective, emergency, urgent, transfer, and this hospital&apos;s own. Administrative structure (office Administrator), not clinical governance. <b>Required on every admission</b>, and nothing is seeded: a real install starts empty and configures its own.</> },
+    departments: { blurb: <>The hospital&apos;s clinical DEPARTMENTS. <b>Required on every admission</b>, and the parent of every Service — so configure these first. Retiring one is <b>refused while it still has active services</b>; the other half of that guard (refused while the department has OPEN ADMISSIONS) is <b>not built yet</b> — admissions do not carry a department until the admission build lands.</> },
+    services: { blurb: <>The services under each department (General Surgery → Upper GI, Colorectal…). <b>Required on every admission.</b> A service&apos;s parent department is chosen once and is <b>immutable</b> — the edit contract has no field for it at all, so there is no reparenting path; a service that belongs elsewhere is a new entry plus a retire.</> },
+    admissionsources: { blurb: <>Where the patient came FROM — home, clinic, emergency department, another hospital. <b>Optional</b> on the admission form: when it is not recorded it is recorded as not recorded, never guessed.</> },
     obscatalog: { blurb: <>What this hospital can <b>observe</b> at the bedside. Add custom numeric observations and set the flagging ranges that drive abnormal/critical display. <b>🔒 NEWS2/SOFA score inputs are locked</b> — every part of their definition — because an editable score input silently turns a validated score into an unvalidated one. Ranges here are display flagging only; the score bands live in validated code.</> },
   }
 
@@ -585,14 +672,66 @@ export function Configuration() {
 
                   <Card icon={<IconSettings size={15} stroke="var(--faint)" />} title="About this area" aside="grows tenant by tenant">
                     <div className="uaempty">
-                      The configurability arc&apos;s vocabulary work is COMPLETE: identity, code status,
-                      imaging, beds, dispositions, isolation types, shifts and named frequencies are
-                      all per-hospital data. The letterhead <b>logo image</b> and the branding
-                      header/footer lines are configured here (the Print Center branding build);
-                      the first-run wizard and the production seed split are the next majors.
+                      Identity, code status, imaging, beds, dispositions, isolation types, shifts
+                      and named frequencies are all per-hospital data, and the Inpatient Reception
+                      structure — admission types, departments, services and sources of admission —
+                      joins them here. The letterhead <b>logo image</b> and the branding
+                      header/footer lines are configured here too (the Print Center branding build).
+                      <b>The reception lists seed NOTHING in production</b>, so on a real install
+                      they start empty and each says what its own emptiness costs; until the
+                      first-run wizard exists, filling them here IS the first-run step.
                     </div>
                   </Card>
                 </div>
+              )}
+
+              {active === 'admissiontypes' && (
+                <VocabManager title="Admission Types"
+                  icon={<IconSettings size={15} stroke="var(--blue)" />} accent="var(--blue)"
+                  spec={{
+                    noun: 'admission type', usedAt: 'on the reception admission form',
+                    retireNote: 'It can no longer be newly selected when registering an admission and the server refuses it.',
+                    codePlaceholder: 'elective', labelPlaceholder: 'Elective',
+                    emptyNote: <>Nothing is configured yet. <b>Type of Admission is required on every admission</b>, so reception cannot register a patient until this list has at least one active entry. Nothing is seeded here on purpose — admission types are the hospital&apos;s own.</>,
+                  }}
+                  rows={admTypeRows}
+                  api={{ create: d => createAdmissionType(d), update: (k, label) => updateAdmissionType(k, { label }), deactivate: deactivateAdmissionType, reactivate: reactivateAdmissionType }}
+                  onChanged={reload} showToast={showToast} />
+              )}
+
+              {active === 'departments' && (
+                <VocabManager title="Departments"
+                  icon={<IconSettings size={15} stroke="var(--cyan)" />} accent="var(--cyan)"
+                  spec={{
+                    noun: 'department', usedAt: 'on the reception admission form',
+                    retireNote: 'It can no longer be newly selected when registering an admission. Retirement is REFUSED while the department still has active services — retire those first.',
+                    codePlaceholder: 'gensurg', labelPlaceholder: 'General Surgery',
+                    emptyNote: <>Nothing is configured yet. <b>Department is required on every admission</b>, so reception cannot register a patient until this list has at least one active entry — and every <b>Service</b> is defined under a department, so this is the list to fill first.</>,
+                  }}
+                  rows={departmentRows}
+                  api={{ create: d => createDepartment(d), update: (k, label) => updateDepartment(k, { label }), deactivate: deactivateDepartment, reactivate: reactivateDepartment }}
+                  onChanged={reload} showToast={showToast} />
+              )}
+
+              {active === 'services' && (
+                <ServicesManager
+                  services={services} departments={departments}
+                  activeDepartments={activeDepartments} departmentLabel={departmentLabel}
+                  onChanged={reload} showToast={showToast} />
+              )}
+
+              {active === 'admissionsources' && (
+                <VocabManager title="Sources of Admission"
+                  icon={<IconSettings size={15} stroke="var(--violet)" />} accent="var(--violet)"
+                  spec={{
+                    noun: 'admission source', usedAt: 'on the reception admission form',
+                    retireNote: 'It can no longer be newly selected when registering an admission and the server refuses it.',
+                    codePlaceholder: 'ed', labelPlaceholder: 'Emergency Dept',
+                    emptyNote: <>Nothing is configured yet. Source of Admission is <b>optional</b> on the admission form, so reception works without it — an admission with no source recorded is recorded as having none, never guessed. Add the hospital&apos;s own below when you want it captured.</>,
+                  }}
+                  rows={admSourceRows}
+                  api={{ create: d => createAdmissionSource(d), update: (k, label) => updateAdmissionSource(k, { label }), deactivate: deactivateAdmissionSource, reactivate: reactivateAdmissionSource }}
+                  onChanged={reload} showToast={showToast} />
               )}
 
               {active === 'imaging' && (

@@ -22,6 +22,103 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-17 (step 4) · THE CONFIGURATION SCREENS FOR THE FOUR RECEPTION
+VOCABULARIES — 3 + 1, and the empty state is the feature.** The UI half of
+#199, built from `docs/design/inpatient-reception.md` §2. Four tenants in the
+Configuration area, all on `hospital.configure`. PR #202.
+
+**THREE FLAT TENANTS RENDER THROUGH THE SHARED `VocabManager` UNCHANGED**,
+confirmed against the component rather than assumed: `VocabRow` is
+key/label/active/history (`VocabManager.tsx:23-38`) and its create adapter takes
+only `{ label, isDeath? }` (`:52-59`) — exactly what Code/Label/Seq/Active/
+EventsJson normalises to. **SERVICES DOES NOT**, and the reason is worth keeping:
+a service carries an immutable parent chosen at creation, which `VocabRow` has no
+field for and the shared create has no argument for, so threading
+`departmentCode` through would widen the shared contract for one tenant — the
+fork those props exist to prevent. The precedent is three-for-three (imaging,
+beds, identity: specialised sections inside the same frame).
+
+**THE UI SEAM LANDS WHERE THE SERVER'S DID** — three `MapVocab` registrations
+plus one bespoke POST, three `VocabManager` instances plus one
+`ServicesManager` — for the same cause at the same joint. Two layers splitting
+at the same place under the same pressure is evidence the joint is real, not a
+coincidence worth glossing.
+
+**RAIL PLACEMENT: all four joined the HOSPITAL group** beside Hospital Identity,
+and the group was deliberately NOT renamed. The rail groups by GOVERNANCE, not
+by consuming screen, and these share identity's governance exactly
+(administrative configuration on `hospital.configure`); they also outlive
+reception, since ward, discharge and statistics all read Department.
+**Departments is listed BEFORE Services** so the dependency is visible in the
+rail instead of being discovered by hitting a blocked form.
+
+**🔴 THE EMPTY STATES ARE THE MANUAL STAND-IN FOR THE FIRST-RUN WIZARD**, which
+this file has recorded as a future major since the production-seed split.
+Production seeds none of these four (#199), so on a real install all four render
+empty — a state no existing tenant can reach, because every other vocabulary is
+seeded. Until the wizard exists, **filling these four screens IS the first-run
+step**, and the screens say so. Whoever builds the wizard should find the
+requirement already expressed here rather than having to rediscover it: the
+wizard's job is to sequence and prompt what these four states already state
+individually.
+
+**EACH EMPTY STATE STATES ONLY WHAT IS TRUE OF ITS OWN LIST**, which is the
+correction that matters. Type of Admission, Department and Service are REQUIRED
+on the admission form, so those three say reception cannot register a patient
+until they are filled. Source of Admission is OPTIONAL (§3.2), so it says the
+opposite: reception works without it, and a source that was not recorded is
+recorded as not recorded rather than guessed. **A blanket "reception cannot be
+used until this is filled" on the optional list would have been a false claim on
+a configuration screen — the same class as any other fabricated line**, and the
+kind that is believed precisely because it appears where the person who can fix
+it is standing. `VocabManager` gained one optional `emptyNote` prop for this;
+wording is what its props are for.
+
+**SERVICES ALSO HAS A BLOCKED STATE.** With no active department the add form has
+nothing to offer, so it says "Add a department first" and renders **no picker at
+all** (asserted: zero `<select>` elements). An empty dropdown would leave the
+user to infer the rule from an absence.
+
+**A PRE-EXISTING DEFECT THE RENDERED PASS CAUGHT — and it had been hiding a
+safety statement.** `Configuration.css` styled section-blurb emphasis as
+`.cfgblurb b{color:var(--ink)}` (and `.uacheck b` likewise). `--ink` means "dark
+ink ON A BRIGHT ACCENT FILL" (`tokens.css:47`) and it FLIPS between themes —
+`#06121f` dark, `#f7fafd` light. On the blurb's own transparent surface that
+painted dark-on-dark in the dark theme and white-on-white in the light one, so
+**the bold emphasis in every section blurb was invisible in BOTH themes**,
+including the Observations blurb's "🔒 NEWS2/SOFA score inputs are locked".
+Corrected to `--text` and measured after the fix: `rgb(233,241,251)` dark,
+`rgb(21,37,56)` light. Scoped to that file on purpose — the other `var(--ink)`
+uses sit on accent fills and are correct. **The lesson is about the method, not
+the token:** this was invisible to typecheck, to build, and to reading the diff;
+it took rendering both themes and looking. A screenshot in one theme would have
+missed it too, since the failure is symmetric.
+
+**VERIFIED BY RENDERING, against a real server and a real PostgreSQL, in both
+themes** — the standard this project asks for, with refusals shown rather than
+argued:
+
+- office Administrator sees all four under HOSPITAL; **no** Clinical
+  vocabularies group (it holds none of those atoms);
+- a Consultant sees **none** of the four, keeps its own Clinical vocabularies
+  group, and the HOSPITAL group hides entirely (empty groups hide);
+- the office Administrator is still **Access Restricted** on `/orders`, `/labs`
+  and `/ai` — reception reaches no clinical pane;
+- retiring a department with active services → **409 on the row**, in the
+  server's own words ("still has 3 active service(s) — Upper GI, Colorectal,
+  Vascular"), with the row having warned before the attempt and the department
+  still Active afterwards;
+- `PUT /api/icu/services/{code}` naming `departmentCode` → **400** (binding
+  failure; there is no reparenting path to disable);
+- `POST /api/icu/services` with an unknown parent → **400 naming the active
+  departments**;
+- all four empty states and the blocked Services form, in both themes.
+
+**Still owed, unchanged by this step:** the Department retire guard's
+open-admissions half (blocked until admissions carry a department), the
+`/adt/attendings` leg asserting `liam.osei` ABSENT when the ward doctor list is
+built, and the flagged table-wide-versus-per-department service label question.
+
 **2026-08-17 (answers) · THE HOSPITAL ANSWERED ALL THREE QUESTIONS FROM #200 —
 the ward model is settled and the Room gap is confirmed real but narrow (#201,
 docs only).** Recorded so the questions are not re-asked; the reasoning is NOT
@@ -11339,6 +11436,42 @@ loud failure beats an unrecoverable silent pass.
 
 *[Attributed addition 2026-07-12 — recorded per the project owner's
 instruction, source stated per the documentation rule.]*
+
+- **🔴 The two-theme contrast auditor is not in the repository, so the only
+  mechanism that catches token-resolution defects cannot run** (recorded
+  2026-08-17 with the step-4 screens, #202; owed as a standing check).
+  **THE `--ink` DEFECT WAS THE THIRD INSTANCE OF ONE CLASS.** A theme token
+  resolves to the wrong value for the surface it is used on, and text becomes
+  invisible — compiling, bundling and shipping cleanly every time:
+  1. the **DARK-THEME DROPDOWN OPTIONS** (Polish Batch 2): the `--optbg`
+     option-background token existed but was applied by only three page-scoped
+     rules, so 42 selects across 16 files had no option styling and their text
+     was invisible in dark;
+  2. the **TWO-THEME CONTRAST SWEEP**, which found **638 flagged elements** and
+     drove them to 0 (ALL_CONTRAST_PASS);
+  3. the **`--ink` BLURB EMPHASIS** (#202): `--ink` means "dark ink ON A BRIGHT
+     ACCENT FILL" and FLIPS between themes, so on the blurb's transparent
+     surface it painted dark-on-dark in dark and white-on-white in light. Every
+     section blurb's bold emphasis was unreadable in BOTH themes — including the
+     Observations blurb's "🔒 NEWS2/SOFA score inputs are locked", **a safety
+     statement hidden in both themes for months.**
+  **VERIFIED, and it is worse than "the sweep is not a standing check": the
+  auditor does not exist as an artifact at all.** `ci.yml` runs **no browser** —
+  zero references to playwright, chromium, screenshots or contrast. The only
+  Playwright in `.github/workflows/` is `deployed-print-e2e.yml`, which is
+  `workflow_dispatch`-only and renders a Discharge Summary to check identity
+  fields, not themes or contrast. `scripts/` holds no contrast checker,
+  `package.json` declares no browser driver, and the only repo-wide matches for
+  "contrast"/"WCAG" are a palette comment in `preferences.ts` and a
+  `Contrast dye` allergy string in the roster mock. So the sweep that fixed 638
+  elements survives only as a DESCRIPTION in this file — it cannot be re-run
+  even manually without being rewritten from scratch.
+  **OWED:** re-establish that auditor as a committed script and run it as a
+  standing check over both themes. Until it exists, this class is caught only
+  when somebody happens to render the right screen in the right theme and look —
+  which is how instance 3 was found, and why it took months. Not built now
+  (#202 fixed the instance, not the class — see "Closing one instance of a
+  defect class is not closing the class" in 03).
 
 - **🔴 The bed registry has no ROOM concept** (recorded 2026-08-17 with the
   reception design's §4 amendment, #200; owed to the Ward design). `BedRow` is
