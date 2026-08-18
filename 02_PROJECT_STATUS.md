@@ -119,6 +119,31 @@ open-admissions half (blocked until admissions carry a department), the
 `/adt/attendings` leg asserting `liam.osei` ABSENT when the ward doctor list is
 built, and the flagged table-wide-versus-per-department service label question.
 
+**2026-08-17 (answers) · THE HOSPITAL ANSWERED ALL THREE QUESTIONS FROM #200 —
+the ward model is settled and the Room gap is confirmed real but narrow (#201,
+docs only).** Recorded so the questions are not re-asked; the reasoning is NOT
+duplicated here and lives in `docs/design/inpatient-reception.md` § Amendments,
+entry "The hospital has answered".
+
+1. **No mapping at all** — any room, any department; not every bed tagged with
+   both. So the boarding concept is PERMANENTLY absent here (nothing to switch
+   on), and a department added later inherits every room with nothing to
+   re-tag and nothing to forget. §4's conditional path stays in the product for
+   a hospital that does have specialty wards.
+2. **A day case IS an admission**, and the multi-bed rooms are day-case ONLY —
+   so the **Room concept is CONFIRMED REQUIRED, but narrow**: one area, not the
+   estate. A recommendation is recorded (nullable room field on the bed, versus
+   a Room entity) rather than a decision, since it is Ward-design scope.
+   Encoding the room inside the bed's NAME is explicitly REJECTED — it is the
+   `Encounter.Attending` mistake this file already records at "free text, joined
+   to nothing, read by nothing". The Known Feature Gaps entry for the missing
+   Room concept stands, now confirmed rather than conditional.
+3. **The admitting doctor is chosen MANUALLY**, every time — no derivation from
+   Service, referring doctor still optional. That closes the derived-default
+   question by removal, and **confirms the ward doctor-tier list is required**,
+   which in turn makes the owed `/adt/attendings` leg (assert `liam.osei`
+   ABSENT) certain rather than merely likely.
+
 **2026-08-17 (later still) · THE FIRST REAL HOSPITAL CONTRADICTED §4 OF THE
 RECEPTION DESIGN — the ward model is superseded and three questions go back to
 them (#200, docs only).** No code changed and step 3 is unaffected: reception
@@ -236,6 +261,20 @@ every endpoint is an API call. Reception is unusable until those screens exist,
 which is the honest consequence of seeding nothing in production rather than a
 defect in step 3. Step 4 carries the referrer typeahead and `admissions.create`
 with it. Named because an unnamed gap becomes an invisible one.
+
+*[Superseded 2026-08-17 (#201) — THE SCOPE ABOVE IS WRONG IN ONE RESPECT, kept
+rather than edited per supersede-don't-rewrite. **Step 4 is the Configuration
+screens for the four governed vocabularies ONLY.** The referrer typeahead and
+the `admissions.create` atom move to the RECEPTION-SCREEN step, not step 4. The
+reason is the one recorded in the design's Build-sequencing amendment and it
+applies with more force now the questions are answered: that atom's entire
+justification is save-while-typing under a Doctor token MID-ADMISSION, which
+exists only on the reception screen — so on a configuration screen the gate
+could still not be exercised for the reason it was chosen. §3.4 also has
+referrers ACCUMULATING BY TYPING rather than being pre-loaded, so a
+configuration screen for them would build the surface the design says is not
+needed. Everything else in the paragraph above stands: a hospital still has four
+tables and no way to populate them until step 4 ships.]*
 
 **TWO ITEMS OWED, both stated where they are missing rather than left silent:**
 

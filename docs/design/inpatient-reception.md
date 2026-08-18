@@ -541,3 +541,102 @@ name.
 Nothing in §§0–8, in Amendment A, in rulings 1–5, or in the Build-sequencing
 entry is altered by this entry. §4's original text stands unchanged above, as
 the model it was — superseded here, not rewritten.
+
+### The hospital has answered — all three questions closed (recorded 2026-08-17)
+
+The three questions raised in the entry above have been answered by the
+contracted hospital, via the project owner. Appended; nothing above is altered.
+
+#### 1 · ANSWERED: no mapping at all — any room, any department
+
+**Not "every bed tagged with both departments". There is NO mapping**, and the
+hospital does not want one.
+
+Two consequences, both worth stating rather than leaving to be inferred:
+
+- **The boarding concept is PERMANENTLY absent here**, not merely absent today.
+  There is no configuration that could switch it on, because there is nothing to
+  map. The previous entry required the machinery to be absent rather than
+  lenient when the mapping is unset; at this hospital "unset" is the permanent
+  state.
+- **A department added later inherits every room**, with no re-tagging and no
+  rooms to forget. The failure the previous entry warned about — a bed nobody
+  re-tags leaving a new department with nowhere to admit, surfacing as "no beds
+  available" at 2am rather than "configuration incomplete" — **cannot occur
+  here.** That asymmetry was the reason the question was worth asking before it
+  mattered, and it decided the answer.
+
+**§4's conditional path stays in the product.** A hospital that *does* separate
+its wards by specialty still gets the mapping, the ward-first offer and the
+audited boarding reason. This one simply never sets the mapping. One code path
+selected by configuration, exactly as the previous entry required — the answer
+narrows this installation, not the product.
+
+#### 2 · ANSWERED: a day case IS an admission, and the multi-bed rooms are day-case ONLY
+
+So **the Room concept is CONFIRMED REQUIRED — and narrowly.** It is one area of
+the estate, not the estate: everywhere else the rooms are single-bed and room
+and bed are the same thing. The open question from item 4 is closed in the
+direction that keeps the gap real but small.
+
+**RECOMMENDATION, not a decision — this stays Ward-design scope.** Two shapes,
+with the cost of each stated:
+
+- **A · a nullable `Room` field on the bed.** Null for single-bed stock, where
+  room ≈ bed and inventing a room number would be inventing a fact; populated
+  only for the day-case beds that genuinely share one. Additive, no new entity,
+  and it states honestly that most beds have no room of their own.
+  *Cost:* the room becomes a string repeated across sibling beds with nothing
+  owning it — renaming one means editing N beds, and nothing enforces that they
+  agree.
+- **B · a `Room` entity with its own hierarchy**, rooms holding beds. Correct in
+  the general case, one place to rename, and able to carry attributes later.
+  *Cost:* it imposes a room on the whole estate, where the overwhelming majority
+  would be a one-bed room existing only to satisfy the model — ceremony that
+  makes every future read join through a table that means nothing.
+
+Which one turns on facts not yet known: whether a room will ever carry
+attributes of its own, and whether the day-case area is stable or grows. That is
+a Ward-design call, made with the estate in front of you.
+
+**REJECTED, explicitly: encoding the room inside the bed's NAME** (`DC-3 / bed
+2`, or any such convention inside `BedId`). This is the `Encounter.Attending`
+mistake, and this repo has already paid for it once: 02_PROJECT_STATUS.md
+records that the only stored clinician↔patient link was
+*"`Encounter.Attending` — free text, joined to nothing, read by nothing"*, and
+that the admission form's Attending stayed a free-text `<input>` until a typo
+wrote a ghost attending onto an encounter and it had to be replaced with a
+`<select>` bound to a real read. **A room number living inside `BedId` is the
+same shape:** a real thing represented as text, joined to nothing. Nothing could
+list the beds in a room, nothing could rename a room, and every consumer would
+re-parse a convention nobody enforces. `BedId` is a permanent natural key —
+overloading it makes the room permanent too, and permanently wrong if it is ever
+mistyped.
+
+Not built here. Reception never chooses a bed.
+
+#### 3 · ANSWERED: the admitting doctor is chosen MANUALLY, every time
+
+**No derivation from Service.** Item 5's derived-default question is closed —
+and closed by removal rather than by satisfaction: since nothing is derived, the
+visible-editable-default constraint has nothing to bind to. It stands unused,
+and stays on the record for any future proposal to derive the field.
+
+**The referring doctor stays OPTIONAL**, as §3.2 already has it.
+
+**This confirms the ward doctor-tier list is REQUIRED.** Ruling 2's new
+ward-scoped Doctor+SeniorDoctor endpoint is no longer one option among several:
+with no derivation, a manual picker is the only way the field is ever filled, so
+it must offer the tier the ward actually admits under. `/adt/attendings` still
+stays consultant-only and byte-identical for ICU.
+
+**OWED, restated here because this answer is what makes it certain:** when that
+ward list is built, the deployed ADT suite needs a leg asserting the seeded
+Specialist **`liam.osei` is ABSENT** from `/adt/attendings`. The suite's current
+`maya.chen`-absence check cannot detect a doctor-tier widening of ICU's picker —
+a Staff Nurse is absent under either filter. Already on 02's Known Feature Gaps
+shelf from #199; this entry is the reason it will be needed rather than merely
+possible.
+
+Nothing in §§0–8, in Amendment A, in rulings 1–5, in the Build-sequencing entry,
+or in the §4-superseded entry is altered by this one.
