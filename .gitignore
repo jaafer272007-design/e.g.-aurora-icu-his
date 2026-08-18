@@ -12,6 +12,11 @@ server/obj
 server/publish
 server/data
 *.db
+# SQLite WAL sidecars — `*.db` alone left these two untracked after any local
+# run, and a local run from the repo root (the documented verification path)
+# creates them beside the database it ignores
+*.db-shm
+*.db-wal
 server/wwwroot/
 
 # appliance — local secrets and the model payload (shipped alongside, never committed)

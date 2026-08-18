@@ -7,7 +7,7 @@ import { lastPatientId } from '../lib/patientContext'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 import { APP_VERSION } from '../lib/version'
 
-export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'admissions' | 'discharges' | 'discharged' | 'print' | 'users' | 'backup' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'reception' | 'admissions' | 'discharges' | 'discharged' | 'print' | 'users' | 'backup' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
 
 interface NavItem {
   key: NavKey
@@ -60,6 +60,14 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     { key: 'labentry', label: 'Lab Entry', icon: <IconPencil size={16} />, to: withPatient('/lab-entry'), perm: 'results.document' },
     { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: withPatient('/timeline'), perm: 'patients.view' },
     { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: withPatient('/ai'), perm: 'ai.view' },
+    /* Inpatient Reception — the ward's FRONT DOOR (find-or-register the
+       patient, create the admission, stop). Gated on `admissions.create`,
+       which the office Administrator holds and `adt.admit` is not: the
+       reception desk is clerical authority, and the row must be reachable
+       by the profile that staffs it. Listed ABOVE Admissions because that
+       is the order of the journey — reception opens the episode, ICU's
+       Admissions screen assigns the bed. */
+    { key: 'reception', label: 'Reception', icon: <IconAdmit />, to: '/reception', perm: 'admissions.create' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge />, to: '/discharges', perm: 'patients.view' },
     /* Discharged Patients — the records-retrieval view (browse + search ALL
