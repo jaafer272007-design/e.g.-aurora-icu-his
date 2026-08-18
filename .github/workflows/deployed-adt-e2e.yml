@@ -124,13 +124,18 @@ jobs:
 
       - name: Login as doctor and nurse
         run: |
-          for u in sara.rahman maya.chen; do
+          for u in sara.rahman maya.chen liam.osei; do
             t=$(curl -sf -X POST "$API/api/auth/login" -H "Content-Type: application/json" \
               -d "{\"username\":\"$u\",\"password\":\"Aurora2026!\"}" \
               | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
             case $u in
               sara.rahman) echo "DOC=$t" >> "$GITHUB_ENV";;
               maya.chen)   echo "NUR=$t" >> "$GITHUB_ENV";;
+              # the seeded Specialist -> plain Doctor profile. He exists in
+              # this suite to pin ICU's attending filter: a Staff Nurse is
+              # absent under EITHER filter, so maya.chen alone cannot detect
+              # a doctor-tier widening of the consultants-only picker.
+              liam.osei)   echo "SPC=$t" >> "$GITHUB_ENV";;
             esac
             echo "$u: token issued"
           done
@@ -165,8 +170,55 @@ jobs:
           # …and a NURSE account is absent (the picker is consultants-only,
           # never the free-text string it replaced)
           assert 'maya.chen' not in names, sorted(names)
-          print(f"attendings: {len(rows)} consultant option(s); sara.rahman present, maya.chen absent")
+          # THE LEG THAT PINS THE FILTER LINE (owed by the Inpatient
+          # Reception design, ruling 2 + answer 3; paid here).
+          # maya.chen's absence proves the picker is not "everyone" — it
+          # CANNOT prove the picker is consultants-only, because a Staff
+          # Nurse is absent under EITHER filter. The seeded Specialist
+          # liam.osei derives the plain Doctor profile, so he is absent
+          # under `ProfileOf(t) == "SeniorDoctor"` and PRESENT the moment
+          # anybody widens that one line to the ward tier. Until this
+          # assertion existed, widening ICU's admission form to registrars
+          # was a silent one-word edit that no check could see.
+          assert 'liam.osei' not in names, \
+              f"ICU's attending picker has been WIDENED to the doctor tier: {sorted(names)}"
+          assert all(sorted(r) == ['jobTitle', 'name', 'username'] for r in rows), rows[0]
+          print(f"attendings: {len(rows)} consultant option(s); sara.rahman present, "
+                f"maya.chen absent, liam.osei (Specialist) ABSENT — the filter line is pinned")
           PY
+
+      - name: WARD DOCTOR TIER — a SECOND endpoint, not a widened one (Inpatient Reception ruling 2)
+        run: |
+          # /adt/ward-doctors returns Doctor + SeniorDoctor for the ward's
+          # admitting-doctor picker. The pair of assertions is the point:
+          # ONE user (liam.osei) is absent from /adt/attendings above and
+          # PRESENT here. Two lists, one subject, both filters pinned by it.
+          rc=$(curl -s -o /tmp/ward.json -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/adt/ward-doctors")
+          echo "doctor reads ward-doctors -> HTTP $rc"; [ "$rc" = "200" ] || { cat /tmp/ward.json; exit 1; }
+          python3 - <<'PY'
+          import json
+          rows = json.load(open('/tmp/ward.json'))
+          names = {r['username'] for r in rows}
+          assert 'liam.osei' in names, ("the ward tier must include the Doctor profile", sorted(names))
+          assert 'sara.rahman' in names, ("the ward tier is a SUPERSET of the consultants", sorted(names))
+          assert 'maya.chen' not in names, ("a nurse is not an admitting doctor", sorted(names))
+          byname = {r['username']: r['profile'] for r in rows}
+          assert byname['liam.osei'] == 'Doctor', byname
+          assert byname['sara.rahman'] == 'SeniorDoctor', byname
+          print(f"ward-doctors: {len(rows)} option(s); liam.osei PRESENT as Doctor, "
+                f"sara.rahman as SeniorDoctor, maya.chen absent")
+          PY
+          # gated on admissions.create — a NURSE holds neither atom → 403
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR" "$API/api/icu/adt/ward-doctors")
+          echo "nurse reads ward-doctors -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
+          # …while the SPECIALIST (Doctor profile, holds admissions.create) reads it
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $SPC" "$API/api/icu/adt/ward-doctors")
+          echo "specialist reads ward-doctors -> HTTP $rc"; [ "$rc" = "200" ] || exit 1
+          # four-code discipline, same as the sibling endpoint
+          rc=$(curl -s -o /dev/null -w '%{http_code}' "$API/api/icu/adt/ward-doctors")
+          echo "unauth -> HTTP $rc"; [ "$rc" = "401" ] || exit 1
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $DOC" "$API/api/icu/adt/ward-doctors?foo=1")
+          echo "unknown param -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
           # a nurse token has no adt.admit → 403 (cannot read the picker)
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $NUR" "$API/api/icu/adt/attendings")
           echo "nurse reads attendings -> HTTP $rc"; [ "$rc" = "403" ] || exit 1
@@ -643,6 +695,104 @@ jobs:
           curl -sf -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$EID2/discharge" >/dev/null
           echo "second encounter discharged (cleanup re-asserts)"
 
+      - name: INPATIENT RECEPTION — the bed split (403 writes NOTHING), the §2.1 hierarchy, and the audit that must not be backdated
+        run: |
+          # The reception rulings, asserted against the LIVE service. ADM is
+          # huda.nasser (Receptionist → Administrator profile): holds
+          # admissions.create, does NOT hold adt.admit. That asymmetry IS the
+          # ruling — one admission path, and the split is by BED.
+          FREE=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/beds" \
+            | python3 -c 'import json,sys; f=[b["bedId"] for b in json.load(sys.stdin) if not b.get("patientId") and b.get("active")]; assert f, "no free beds"; print(f[0])')
+          ident() { echo "\"nameFirst\":\"Recep\",\"nameSecond\":\"$1\",\"nameFamily\":\"Case\",\"sex\":\"F\",\"allergies\":\"None\",\"dateOfBirth\":\"1985-03-04\""; }
+          BASE='"diagnosis":"Reception E2E","attending":"Dr. Sara Rahman"'
+          adm() { curl -s -o /tmp/adm.json -w '%{http_code}' -X POST -H "Authorization: Bearer $1" \
+                    -H 'Content-Type: application/json' -d "$2" "$API/api/icu/adt/admissions"; }
+
+          # ---- 1. RECEPTION MAY NOT NAME A BED, AND THE REFUSAL WRITES NOTHING
+          N0=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          rc=$(adm "$ADM" "{$(ident A),$BASE,\"bedId\":\"$FREE\"}")
+          echo "reception names a bed -> HTTP $rc"; [ "$rc" = "403" ] || { cat /tmp/adm.json; exit 1; }
+          N1=$(curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          [ "$N0" = "$N1" ] && echo "  403 wrote NOTHING — encounters $N0 = $N1 (no patient, no encounter, no MRN consumed)" \
+            || { echo "  FAIL: the refused request still wrote ($N0 -> $N1)"; exit 1; }
+
+          # ---- 2. THE SAME DESK, NO BED: allowed, and "awaiting bed" is DERIVED
+          # PICK THE DEPARTMENT *FROM* THE SERVICES, not the other way round.
+          # Choosing the first active department picked one with no services
+          # and silently skipped the hierarchy legs — a check that does not
+          # fire is worse than no check (03's coverage lesson). Selecting a
+          # department that provably HAS an active service makes those legs
+          # unconditional whenever the pair exists at all.
+          curl -sf -H "Authorization: Bearer $ADM" "$API/api/icu/services" -o /tmp/svcs.json
+          curl -sf -H "Authorization: Bearer $ADM" "$API/api/icu/departments" -o /tmp/deps.json
+          eval "$(python3 - <<'PY'
+          import json
+          deps = {d["code"] for d in json.load(open('/tmp/deps.json')) if d["active"]}
+          assert deps, "staging has no active departments — the reception vocabularies did not seed"
+          svcs = [s for s in json.load(open('/tmp/svcs.json')) if s["active"] and s["departmentCode"] in deps]
+          if svcs:
+              print(f'DEP={svcs[0]["departmentCode"]}'); print(f'SVC={svcs[0]["code"]}')
+              other = sorted(deps - {svcs[0]["departmentCode"]})
+              print(f'OTHER={other[0] if other else ""}')
+          else:
+              print(f'DEP={sorted(deps)[0]}'); print('SVC='); print('OTHER=')
+          PY
+          )"
+          TYP=$(curl -sf -H "Authorization: Bearer $ADM" "$API/api/icu/admission-types" | python3 -c 'import json,sys; a=[r["code"] for r in json.load(sys.stdin) if r["active"]]; print(a[0])')
+          echo "using department=$DEP service=${SVC:-<none>} type=$TYP"
+          BACKDATED=$(python3 -c "import datetime;print((datetime.datetime.utcnow()-datetime.timedelta(days=2)).strftime('%Y-%m-%d %H:%M'))")
+          rc=$(adm "$ADM" "{$(ident B),$BASE,\"admissionTypeCode\":\"$TYP\",\"departmentCode\":\"$DEP\"${SVC:+,\"serviceCode\":\"$SVC\"},\"admittingDoctorUserId\":\"liam.osei\",\"referrerName\":\"Dr External, City Clinic\",\"admittedAt\":\"$BACKDATED\"}")
+          echo "reception admits with NO bed -> HTTP $rc"; [ "$rc" = "200" ] || { cat /tmp/adm.json; exit 1; }
+          EID5=$(python3 -c 'import json; print(json.load(open("/tmp/adm.json"))["encounter"]["encounterId"])')
+          echo "EID5=$EID5" >> "$GITHUB_ENV"
+          BACKDATED="$BACKDATED" python3 - <<'PY'
+          import json, os
+          e = json.load(open('/tmp/adm.json'))['encounter']
+          assert e['status'] == 'open', e['status']
+          assert e['bedId'] == '', ("awaiting bed is DERIVED from open + empty bedId", e['bedId'])
+          assert e['admittingDoctorUserId'] == 'liam.osei', e
+          assert e['referrerName'] and not e.get('referrerUserId'), e
+          # THE AUDIT MUST NOT CARRY THE CLIENT'S CLOCK
+          ev = [x for x in e['events'] if x['action'] == 'admitted'][0]
+          assert ev['time'] != os.environ['BACKDATED'], \
+              ("the audit was BACKDATED to the client-supplied admission time", ev)
+          assert e['admittedAt'] == os.environ['BACKDATED'], (e['admittedAt'], os.environ['BACKDATED'])
+          # …and the audit sentence must read true with no bed
+          assert 'to ' != ev['detail'][:3], ("dangling preposition in the permanent record", ev['detail'])
+          assert 'no bed' in ev['detail'], ev['detail']
+          print(f"awaiting-bed encounter: status=open bedId='' | admittedAt={e['admittedAt']} "
+                f"(entered) vs audit time={ev['time']} (server) — NOT backdated")
+          print("audit detail:", ev['detail'])
+          PY
+
+          # ---- 3. THE §2.1 HIERARCHY, enforced on the wire
+          if [ -n "$SVC" ]; then
+            rc=$(adm "$ADM" "{$(ident C),$BASE,\"serviceCode\":\"$SVC\"}")
+            echo "service with NO department -> HTTP $rc"; [ "$rc" = "400" ] || { cat /tmp/adm.json; exit 1; }
+            if [ -n "$OTHER" ]; then
+              rc=$(adm "$ADM" "{$(ident D),$BASE,\"departmentCode\":\"$OTHER\",\"serviceCode\":\"$SVC\"}")
+              echo "service under the WRONG department -> HTTP $rc"; [ "$rc" = "400" ] || { cat /tmp/adm.json; exit 1; }
+              grep -q 'never moved between departments' /tmp/adm.json || { echo "refusal did not name the rule"; cat /tmp/adm.json; exit 1; }
+            else
+              echo "only one department configured — the wrong-parent leg needs two; NOT asserted this run"
+            fi
+          else
+            echo "no service configured under $DEP — the hierarchy legs were NOT asserted this run"
+          fi
+
+          # ---- 4. THE VALIDATION FLOOR
+          rc=$(adm "$ADM" "{$(ident E),$BASE,\"departmentCode\":\"no-such-department\"}")
+          echo "unknown departmentCode -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(adm "$ADM" "{$(ident F),$BASE,\"admittingDoctorUserId\":\"maya.chen\"}")
+          echo "a NURSE as admitting doctor -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(adm "$ADM" "{$(ident G),$BASE,\"referrerUserId\":\"liam.osei\",\"referrerName\":\"Both\"}")
+          echo "both referrer fields -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          FUTURE=$(python3 -c "import datetime;print((datetime.datetime.utcnow()+datetime.timedelta(hours=3)).strftime('%Y-%m-%d %H:%M'))")
+          rc=$(adm "$ADM" "{$(ident H),$BASE,\"admittedAt\":\"$FUTURE\"}")
+          echo "future admittedAt -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+          rc=$(adm "$ADM" "{$(ident I),$BASE,\"admittedAt\":\"18/08/2026 10:00\"}")
+          echo "malformed admittedAt -> HTTP $rc"; [ "$rc" = "400" ] || exit 1
+
       - name: Durable record — THIS run's closed encounter is queryable (cross-run accumulation = live durability)
         run: |
           curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters?patientId=$PID&status=discharged" \
@@ -665,7 +815,7 @@ jobs:
           if [ -z "${DOC:-}" ]; then
             echo "no token — nothing was created by this run"; exit 0
           fi
-          for enc in "${EID:-}" "${EID2:-}" "${EID3:-}" "${EID4:-}"; do
+          for enc in "${EID:-}" "${EID2:-}" "${EID3:-}" "${EID4:-}" "${EID5:-}"; do
             [ -n "$enc" ] || continue
             out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" "$API/api/icu/adt/encounters/$enc/discharge")
             rc=$(echo "$out" | tail -1)
@@ -676,4 +826,4 @@ jobs:
               *)   echo "CLEANUP FAILED: could not release $enc (HTTP $rc) — a bed is leaked, manual action required"; exit 1;;
             esac
           done
-          [ -n "${EID:-}${EID2:-}${EID3:-}${EID4:-}" ] || echo "no encounter was created by this run — nothing to release"
+          [ -n "${EID:-}${EID2:-}${EID3:-}${EID4:-}${EID5:-}" ] || echo "no encounter was created by this run — nothing to release"

@@ -640,3 +640,80 @@ possible.
 
 Nothing in §§0–8, in Amendment A, in rulings 1–5, in the Build-sequencing entry,
 or in the §4-superseded entry is altered by this one.
+
+### §3.2 presence is NOT yet enforced — a DATED follow-up (recorded 2026-08-18, step 5)
+
+The server-side admission fields shipped in step 5. **What shipped is option
+(c): every §3.2 field is optional on the wire and validated when present.**
+§3.2's table marks five of them **required**, so a reader checking the table
+against the code will find a difference. It is a decision with a date on it.
+
+**WHY NOT REQUIRED — and it is not the mechanical cost it looks like.** #199
+seeds **no departments in production, deliberately**. Requiring the fields would
+mean the next update to a live install makes **admission impossible** until
+somebody configures a department. The server still boots, `/healthz` still
+answers 200, **so the health check passes and the updater does not roll back** —
+a live-site outage delivered by an update, in the one failure mode the rollback
+machinery cannot catch. The blast radius is not small either: **12 deployed E2E
+suites and the ICU admission form** post to this endpoint (32 references).
+
+**WHAT IS ENFORCED INSTEAD** — the half that prevents a *wrong* record rather
+than a merely incomplete one:
+
+| rule | code |
+|---|---|
+| a code that matches no vocabulary entry | 400 |
+| a code whose entry is retired | 409 |
+| `serviceCode` with no `departmentCode` | 400 |
+| `serviceCode` under a department that is not its parent | 400 |
+| `admittingDoctorUserId` off the ward doctor tier | 400 |
+| both referrer fields set | 400 |
+| `admittedAt` malformed, or in the future | 400 |
+
+An admission filed under *Cardiology/Upper GI* is the lie the hierarchy exists
+to stop. An admission with nothing filed in is honestly incomplete, and §5
+already says blank means blank.
+
+**WHEN PRESENCE BECOMES REQUIRED — the condition, not "later":**
+
+1. the reception screen has shipped and supplies the fields (step 6);
+2. the ICU admission form has been updated to supply them;
+3. all 12 deployed suites have been migrated; **and**
+4. the contracted site has configured its own structure.
+
+Only when every caller already sends the fields does requiring them stop being
+a switch that can dark a live hospital. Recorded identically in `02`'s Known
+Feature Gaps and **in a comment at the validation site itself**, so the next
+reader finds it wherever they arrive.
+
+### Admitting Doctor is NOT `Encounter.Attending` — two facts, verified (recorded 2026-08-18)
+
+Two adjacent doctor fields on one encounter will be filled and read
+inconsistently unless the difference is stated rather than inferred from names.
+It was checked against the code, not assumed:
+
+|  | `Attending` (ICU, existing) | `AdmittingDoctorUserId` (ward, new) |
+|---|---|---|
+| **means** | the responsible consultant for the stay | who admitted this patient |
+| **tier** | SeniorDoctor only | Doctor **or** SeniorDoctor — a registrar admits |
+| **lifetime** | can change mid-stay (handover) | fixed at admission — it records an act |
+| **stores** | a **display-name snapshot** (`Admissions.tsx` sends `u.name`) | a **username**, validated against `Users` |
+| **validated** | **not at all** — the server accepts any string | unknown → 400, deactivated → 409, off-tier → 400 |
+
+**The `Attending` picker's safety is entirely client-side.** The server checks
+it for non-blank and length and nothing else, so `attending: "Dr Nobody"` is
+accepted today. That is recorded here as a finding; **retrofitting validation
+onto it is deliberately NOT done in step 5** — it would change behaviour for
+every existing caller, which is the same class of risk as requiring the §3.2
+fields, and it deserves its own decision rather than riding along.
+
+**Merging the two would undo ruling 2.** One field means one tier; the ward
+needs registrars, so the merged field would carry them — and ICU's attending
+would silently gain registrars, exactly what a second endpoint was built to
+prevent. **The structural difference is the safeguard that keeps them apart:**
+one is an identity reference resolved at read, the other a display snapshot. A
+reader who checks the type cannot confuse them.
+
+Nothing in §§0–8, in Amendment A, in rulings 1–5, in the Build-sequencing entry,
+in the §4-superseded entry, or in the hospital's three answers is altered by
+these two.

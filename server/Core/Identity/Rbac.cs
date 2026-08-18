@@ -58,6 +58,25 @@ static class Rbac
            constraint). Admission-time selection rides adt.admit exactly
            as weight/height do; this atom gates the bedside set/change
            path. */
+        /* admissions.create (Inpatient Reception, Amendment 4): OPENING an
+           episode — held by Doctor, SeniorDoctor and Administrator. No new
+           profile is needed because the Receptionist job title ALREADY maps
+           to the Administrator profile below, so the hospital's reception
+           desk receives this atom by mapping rather than by invention.
+           THE SPLIT IS BY BED, NOT BY ENDPOINT. There is ONE admission
+           path and no fork: reception calls the same endpoint every
+           clinician calls. What it cannot do is NAME A BED — that still
+           costs adt.admit, which the office Administrator does not hold and
+           does not gain here. So reception can open the episode and cannot
+           place the patient, which is exactly what §6's concern ("an
+           Administrator can create the object the whole clinical record
+           hangs from") resolves to. A second reception-only endpoint was
+           the alternative and is rejected: two admission paths is the fork
+           §1 forbids, and the two would drift.
+           NOTHING IS REMOVED FROM THE ADMINISTRATOR EXCLUSION. Orders,
+           results, attachments and AI stay closed to that profile exactly
+           as the locked constraint requires — this atom opens an episode,
+           it does not open a clinical pane. */
         /* attachments.* (File Attachments, 2026-07-25 owner decision):
            attachments.view = the chart's CLINICAL tier - granted exactly
            where results.view is (attachments are result-like clinical
@@ -70,7 +89,7 @@ static class Rbac
            results.correct (the labs correction convention). */
         ["Doctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
-            "results.document", "notes.document", "ai.view", "adt.admit", "adt.discharge",
+            "results.document", "notes.document", "ai.view", "adt.admit", "admissions.create", "adt.discharge",
             "observations.record", "patients.measure", "codestatus.set",
             "attachments.view", "attachments.add"],
         /* SeniorDoctor (Stage 11 F4): Doctor's SUPERSET — everything a
@@ -133,7 +152,7 @@ static class Rbac
         ["SeniorDoctor"] = ["patients.view", "orders.view", "orders.create", "orders.sign",
             "orders.modify", "orders.discontinue", "results.view", "results.acknowledge",
             "results.document", "results.correct", "labcatalog.manage", "ordersets.manage",
-            "notes.document", "ai.view", "adt.admit", "adt.discharge", "observations.record",
+            "notes.document", "ai.view", "adt.admit", "admissions.create", "adt.discharge", "observations.record",
             "observations.correct", "observations.configure", "patients.measure",
             "assignments.manage", "codestatus.set", "codestatus.manage", "imagingcatalog.manage",
             "beds.manage", "dispositions.manage", "isolation.manage", "shifts.manage",
@@ -171,7 +190,7 @@ static class Rbac
            decision grants it to BOTH profiles (unit command + facility
            administration). Beds carry no clinical data. */
         ["Administrator"] = ["admin.view", "patients.view", "identity.correct", "hospital.configure",
-            "beds.manage"],
+            "beds.manage", "admissions.create"],
         /* the highest-privilege authority in the system: whoever holds it
            controls who can reach patient data — while never reaching it
            themselves (NO clinical atoms, not even patients.view; the

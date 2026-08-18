@@ -120,6 +120,27 @@ jobs:
           echo "users must be exactly admin + system:"
           USERS=$(PSQL "select string_agg(\"Username\",',' order by \"Username\") from \"Users\"")
           [ "$USERS" = "admin,system" ] && echo "  ok  users=[$USERS]" || { echo "  FAIL users=[$USERS] (expected admin,system)"; fail=1; }
+          # The §3.2 admission fields must exist on Encounters and must ALL be
+          # NULLABLE. The nullability is the assertion that matters, not the
+          # presence: a NOT NULL column here would need a default, and a
+          # default would write a fabricated department onto every historical
+          # encounter (§5, never fabricate). It would also make admission
+          # impossible on a live install until somebody configured a
+          # department — while /healthz still answered 200, so the updater
+          # would NOT roll back. This line is what stops that reaching a site.
+          echo "reception admission fields must exist on Encounters and be NULLABLE:"
+          for c in AdmissionTypeCode DepartmentCode ServiceCode AdmissionSourceCode \
+                   AdmittingDoctorUserId ReferrerUserId ReferrerName; do
+            NUL=$(PSQL "select is_nullable from information_schema.columns where table_name='Encounters' and column_name='$c'")
+            [ "$NUL" = "YES" ] && echo "  ok  Encounters.$c nullable" \
+              || { echo "  FAIL Encounters.$c is_nullable=[$NUL] (expected YES; empty = column missing)"; fail=1; }
+          done
+          # …and no reception admission field carries a DEFAULT, for the same
+          # reason: a default is how a fabricated value gets in without anyone
+          # writing one.
+          DEFS=$(PSQL "select count(*) from information_schema.columns where table_name='Encounters' and column_default is not null and column_name in ('AdmissionTypeCode','DepartmentCode','ServiceCode','AdmissionSourceCode','AdmittingDoctorUserId','ReferrerUserId','ReferrerName')")
+          [ "$DEFS" = "0" ] && echo "  ok  no column defaults on the reception fields" \
+            || { echo "  FAIL $DEFS reception column(s) carry a default"; fail=1; }
           echo "hospital identity must be UNSET (no demo hospital on a real install):"
           check0 HospitalIdentity
           echo "formulary must be seeded but ALL DEACTIVATED:"

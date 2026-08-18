@@ -469,6 +469,73 @@ evidence:
   file changed, that file is in the staged diff or the message is wrong.
 - A `git status` that still shows modified files after the commit you believed
   was complete is the signal; do not explain it away.
+
+### The second face: it also only proves the PROCESS that answered (added 2026-08-18)
+
+The rule above is about verifying the wrong TREE. The same mistake has a second
+face one layer further out, and it was found by the rule's own author on the
+first run that applied it: **verification also only proves the process that
+answered you.** A checkout can be correct, built, and migrated, and the
+assertions can still be describing a DIFFERENT running program.
+
+**WHAT HAPPENED (step 5, #204).** A clean detached worktree at the commit under
+test was built and booted against a fresh database, to satisfy the rule above.
+The boot **crashed** — the previous server still held the port. But `/healthz`
+answered **200**, from the OLD binary, while the new database sat migrated and
+idle. The suite then ran: HTTP assertions hit the old process, SQL assertions
+read the new database, and eight of them came back **empty**. They read as eight
+ordinary assertion failures.
+
+**The trap is that re-running is the natural response and it would have
+succeeded**, against the same wrong process, with the empty results explained
+away as flakiness. What actually resolved it was reading the failures instead of
+repeating the run: *empty* is not the shape a real regression makes here. Had
+the run happened to be green, it would have been evidence about a program that
+was not the one under test — and it would have been recorded as proof.
+
+**A 200 FROM `/healthz` IDENTIFIES A LISTENER, NOT A BUILD.** It answers "is
+something serving on this port", which is not the question any verification run
+is asking.
+
+**THE MECHANISM TO CATCH THIS ALREADY EXISTS, AND WAS BUILT FOR EXACTLY THIS
+SHAPE.** `/healthz` reports `build` — the commit of the code **in the running
+process** — and `Program.cs:ResolveRunningBuild` takes it from the loaded
+ASSEMBLY rather than from a file beside the exe, with the reason stated at the
+site: *"server\version.json can be replaced while the OLD process is still
+serving."* That is this failure, written down in 2026-07-26, in the updater's
+context. All 16 deployed suites already gate on it before asserting
+anything — resolving `/healthz`'s `build` and requiring the deployed server's
+CONTENT to equal the dispatched ref's (tree/blob hashes of the build context,
+not commit identity: the honest form, arrived at after commit identity broke
+twice — see the gate's own comment in `deployed-adt-e2e.yml`).
+**Local verification never adopted any form of it** — which is why the very
+hazard the updater and the deployed suites are both protected from reached a
+local run unchallenged.
+
+**PRACTICE — binding on any local verification run that boots a server:**
+
+- **Assert `/healthz`.`build` equals the commit under test BEFORE running a
+  single assertion**, and abort if it does not match. Not after, and not as a
+  closing sanity check: every assertion before that comparison is unattributed.
+- **A `build` of `dev`, or absent, fails the check.** It means the stamp is
+  unavailable, so the process cannot be identified — which is the condition the
+  check exists to refuse, not a pass with a caveat.
+- **An EMPTY assertion result is a question about which process answered, not a
+  failure to re-run.** Empty is the signature of pointing at the wrong thing.
+  Re-running is how a wrong-process run gets promoted to evidence.
+- Verified rather than assumed while writing this: in a git checkout the .NET
+  SDK stamps the current HEAD into `InformationalVersion` on its own, so
+  `/healthz` reports the real commit with no extra flags, and
+  `-p:SourceRevisionId=<sha>` (what `build.ps1` passes for installs) only needs
+  naming where the SDK cannot resolve it. **Honest limit:** the stamp is the
+  commit that was BUILT, so it proves the running process corresponds to that
+  commit — it does not prove the working tree was clean. That is the rule above
+  and it still has to be satisfied separately.
+- The check was **demonstrated firing**, not merely reasoned about: a server
+  built with `-p:SourceRevisionId=1111…` and booted, then compared against
+  `git rev-parse HEAD`, reports the mismatch and aborts before any assertion —
+  which is precisely the run that produced eight "ordinary failures" above.
+
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install

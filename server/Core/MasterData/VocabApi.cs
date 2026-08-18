@@ -122,13 +122,32 @@ static class VocabApi
                rather than left silently absent. A half-guard that reads as a
                whole one is exactly the false-green shape this repo keeps
                paying for, so it is named here at the guard itself. */
+            /* §2.1 asks for retirement to be refused while a department has
+               active SERVICES *or* OPEN ADMISSIONS. Both halves are here now.
+               THE ADMISSIONS HALF WAS RECORDED AS OWED "to the admission
+               build" (02, #199) because an admission carried no department and
+               there was nothing to count. Step 5 is that build — and it is
+               what makes this half necessary rather than merely possible:
+               before it, retiring a department could not strand anything;
+               after it, an open encounter can point at a department, and
+               retiring one out from under a patient who is still admitted
+               under it is exactly the orphan the guard exists to prevent.
+               A half-guard that reads as a whole one is the shape this repo
+               keeps paying for, so it is closed in the same change that makes
+               it reachable. */
             deactivateGuard: (db, code) =>
             {
                 var kids = db.Services.AsNoTracking().Where(s => s.DepartmentCode == code && s.Active)
                     .OrderBy(s => s.Seq).Select(s => s.Label).ToList();
-                return kids.Count == 0 ? null
-                    : $"department '{code}' still has {kids.Count} active service(s) — {string.Join(", ", kids)} — "
-                      + "retire those services first; a service may never point at a retired department";
+                if (kids.Count > 0)
+                    return $"department '{code}' still has {kids.Count} active service(s) — {string.Join(", ", kids)} — "
+                        + "retire those services first; a service may never point at a retired department";
+                var open = db.Encounters.AsNoTracking()
+                    .Where(e => e.Status == "open" && e.DepartmentCode == code)
+                    .OrderBy(e => e.EncounterId).Select(e => e.EncounterId).ToList();
+                return open.Count == 0 ? null
+                    : $"department '{code}' still has {open.Count} open admission(s) — {string.Join(", ", open)} — "
+                      + "discharge or transfer them first; a patient may never be admitted under a retired department";
             });
 
         /* SERVICE — GET/PUT/deactivate/reactivate come from the mapper; only
