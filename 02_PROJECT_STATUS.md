@@ -22,6 +22,110 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-18 (step 5) · THE §3.2 ADMISSION FIELDS ON THE ENCOUNTER — server
+side, and two clocks pulled apart.** The server half of the reception build,
+from `docs/design/inpatient-reception.md` §3.2 and rulings 1, 2, 4 and 5. Seven
+nullable columns on `Encounters`, one new endpoint, one new permission atom.
+
+**THE §3.2 FIELDS ARE OPTIONAL AND VALIDATED WHEN PRESENT — option (c), chosen
+over (a) by the project owner for a reason the recommendation did not have in
+front of it.** #199 seeds no departments in production, deliberately. Requiring
+the fields would mean the next update to a live install makes **admission
+impossible** until somebody configures a department — and the server still
+boots, `/healthz` still answers 200, **so the health check passes and the
+updater does not roll back.** A live-site outage delivered by an update, in the
+one failure mode the rollback machinery cannot catch. Measured blast radius if
+(a) had shipped: **12 deployed E2E suites and the ICU admission form**, 32
+references. What IS enforced is the half that prevents a *wrong* record: unknown
+code 400, retired code 409, service-without-department 400, service-under-the-
+wrong-department 400. The gap is stated in **three places** — the design's
+Amendments, Known Feature Gaps below, and a comment at the validation site
+itself — because a reader arrives at whichever one they arrive at.
+
+**🔴 `AdmittedAt` AND THE AUDIT STAMP WERE ONE VARIABLE, AND MAKING THE
+ADMISSION TIME EDITABLE WOULD HAVE MADE THE AUDIT TRAIL CLIENT-WRITABLE.**
+`AdtApi.cs` computed `var time` once and used it for both the encounter's
+`AdmittedAt` and the `"admitted"` event's timestamp. §3.2 asks for the admission
+time to be auto-filled and **editable**; accepting a client value through the
+merged variable would have let any caller **backdate the audit trail** by naming
+an admission time. The record of when a record was made must never be writable
+by the party making it. They are now two variables: the event keeps the server
+clock, `AdmittedAt` carries the clinical fact, and the audit detail names the
+entered value **as entered** ("admission time recorded as … (entered, not the
+server clock)"). Imaging already split at this exact seam — `PerformedAt` is the
+client's, `ReportedAt` is ours. **Proven by injection:** merging the two back
+into one variable turns the deployed leg red at the assertion with the client's
+value in the message; restoring it turns it green.
+
+**A BEDLESS ADMISSION USED TO WRITE A SENTENCE THAT ASSERTED A DESTINATION.**
+The admit event's detail was `$"to {req.BedId}"`, unconditional. With `bedId`
+optional (ruling 1) that writes **`"admitted — to "`** — a dangling preposition
+naming a bed that does not exist. It is the same defect ruling 1 rejected
+transfer-reuse over (`"from  to W-12"`), and it matters for the same mechanical
+reason: `AdtEventDto` is four strings with no structured from/to, so **the
+concatenated string IS the audit record** and there is no second copy to fall
+back on. A bedless admission now says so in words. `Status` stays `open |
+discharged`; "awaiting bed" is DERIVED from `open && BedId == ""`, never stored.
+
+**THE `admissions.create` ATOM, SPLIT BY BED — and it needed no new profile.**
+Held by Doctor, SeniorDoctor and Administrator. The **`Receptionist` job title
+already maps to the `Administrator` profile** (`Rbac.cs`), so the hospital's
+reception desk receives the atom by mapping rather than by invention. One
+admission path, no fork: reception calls the same endpoint every clinician
+calls and simply cannot name a bed — that still costs `adt.admit`. **Asserted
+with nothing written:** a receptionist token naming a bed is 403 and the
+encounter count is unchanged across the refusal — no patient row, no encounter,
+no MRN consumed. That holds structurally, not incidentally: both checks sit at
+the top of the handler and there is exactly ONE `SaveChanges()`, at the end.
+
+**THE WARD DOCTOR-TIER LIST IS A SECOND ENDPOINT, AND ONE SEEDED USER NOW PINS
+BOTH FILTER LINES.** `GET /adt/ward-doctors` returns Doctor + SeniorDoctor,
+gated on `admissions.create`. `/adt/attendings` is untouched. The owed leg is
+paid: the suite's existing `maya.chen`-absence check **cannot** detect a
+doctor-tier widening, because a Staff Nurse is absent under either filter. The
+seeded Specialist **`liam.osei`** derives the plain Doctor profile, so he is
+asserted **ABSENT** from `/adt/attendings` and **PRESENT** in `/adt/ward-doctors`
+— two lists, one subject, and widening ICU's picker by one word now turns the
+suite red. `IsWardDoctor` is a single predicate serving both the listing and the
+`admittingDoctorUserId` validation, so the picker can never offer an option the
+server would refuse.
+
+**THE REFERRER COLUMNS** (ruling 5): `ReferrerUserId` validated against `Users`,
+`ReferrerName` free text, **both set → 400** (two answers to one question),
+neither set → honestly not recorded. **Owed and named:** the external-referrer
+*store* — §3.4's "pick from a saved list" — is NOT in this step. The internal
+half and the free-text half both work; the saved-list typeahead has no source
+until the reception screen ships it.
+
+**ADMITTING DOCTOR IS NOT `Attending`** — verified against the code rather than
+inferred from the field names, and recorded in the design: different tier
+(SeniorDoctor vs Doctor+SeniorDoctor), different lifetime (changes on handover
+vs fixed at admission), different kind of value (a display-name **snapshot**
+the server never validates vs a **username** validated against `Users`).
+**Finding, recorded rather than fixed:** `Attending`'s picker safety is entirely
+client-side — the server accepts `attending: "Dr Nobody"` today. Retrofitting
+validation would change behaviour for every existing caller, so it is left for
+its own decision instead of riding along here.
+
+**Verified locally before the push** (real PostgreSQL 16, this tree, a booted
+server): the migration applied and all 7 columns land NULLABLE with no defaults;
+**50 assertions green, 0 failing**, across RBAC, the
+vocabulary floor, the hierarchy coupling, the doctor tier, the referrer pair and
+the `admittedAt` shape; the department guard verified in both directions; and
+the deployed suite's new reception step extracted from the YAML and executed
+end-to-end against the running build, exit 0. **The audit split was proven by
+injection, not by inspection:** merging the two clocks back into one variable
+turns the leg RED at the assertion with the client's backdated value in the
+failure message, and restoring it turns it GREEN — a red/green pair on the same
+tree. Two assertion bugs of my own were found and corrected on the way (a
+space-stripping helper that could not match a JSON-escaped em-dash, and an
+expectation that a case-variant field name would 400 — case-insensitive binding
+is pre-existing app-wide behaviour, confirmed against `Diagnosis`, a field this
+change does not touch). One coverage hole of my own was also closed: the
+deployed leg first selected the first active department, which had no services,
+and SKIPPED the hierarchy legs while saying so — it now selects the department
+from the services list, so those legs fire whenever the pair exists.
+
 **2026-08-17 (step 4) · THE CONFIGURATION SCREENS FOR THE FOUR RECEPTION
 VOCABULARIES — 3 + 1, and the empty state is the feature.** The UI half of
 #199, built from `docs/design/inpatient-reception.md` §2. Four tenants in the
@@ -286,6 +390,18 @@ tables and no way to populate them until step 4 ships.]*
   there is nothing to count. Named at the guard itself in `VocabApi.cs` and
   owed to the admission build. A half-guard that reads as a whole one is the
   exact shape this repo keeps paying for.
+
+  *[Superseded 2026-08-18 (step 5) — **THE GUARD IS NOW WHOLE**, kept rather
+  than edited per supersede-don't-rewrite. Step 5 IS the admission build this
+  was owed to, and it is also what made the missing half NECESSARY rather than
+  merely possible: before it, retiring a department could not strand anything,
+  because no admission carried one. `deactivateGuard` on Departments now
+  refuses while EITHER active services OR open admissions exist, naming the
+  blocking encounter ids. Verified live against PostgreSQL: refused at 409
+  naming two open encounters with the department still Active afterwards;
+  discharged them and the same request returned 200; reactivate returned 200 —
+  a gate, not a one-way door. Closed in the same change that made it
+  reachable.]*
 - **OPEN QUESTION, flagged rather than silently decided: the services
   duplicate-label check is TABLE-WIDE, not per-department**, so "Emergency"
   cannot exist under two departments at once. The design does not decide this.
@@ -11472,6 +11588,66 @@ instruction, source stated per the documentation rule.]*
   which is how instance 3 was found, and why it took months. Not built now
   (#202 fixed the instance, not the class — see "Closing one instance of a
   defect class is not closing the class" in 03).
+
+- **🔴 §3.2's REQUIRED fields are not enforced as required — a DATED follow-up,
+  not an open-ended one** (recorded 2026-08-18 with step 5; the design's
+  Amendments and a comment at the validation site carry the same text). The
+  server accepts an admission with no admission type, no department, no service
+  and no admitting doctor. **§3.2's table marks all four required**, so this is
+  a stated difference between the design and the code, not a drift nobody
+  noticed.
+  **WHY IT SHIPPED THIS WAY (option (c), the owner's ruling over the
+  recommendation):** #199 seeds no departments in production, deliberately.
+  Requiring the fields means the next update to a live install makes
+  **admission impossible** until somebody configures a department — and because
+  the server still boots and `/healthz` still answers 200, **the health check
+  passes and the updater does not roll back.** A live-site outage delivered by
+  an update, in the one failure mode the rollback machinery cannot catch.
+  Measured blast radius had presence been required: **12 deployed E2E suites +
+  the ICU admission form**, 32 call sites.
+  **WHAT IS ENFORCED MEANWHILE** — the half that prevents a WRONG record rather
+  than a merely incomplete one: unknown code → 400, retired code → 409,
+  `serviceCode` without `departmentCode` → 400, `serviceCode` under a department
+  that is not its parent → 400, off-tier admitting doctor → 400, both referrer
+  fields → 400, malformed or future `admittedAt` → 400. An admission filed under
+  *Cardiology/Upper GI* is refused; an admission with nothing filled in is
+  honestly incomplete, and §5 already says blank means blank.
+  **THE CONDITION FOR CLOSING IT, stated so it cannot become permanent:**
+  (1) the reception screen ships and supplies the fields; (2) the ICU admission
+  form is updated to supply them; (3) all 12 deployed suites are migrated; and
+  (4) the contracted site has configured its own structure. Only when every
+  caller already sends the fields does requiring them stop being a switch that
+  can dark a live hospital.
+
+- **🔴 The external-referrer store does not exist, so §3.4's "pick from a saved
+  list" has no source** (recorded 2026-08-18 with step 5). The encounter's two
+  referrer columns shipped: an internal referral records `ReferrerUserId`
+  validated against `Users`, an external one records `ReferrerName` as free
+  text, both set is a 400 and neither is honestly not recorded. **What is
+  missing is the list itself** — the typeahead source that §3.4 says accumulates
+  by typing, with the save-while-typing path gated on `admissions.create`
+  (ruling 5). Until it ships, an external referrer can be recorded but never
+  offered back as a suggestion, so the same GP is retyped every time. Owed to
+  the reception screen, where the interaction it exists for actually lives.
+
+- **🔴 `Encounter.Attending` is not validated server-side — the picker's safety
+  is entirely client-side** (recorded 2026-08-18 with step 5, found while
+  establishing that Admitting Doctor is a different field). #158 replaced the
+  free-text attending with a roster picker and the record describes it as a
+  safety fix, but the SERVER checks the value only for non-blank and length:
+  `attending: "Dr Nobody"` is accepted today, and the ghost-attending class the
+  picker was built to close is still open to any caller that is not the form.
+  The form also sends the display **NAME** (`Admissions.tsx` binds
+  `value={u.name}`), so the stored value is a snapshot string, not an account
+  reference — eight readers consume it as text, including three print templates
+  and a string-equality filter on the bed board.
+  **DELIBERATELY NOT FIXED IN STEP 5.** Retrofitting validation would change
+  behaviour for every existing caller — the same class of risk as requiring the
+  §3.2 fields above — and it forces a second decision (does it start storing a
+  username, breaking those eight readers, or stay a snapshot and merely check
+  the name resolves?). It deserves its own decision rather than riding along
+  inside an unrelated build. The NEW `AdmittingDoctorUserId` is validated, so
+  the two fields now differ in trustworthiness as well as in meaning.
 
 - **🔴 The bed registry has no ROOM concept** (recorded 2026-08-17 with the
   reception design's §4 amendment, #200; owed to the Ward design). `BedRow` is

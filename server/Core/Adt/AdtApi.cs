@@ -65,6 +65,37 @@ static class AdtApi
             return Results.Json(attendings, JsonOpts.Web);
         }).RequireAuthorization();
 
+        /* GET /api/icu/adt/ward-doctors — the reception form's ADMITTING
+           DOCTOR picker: ACTIVE accounts on the WARD DOCTOR TIER (Doctor or
+           SeniorDoctor), ordered by name.
+           A SECOND ENDPOINT, NOT A WIDENED ONE (Amendment 2). /adt/attendings
+           above stays consultant-only and byte-identical — ICU's picker does
+           not move. What narrows that one was never its gate (both Doctor and
+           SeniorDoctor already hold adt.admit); it is the filter
+           `ProfileOf(t) == "SeniorDoctor"`. Editing that single line would
+           silently add registrars to every ICU admission form. A separate
+           endpoint is the only change that leaves the first provably
+           untouched — and the deployed suite now pins that with a seeded
+           Specialist asserted ABSENT there and PRESENT here.
+           GATED ON admissions.create, not adt.admit: reception fills this
+           field, and the office Administrator holds admissions.create without
+           adt.admit. Gating it on adt.admit would 403 the desk on the one
+           picker it exists to serve. */
+        app.MapGet("/api/icu/adt/ward-doctors", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "admissions.create") is IResult denied) return denied;
+            foreach (var key in ctx.Request.Query.Keys)
+                return ApiError.BadRequest($"unknown query parameter '{key}'");
+            var doctors = db.Users.AsNoTracking().Where(u => u.Active)
+                .AsEnumerable()
+                .Where(AdtLogic.IsWardDoctor)
+                .OrderBy(u => u.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(u => new WardDoctorDto(u.Username, u.Name, u.JobTitle,
+                    UserLogic.RolesOf(u).Select(Rbac.ProfileOf)
+                        .Any(p => p == "SeniorDoctor") ? "SeniorDoctor" : "Doctor"));
+            return Results.Json(doctors, JsonOpts.Web);
+        }).RequireAuthorization();
+
         /* GET /api/icu/adt/encounters?patientId&status — encounter list
            (open census, discharge history, per-patient lookup). Both roles. */
         app.MapGet("/api/icu/adt/encounters", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
@@ -630,12 +661,32 @@ static class AdtApi
            admission side effect). */
         app.MapPost("/api/icu/adt/admissions", (AdmitRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
-            if (Rbac.Deny(user, "adt.admit") is IResult denied) return denied;
+            /* ===== RBAC, SPLIT BY BED — Inpatient Reception Amendment 4 =====
+               admissions.create OPENS the episode and every admitting caller
+               needs it. Naming a BED costs adt.admit ON TOP, which the office
+               Administrator does not hold. ONE path, no fork: reception calls
+               this same endpoint and simply cannot name a bed.
+               BOTH CHECKS SIT AT THE TOP, BEFORE ANY WRITE IS STAGED, and
+               that placement is the assertion — the handler has exactly ONE
+               SaveChanges(), at the very end, so a 403 here writes NOTHING:
+               no patient row, no encounter, and no MRN consumed (NextMrn is a
+               random probe, and the id counters resume from the highest
+               persisted id — an abandoned request leaves no gap either). */
+            if (Rbac.Deny(user, "admissions.create") is IResult denied) return denied;
+            var bedNamed = !string.IsNullOrWhiteSpace(req.BedId);
+            if (bedNamed && Rbac.Deny(user, "adt.admit") is IResult bedDenied) return bedDenied;
 
             var readmission = !string.IsNullOrWhiteSpace(req.PatientId);
-            /* required on EVERY admission — the episode's own fields */
+            /* required on EVERY admission — the episode's own fields.
+               bedId LEFT THIS LIST (Amendment 1): a ward admits, then beds.
+               "Awaiting bed" is DERIVED (Status == "open" && BedId == ""),
+               never a third Status value — the locked rule that state-
+               relative labels are computed at read, never persisted. Every
+               gate that concerns a SUPPLIED bed still fires below, unchanged;
+               this relaxes WHETHER a bed is named, never what happens once
+               one is. */
             foreach (var (name, value) in new[] {
-                ("diagnosis", req.Diagnosis), ("attending", req.Attending), ("bedId", req.BedId) })
+                ("diagnosis", req.Diagnosis), ("attending", req.Attending) })
                 if (string.IsNullOrWhiteSpace(value)) return ApiError.BadRequest($"{name} is required");
             /* required on a NEW patient only — a re-admission's stored
                identity stands (provided values validate below) */
@@ -651,7 +702,15 @@ static class AdtApi
                 ("nameFamily", req.NameFamily), ("nationalId", req.NationalId),
                 ("fileNumber", req.FileNumber),
                 ("allergies", req.Allergies), ("diagnosis", req.Diagnosis),
-                ("attending", req.Attending), ("bedId", req.BedId) })
+                ("attending", req.Attending), ("bedId", req.BedId),
+                /* the reception §3.2 fields are bounded on the same rule —
+                   the codes are vocabulary-checked below, but an oversized
+                   payload is refused before any lookup runs */
+                ("admissionTypeCode", req.AdmissionTypeCode),
+                ("departmentCode", req.DepartmentCode), ("serviceCode", req.ServiceCode),
+                ("admissionSourceCode", req.AdmissionSourceCode),
+                ("admittingDoctorUserId", req.AdmittingDoctorUserId),
+                ("referrerUserId", req.ReferrerUserId), ("referrerName", req.ReferrerName) })
                 if (value is not null && value.Length > AdtLogic.MaxTextLength)
                     return ApiError.BadRequest($"{name} exceeds {AdtLogic.MaxTextLength} characters");
             var nationalId = string.IsNullOrWhiteSpace(req.NationalId) ? null : req.NationalId.Trim();
@@ -724,23 +783,200 @@ static class AdtApi
                 if (patient is null)
                     return ApiError.BadRequest($"patientId '{pid}' does not match any patient");
             }
-            var bedRow = db.Beds.AsNoTracking().FirstOrDefault(b => b.BedId == req.BedId);
-            if (bedRow is null)
-                return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
-            /* FOUR-CODE RULE (state-conflict PR): an occupied bed and a
-               patient already admitted are RESOURCE STATE, not payload
-               validation — the same request succeeds once the bed frees /
-               the prior encounter closes → 409 (was 400, pre-convention).
-               An unknown bedId stays 400: the payload references a bed
-               that does not exist. A RETIRED bed is state too (the same
-               request succeeds once it is reactivated) → 409. */
-            if (!bedRow.Active)
-                return ApiError.StateConflict(
-                    $"bed '{req.BedId}' is retired — reactivate it in Configuration before admitting into it");
-            var occupant = db.Encounters.AsNoTracking()
-                .FirstOrDefault(e => e.Status == "open" && e.BedId == req.BedId);
-            if (occupant is not null)
-                return ApiError.StateConflict($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
+            /* THE BED GATES RUN ONLY WHEN A BED IS NAMED (Amendment 1). All
+               FOUR of them are unchanged inside this branch — the ruling
+               relaxed whether a bed is supplied, never what is checked once
+               one is. A bedless admission simply has no bed to check. */
+            if (bedNamed)
+            {
+                var bedRow = db.Beds.AsNoTracking().FirstOrDefault(b => b.BedId == req.BedId);
+                if (bedRow is null)
+                    return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
+                /* FOUR-CODE RULE (state-conflict PR): an occupied bed and a
+                   patient already admitted are RESOURCE STATE, not payload
+                   validation — the same request succeeds once the bed frees /
+                   the prior encounter closes → 409 (was 400, pre-convention).
+                   An unknown bedId stays 400: the payload references a bed
+                   that does not exist. A RETIRED bed is state too (the same
+                   request succeeds once it is reactivated) → 409. */
+                if (!bedRow.Active)
+                    return ApiError.StateConflict(
+                        $"bed '{req.BedId}' is retired — reactivate it in Configuration before admitting into it");
+                var occupant = db.Encounters.AsNoTracking()
+                    .FirstOrDefault(e => e.Status == "open" && e.BedId == req.BedId);
+                if (occupant is not null)
+                    return ApiError.StateConflict($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
+            }
+
+            /* ========== INPATIENT RECEPTION §3.2 — THE ADMISSION'S STRUCTURE
+               ==========================================================
+               🔴 THE SERVER DELIBERATELY DOES NOT YET ENFORCE PRESENCE of the
+               fields §3.2 marks REQUIRED (Type of Admission, Department,
+               Service, Admitting Doctor, admission date/time). A reader who
+               checks §3.2 against this code will find the difference; it is a
+               decision with a date on it, not an oversight.
+
+               WHY NOT REQUIRED YET (the owner's ruling, option (c)): #199
+               seeds NO departments in production, deliberately. Requiring
+               them would make admission IMPOSSIBLE on the next update of a
+               live install until somebody configured a department — and
+               because the server still boots and /healthz still answers, the
+               health check PASSES and the updater does NOT roll back. That is
+               a live-site outage delivered by an update, in the one failure
+               mode the rollback machinery cannot catch.
+
+               WHEN IT BECOMES REQUIRED — dated, not open-ended: when every
+               caller supplies the fields (the reception screen shipped, the
+               ICU admission form updated, the 12 deployed suites migrated)
+               AND the contracted site has configured its structure. Recorded
+               in 02's Known Feature Gaps and in the design's Amendments.
+
+               WHAT IS ENFORCED NOW, and it is the half that prevents a WRONG
+               record rather than a merely incomplete one: every code present
+               is a REAL, ACTIVE vocabulary entry, and SERVICE IS STRUCTURALLY
+               COUPLED TO DEPARTMENT. An admission filed under
+               Cardiology/Upper-GI is the lie the hierarchy exists to stop; an
+               admission with nothing filed in is honestly incomplete. Absent
+               is never defaulted into meaning something (§5, never fabricate). */
+            string? admissionTypeCode = null, departmentCode = null,
+                    serviceCode = null, admissionSourceCode = null;
+
+            /* the three FLAT vocabularies, on the codeStatusCode precedent:
+               unknown → 400 (a payload reference resolving to nothing),
+               retired → 409 (resource state — reactivate it and the same
+               request succeeds). */
+            foreach (var (label, raw, resolve) in new (string, string?, Func<string, (bool Found, bool Active, string Label)>)[]
+            {
+                ("admissionTypeCode", req.AdmissionTypeCode, c => {
+                    var r = db.AdmissionTypes.AsNoTracking().FirstOrDefault(x => x.Code == c);
+                    return (r is not null, r?.Active ?? false, r?.Label ?? ""); }),
+                ("departmentCode", req.DepartmentCode, c => {
+                    var r = db.Departments.AsNoTracking().FirstOrDefault(x => x.Code == c);
+                    return (r is not null, r?.Active ?? false, r?.Label ?? ""); }),
+                ("admissionSourceCode", req.AdmissionSourceCode, c => {
+                    var r = db.AdmissionSources.AsNoTracking().FirstOrDefault(x => x.Code == c);
+                    return (r is not null, r?.Active ?? false, r?.Label ?? ""); }),
+            })
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                var code = raw.Trim();
+                var (found, active, vocabLabel) = resolve(code);
+                if (!found)
+                    return ApiError.BadRequest($"{label} '{code}' does not match any vocabulary entry");
+                if (!active)
+                    return ApiError.StateConflict(
+                        $"{label} '{code}' ({vocabLabel}) is retired — it cannot be newly selected; "
+                        + "reactivate it in Configuration or choose an active entry");
+                if (label == "admissionTypeCode") admissionTypeCode = code;
+                else if (label == "departmentCode") departmentCode = code;
+                else admissionSourceCode = code;
+            }
+
+            /* SERVICE — the ONE hierarchical field, and the only place §3.2's
+               "required" is enforced structurally rather than by presence.
+               A service names its parent at creation and is never reparented
+               (#199), so a service arriving with the WRONG department, or
+               with none at all, is a payload that contradicts itself → 400
+               both times. This is deliberately NOT a 409: the vocabulary is
+               in no wrong state — the request is. */
+            if (!string.IsNullOrWhiteSpace(req.ServiceCode))
+            {
+                var code = req.ServiceCode.Trim();
+                var svc = db.Services.AsNoTracking().FirstOrDefault(x => x.Code == code);
+                if (svc is null)
+                    return ApiError.BadRequest($"serviceCode '{code}' does not match any vocabulary entry");
+                if (!svc.Active)
+                    return ApiError.StateConflict(
+                        $"serviceCode '{code}' ({svc.Label}) is retired — it cannot be newly selected; "
+                        + "reactivate it in Configuration or choose an active entry");
+                if (departmentCode is null)
+                    return ApiError.BadRequest(
+                        $"serviceCode '{code}' ({svc.Label}) was supplied without a departmentCode — "
+                        + "a service is defined under exactly one department and is never recorded without it");
+                if (svc.DepartmentCode != departmentCode)
+                {
+                    var parent = db.Departments.AsNoTracking()
+                        .FirstOrDefault(d => d.Code == svc.DepartmentCode)?.Label ?? svc.DepartmentCode;
+                    return ApiError.BadRequest(
+                        $"serviceCode '{code}' ({svc.Label}) belongs to department '{parent}', "
+                        + "not the departmentCode supplied — a service is never moved between departments");
+                }
+                serviceCode = code;
+            }
+
+            /* ADMITTING DOCTOR — an identity reference, validated against
+               Users, NOT the free-text `attending` snapshot beside it (the
+               two are different facts — see the Encounter model).
+               An unknown username is a payload reference resolving to
+               nothing → 400. A DEACTIVATED account is resource state → 409.
+               An account off the ward doctor tier → 400: the payload names a
+               real person who is not a thing you can be admitted by. */
+            string? admittingDoctorUserId = null;
+            if (!string.IsNullOrWhiteSpace(req.AdmittingDoctorUserId))
+            {
+                var uname = req.AdmittingDoctorUserId.Trim();
+                var doc = db.Users.AsNoTracking().FirstOrDefault(u => u.Username == uname);
+                if (doc is null)
+                    return ApiError.BadRequest($"admittingDoctorUserId '{uname}' does not match any user account");
+                if (!doc.Active)
+                    return ApiError.StateConflict(
+                        $"admittingDoctorUserId '{uname}' ({doc.Name}) is a deactivated account — "
+                        + "it cannot be newly recorded as an admitting doctor");
+                if (!AdtLogic.IsWardDoctor(doc))
+                    return ApiError.BadRequest(
+                        $"admittingDoctorUserId '{uname}' ({doc.Name}, {doc.JobTitle}) is not on the ward "
+                        + "doctor tier — the admitting doctor is a Doctor or SeniorDoctor account "
+                        + "(GET /api/icu/adt/ward-doctors lists them)");
+                admittingDoctorUserId = uname;
+            }
+
+            /* REFERRING DOCTOR (Amendment 5) — the account OR the free text.
+               BOTH → 400: two answers to one question is a malformed request,
+               not a merge to guess at. NEITHER → honestly not recorded, never
+               a placeholder. The internal half is validated so an internal
+               referral is traceable to a real account; the external half is
+               unrestricted free text (#145) because a referring GP must never
+               become an Aurora user. */
+            string? referrerUserId = null, referrerName = null;
+            var hasReferrerId = !string.IsNullOrWhiteSpace(req.ReferrerUserId);
+            var hasReferrerName = !string.IsNullOrWhiteSpace(req.ReferrerName);
+            if (hasReferrerId && hasReferrerName)
+                return ApiError.BadRequest(
+                    "provide referrerUserId or referrerName, not both — an internal referrer is recorded "
+                    + "as the account and an external one as free text; naming both is two answers to one question");
+            if (hasReferrerId)
+            {
+                var uname = req.ReferrerUserId!.Trim();
+                var refUser = db.Users.AsNoTracking().FirstOrDefault(u => u.Username == uname);
+                if (refUser is null)
+                    return ApiError.BadRequest($"referrerUserId '{uname}' does not match any user account");
+                referrerUserId = uname;
+            }
+            else if (hasReferrerName) referrerName = req.ReferrerName!.Trim();
+
+            /* ADMISSION DATE/TIME — the imaging performedAt shape exactly
+               (ResultsApi.cs): 'yyyy-MM-dd HH:mm' read as UTC,
+               format-validated, never in the future. Omitted = the server
+               stamps now, exactly as before this feature.
+               THE +5 MINUTE TOLERANCE is copied deliberately rather than
+               tightened: it absorbs clock skew between the client's machine
+               and the server, and a reception desk clock one minute fast must
+               not 400 a real admission. */
+            string? admittedAtOverride = null;
+            if (!string.IsNullOrWhiteSpace(req.AdmittedAt))
+            {
+                var stamp = req.AdmittedAt.Trim();
+                if (!System.Text.RegularExpressions.Regex.IsMatch(stamp, @"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+                    || !DateTime.TryParse(stamp, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal
+                        | System.Globalization.DateTimeStyles.AdjustToUniversal, out var admitted))
+                    return ApiError.BadRequest(
+                        "admittedAt must be a real 'yyyy-MM-dd HH:mm' timestamp (UTC) — when the patient was admitted");
+                if (admitted > DateTime.UtcNow.AddMinutes(5))
+                    return ApiError.BadRequest(
+                        "admittedAt is in the future — a patient cannot be admitted after the record is made");
+                admittedAtOverride = stamp;
+            }
 
             /* NATIONAL ID — UNIQUE WHEN PRESENT (locked decision 3): a
                duplicate at admission is refused NAMING the conflict; the
@@ -875,15 +1111,49 @@ static class AdtApi
             }
 
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            /* ===== TWO CLOCKS, AND THEY MUST NOT BE ONE VARIABLE =====
+               `time` is the SERVER's clock: when this record was made. It
+               stamps the audit event and nothing else can move it.
+               `admittedAt` is the CLINICAL fact: when the patient was
+               admitted. It is now client-suppliable (§3.2 — auto-filled and
+               EDITABLE) and may legitimately sit in the past.
+               These were the SAME VARIABLE until this change. Accepting a
+               client-supplied admission time while leaving them merged would
+               let the caller BACKDATE THE AUDIT TRAIL by naming an admission
+               time — the record of when the record was made must never be
+               writable by the party making it. Imaging already splits at this
+               exact seam: PerformedAt is the client's, ReportedAt is ours. */
             var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+            var admittedAt = admittedAtOverride ?? time;
+            /* THE AUDIT SENTENCE MUST READ TRUE WITH NO BED. `$"to {BedId}"`
+               was unconditional; bedless it would write "admitted — to ",
+               a sentence with a dangling preposition asserting a destination
+               that does not exist. That is the same defect Amendment 1
+               rejected transfer-reuse over ("from  to W-12"), and the
+               concatenated string IS the audit record — AdtEventDto is four
+               strings with no structured from/to, so there is no second copy
+               to fall back on. A bedless admission says so, in words. */
+            var admitDetail = bedNamed
+                ? $"to {req.BedId!.Trim()}"
+                : "no bed — awaiting bed assignment";
+            /* the CLINICAL time appears in the audit line only when the
+               caller supplied it, and it is named as the caller's claim
+               rather than blended into the server's stamp */
+            if (admittedAtOverride is not null)
+                admitDetail += $" · admission time recorded as {admittedAtOverride} (entered, not the server clock)";
             var enc = new Encounter
             {
                 EncounterId = AdtLogic.NextEncounterId(),
-                PatientId = patient.PatientId, BedId = req.BedId!,
+                PatientId = patient.PatientId, BedId = bedNamed ? req.BedId!.Trim() : "",
                 Diagnosis = req.Diagnosis!.Trim(), Attending = req.Attending!.Trim(),
-                Status = "open", AdmittedAt = time, AdmittedBy = actor,
+                Status = "open", AdmittedAt = admittedAt, AdmittedBy = actor,
+                /* Inpatient Reception §3.2 — validated above, absent stays absent */
+                AdmissionTypeCode = admissionTypeCode, DepartmentCode = departmentCode,
+                ServiceCode = serviceCode, AdmissionSourceCode = admissionSourceCode,
+                AdmittingDoctorUserId = admittingDoctorUserId,
+                ReferrerUserId = referrerUserId, ReferrerName = referrerName,
                 EventsJson = JsonSerializer.Serialize(
-                    new List<AdtEventDto> { new(time, actor, "admitted", $"to {req.BedId}") }, JsonOpts.Web),
+                    new List<AdtEventDto> { new(time, actor, "admitted", admitDetail) }, JsonOpts.Web),
             };
             /* Weight & Height at admission — ENCOUNTER-SCOPED (the project
                owner's decision on the flagged modelling choice): the values
@@ -1091,6 +1361,17 @@ static class AdtLogic
             open?.BedId, open?.EncounterId,
             p.PatientFileNumber, lastDischargedAt);
     }
+
+    /* THE WARD DOCTOR TIER (Inpatient Reception Amendment 2): Doctor *or*
+       SeniorDoctor. A ward is admitted to by registrars as well as
+       consultants, which ICU's consultant-only attending list deliberately
+       does not cover.
+       ONE PREDICATE, TWO CALLERS — the /adt/ward-doctors listing and the
+       admittingDoctorUserId validation. If they were written separately they
+       could drift, and the failure would be silent in the worst direction:
+       an option the picker offers that the server then refuses. */
+    public static bool IsWardDoctor(UserRow u) =>
+        UserLogic.RolesOf(u).Any(t => Rbac.ProfileOf(t) is "Doctor" or "SeniorDoctor");
 
     public static string NextMrn(AuroraDb db)
     {

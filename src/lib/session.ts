@@ -90,7 +90,8 @@ export type Permission =
   | 'identity.correct'     // Structured Patient Name + National ID: audited identity correction (office Administrator — registration work, not clinical data)
   | 'ai.view'
   | 'admin.view'           // administrative landing view
-  | 'adt.admit'            // Layer 2 ADT: open an encounter (doctor authority)
+  | 'adt.admit'            // Layer 2 ADT: open an encounter INTO A BED (doctor authority)
+  | 'admissions.create'    // Inpatient Reception (Amendment 4): open an episode WITHOUT naming a bed. The split is by BED, not by endpoint — one admission path; naming a bed still costs adt.admit, which the office Administrator does not hold. The Receptionist job title already maps to the Administrator profile, so reception receives this by mapping, not by a new profile.
   | 'adt.discharge'        // Layer 2 ADT: close an encounter (doctor authority)
   | 'adt.transfer'         // Layer 2 ADT: move within the unit (nursing action)
   | 'users.manage'         // user administration mutations (System Administrator ONLY — moved from the office profile by the User Management design)
@@ -125,7 +126,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'patients.view', 'orders.view', 'orders.create', 'orders.sign',
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'results.document', 'notes.document', 'ai.view',
-    'adt.admit', 'adt.discharge', 'observations.record', 'patients.measure',
+    'adt.admit', 'admissions.create', 'adt.discharge', 'observations.record', 'patients.measure',
     'codestatus.set', 'attachments.view', 'attachments.add',
   ],
   /* Stage 11 F4: Doctor's SUPERSET + the Consultant-tier observation
@@ -140,7 +141,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
     'orders.modify', 'orders.discontinue', 'results.view',
     'results.acknowledge', 'results.document', 'results.correct',
     'labcatalog.manage', 'ordersets.manage', 'notes.document', 'ai.view',
-    'adt.admit', 'adt.discharge', 'observations.record',
+    'adt.admit', 'admissions.create', 'adt.discharge', 'observations.record',
     'observations.correct', 'observations.configure', 'patients.measure',
     'assignments.manage', 'codestatus.set', 'codestatus.manage',
     'imagingcatalog.manage', 'beds.manage',
@@ -171,7 +172,8 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
      locked clinical exclusion is untouched (finally a config surface
      that IS the office profile's). The System Administrator does NOT
      hold it — accounts, not identity. */
-  Administrator: ['admin.view', 'patients.view', 'identity.correct', 'hospital.configure', 'beds.manage'],
+  Administrator: ['admin.view', 'patients.view', 'identity.correct', 'hospital.configure', 'beds.manage',
+    'admissions.create'],
   /* the highest-privilege authority: controls who can reach patient data
      while never reaching it (no clinical atoms, not even patients.view).
      backup.manage: backup/restore is IT operations (design §1) — and an

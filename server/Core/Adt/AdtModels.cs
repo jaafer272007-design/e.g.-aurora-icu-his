@@ -219,6 +219,66 @@ class Encounter
        a type is NEVER guessed). */
     public string IsolationJson { get; set; } = "[]";
 
+    /* ==================== INPATIENT RECEPTION — §3.2 admission fields ====
+       The structure an admission carries: what kind of admission, under
+       which department and service, admitted by whom, referred by whom,
+       arriving from where. All NULLABLE, and that is a decision with a
+       reason, not an oversight.
+
+       WHY NULLABLE RATHER THAN REQUIRED (the owner's ruling, option (c)):
+       #199 seeds NO departments in production, deliberately. Required
+       columns would make admission IMPOSSIBLE on the next update of a live
+       install until somebody configured a department — and because the
+       server still boots and /healthz still answers, the health check
+       PASSES and the updater does NOT roll back. That is a live-site
+       outage delivered by an update, in the one failure mode the rollback
+       machinery cannot catch. Pre-feature ICU encounters also genuinely
+       have no department; a non-null default would fabricate one for every
+       historical row, which §5's never-fabricate rule forbids outright.
+       The columns are STRUCTURALLY COUPLED and VALIDATED WHEN PRESENT
+       instead (AdtApi.cs) — a service may not arrive without its
+       department, and never under the wrong one.
+       PRESENCE BECOMES REQUIRED LATER, and the condition is dated rather
+       than open-ended: when every caller supplies the fields (the
+       reception screen shipped, the ICU admission form updated, the 12
+       deployed suites migrated) AND the contracted site has configured its
+       structure. Recorded in 02 and in the design's Amendments. */
+    public string? AdmissionTypeCode { get; set; }
+    public string? DepartmentCode { get; set; }
+    public string? ServiceCode { get; set; }
+    public string? AdmissionSourceCode { get; set; }
+
+    /* ADMITTING DOCTOR — A DIFFERENT FACT FROM `Attending`, NOT A RENAME.
+       The two sit adjacent and look alike, so the distinction is recorded
+       HERE, where a reader deciding to "unify them" arrives:
+         · `Attending` is ICU's RESPONSIBLE CONSULTANT for the stay — the
+           SeniorDoctor tier only, and it can change mid-stay when a
+           consultant hands over. It stores a DISPLAY NAME snapshot (the
+           form sends `u.name`, Admissions.tsx), is never validated against
+           Users, and is read as a string in eight places including three
+           print templates and a string-equality filter on the bed board.
+         · `AdmittingDoctorUserId` is WHO ADMITTED THIS PATIENT — chosen
+           manually every time (the hospital's answer 3), drawn from the
+           WIDER ward tier (Doctor + SeniorDoctor: a registrar admits), and
+           FIXED AT ADMISSION because it records a historical act. It
+           stores a USERNAME validated against Users, resolved to a name at
+           read time — the settled pattern (`ReferrerUserId`, and step 4's
+           department labels).
+       They differ in tier, in lifetime, and in the kind of value stored.
+       Merging them would silently widen ICU's attending to registrars —
+       precisely what Amendment 2 built a second endpoint to prevent. The
+       structural difference is the safeguard: an identity reference cannot
+       be confused with a display snapshot by a reader who checks the type. */
+    public string? AdmittingDoctorUserId { get; set; }
+
+    /* REFERRING DOCTOR — two nullable columns (Amendment 5). Internal
+       referral records the account so it is traceable; external records
+       the free text, because a referring GP must never become an Aurora
+       user. BOTH SET → 400 (two answers to one question is malformed, not
+       a merge to guess at). NEITHER SET → honestly not recorded. */
+    public string? ReferrerUserId { get; set; }
+    public string? ReferrerName { get; set; }
+
     /* patientName is a denormalized DISPLAY snapshot supplied by the caller
        (same precedent as orders' name/bed snapshots) — identity is never
        redefined here */
@@ -243,7 +303,14 @@ class Encounter
             codeStatusEvents.Count == 0 ? null : codeStatusEvents,
             /* additive nullable tail on the same rule: encounters
                without precautions keep their pre-feature wire bytes */
-            isolation.Count == 0 ? null : isolation);
+            isolation.Count == 0 ? null : isolation,
+            /* Inpatient Reception §3.2 — additive nullable tail on the same
+               rule again: an encounter admitted before this feature carries
+               none of these, serializes none of them (WhenWritingNull), and
+               keeps its pre-feature wire bytes exactly. Absent means absent;
+               nothing here is defaulted into meaning something. */
+            AdmissionTypeCode, DepartmentCode, ServiceCode, AdmissionSourceCode,
+            AdmittingDoctorUserId, ReferrerUserId, ReferrerName);
     }
 }
 
@@ -339,7 +406,20 @@ record EncounterDto(
     /* isolation precautions — additive nullable tail on the same rule:
        the SET of IsolationTypes vocabulary codes for THIS stay (absent
        = none; set changes are audited into events) */
-    List<string>? IsolationTypes = null);
+    List<string>? IsolationTypes = null,
+    /* INPATIENT RECEPTION §3.2 — additive nullable tail on the same rule.
+       CODES, never labels: a code is identity and the reader resolves it
+       against the vocabulary at read time (step 4's departmentLabel is the
+       same move on the client). An encounter admitted before this feature
+       has none of them and serializes none of them. */
+    string? AdmissionTypeCode = null, string? DepartmentCode = null,
+    string? ServiceCode = null, string? AdmissionSourceCode = null,
+    /* the USERNAME of the admitting doctor — an identity reference, unlike
+       `Attending` above, which is a display-name snapshot (see Encounter) */
+    string? AdmittingDoctorUserId = null,
+    /* referring doctor: the account (internal, traceable) OR the free text
+       (external GP) — never both, and neither means not recorded */
+    string? ReferrerUserId = null, string? ReferrerName = null);
 
 /* one append-only code-status set event: dated time, actor + ACTIVE role
    (the #104 convention), the code set, the LABEL SNAPSHOT the clinician
@@ -417,7 +497,71 @@ record AdmitRequest(
        hole stays closed). Unique when present; a re-admission may
        complete an absent value but never silently contradict a recorded
        one (the nationalId rule). */
-    string? FileNumber = null);
+    string? FileNumber = null,
+
+    /* ==================== INPATIENT RECEPTION §3.2 ====================
+       The admission's STRUCTURE. Every member is optional on the wire and
+       validated when present (the owner's ruling (c) — see the Encounter
+       model for why required columns would be a live-site outage delivered
+       by an update). The four codes are SELECTED from the #199
+       vocabularies, never typed: unknown → 400 (a payload reference
+       resolving to nothing — the bedId precedent), retired → 409 (resource
+       state — the codeStatusCode precedent).
+       SERVICE IS STRUCTURALLY COUPLED TO DEPARTMENT: a service with no
+       department is 400, and a service that does not belong to the named
+       department is 400. That coupling is the half of §3.2's "required"
+       that can be enforced today without breaking a caller, and it is the
+       half that prevents a WRONG record rather than a merely incomplete
+       one — an admission filed under Cardiology/Upper-GI is exactly the
+       lie the department→service hierarchy exists to stop. */
+    string? AdmissionTypeCode = null,
+    string? DepartmentCode = null,
+    string? ServiceCode = null,
+    string? AdmissionSourceCode = null,
+
+    /* ADMITTING DOCTOR — a USERNAME from the ward doctor-tier list
+       (GET /adt/ward-doctors: Doctor + SeniorDoctor), validated against
+       Users. A DIFFERENT FIELD from `Attending` above, not a rename — the
+       tier/lifetime/value-type reasoning is on the Encounter model. */
+    string? AdmittingDoctorUserId = null,
+
+    /* REFERRING DOCTOR (Amendment 5) — the account OR the free text, never
+       both (400), neither = honestly not recorded. */
+    string? ReferrerUserId = null,
+    string? ReferrerName = null,
+
+    /* ADMISSION DATE/TIME — A NEW ADT CAPABILITY, not covered by #145.
+       `admittedAt` has ALWAYS been server-stamped and the client has never
+       been allowed to supply it: this record carries
+       JsonUnmappedMemberHandling.Disallow, so a payload naming it did not
+       merely get ignored — it FAILED BINDING with a 400. Accepting it
+       widens the contract, deliberately.
+       It takes the imaging performedAt shape: 'yyyy-MM-dd HH:mm' treated
+       as UTC, format-validated, never in the future. Omitted = the server
+       stamps now, exactly as before. (Wall-clock → UTC is the CLIENT's
+       conversion on submit; the server's storage has always been UTC and
+       src/lib/time.ts already renders it back in the server's own zone.)
+       THE AUDIT STAMP DOES NOT MOVE WITH IT. The "admitted" event keeps
+       the SERVER's clock. One variable served both until now (AdtApi.cs),
+       and leaving it that way would let a client BACKDATE THE AUDIT TRAIL
+       by naming an admission time — the record of when the record was made
+       must not be writable by the party making it. Imaging splits at
+       exactly this seam already: PerformedAt is the client's, ReportedAt
+       is ours. */
+    string? AdmittedAt = null);
+
+/* GET /adt/ward-doctors — one option in the reception form's Admitting
+   Doctor picker: an ACTIVE account on the WARD DOCTOR TIER, meaning the
+   Doctor *or* SeniorDoctor profile (Amendment 2 — a ward is admitted to by
+   registrars, not only consultants).
+   THIS IS A SECOND ENDPOINT, NOT A WIDENED ONE, and that is the whole
+   point of it. /adt/attendings stays consultant-only and byte-identical;
+   ICU's picker does not move. The narrowing there was never the gate —
+   both Doctor and SeniorDoctor already hold adt.admit — it is the filter
+   `ProfileOf(t) == "SeniorDoctor"`. Editing that one line would silently
+   add registrars to every ICU admission form. A separate endpoint is the
+   only change that leaves the first one provably untouched. */
+record WardDoctorDto(string Username, string Name, string JobTitle, string Profile);
 
 /* PUT /adt/patients/{id}/identity — the audited identity-correction path
    (§3, REQUIRED by the unknown-patient decision): correcting the name
