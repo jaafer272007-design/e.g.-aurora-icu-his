@@ -129,6 +129,43 @@ new episode. **Rule 5's build gate ran first:** `/healthz`.`build` was asserted
 equal to the commit under test (`73b67cf…`, stamped via `SourceRevisionId`)
 **before** any assertion — a `dev` build would have failed the check.
 
+**🔴 AMENDMENT (2026-08-18, on the owner's challenge) — WHAT THE RENDERED PASS
+DID NOT COVER. The record above states what was captured; it did not state what
+the brief asked for and did NOT get, and read quickly it invites the reader to
+assume full coverage.** Named here rather than left to assumption:
+
+- **Empty states: TWO of five were captured, not four.** Shown in both themes:
+  the BLOCKED banner (every §3.2 vocabulary emptied) and A DEPARTMENT WITH NO
+  ACTIVE SERVICE. **Not captured:** the empty "Admitted today" list, the
+  today-list unreachable state (*"the live server is unreachable — this list is
+  not shown rather than shown wrong"*), and the admitting-doctor unreachable
+  state (*"Unavailable — the server is unreachable"*). The latter two appeared
+  on screen during an early misconfigured run whose API calls were failing —
+  which is how their wording is known to render at all — but that run was
+  discarded and they were never deliberately captured, so they are **not**
+  evidence.
+- **Match-dialog guards: ONE of three.** The dialog was captured refusing a
+  duplicate on the CURRENTLY-ADMITTED guard, in the bedless variant — which is
+  the one that found the `"admitted to Bed —"` defect, so the capture earned its
+  place. **Not captured in the dialog:** the DECEASED guard and the DISCHARGED
+  readmit path. Both were captured in the SEARCH-ROW list (all three row guards,
+  both themes), which is a different surface with different code.
+- **The build gate covered the SERVER ONLY.** `/healthz`.`build` was asserted
+  equal to the commit under test before the first assertion, and that is a real
+  assertion about the API process. **The FRONTEND had no equivalent.** It was
+  served by a Vite dev server reading the WORKING TREE, so there is no
+  commit-identity check on the client bundle at all. The captured screen and the
+  merged `Reception.tsx` are believed identical because of the order the edits
+  were made in — **that is reasoning, not a check**, and it is exactly the
+  failure 03's rule 5 names: *"verification proves the tree you rendered, not
+  the tree you pushed."* The rule was honoured on one side of the wire and not
+  the other.
+
+**Why this is recorded instead of quietly re-running.** Re-running would need
+the same uncommitted script, and would produce the same unreproducible
+artifact — the gap entry below is about precisely that. An accurate account of
+partial coverage is worth more than a fuller-sounding one nobody can check.
+
 **The rendered tier is still not a committed artifact, exactly as recorded.**
 The capture script lived in the session scratchpad and is gone with it.
 Playwright is present in this container's `node_modules` and **declared
@@ -11993,6 +12030,25 @@ instruction, source stated per the documentation rule.]*
   not open the tier (see "Closing one instance of a defect class is not closing
   the class" in 03). Until it exists, **every rendered claim in this file is a
   historical report, not a reproducible result**, and should be read as one.
+  **WHAT STANDS IN FOR IT ON `/reception`, AND EXACTLY HOW FAR IT REACHES**
+  (added 2026-08-18, step 6). `scripts/reception-required-fields-gate.mjs` runs
+  in CI's `frontend` job and is the standing protection for the one enforcement
+  that exists nowhere else in the product — §3.2's five required fields, which
+  the server accepts as optional on the owner's ruling (c). **It reads SOURCE.**
+  It proves the enforcement is PRESENT in `Reception.tsx` and still wired to the
+  submit button; it does **not** prove the enforcement FIRES. A `formOk` the
+  submit handler ignores, a state variable bound to no input, a screen that
+  throws before the form mounts — each passes the gate with the requirement dead
+  in the browser. That limit is written into the gate's own header so a reader
+  meets it at the instrument rather than here, and the gate's success line now
+  says "present … (SOURCE check: this does not exercise the screen)" rather than
+  the bare "enforced" it printed at first, because the terminal output is what
+  most readers will actually see. **It is a presence check standing in for a
+  behavioural one, and it stands in only because this tier is missing** — the
+  behavioural version is one of the things the OWED renderer above would buy.
+  Recorded so the two are never confused: a green gate means the five fields are
+  still written into the expression, **not** that a clerk cannot create an
+  admission without a department.
 
 - **🔴 §3.2's REQUIRED fields are not enforced as required — a DATED follow-up,
   not an open-ended one** (recorded 2026-08-18 with step 5; the design's
