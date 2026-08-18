@@ -718,6 +718,53 @@ Nothing in §§0–8, in Amendment A, in rulings 1–5, in the Build-sequencing 
 in the §4-superseded entry, or in the hospital's three answers is altered by
 these two.
 
+### The requirement FOLLOWS THE BED — amending ruling 1 (recorded 2026-08-18)
+
+**Ruling 1 removed `bedId` from the required-field list and left `diagnosis`
+and `attending` behind.** That omission made the reception screen impossible to
+build: a payload carrying exactly §3.2's fields was refused with
+`400 "diagnosis is required"`, then `400 "attending is required"`. Reception can
+supply neither — §3.5 says *"no diagnosis"* outright, and `attending` is a
+different fact from Admitting Doctor (the amendment above). The gap was found
+by demonstration, not by reading, and this closes it.
+
+**THE RULE: `diagnosis` and `attending` are REQUIRED WHEN A BED IS NAMED, and
+OPTIONAL WHEN ONE IS NOT.**
+
+**Why the bed is the right discriminator — and why it is not a new one.**
+Supplying a `bedId` already costs `adt.admit`, which is doctor authority
+(ruling 4). So *a bed was named* means **a clinician is admitting**, and a
+clinician can state a working diagnosis and name the responsible consultant.
+**Bedless means a clerk is opening the episode**: reception holds
+`admissions.create` and not `adt.admit`, cannot name a bed, and can name
+neither of these facts. Requiring them there would force an invention, which
+§5's never-fabricate rule forbids — a placeholder diagnosis and a guessed
+attending are worse than blanks, because they read forever afterwards as
+recorded clinical facts. One admission path, one rule, keyed on a field whose
+permission meaning this design already settled: **no fork, and no second
+concept invented to carry the distinction.**
+
+**THE REJECTED OPTION, recorded because the reasoning generalises.** The
+alternative was to relax both fields everywhere, on the §3.2 precedent
+(option (c)). **It was rejected, and the distinction is the point:** the §3.2
+fields were NEW when they shipped optional, so making them optional removed
+nothing. `diagnosis` and `attending` are a guarantee that **exists today on a
+shipped clinical path at a hospital running ICU** — relaxing them everywhere
+would DELETE it. That is a regression in safety posture, not a deferral. The
+supporting argument for relaxing — *"ICU's form still requires them
+client-side"* — is **argued, not enforced**, and an argued guarantee is not one.
+
+**Asserted in both directions**, because either half alone is compatible with
+the rule being wrong: proving only that a bedless admission succeeds would also
+pass if the fields had simply been dropped everywhere, which is the option this
+ruling rejects. The refusals also assert that **nothing is written** — this
+endpoint creates a patient row when the MRN is new, so a rejected admission
+must leave no patient, no encounter and no MRN consumed.
+
+Nothing in §§0–8, in Amendment A, in rulings 2–5, in the Build-sequencing
+entry, in the §4-superseded entry, or in the hospital's three answers is
+altered by this one. Ruling 1 stands as written; this amends only the two
+fields it left behind.
 ### The bedless episode found a hardcoded bed label on a SAFETY GUARD (recorded 2026-08-18, step 6)
 
 Found by **rendering** the reception screen, not by reading it. The
@@ -751,5 +798,8 @@ The fix says what is true of the bedless case (*"currently admitted (awaiting
 bed assignment)"*) instead of leaving a gap where a label used to be.
 
 Nothing in §§0–8, in Amendment A, in rulings 1–5, in the Build-sequencing
-entry, in the §4-superseded entry, in the hospital's three answers, or in the
-two step-5 entries above is altered by this.
+entry, in the §4-superseded entry, in the hospital's three answers, in the two
+step-5 entries, or in the bed-rule entry directly above is altered by this.
+(That last one joined the list when #208 merged ahead of this branch: this
+entry's job is to enumerate what it leaves standing, so a new entry above it
+has to be named or the enumeration quietly stops being true.)
