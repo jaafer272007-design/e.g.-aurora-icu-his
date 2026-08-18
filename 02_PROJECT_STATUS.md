@@ -126,6 +126,21 @@ deployed leg first selected the first active department, which had no services,
 and SKIPPED the hierarchy legs while saying so — it now selects the department
 from the services list, so those legs fire whenever the pair exists.
 
+**RE-VERIFIED FROM A CLEAN CHECKOUT OF THE PUSHED COMMIT** (03's fifth rule,
+applied to its author): a detached worktree at `a9d0611`, a fresh database, both
+halves built from that tree, the 50-assertion suite re-run against the binary
+compiled from it — **50/0** — and the deployed reception step extracted from the
+**committed** YAML and run against the **committed** server, exit 0.
+**AND THE RULE EARNED ITS KEEP ON THE FIRST USE.** The clean tree's first boot
+CRASHED (exit 134) because the previous server still held port 8080, so
+`/healthz` answered 200 from the OLD binary while the new database sat migrated
+and idle. Every SQL assertion came back empty and the run looked like 8 ordinary
+failures. Reading them instead of re-running showed the truth: the clean-tree
+verification had not happened at all, and a green deployed-step exit alongside
+it would have been evidence about the wrong process. The old process was killed
+by pid, the pushed tree booted for real, and the numbers above are from that
+run. A 200 from `/healthz` identifies a listener, not a build.
+
 **2026-08-17 (step 4) · THE CONFIGURATION SCREENS FOR THE FOUR RECEPTION
 VOCABULARIES — 3 + 1, and the empty state is the feature.** The UI half of
 #199, built from `docs/design/inpatient-reception.md` §2. Four tenants in the
