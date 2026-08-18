@@ -1751,18 +1751,30 @@ export function reactivateBed(bedId: string): Promise<AdtWriteResult<AdtBed>> {
   return usersWrite<AdtBed>(`/api/icu/adt/beds/${encodeURIComponent(bedId)}/reactivate`, 'bed-registry reactivate')
 }
 
-/** GET /api/icu/adt/encounters?patientId&status — encounter list (REAL
- *  endpoint; display-only mock fallback derives OPEN encounters from the
- *  mock roster — historical/discharged encounters exist only server-side). */
-export async function getEncounters(filter?: { patientId?: string; status?: 'open' | 'discharged' }): Promise<Encounter[]> {
+/** GET /api/icu/adt/encounters?patientId&status&admittedOn — encounter list
+ *  (REAL endpoint; display-only mock fallback derives OPEN encounters from
+ *  the mock roster — historical/discharged encounters exist only
+ *  server-side).
+ *  `admittedOn` ("yyyy-MM-dd", UTC) returns every encounter admitted on that
+ *  date REGARDLESS OF STATUS — the reception desk's own list. Status alone
+ *  cannot serve it: a day case is an admission and goes home the same day,
+ *  so `status=open` would drop the population that desk creates most. */
+export async function getEncounters(filter?: {
+  patientId?: string; status?: 'open' | 'discharged'; admittedOn?: string
+}): Promise<Encounter[]> {
   const params = new URLSearchParams()
   if (filter?.patientId) params.set('patientId', filter.patientId)
   if (filter?.status) params.set('status', filter.status)
+  if (filter?.admittedOn) params.set('admittedOn', filter.admittedOn)
   const qs = params.toString()
   const real = await apiGet<Encounter[]>(`/api/icu/adt/encounters${qs ? `?${qs}` : ''}`, 'ADT encounters')
   if (real) return real
   if (import.meta.env.VITE_APP_ENV !== 'production') {
     if (filter?.status === 'discharged') return respond([], 120)
+    /* the mock roster carries no admittedAt, so it cannot honour a date
+       filter; returning the open census would be answering a different
+       question than the one asked. Empty is the honest answer offline. */
+    if (filter?.admittedOn) return respond([], 120)
     const open = allPatients()
       .filter(p => !filter?.patientId || p.patientId === filter.patientId)
       .map((p): Encounter => ({

@@ -278,10 +278,10 @@ JobTitle → PermissionProfile:
 PermissionProfile → Permissions (and Dashboard landing view):
 | Profile | Permissions | Landing |
 |---|---|---|
-| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, results.document, notes.document, ai.view, adt.admit, adt.discharge, observations.record, patients.measure, codestatus.set, attachments.view, attachments.add | /workspace |
+| Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, results.document, notes.document, ai.view, adt.admit, admissions.create, adt.discharge, observations.record, patients.measure, codestatus.set, attachments.view, attachments.add | /workspace |
 | SeniorDoctor         | everything Doctor has + results.correct, labcatalog.manage, ordersets.manage, observations.correct, observations.configure, assignments.manage, codestatus.manage, imagingcatalog.manage, beds.manage, dispositions.manage, isolation.manage, shifts.manage. HARD CONSTRAINT: the Consultant-tier authorities NEVER sit on the office Administrator profile | /workspace |
 | Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, handoff.document, results.view, results.document, ai.view, adt.transfer, observations.record, patients.measure, attachments.view, attachments.add | /nurse |
-| Administrator        | admin.view, patients.view, identity.correct, hospital.configure, beds.manage *(office profile: NO clinical panes — no orders/results/ai/attachments; users.manage moved to SystemAdministrator)* | /admin |
+| Administrator        | admin.view, patients.view, identity.correct, hospital.configure, beds.manage, admissions.create *(office profile: NO clinical panes — no orders/results/ai/attachments; users.manage moved to SystemAdministrator)* | /admin |
 | SystemAdministrator  | users.manage, users.view, backup.manage — and nothing else (no patients.view: access governance without patient-data reach) | /admin/users |
 | Pharmacist           | patients.view, orders.view, results.view, attachments.view, formulary.manage, frequencies.manage | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view, attachments.view | /beds |
@@ -306,8 +306,24 @@ Route guards: /workspace = orders.sign · /nurse = meds.administer ·
 /orders = orders.view (mutating UI additionally needs the prescriber
 permissions) · /labs = results.view · /ai = ai.view · /admissions &
 /discharges = patients.view (the admit action additionally needs
-adt.admit; discharge needs adt.discharge; transfer needs adt.transfer —
-profiles never see buttons they cannot use). A session lacking a
+admissions.create AND — because ICU admits INTO A BED — adt.admit;
+discharge needs adt.discharge; transfer needs adt.transfer —
+profiles never see buttons they cannot use).
+
+*[Amendment, 2026-08-18 — `admissions.create` (Inpatient Reception ruling
+4). The atom OPENS an episode; naming a BED costs `adt.admit` on top. The
+split is by bed, not by endpoint: one admission path, and the office
+Administrator holds the first atom and not the second, so reception can
+open an episode and cannot place a patient. The `Receptionist` job title
+already maps to the Administrator profile, so the desk receives it by
+mapping rather than by a new profile. Nothing is removed from the
+Administrator exclusion — orders, results, attachments and AI stay closed.
+Recorded here because this matrix is maintained as a MIRROR of `Rbac.cs`,
+and the build-sequencing amendment in `docs/design/inpatient-reception.md`
+made that mirror the decisive argument for deferring the atom: a row
+showing a capability the code does not honour is a false row. The mirror
+went stale in the opposite direction when step 5 (#204) added the atom to
+the code and not to this table; this closes it.]* A session lacking a
 route's permission gets an explicit Access Restricted state (never a
 silent redirect); no session → /login. The `?as=nurse` dev preview is
 retired — the login screen replaces it.

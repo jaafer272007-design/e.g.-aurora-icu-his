@@ -22,6 +22,73 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-18 · THE ADMISSION'S LABEL SNAPSHOT, A DATE FILTER, AND THE RBAC
+MIRROR — three things owed before the reception screen, deliberately not folded
+into it.** Server + docs only; no UI.
+
+**🔴 THE LABEL SNAPSHOT WENT FIRST BECAUSE IT CANNOT BE APPLIED
+RETROACTIVELY.** The Inpatient Reception design's ruling 3 requires that "the
+admission event **snapshots the label** at the moment it is written, so a later
+edit cannot rewrite history" — the rule that stops *"the hospital renamed
+General Surgery"* reinterpreting every admission filed under it. **Step 5 did
+not build it.** The encounter stored codes only, and #202 had already shipped
+the Configuration UI whose `PUT /api/icu/{vocab}/{code}` changes a label — so
+the exposure was live and reachable by a button. Every admission written
+without a snapshot is **permanently unprotected**: the label it would have to
+capture is the one that was on screen that day, and that is not recoverable
+afterwards. That is why this landed ahead of the screen rather than with it —
+each day it waited was a day of records that can never be covered.
+
+**THE SHAPE, on the `CodeStatusEventDto` precedent** (`Code` + the `Label` the
+clinician saw): `AdmissionCodingDto(Field, Code, Label)`, carried on the
+`"admitted"` event as an **additive nullable tail** on `AdtEventDto`. Every
+other ADT event serializes without it (WhenWritingNull) and keeps its
+pre-feature wire bytes. **Structured, not more prose in `Detail`** — ruling 1
+notes the record has no structured from/to and that the concatenated string IS
+the audit record, which is exactly why a value a document must later READ BACK
+does not belong in it. Prose is for humans; a snapshot a renderer consumes is a
+field. Absent stays absent: an admission naming no codes carries **no coding
+key at all**, never an empty list asserting "nothing was chosen" as a fact.
+
+**THE CONSEQUENCE, recorded because it is a contract and not an implementation
+detail: when a document eventually prints the department, it reads THIS
+SNAPSHOT and never the live vocabulary.** Live configuration surfaces still
+resolve labels at read — a corrected typo should propagate there. It must not
+propagate into a document already issued. The two are different questions, and
+the snapshot answers "what did this record say when it was made". (Noted while
+building: the existing print path resolves the **code-status** label live —
+`selectors.ts:64-70`, *"label resolved by the caller from the vocabulary"* —
+so that surface does not yet honour its own snapshot. Recorded, not changed
+here.)
+
+**THE DATE FILTER: `GET /adt/encounters?admittedOn=yyyy-MM-dd`** — every
+encounter admitted on that date **regardless of status**, which is the whole
+point of it and the reason `status` alone could not serve. **A DAY CASE IS AN
+ADMISSION at this hospital and goes home the same day** (the hospital's answer
+2), so `status=open` drops exactly the population a reception desk spends its
+day creating. **Deliberately NOT an actor filter.** `AdmittedBy` stores a
+display NAME, so scoping "what this desk admitted" by actor would create a new
+dependency on a display name for correctness — the same defect class as the
+unvalidated `Attending` recorded on the gaps shelf. Tolerating an existing one
+is not a licence to add another; and a reception desk is *shared*, so the date
+is also the truer object. Bounded by construction: one day's admissions.
+
+**`01`'s RBAC MATRIX now lists `admissions.create`** at all three stale sites —
+the Doctor row, the Administrator row, and the route prose (which still said
+the admit action needs only `adt.admit`). The build-sequencing amendment made
+that mirror **the decisive argument** for deferring the atom: a row showing a
+capability the code does not honour is a false row. Step 5 (#204) added the atom
+to `Rbac.cs` and `session.ts` and not to the table, so the mirror went stale in
+the opposite direction — the argument's own evidence was broken. Closed.
+
+**Verified against real PostgreSQL 16, 10 assertions green, 0 failing** — and
+the two that carry the change: **a rename moved the live vocabulary and left
+the snapshot untouched** (`Departments.Label` became "General Surgery
+(RENAMED)"; the event's coding still read "General Surgery"), and **a
+same-day-discharged encounter stayed in the `admittedOn` list** with
+`status=discharged`, which is the day-case population `status=open` would have
+dropped — Decision B demonstrated rather than argued.
+
 **2026-08-18 (step 5) · THE §3.2 ADMISSION FIELDS ON THE ENCOUNTER — server
 side, and two clocks pulled apart.** The server half of the reception build,
 from `docs/design/inpatient-reception.md` §3.2 and rulings 1, 2, 4 and 5. Seven

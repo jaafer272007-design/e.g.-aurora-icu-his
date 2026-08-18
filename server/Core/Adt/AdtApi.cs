@@ -96,21 +96,44 @@ static class AdtApi
             return Results.Json(doctors, JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* GET /api/icu/adt/encounters?patientId&status — encounter list
-           (open census, discharge history, per-patient lookup). Both roles. */
+        /* GET /api/icu/adt/encounters?patientId&status&admittedOn — encounter
+           list (open census, discharge history, per-patient lookup, and the
+           reception desk's "admitted on this date" view). Both roles. */
         app.MapGet("/api/icu/adt/encounters", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Identity.Rbac.Deny(user, "patients.view") is IResult denied) return denied;
             foreach (var key in ctx.Request.Query.Keys)
-                if (key is not ("patientId" or "status"))
+                if (key is not ("patientId" or "status" or "admittedOn"))
                     return ApiError.BadRequest($"unknown query parameter '{key}'");
             var patientId = ctx.Request.Query["patientId"].ToString();
             var status = ctx.Request.Query["status"].ToString();
             if (status.Length > 0 && status is not ("open" or "discharged"))
                 return ApiError.BadRequest("status must be one of: open, discharged");
+            /* admittedOn=yyyy-MM-dd — EVERY encounter admitted on that date,
+               REGARDLESS OF STATUS. That combination is the point of the
+               parameter and the reason status alone could not serve it: a DAY
+               CASE is an admission here and goes home the same day, so
+               `status=open` drops exactly the population a reception desk
+               spends its day creating. Filtering by DATE also keeps the answer
+               true to the question — "what was admitted today" is a property
+               of the day, not of whoever is standing at a shared desk.
+               DELIBERATELY NOT an actor filter. `AdmittedBy` stores a display
+               NAME, so scoping by it would make a new dependency on a display
+               name for correctness — the same defect class as the unvalidated
+               `Attending` (02, Known Feature Gaps). Tolerating an existing one
+               is not a licence to add another.
+               The comparison is a PREFIX on the stored UTC stamp
+               ("yyyy-MM-dd HH:mm"), which is exact for a date because the
+               format is fixed-width and lexicographic. Bounded by construction:
+               one day's admissions. */
+            var admittedOn = ctx.Request.Query["admittedOn"].ToString().Trim();
+            if (admittedOn.Length > 0
+                && !System.Text.RegularExpressions.Regex.IsMatch(admittedOn, @"^\d{4}-\d{2}-\d{2}$"))
+                return ApiError.BadRequest("admittedOn must be a date formatted yyyy-MM-dd (UTC)");
             var q = db.Encounters.AsNoTracking().AsQueryable();
             if (patientId.Length > 0) q = q.Where(e => e.PatientId == patientId);
             if (status.Length > 0) q = q.Where(e => e.Status == status);
+            if (admittedOn.Length > 0) q = q.Where(e => e.AdmittedAt.StartsWith(admittedOn));
             var names = db.AdtPatients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.DisplayName);
             return Results.Json(q.OrderBy(e => e.EncounterId).AsEnumerable()
                 .Select(e => e.ToDto(names.GetValueOrDefault(e.PatientId, ""))), JsonOpts.Web);
@@ -840,6 +863,11 @@ static class AdtApi
                is never defaulted into meaning something (§5, never fabricate). */
             string? admissionTypeCode = null, departmentCode = null,
                     serviceCode = null, admissionSourceCode = null;
+            /* THE LABEL SNAPSHOT (ruling 3). Filled from the SAME vocabulary
+               rows the validation below already reads, so the label recorded
+               is provably the one that satisfied the check — not a second
+               lookup that could disagree with it. */
+            var coding = new List<AdmissionCodingDto>();
 
             /* the three FLAT vocabularies, on the codeStatusCode precedent:
                unknown → 400 (a payload reference resolving to nothing),
@@ -867,9 +895,9 @@ static class AdtApi
                     return ApiError.StateConflict(
                         $"{label} '{code}' ({vocabLabel}) is retired — it cannot be newly selected; "
                         + "reactivate it in Configuration or choose an active entry");
-                if (label == "admissionTypeCode") admissionTypeCode = code;
-                else if (label == "departmentCode") departmentCode = code;
-                else admissionSourceCode = code;
+                if (label == "admissionTypeCode") { admissionTypeCode = code; coding.Add(new("admissionType", code, vocabLabel)); }
+                else if (label == "departmentCode") { departmentCode = code; coding.Add(new("department", code, vocabLabel)); }
+                else { admissionSourceCode = code; coding.Add(new("admissionSource", code, vocabLabel)); }
             }
 
             /* SERVICE — the ONE hierarchical field, and the only place §3.2's
@@ -902,6 +930,7 @@ static class AdtApi
                         + "not the departmentCode supplied — a service is never moved between departments");
                 }
                 serviceCode = code;
+                coding.Add(new("service", code, svc.Label));
             }
 
             /* ADMITTING DOCTOR — an identity reference, validated against
@@ -1153,7 +1182,11 @@ static class AdtApi
                 AdmittingDoctorUserId = admittingDoctorUserId,
                 ReferrerUserId = referrerUserId, ReferrerName = referrerName,
                 EventsJson = JsonSerializer.Serialize(
-                    new List<AdtEventDto> { new(time, actor, "admitted", admitDetail) }, JsonOpts.Web),
+                    new List<AdtEventDto> { new(time, actor, "admitted", admitDetail,
+                        /* absent stays ABSENT: an admission that named no codes
+                           carries no coding tail at all, rather than an empty
+                           list asserting "nothing was chosen" as a recorded fact */
+                        coding.Count == 0 ? null : coding) }, JsonOpts.Web),
             };
             /* Weight & Height at admission — ENCOUNTER-SCOPED (the project
                owner's decision on the flagged modelling choice): the values
