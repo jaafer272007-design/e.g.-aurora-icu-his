@@ -11645,24 +11645,42 @@ instruction, source stated per the documentation rule.]*
   offered back as a suggestion, so the same GP is retyped every time. Owed to
   the reception screen, where the interaction it exists for actually lives.
 
-- **🔴 `Encounter.Attending` is not validated server-side — the picker's safety
-  is entirely client-side** (recorded 2026-08-18 with step 5, found while
-  establishing that Admitting Doctor is a different field). #158 replaced the
-  free-text attending with a roster picker and the record describes it as a
-  safety fix, but the SERVER checks the value only for non-blank and length:
-  `attending: "Dr Nobody"` is accepted today, and the ghost-attending class the
-  picker was built to close is still open to any caller that is not the form.
-  The form also sends the display **NAME** (`Admissions.tsx` binds
-  `value={u.name}`), so the stored value is a snapshot string, not an account
-  reference — eight readers consume it as text, including three print templates
-  and a string-equality filter on the bed board.
-  **DELIBERATELY NOT FIXED IN STEP 5.** Retrofitting validation would change
-  behaviour for every existing caller — the same class of risk as requiring the
-  §3.2 fields above — and it forces a second decision (does it start storing a
-  username, breaking those eight readers, or stay a snapshot and merely check
-  the name resolves?). It deserves its own decision rather than riding along
-  inside an unrelated build. The NEW `AdmittingDoctorUserId` is validated, so
-  the two fields now differ in trustworthiness as well as in meaning.
+- **🔴 ANY STRING CAN BE RECORDED AS THE ATTENDING CLINICIAN, AND IT PRINTS AS
+  THE RESPONSIBLE PHYSICIAN ON A SIGNED DISCHARGE SUMMARY** (recorded
+  2026-08-18 with step 5; found while establishing that Admitting Doctor is a
+  different field). Stated as the EXPOSURE rather than as "the field is not
+  validated", because the omission understates what it permits.
+  **WHAT IS POSSIBLE TODAY.** `POST /adt/admissions` checks `attending` for
+  non-blank and length and nothing else. `attending: "Dr Nobody"` — or a
+  misspelling, or a person who does not work here, or an empty-looking string of
+  spaces around a name that was never on staff — is accepted and stored on the
+  encounter. #158 replaced the free-text attending with a roster picker and the
+  record calls it a safety fix; **the picker is client-side only**, so the class
+  it closed is closed for the form and open for every other caller of the
+  endpoint — the deployed suites, any script, any future integration.
+  **WHERE THAT VALUE SURFACES.** It is not an internal field. It renders in the
+  shared print banner (`PrintLayout.tsx:79`), on the Face Sheet
+  (`FaceSheet.tsx:35`), on the Transfer Summary (`TransferSummary.tsx:24`), and
+  — the sharpest one — on the **Discharge Summary under the heading
+  "Responsible physician", immediately above that role's signature block**
+  (`DischargeSummary.tsx:94-96`). A document that leaves the hospital can
+  therefore name a responsible physician the hospital never had, with a
+  signature line under it. It is also compared as a plain string by the bed
+  board's doctor filter (`BedOverview.tsx:37`), so a near-miss spelling silently
+  drops a patient out of that clinician's view.
+  **AND THE STORED VALUE IS A DISPLAY NAME, NOT AN ACCOUNT.** The form sends
+  `u.name` (`Admissions.tsx`: `<option key={u.username} value={u.name}>`), so
+  even the well-behaved path stores a snapshot string with no link to a user
+  row. There is nothing to reconcile against later.
+  **DELIBERATELY NOT RETROFITTED — the owner's ruling, and the reason is not
+  risk-aversion.** `AdmittingDoctorUserId` (step 5) is this field's SUCCESSOR:
+  validated against `Users`, tier-checked, an identity reference rather than a
+  snapshot. **Validating `Attending` first would entrench a field that should be
+  retired or redefined**, and it would force a second decision under time
+  pressure — does it start storing usernames, breaking the eight readers above,
+  or merely check that the typed name resolves? The exposure is real and is
+  recorded here at full strength so that the eventual retire-or-redefine
+  decision is made on the record rather than inherited by accident.
 
 - **🔴 The bed registry has no ROOM concept** (recorded 2026-08-17 with the
   reception design's §4 amendment, #200; owed to the Ward design). `BedRow` is
