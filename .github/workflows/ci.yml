@@ -302,6 +302,12 @@ jobs:
           snap() { echo "$(PSQL "select count(*) from \"$1\"")|$(PSQL "select coalesce(string_agg(\"Code\", ',' order by \"Code\"), '') from \"$1\"")"; }
           assert_unchanged() { # table, its BEFORE snapshot
             now=$(snap "$1")
+            # SELF-GUARDING: this compares a read to ANOTHER READ, so two empty
+            # results would satisfy it. The BEFORE snapshots are already proven
+            # non-empty above, which makes that unreachable today — but a check
+            # that is only safe because of a guard somewhere else is one edit
+            # away from passing for free. It states its own precondition.
+            [ -n "$now" ] || die "$1 read back EMPTY — psql is not answering; an unchanged/unchanged comparison here would pass vacuously"
             [ "$now" = "$2" ] || die "$1 CHANGED: before [$2] now [$now]"
             echo "  ok   $1 unchanged [$now]"
           }
@@ -539,6 +545,11 @@ jobs:
             || die "the live vocabulary did NOT change — the rename is not exercising anything"
           echo "  ok   the LIVE vocabulary now reads the new name"
           SNAP_AFTER=$(PSQL "select \"EventsJson\"::json->0->'coding' from \"Encounters\" where \"EncounterId\" = '$ENCID'")
+          # Same shape, same hazard: BEFORE == AFTER is satisfied by two empty
+          # strings. The grep above already proves BEFORE is non-empty; this
+          # says so for AFTER too, so the assertion does not depend on a
+          # neighbouring line to have teeth.
+          [ -n "$SNAP_AFTER" ] || die "the snapshot read back EMPTY after the rename — psql is not answering, and BEFORE==AFTER would pass vacuously"
           [ "$SNAP_BEFORE" = "$SNAP_AFTER" ] \
             || die "THE SNAPSHOT MOVED WITH THE RENAME — history was rewritten: [$SNAP_AFTER]"
           echo "$SNAP_AFTER" | grep -q "RENAMED after the admission" \
