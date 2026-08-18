@@ -557,6 +557,49 @@ jobs:
           [ "$rc" = "400" ] || die "a malformed admittedOn -> HTTP $rc, expected 400"
           echo "  ok   malformed admittedOn -> 400 (four-code discipline holds)"
 
+          # ---- THE REQUIREMENT FOLLOWS THE BED ------------------------------
+          # diagnosis and attending are required WHEN A BED IS NAMED and
+          # optional when one is not. Both directions are asserted, because
+          # either half alone is compatible with the rule being wrong: proving
+          # only that a bedless admission succeeds would also pass if the fields
+          # had simply been dropped everywhere, which is the option this ruling
+          # REJECTED — it would delete a guarantee that exists today on ICU's
+          # shipped path.
+          # The bedless direction already passed above (the office
+          # Administrator admitted with neither field). What follows is the
+          # WITH-BED direction, which needs adt.admit, so it runs under the
+          # Consultant token.
+          echo "REQUIREMENT FOLLOWS THE BED:"
+          CIBED=$(PSQL "select \"BedId\" from \"Beds\" where \"Active\" and \"BedId\" not in (select \"BedId\" from \"Encounters\" where \"Status\" = 'open') order by \"Seq\" limit 1")
+          [ -n "$CIBED" ] || die "no free bed in the production seed — the with-bed direction cannot be exercised"
+          before_p=$(PSQL "select count(*) from \"AdtPatients\"")
+          before_e=$(PSQL "select count(*) from \"Encounters\"")
+          { [ -n "$before_p" ] && [ -n "$before_e" ]; } || die "row counts read back EMPTY — a nothing-written comparison would pass vacuously"
+          for missing in diagnosis attending; do
+            if [ "$missing" = "diagnosis" ]; then
+              body="{\"nameFirst\":\"Bed\",\"nameSecond\":\"Rule\",\"nameFamily\":\"$missing\",\"sex\":\"M\",\"allergies\":\"None\",\"dateOfBirth\":\"1980-01-01\",\"attending\":\"CI Consultant\",\"bedId\":\"$CIBED\"}"
+            else
+              body="{\"nameFirst\":\"Bed\",\"nameSecond\":\"Rule\",\"nameFamily\":\"$missing\",\"sex\":\"M\",\"allergies\":\"None\",\"dateOfBirth\":\"1980-01-01\",\"diagnosis\":\"CI probe\",\"bedId\":\"$CIBED\"}"
+            fi
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/adt/admissions")
+            [ "$(echo "$out" | tail -1)" = "400" ] || die "bed named with $missing missing -> HTTP $(echo "$out" | tail -1), expected 400"
+            echo "$out" | head -1 | grep -q "when a bed is named" || die "the 400 did not state the rule: $(echo "$out" | head -1)"
+            # NOTHING WRITTEN — this endpoint creates a Patient when the MRN is
+            # new, so a refused admission must leave no patient and no encounter.
+            now_p=$(PSQL "select count(*) from \"AdtPatients\"")
+            now_e=$(PSQL "select count(*) from \"Encounters\"")
+            { [ "$now_p" = "$before_p" ] && [ "$now_e" = "$before_e" ]; } \
+              || die "the refused admission ($missing missing) WROTE: patients $before_p->$now_p encounters $before_e->$now_e"
+            echo "  ok   bed named + $missing missing -> 400 stating the rule, and NOTHING written (patients $now_p, encounters $now_e)"
+          done
+          # …and the same caller WITH both fields still admits into that bed,
+          # so the refusals above are the missing fields and not the bed.
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"nameFirst\":\"Bed\",\"nameSecond\":\"Rule\",\"nameFamily\":\"Complete\",\"sex\":\"M\",\"allergies\":\"None\",\"dateOfBirth\":\"1980-01-01\",\"diagnosis\":\"CI probe\",\"attending\":\"CI Consultant\",\"bedId\":\"$CIBED\"}" \
+            "$API/api/icu/adt/admissions")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "bed named WITH both fields -> HTTP $(echo "$out" | tail -1), expected 200: $(echo "$out" | head -1)"
+          echo "  ok   bed named WITH both fields -> 200 (ICU's shipped path is unchanged)"
+
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #
   # Why this job exists: aurora-update.ps1 shipped with PowerShell 7 ternary
