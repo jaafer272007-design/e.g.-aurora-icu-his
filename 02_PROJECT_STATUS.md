@@ -22,6 +22,161 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-18 · STEP 6 — THE INPATIENT RECEPTION SCREEN (`/reception`).** The
+ward's front door: find or register a patient, open the admission, stop. First
+UI of the Inpatient Reception arc; every server capability it consumes was
+built in steps 4-5 and #205/#208.
+
+**🔴 THE CENTRAL CONSTRAINT, AND IT IS STATED IN THE CODE.** The server ruling
+was **(c)** — §3.2's fields are optional individually on the wire — so **this
+screen is the only place §3.2's required-ness is enforced in the product.**
+`Reception.tsx`'s header comment says exactly that, in those words, above the
+`formOk` gate, together with the dated condition for moving enforcement back to
+the server and the sentence that matters most: *deleting or loosening this gate
+is a functional change to the product's guarantees, not a cleanup.* The comment
+is the artifact; a reader who "simplifies" the gate has to read past it first.
+
+**What the screen is, and what it refuses to be.** Patient: partial search over
+**every** patient including the discharged (#163's endpoint) so a returning
+patient is found, never re-created; registration only when the search comes
+back empty. On submit — **never per keystroke** — the existing match endpoint
+runs and the existing `MatchDialog` decides. Neither was re-implemented: a
+second find-or-register flow beside that machinery is the fork §1 forbids, and
+the dialog already carries the tiered confirmed/probable card, the
+server-masked national ID, the currently-admitted guard and the deceased guard.
+Admission: the §3.2 fields, and **nothing else** — no bed, no nurse, no note,
+no diagnosis, no orders (§3.5). The submit button says so under it.
+
+**Referring doctor is ONE choice, not two fields.** The server 400s a payload
+naming both an internal account and free text, so the form models it as a
+three-way segmented control (not recorded / our own staff / external). Two
+fields a clerk can fill at once would make the server's rule discoverable only
+by being refused. **The typeahead stays deferred** (Amendment A) — the internal
+option is the ward-doctor list, the external one is typed.
+
+**Admission date/time: auto-filled, editable, wall-clock in and UTC out.** The
+field shows the SERVER-LOCAL clock (`localStamp`) because that is the clock the
+staff read; `wireStampOfLocal` converts on submit and the raw wall-clock string
+never reaches the wire. A future stamp is refused locally so the clerk sees it
+beside the field, and the server refuses it again — the local check is a
+courtesy, never the guarantee.
+
+**"Admitted today" — filtered by DATE, not by actor, and the owner overruled
+the recommendation to reach it.** Ruling 1 requires that something surface a
+bedless admission (*"an admission with no bed and no worklist that surfaces it
+is a patient who exists only in the database"*). This is that list for
+reception, and it is not the ward worklist. Scoping it to `status=open` would
+drop **day cases, which the hospital told us are admissions and go home the
+same day** — exactly the population this trial will be full of. Scoping it to
+`admittedBy === session.name` would create a **new** dependency on a display
+name for correctness, the defect class the unvalidated `Attending` already
+represents: tolerating an existing one is defensible, adding one is not.
+
+**The UTC/local seam is handled, not ignored.** Stamps are stored UTC and
+`admittedOn` filters on the UTC date, but "today" at a reception desk means the
+**server-local** day. Those are the same date only at offset zero. The screen
+fetches every UTC date the local day can touch and then applies the local day
+exactly, on the display clock.
+
+**Empty states point at Configuration and say the consequence.** Production
+seeds **none** of the four vocabularies (#199, deliberately), so on a real
+install they are all empty on day one. A form that renders empty dropdowns
+makes the clerk discover that by failing. The blocked banner names which lists
+are empty, says they are required on every admission, and points at
+Configuration → Hospital. **Source of Admission is deliberately NOT in that
+list** — it is optional, and claiming reception is blocked on it would be a
+false statement on a working screen. A department with **no active service**
+gets its own line inside the Service field rather than a banner the reader has
+to connect back to it. Loading is distinguished from empty, because on this
+form the two look identical.
+
+**RBAC: `admissions.create`, and the nav row follows it.** The route gate, the
+nav item and the ward-doctor picker all use the reception atom; naming a bed
+still costs `adt.admit`, which the office Administrator does not hold and
+reception never needs. Verified live: the receptionist reaches
+`/adt/ward-doctors` (5 accounts, both ward tiers) and is **403** on
+`/adt/attendings` — the two-endpoint split of step 5 holding in practice.
+
+**Decision C — `/admissions` and its gate are untouched, and it gained one
+line.** The view-only note on that screen now points a reader who holds
+`admissions.create` at Reception, shown **only** to someone who actually holds
+it: pointing a Pharmacist at a route their profile cannot open would be a dead
+end dressed as help. The profile evidence for deciding that gate later is
+recorded below.
+
+**🔴 A DEFECT THE RENDERING FOUND, AND READING WOULD NOT HAVE.** The match
+dialog's duplicate-encounter guard read *"currently admitted to Bed
+{currentBedId}"* — hardcoded because, before reception, **every open encounter
+had a bed**. The first patient admitted through reception rendered it as
+*"currently admitted to Bed — a second open encounter cannot be started."* The
+rule never broke; the sentence did, on a safety statement whose whole job is to
+stop a clerk creating a duplicate episode. Fixed to say what is true of the
+bedless case. Recorded as an amendment in the design, with the class named:
+making a field optional adds a null case to every **sentence** already built
+around it, not only to the code that writes it.
+
+**VERIFICATION — rendered, both themes, against a server carrying #208.**
+Twelve full-page captures at 1440×980 (dark + light): the form; the browse
+list showing all three row guards at the point of choosing (admitted /
+deceased / discharged, only the last offering the action); a department with no
+active service; the completed form; the match dialog refusing a duplicate; and
+the blocked empty state with every §3.2 list emptied. Server legs proven
+directly: a bedless admission with no diagnosis and no attending **succeeds**
+and audits `no bed — awaiting bed assignment` with the four-field label
+snapshot attached; a doctor naming a bed with no diagnosis is **400** with
+#208's own words; reception naming a bed is **403**; `admittedOn` returns the
+new episode. **Rule 5's build gate ran first:** `/healthz`.`build` was asserted
+equal to the commit under test (`73b67cf…`, stamped via `SourceRevisionId`)
+**before** any assertion — a `dev` build would have failed the check.
+
+**The rendered tier is still not a committed artifact, exactly as recorded.**
+The capture script lived in the session scratchpad and is gone with it.
+Playwright is present in this container's `node_modules` and **declared
+nowhere** — not in `dependencies`, not in `devDependencies`, not in CI. The
+Known Feature Gaps entry stands unchanged and un-narrowed: none of the "N/N
+rendered" proofs in this file, including these twelve, can be re-run by anyone
+from the repository alone.
+
+**Profiles that reach `/admissions` today (evidence for the deferred gate
+question, recorded rather than acted on).** The route gate is `patients.view`,
+which eight profiles hold. Of those, **Doctor** and **SeniorDoctor** hold
+`adt.admit` and can actually admit; the other six — **Nurse, Administrator,
+Pharmacist, RespiratoryTherapist, Ancillary, AlliedHealth** — reach the screen
+read-only and see the census and the disabled form. Only **one** of those six,
+the office **Administrator**, holds `admissions.create`, so only that one is
+offered the Reception pointer. The gate question is therefore about **five**
+profiles that reach a form they can neither use nor be redirected from; it is
+left open deliberately, with the numbers on the record.
+
+**🔴 THE CONSTRAINT IS NOW ENFORCED, NOT ONLY EXPLAINED.**
+`scripts/reception-required-fields-gate.mjs` (new, run in CI's `frontend` job)
+fails if `formOk` stops requiring any of the five §3.2 fields, or if the submit
+button stops being disabled by it. The reason it exists is this project's own
+standard: *"the ICU form still requires them client-side" was rejected as an
+argument for weakening a server rule, because a form is not a guarantee* — and
+that standard applies to the form itself. A refactor that simplified `formOk`
+would delete five required fields from the product, pass `tsc`, pass `vite
+build`, render correctly, and be found by a hospital holding an admission
+record with no department on it. **Teeth measured, not asserted:** each of the
+five was deleted from `formOk` in turn and the gate failed each time, naming
+the field; the file was restored byte-identical afterwards and the gate passes
+on the shipped tree. Renaming a field fails the gate too — deliberately: the
+rename is the moment to confirm the requirement is still meant.
+
+**Files.** `src/pages/Reception/Reception.tsx` + `Reception.css` (new);
+`src/App.tsx` (route, gated `admissions.create`); `src/components/NavSidebar.tsx`
+(the `reception` key, above Admissions — the order of the journey);
+`src/lib/api/types.ts` (§3.2 on `AdmitDraft` and `Encounter`;
+`diagnosis`/`attending`/`bedId` optional, with the rule that binds them to the
+bed stated on the type); `src/pages/Admissions/MatchDialog.tsx` (the bedless
+guard sentence); `src/pages/Admissions/Admissions.tsx` (the Decision C pointer);
+`scripts/reception-required-fields-gate.mjs` + `.github/workflows/ci.yml` (the
+gate above); `01_ARCHITECTURE.md` (the `/reception` route on the guard list);
+`docs/design/inpatient-reception.md` (one appended amendment, pure append
+proven by hashing the original 39,352 bytes before and after).
+
+---
+
 **2026-08-18 · THE ADMISSION'S LABEL SNAPSHOT, A DATE FILTER, AND THE RBAC
 MIRROR — three things owed before the reception screen, deliberately not folded
 into it.** Server + docs only; no UI.

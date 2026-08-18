@@ -465,6 +465,20 @@ export interface AttendingOption {
   jobTitle: string
 }
 
+/** GET /api/icu/adt/ward-doctors — the reception form's ADMITTING DOCTOR
+ *  picker. The WARD tier: Doctor *or* SeniorDoctor, because a ward is
+ *  admitted to by registrars and not only consultants (Inpatient Reception
+ *  ruling 2). A SEPARATE endpoint from /adt/attendings, which stays
+ *  consultant-only — widening that one would silently add registrars to
+ *  every ICU admission form. `profile` is which tier this account derives,
+ *  so the picker can say so rather than leaving the reader to infer it. */
+export interface WardDoctorOption {
+  username: string
+  name: string
+  jobTitle: string
+  profile: 'Doctor' | 'SeniorDoctor'
+}
+
 /* ---- the LEGACY #114 shape (history read only — /assignments/history;
    no new rows are ever created) ---- */
 export type AssignmentKind = 'nurse' | 'doctor'
@@ -1377,6 +1391,21 @@ export interface Encounter {
    *  (a re-admission starts fresh; stale precautions never silently
    *  carry). Absent = none. Set changes are audited into events. */
   isolationTypes?: string[]
+  /* INPATIENT RECEPTION §3.2 — the admission's structure as recorded at
+     reception. CODES, never labels: a code is identity and the reader
+     resolves it against the live vocabulary at render (the same move the
+     Configuration screens make). An encounter admitted before this feature
+     carries none of them, so ABSENT means "not recorded" and is rendered
+     as such — never as a blank that reads like a value. */
+  admissionTypeCode?: string
+  departmentCode?: string
+  serviceCode?: string
+  admissionSourceCode?: string
+  /** the admitting doctor's USERNAME (an identity reference, unlike
+   *  `attending` above, which is a display-name snapshot) */
+  admittingDoctorUserId?: string
+  referrerUserId?: string
+  referrerName?: string
 }
 
 /** one append-only code-status set event (prior null on the first set);
@@ -1668,9 +1697,17 @@ export interface AdmitDraft {
   dateOfBirth?: string
   sex?: Sex
   allergies?: string
-  diagnosis: string
-  attending: string
-  bedId: string
+  /* DIAGNOSIS / ATTENDING / BED — all three OPTIONAL since the reception
+     build, and the rule that binds them is THE BED, not the caller:
+     naming a bedId is a CLINICAL admission (it costs `adt.admit`) and then
+     diagnosis and attending are REQUIRED — the server 400s a bed without
+     them. Omitting the bed opens the episode "awaiting bed" and none of
+     the three is required. ICU's own form still supplies all three and its
+     guarantee is unchanged; reception supplies none of them (§3.5: no bed,
+     no diagnosis, no orders — the ward takes it from there). */
+  diagnosis?: string
+  attending?: string
+  bedId?: string
   /** Weight & Height capture — OPTIONAL at admission (kg / cm); if
    *  omitted, a clinician adds them later on the patient record */
   weightKg?: number
@@ -1679,6 +1716,39 @@ export interface AdmitDraft {
    *  ACTIVE vocabulary (never typed). Omitted = honestly NOT RECORDED
    *  until a physician sets it — never a default. */
   codeStatusCode?: string
+
+  /* ============ INPATIENT RECEPTION §3.2 — the admission's structure ====
+     Every member is OPTIONAL ON THE WIRE and validated when present. That
+     is the owner's recorded ruling (c), not an oversight: shipping them
+     required would make admission impossible on the next update of a live
+     install until somebody configured a department — while /healthz still
+     answered 200, so the updater would not roll back.
+     THE CONSEQUENCE: /reception's form gate is the ONLY place §3.2's
+     required-ness is enforced in the product. Loosening it is a functional
+     change to the product's guarantees, not a cleanup.
+     The four codes come from the #199 vocabularies and are SELECTED, never
+     typed: unknown → 400, retired → 409, a service outside the named
+     department → 400. */
+  admissionTypeCode?: string
+  departmentCode?: string
+  serviceCode?: string
+  admissionSourceCode?: string
+  /** the ADMITTING DOCTOR's username, from GET /adt/ward-doctors (Doctor
+   *  or SeniorDoctor). An identity reference — NOT `attending`, which is
+   *  an unvalidated display-name snapshot. */
+  admittingDoctorUserId?: string
+  /** REFERRING DOCTOR: the internal account OR the external free text,
+   *  never both (400); neither = honestly not recorded. */
+  referrerUserId?: string
+  referrerName?: string
+  /** ADMISSION DATE/TIME — "yyyy-MM-dd HH:mm" **in UTC**, the imaging
+   *  performedAt shape. Reception captures the hospital's WALL CLOCK and
+   *  converts with wireStampOfLocal() before sending; the raw wall-clock
+   *  string is never put on the wire. Never in the future (400). Omitted =
+   *  the server stamps now, exactly as before this field existed.
+   *  It moves the ADMISSION time only — the audit event keeps the server's
+   *  clock, so naming this can never backdate the audit trail. */
+  admittedAt?: string
 }
 
 export interface AdmitResponse {

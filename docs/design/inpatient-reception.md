@@ -717,3 +717,39 @@ reader who checks the type cannot confuse them.
 Nothing in §§0–8, in Amendment A, in rulings 1–5, in the Build-sequencing entry,
 in the §4-superseded entry, or in the hospital's three answers is altered by
 these two.
+
+### The bedless episode found a hardcoded bed label on a SAFETY GUARD (recorded 2026-08-18, step 6)
+
+Found by **rendering** the reception screen, not by reading it. The
+match dialog's duplicate-encounter guard (`MatchDialog.tsx`) read:
+
+> ⚠️ Patient is currently admitted to Bed **{currentBedId}** — a second open
+> encounter cannot be started.
+
+Before reception existed that sentence was always complete, because **every
+open encounter had a bed** — `adt.admit` required one, so the label could be
+hardcoded and never be empty. Ruling 1 made the bed optional, and the first
+patient admitted through reception rendered it as *"currently admitted to
+Bed — a second open encounter cannot be started."*
+
+**Why this is worth a line in the design rather than a silent fix.** The guard
+is a *safety statement*: it is the reason a clerk does not create a duplicate
+episode for a patient already in the hospital. A safety statement that renders
+a half-sentence is one a reader discounts — and the reader in question is
+deciding whether the person in front of them is already admitted. The **rule**
+never broke: an open encounter is an open encounter, bed or no bed, and both
+the dialog and the server's 409 refused the duplicate correctly the whole time.
+Only the sentence broke.
+
+**The class, stated so the next optional field is checked for it.** Making a
+field optional does not only add a null case to the code that *writes* it — it
+adds one to every sentence already built around the assumption that it is
+always present. Ruling 1 was reviewed for what a bedless admission means to
+the ADT model, the worklists, and the RBAC split. It was not reviewed for what
+it means to **prose that interpolates the bed**, and that is where it surfaced.
+The fix says what is true of the bedless case (*"currently admitted (awaiting
+bed assignment)"*) instead of leaving a gap where a label used to be.
+
+Nothing in §§0–8, in Amendment A, in rulings 1–5, in the Build-sequencing
+entry, in the §4-superseded entry, in the hospital's three answers, or in the
+two step-5 entries above is altered by this.

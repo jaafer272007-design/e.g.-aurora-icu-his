@@ -31,6 +31,18 @@ jobs:
       # --force: full check, immune to any restored incremental build state
       - run: npx tsc -b --force
       - run: npx vite build
+      # The reception screen's submit gate is the ONLY place design §3.2's five
+      # required admission fields are enforced anywhere in the product — the
+      # server accepts each of them as optional, on the owner's ruling (c),
+      # because required columns would make admission impossible on the next
+      # update of a live install while /healthz kept answering 200 (so the
+      # updater would not roll back). Reception.tsx explains that above the
+      # gate; a comment can be read past, which is why this also runs. Its
+      # teeth are measured, not asserted: removing any ONE of the five from
+      # `formOk` fails it, naming the field — verified by deleting each of the
+      # five in turn before it was committed.
+      - name: Reception still enforces design §3.2's required admission fields
+        run: node scripts/reception-required-fields-gate.mjs
 
   server:
     runs-on: ubuntu-latest

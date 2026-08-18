@@ -323,7 +323,15 @@ and the build-sequencing amendment in `docs/design/inpatient-reception.md`
 made that mirror the decisive argument for deferring the atom: a row
 showing a capability the code does not honour is a false row. The mirror
 went stale in the opposite direction when step 5 (#204) added the atom to
-the code and not to this table; this closes it.]* A session lacking a
+the code and not to this table; this closes it.]*
+
+*[Amendment, 2026-08-18 — the route the atom now gates. `/reception` =
+`admissions.create` (Inpatient Reception step 6). It is the ONLY route
+guarded by that atom, and it is the ward's front door: find or register a
+patient and open the admission, with no bed. `/admissions` and its
+`patients.view` gate are UNCHANGED — the owner's Decision C — and the
+admit action there still costs `adt.admit` because ICU admits into a bed.
+Two screens, one admission path, split by whether a bed is named.]* A session lacking a
 route's permission gets an explicit Access Restricted state (never a
 silent redirect); no session → /login. The `?as=nurse` dev preview is
 retired — the login screen replaces it.

@@ -20,6 +20,7 @@ import { Configuration } from './pages/Configuration/Configuration'
 import { LabCatalog } from './pages/LabCatalog/LabCatalog'
 import { OrderSetsAdmin } from './pages/OrderSetsAdmin/OrderSetsAdmin'
 import { Admissions } from './pages/Admissions/Admissions'
+import { Reception } from './pages/Reception/Reception'
 import { PatientHistory } from './pages/PatientHistory/PatientHistory'
 import { Discharges } from './pages/Discharges/Discharges'
 import { DischargedRecords } from './pages/DischargedRecords/DischargedRecords'
@@ -50,6 +51,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /timeline(/:patientId)  Clinical Timeline          patients.view
    /observations(/:patientId)  Bedside Observations   patients.view (charting needs observations.record; corrections observations.record/correct — Stage 11 §4)
    /ai(/:patientId)        AI Assistant — grounded query chat   ai.view (route patient = chat context only)
+   /reception              Inpatient Reception        admissions.create (the ward's front door — find-or-register + open the episode; no bed)
    /admissions             ADT — admit                patients.view (admit button needs adt.admit)
    /discharges             ADT — discharge/transfer   patients.view (actions need adt.discharge / adt.transfer)
    /discharged             Discharged Patients — records retrieval   results.view (browse+search all discharged; opens /history)
@@ -97,6 +99,11 @@ export default function App() {
             imagingcatalog.manage) */}
         <Route path="/config" element={<RequireSession anyPermission={['hospital.configure', 'codestatus.manage', 'imagingcatalog.manage', 'beds.manage', 'dispositions.manage', 'isolation.manage', 'shifts.manage', 'frequencies.manage']}><Configuration /></RequireSession>} />
         <Route path="/beds" element={<RequireSession permission="patients.view"><BedOverview /></RequireSession>} />
+        {/* Inpatient Reception — the ward's front door. `admissions.create`,
+            NOT `adt.admit`: the desk is clerical authority and the office
+            Administrator staffs it. Naming a bed still costs adt.admit, and
+            reception never names one (design §3.5). */}
+        <Route path="/reception" element={<RequireSession permission="admissions.create"><Reception /></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />
         {/* Discharged Patients — records retrieval (the go-live gap fix):

@@ -72,9 +72,19 @@ export function MatchDialog(
                 m.status === 'admitted' ? 'Admitted' : m.status === 'deceased' ? 'Deceased' : 'Discharged'}</span>
             </div>
             {m.status === 'admitted' && (
+              /* THE BED IS NOW OPTIONAL ON AN OPEN ENCOUNTER (Inpatient
+                 Reception): reception opens the episode WITHOUT one and the
+                 ward assigns it later. This sentence used to read
+                 "admitted to Bed {blank} —" for those patients, because
+                 before reception every open encounter had a bed and the
+                 label was safe to hardcode. A safety guard that renders a
+                 half-sentence is a guard the reader distrusts, so the
+                 bedless case says what is true of it instead. The GUARD
+                 ITSELF is unchanged either way: an open encounter is an
+                 open encounter, bed or no bed. */
               <div className="mtguard" role="note">
-                ⚠️ Patient is currently admitted to Bed {m.currentBedId} — a second open encounter
-                cannot be started.
+                ⚠️ Patient is currently admitted{m.currentBedId ? <> to Bed {m.currentBedId}</> : ' (awaiting bed assignment)'} — a
+                second open encounter cannot be started.
               </div>
             )}
             {m.status === 'deceased' && (

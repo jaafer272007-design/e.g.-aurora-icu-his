@@ -30,6 +30,8 @@ export function Admissions() {
   const { toast, showToast } = useToast()
   const session = getSession()!
   const canAdmit = hasPermission(session.jobTitle, 'adt.admit')
+  /* the reception atom — the same person may hold it without adt.admit */
+  const canCreateAdmission = hasPermission(session.jobTitle, 'admissions.create')
   const canOverview = hasPermission(session.jobTitle, 'results.view')
 
   const [beds, setBeds] = useState<AdtBed[] | null>(null)
@@ -285,6 +287,23 @@ export function Admissions() {
           {!canAdmit && (
             <div className="admnote" role="note">
               View only — admitting a patient requires doctor-level authority (adt.admit).
+              {/* THE POINTER, not a widening of this gate. This screen names a
+                  BED, which is the clinical act adt.admit exists for, and it
+                  keeps requiring it. Reception opens the episode WITHOUT a bed
+                  on `admissions.create` — so a reader who holds that atom is
+                  not stuck here, they are on the wrong screen. Shown only to
+                  someone who actually holds it: pointing a Pharmacist at a
+                  route their profile cannot open would be a dead end dressed
+                  as help. */}
+              {canCreateAdmission && (
+                <> Opening an admission <b>without</b> assigning a bed is reception’s
+                  work — use{' '}
+                  {/* router navigation, not <a href>: a raw href reloads the app
+                      and ignores the router basename, which is not '/' on the
+                      Pages build */}
+                  <button type="button" className="admcancelre" onClick={() => navigate('/reception')}>Reception</button>,
+                  and the ward assigns the bed from here afterwards.</>
+              )}
             </div>
           )}
 

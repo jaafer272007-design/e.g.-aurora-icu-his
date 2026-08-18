@@ -5,7 +5,7 @@
    needed at API-integration time (Stage 10). */
 
 import type {
-  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignedPatient, Assignment, AttendingOption, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CoverageRow, CoverageStaff, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, PatientSearchResponse, MeasureDraft, OrderSetItemTemplate,
+  ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignedPatient, Assignment, AttendingOption, WardDoctorOption, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CoverageRow, CoverageStaff, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, PatientSearchResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, FormularyEvent, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
   NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType, Order, OrderSetDef,
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
@@ -2187,6 +2187,22 @@ export async function getAttendings(): Promise<AttendingOption[]> {
     return respond(offline, 120)
   }
   throw apiUnavailable('attendings')
+}
+
+/** GET /api/icu/adt/ward-doctors — the reception form's ADMITTING DOCTOR
+ *  picker: ACTIVE accounts on the WARD tier (Doctor or SeniorDoctor),
+ *  gated on `admissions.create` — reception fills this field, and the
+ *  office Administrator holds that atom without `adt.admit`, so gating it
+ *  on adt.admit (as /adt/attendings is) would 403 the desk on the one
+ *  picker it exists to serve.
+ *  A SECOND endpoint, never a widened one: /adt/attendings stays
+ *  consultant-only for ICU, and the deployed suite pins that with the
+ *  seeded Specialist asserted ABSENT there and PRESENT here.
+ *  REAL-ONLY: an unreachable server means the admission could not proceed
+ *  either, so an empty list is never fabricated — null is rendered
+ *  honestly by the caller. */
+export async function getWardDoctors(): Promise<WardDoctorOption[] | null> {
+  return apiGet<WardDoctorOption[]>('/api/icu/adt/ward-doctors', 'ward doctors')
 }
 
 /** POST /api/icu/users — create an account (admin-set initial password;
