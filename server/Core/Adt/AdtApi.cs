@@ -700,17 +700,51 @@ static class AdtApi
             if (bedNamed && Rbac.Deny(user, "adt.admit") is IResult bedDenied) return bedDenied;
 
             var readmission = !string.IsNullOrWhiteSpace(req.PatientId);
-            /* required on EVERY admission — the episode's own fields.
-               bedId LEFT THIS LIST (Amendment 1): a ward admits, then beds.
-               "Awaiting bed" is DERIVED (Status == "open" && BedId == ""),
-               never a third Status value — the locked rule that state-
-               relative labels are computed at read, never persisted. Every
-               gate that concerns a SUPPLIED bed still fires below, unchanged;
-               this relaxes WHETHER a bed is named, never what happens once
-               one is. */
-            foreach (var (name, value) in new[] {
-                ("diagnosis", req.Diagnosis), ("attending", req.Attending) })
-                if (string.IsNullOrWhiteSpace(value)) return ApiError.BadRequest($"{name} is required");
+            /* ===== THE REQUIREMENT FOLLOWS THE BED =====================
+               `diagnosis` and `attending` are REQUIRED WHEN A BED IS NAMED and
+               OPTIONAL WHEN ONE IS NOT. Stated in words because the next reader
+               must understand WHY, not merely that:
+
+               SUPPLYING A BED ALREADY COSTS `adt.admit` (checked above), which
+               is doctor authority. So "a bed was named" means A CLINICIAN IS
+               ADMITTING — and a clinician can state a working diagnosis and
+               name the responsible consultant. Bedless means A CLERK is opening
+               the episode: reception holds `admissions.create` and not
+               `adt.admit`, cannot name a bed, and can name NEITHER of these two
+               facts. Requiring them there would force an invention, which §5's
+               never-fabricate rule forbids outright — a typed placeholder
+               diagnosis and a guessed attending are worse than blanks, because
+               they read as recorded clinical facts forever after.
+
+               THE DISCRIMINATOR IS NOT NEW. It is the bed, whose authority this
+               endpoint already rules on. One admission path, one rule, keyed on
+               a field whose permission meaning is settled — no fork, and no
+               second concept invented to carry the distinction.
+
+               WHY NOT SIMPLY RELAX BOTH (the rejected option): these two are a
+               guarantee that EXISTS TODAY on a shipped clinical path at a
+               hospital running ICU. Making them optional everywhere would
+               DELETE it — a regression in safety posture, not a deferral. That
+               is the opposite of the §3.2 fields, which were new when they
+               shipped optional (option (c)) and so removed nothing. "The ICU
+               form still requires them client-side" is argued, not enforced,
+               and an argued guarantee is not one.
+
+               AMENDS RULING 1, which removed `bedId` from this list and left
+               these two behind — the omission this closes.
+
+               THE REFUSAL WRITES NOTHING, structurally: this check sits before
+               any row is staged and the handler has exactly ONE SaveChanges(),
+               at the very end. A rejected admission therefore leaves no patient
+               row, no encounter, and no MRN consumed — which matters here
+               because this endpoint CREATES a patient when the MRN is new. */
+            if (bedNamed)
+                foreach (var (name, value) in new[] {
+                    ("diagnosis", req.Diagnosis), ("attending", req.Attending) })
+                    if (string.IsNullOrWhiteSpace(value))
+                        return ApiError.BadRequest(
+                            $"{name} is required when a bed is named — naming a bed is a clinical admission "
+                            + "(it costs adt.admit); admit without a bed to open the episode without one");
             /* required on a NEW patient only — a re-admission's stored
                identity stands (provided values validate below) */
             if (!readmission)
@@ -1174,7 +1208,16 @@ static class AdtApi
             {
                 EncounterId = AdtLogic.NextEncounterId(),
                 PatientId = patient.PatientId, BedId = bedNamed ? req.BedId!.Trim() : "",
-                Diagnosis = req.Diagnosis!.Trim(), Attending = req.Attending!.Trim(),
+                /* both may now legitimately be ABSENT (bedless — see the rule
+                   at the required-field check above). The columns are
+                   non-nullable `string` with "" as their default, and "" is
+                   how this model already spells "not recorded" for them, so an
+                   absent value stores blank rather than a fabricated one. The
+                   null-forgiving `!` that used to be safe here is gone: it was
+                   only ever correct while the field was unconditionally
+                   required, and leaving it would NullReference on the first
+                   bedless admission. */
+                Diagnosis = req.Diagnosis?.Trim() ?? "", Attending = req.Attending?.Trim() ?? "",
                 Status = "open", AdmittedAt = admittedAt, AdmittedBy = actor,
                 /* Inpatient Reception §3.2 — validated above, absent stays absent */
                 AdmissionTypeCode = admissionTypeCode, DepartmentCode = departmentCode,

@@ -22,6 +22,63 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-18 · THE ADMISSION REQUIREMENT NOW FOLLOWS THE BED — the blocker that
+made the reception screen unbuildable, closed.** Server + docs; no UI.
+
+**FOUND BY DEMONSTRATION, NOT BY READING.** A payload carrying exactly §3.2's
+fields — type, department, service, admitting doctor, referrer, source — was
+refused: `400 "diagnosis is required"`, then with diagnosis added,
+`400 "attending is required"`. Reception can supply neither: §3.5 says *"no
+diagnosis"* outright, and `attending` is a different fact from Admitting Doctor
+(recorded 2026-08-18). **Ruling 1 removed `bedId` from that required list and
+left these two behind**; the screen was impossible to build until that was
+resolved.
+
+**THE RULE: `diagnosis` and `attending` are REQUIRED WHEN A BED IS NAMED and
+OPTIONAL WHEN ONE IS NOT** — stated in words at the validation site, not only in
+code, so the next reader learns that the requirement follows the bed and why.
+
+**THE OWNER'S RULING, over the recommendation, and the reasoning is worth
+keeping.** The recommendation was to relax both fields everywhere on the §3.2
+precedent (option (c)). **That was rejected**, and the distinction is exact:
+the §3.2 fields were NEW when they shipped optional, so making them optional
+removed nothing. `diagnosis` and `attending` are a guarantee that **exists
+today on a shipped clinical path at a hospital running ICU** — relaxing them
+everywhere would DELETE it, which is a regression in safety posture rather than
+a deferral. And the argument offered for relaxing — *"ICU's form still requires
+them client-side"* — is **argued, not enforced**, which is the shape this
+project keeps rejecting. The recommendation was wrong on a point the code alone
+does not show.
+
+**WHY THE BED, AND WHY IT IS NOT A NEW DISCRIMINATOR.** Supplying a `bedId`
+already costs `adt.admit` (ruling 4) — doctor authority. So *bed named* means a
+CLINICIAN is admitting, and a clinician can state a working diagnosis and name
+the responsible consultant. *Bedless* means a CLERK is opening the episode, who
+can name neither and must not invent either (§5, never fabricate — a
+placeholder diagnosis and a guessed attending read forever after as recorded
+clinical facts). One admission path, one rule, keyed on a field whose
+permission meaning was already settled: no fork, no invented concept.
+
+**ASSERTED IN BOTH DIRECTIONS, because either half alone is compatible with the
+rule being wrong** — proving only that a bedless admission succeeds would also
+pass if the fields had simply been dropped everywhere, which is the rejected
+option. Verified against real PostgreSQL 16, **10 assertions green, 0 failing**:
+bedless with neither field creates the encounter and stores both as **blank,
+not fabricated**; bed named with `diagnosis` missing is 400; bed named with
+`attending` missing is 400; **both refusals leave patients, encounters and MRNs
+unchanged** (this endpoint creates a patient row when the MRN is new, so a
+rejected admission must consume nothing); bed named WITH both still admits, so
+ICU's shipped path is untouched; and the reception-shaped payload that was
+refused now succeeds. A standing CI leg in `production-seed` asserts the
+with-bed direction and the nothing-written half on every push.
+
+**One implementation detail worth naming:** the write was
+`req.Diagnosis!.Trim()` — null-forgiving, and correct only while the field was
+unconditionally required. Left alone it would have thrown a NullReference on
+the first bedless admission. It now stores `""`, which is how this model
+already spells "not recorded" for these two columns.
+
+
 **2026-08-18 · THE ADMISSION'S LABEL SNAPSHOT, A DATE FILTER, AND THE RBAC
 MIRROR — three things owed before the reception screen, deliberately not folded
 into it.** Server + docs only; no UI.
