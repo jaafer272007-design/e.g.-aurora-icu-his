@@ -22,6 +22,70 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-18 · THE production-seed ASSERTION AUDIT, AND RULE 5'S THIRD FACE.**
+Two items that did not make it onto #206, carried here.
+
+**THE AUDIT — every test construct in `production-seed`, classified by whether
+it could pass on an empty read.** The apt removal (#206) changed how `psql` is
+reached, which is exactly the change that could turn "the database says zero"
+into "the database says nothing" without anything going red. **Result: 48 test
+constructs, and none tests emptiness in place of a value.** Stated with the
+counts rather than summarised, because "I checked and it is fine" is not
+evidence:
+
+| shape | count | behaviour on an empty read |
+|---|---|---|
+| compares to a **non-empty literal** (`= "0"`, `= "1"`, `= "t"`, `= "YES"`, `= "admin,system"`, HTTP codes) | **29** | FAILS CLOSED — `""` equals none of them |
+| explicit `-n` / `-z` **guards** | **13** | the correct use of the shape |
+| right-hand side contains `$` | **6** | see below |
+
+Of the six with a `$` on the right, **three are literals in effect** (`$DEP`,
+the run-id'd rename string — non-empty by construction) and **one fails closed
+arithmetically** (`= "$((bn + 1))"` is `"1"` even when `bn` is empty, so an
+empty left side still mismatches). **Two are genuine read-vs-read** —
+`assert_unchanged`'s `[ "$now" = "$2" ]` and `[ "$SNAP_BEFORE" = "$SNAP_AFTER" ]`
+— and those are the shape that **two empty strings satisfy**.
+
+**BOTH WERE SAFE ONLY BECAUSE OF A NEIGHBOURING LINE**: the BEFORE snapshots are
+proven non-empty by the pre-existing `[ "${b%%|*}" -gt 0 ]` check, and
+SNAP_BEFORE by the grep immediately above it. **The weaker of the two was the
+line added the day before** (`SNAP_BEFORE = SNAP_AFTER`, #205): one edit to the
+grep above it would have made the label snapshot's headline assertion pass for
+free. Both now state their own precondition (`[ -n "$now" ]`,
+`[ -n "$SNAP_AFTER" ]`) and no longer depend on a neighbour to have teeth.
+Nothing else needed repair — which is the honest result and is recorded as such.
+
+**A CORRECTION INSIDE THE AUDIT, kept because it is the same lesson as the rule
+below.** The first pass at these numbers was produced by a regex that required a
+quoted literal on the LEFT of the comparison — so it silently skipped every
+`[ "$(PSQL …)" = … ]` form and reported 31 constructs with 2 read-vs-read. The
+real figures are 48 and 6. **A measuring instrument that cannot see part of what
+it measures reports a confident wrong number, not an error** — the same shape as
+the lens problem below, one layer up.
+
+**RULE 5 GAINS A THIRD FACE — the LENS** (`03`). The first face asks which TREE
+the evidence came from; the second, which PROCESS answered; the third, **through
+what VIEW it was read**. **A confirmation that passes through the transform
+which introduced the error cannot detect that error.** `ci.yml` was read through
+a `sed 's/^/  /'` display prefix, that indentation was baked into an exact-match
+anchor, and the edit failed — then the *check of the indentation* was run
+through the same pipeline and confirmed the wrong value. Two independent-looking
+observations agreed because they were not independent. `repr()` on the raw line
+settled it in one call. The practice: verify exact-match anchors against RAW
+BYTES, never a rendering; never build an anchor from output formatted for
+reading; and when a match fails, change the LENS before changing the anchor.
+**The rule was written on the day its own mistake was made twice** — once
+building the anchor, once "confirming" it — and the second occurrence is the
+evidence for it, since it shows the failure survives an ordinary re-check.
+
+**Verified on `main` first (`e962d31`), because #205 and #206 touched the same
+job from opposite ends and neither branch ever ran the other's change:** the
+label-snapshot lines still PRINT through the container `psql` — including
+*"the snapshot is UNMOVED — the record still reads what it read when it was
+written"* — with real label text and a real encounter id in the output, not
+empty strings dressed as success.
+
+
 **2026-08-18 · THE ADMISSION'S LABEL SNAPSHOT, A DATE FILTER, AND THE RBAC
 MIRROR — three things owed before the reception screen, deliberately not folded
 into it.** Server + docs only; no UI.
