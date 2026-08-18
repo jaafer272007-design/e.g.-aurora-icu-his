@@ -129,6 +129,52 @@ new episode. **Rule 5's build gate ran first:** `/healthz`.`build` was asserted
 equal to the commit under test (`73b67cf…`, stamped via `SourceRevisionId`)
 **before** any assertion — a `dev` build would have failed the check.
 
+**🔴 AMENDMENT (2026-08-18, on the owner's challenge) — WHAT THE RENDERED PASS
+DID NOT COVER. The record above states what was captured; it did not state what
+the brief asked for and did NOT get, and read quickly it invites the reader to
+assume full coverage.** Named here rather than left to assumption:
+
+- **Empty states: TWO of five were captured, not four.** Shown in both themes:
+  the BLOCKED banner (every §3.2 vocabulary emptied) and A DEPARTMENT WITH NO
+  ACTIVE SERVICE. **Not captured:** the empty "Admitted today" list, the
+  today-list unreachable state (*"the live server is unreachable — this list is
+  not shown rather than shown wrong"*), and the admitting-doctor unreachable
+  state (*"Unavailable — the server is unreachable"*). The latter two appeared
+  on screen during an early misconfigured run whose API calls were failing —
+  which is how their wording is known to render at all — but that run was
+  discarded and they were never deliberately captured, so they are **not**
+  evidence.
+- **Match-dialog guards: ONE of three.** The dialog was captured refusing a
+  duplicate on the CURRENTLY-ADMITTED guard, in the bedless variant — which is
+  the one that found the `"admitted to Bed —"` defect, so the capture earned its
+  place. **Not captured in the dialog:** the DECEASED guard and the DISCHARGED
+  readmit path. Both were captured in the SEARCH-ROW list (all three row guards,
+  both themes), which is a different surface with different code.
+- **The build gate covered the SERVER ONLY — and that is STRUCTURAL, not a
+  lapse in this run.** `/healthz`.`build` was asserted equal to the commit
+  under test before the first assertion, which is a real assertion about the
+  API process. The FRONTEND had no equivalent: it was served by a Vite dev
+  server reading the working tree, and a dev server has no artifact to stamp,
+  so there was nothing to assert against. The captured screen and the merged
+  `Reception.tsx` are believed identical from the order the edits were made in
+  — **reasoning, not a check.**
+  **This is true of every rendered proof in this file, not just this one**, so
+  it is recorded against the TIER rather than here: see "TWO REQUIREMENTS THE
+  TIER MUST CARRY WHEN IT IS BUILT" in the rendered-verification gap below,
+  which specifies that the tier renders a BUILT ARTIFACT and asserts BOTH ends
+  of the wire. Repairing it for step 6 alone would fix the smallest instance of
+  it (03: "closing one instance of a defect class is not closing the class").
+
+**Why this is recorded instead of quietly re-running.** Re-running would need
+the same uncommitted script, and would produce the same unreproducible
+artifact — the gap entry below is about precisely that. An accurate account of
+partial coverage is worth more than a fuller-sounding one nobody can check.
+**The five uncaptured states are not left hanging:** they are booked as an
+ON-SITE OBSERVATION CHECKLIST beside the rendered-verification gap below, to be
+confirmed by a person at the install during the configuration session before
+the trial — on the pushed build, on the real configuration, by someone who can
+say why each state appeared.
+
 **The rendered tier is still not a committed artifact, exactly as recorded.**
 The capture script lived in the session scratchpad and is gone with it.
 Playwright is present in this container's `node_modules` and **declared
@@ -11993,6 +12039,115 @@ instruction, source stated per the documentation rule.]*
   not open the tier (see "Closing one instance of a defect class is not closing
   the class" in 03). Until it exists, **every rendered claim in this file is a
   historical report, not a reproducible result**, and should be read as one.
+
+  **🔴 TWO REQUIREMENTS THE TIER MUST CARRY WHEN IT IS BUILT** (added
+  2026-08-18). Both are STRUCTURAL — properties of every rendered proof this
+  project has ever recorded, not defects of any one run — so they are written
+  here, against the tier, rather than in the record of the pass that exposed
+  them.
+
+  **(1) THE PASS MUST ASSERT BOTH ENDS OF THE WIRE — and the instrument for the
+  client end ALREADY EXISTS AND WAS NEVER USED BY A SCREEN PASS.** This was
+  first written here as "the client half does not exist"; **that was wrong, and
+  the truth is worse.** Verified in the tree:
+  - **Server end, shipped:** `installer/build.ps1:67` passes
+    `-p:SourceRevisionId=$commit`, .NET appends the sha to
+    `InformationalVersion`, `ResolveRunningBuild()` (`server/Program.cs:300`)
+    reads it back off the **loaded assembly**, and `/healthz` reports it.
+  - **Client end, ALSO shipped:** `.github/workflows/deploy-pages.yml:92`
+    stamps `dist/build.txt` with `GITHUB_SHA` then `APP_ENV`, and its own
+    comment says why it is there: *"the deployed site serves the commit it was
+    built from at /build.txt, **so render-verification suites can gate on Pages
+    freshness by CONTENT**"* — added 2026-07-11 after a live stale Pages deploy
+    that the API suites structurally could not see.
+  - **The both-ends assertion even EXISTS, on another surface:**
+    `deployed-frontend-e2e.yml`'s *"RENDER ORIGIN"* step reads `/build.txt` and
+    fails unless line 1 equals `/healthz`.`build` and line 2 equals the expected
+    environment.
+
+  So the gap is not a missing mechanism. **It is that every session-local SCREEN
+  pass in this file bypassed the mechanism by rendering a Vite DEV SERVER on a
+  WORKING TREE — which produces no `build.txt` to check, and therefore silently
+  removed the one artifact the project had already built for this exact
+  purpose.** Rule 5's first face was not merely unhonoured on the client side;
+  it was unhonoured **while the instrument to honour it sat in the repository,
+  used by a neighbouring suite.**
+  **THE REQUIREMENT, therefore:** the rendered tier renders a **BUILT
+  ARTIFACT** — never a dev server, because that choice is what destroys the
+  evidence — and asserts, before its first assertion, that the client's
+  `build.txt` sha AND `/healthz`.`build` **both** equal the commit under test.
+  `deployed-frontend-e2e.yml`'s RENDER ORIGIN step is the pattern to copy; it
+  does not need designing. A pass that asserts only the server end is half a
+  check and must say so in its output.
+
+  **(2) THE RIGHT TEXT FOR THE WRONG REASON IS NOT EVIDENCE.** During step 6's
+  pass an early run was misconfigured — the browser's API calls were failing —
+  and the screen filled with unreachable-state and empty-state wording that
+  looked exactly like the states the brief asked to see. It was tempting to
+  count them: the pixels were right, the sentences were right, both themes
+  rendered. They prove nothing. **A screen that renders the correct text
+  because everything is broken is not evidence that it renders that text when
+  the one thing it is about is broken.** An empty list because the vocabulary
+  is genuinely empty and an empty list because the fetch 401'd are the same
+  picture and different facts, and only one of them is the state under test.
+  Those captures were discarded and the states recorded as NOT covered.
+  This belongs against the tier rather than in a build record because it is the
+  mistake anyone rebuilding this tier will be offered, in the friendliest
+  possible form — a green-looking screenshot, already taken, that would close a
+  gap if nobody asked why it rendered. **The instrument must be able to state
+  WHY a state appeared, not only THAT it appeared:** drive the real cause
+  (empty the vocabulary, stop the API deliberately), never accept an incidental
+  one.
+  **WHAT STANDS IN FOR IT ON `/reception`, AND EXACTLY HOW FAR IT REACHES**
+  (added 2026-08-18, step 6). `scripts/reception-required-fields-gate.mjs` runs
+  in CI's `frontend` job and is the standing protection for the one enforcement
+  that exists nowhere else in the product — §3.2's five required fields, which
+  the server accepts as optional on the owner's ruling (c). **It reads SOURCE.**
+  It proves the enforcement is PRESENT in `Reception.tsx` and still wired to the
+  submit button; it does **not** prove the enforcement FIRES. A `formOk` the
+  submit handler ignores, a state variable bound to no input, a screen that
+  throws before the form mounts — each passes the gate with the requirement dead
+  in the browser. That limit is written into the gate's own header so a reader
+  meets it at the instrument rather than here, and the gate's success line now
+  says "present … (SOURCE check: this does not exercise the screen)" rather than
+  the bare "enforced" it printed at first, because the terminal output is what
+  most readers will actually see. **It is a presence check standing in for a
+  behavioural one, and it stands in only because this tier is missing** — the
+  behavioural version is one of the things the OWED renderer above would buy.
+  Recorded so the two are never confused: a green gate means the five fields are
+  still written into the expression, **not** that a clerk cannot create an
+  admission without a department.
+
+- **📋 ON-SITE OBSERVATION CHECKLIST — five `/reception` states a HUMAN confirms
+  at the install, during the configuration session before the trial** (recorded
+  2026-08-18, on the owner's instruction). These are the five states step 6's
+  rendered pass did not capture. They are not owed to a screenshot; they are
+  owed to a pair of eyes on the real thing:
+
+  | # | state | how to produce it on site |
+  |---|---|---|
+  | 1 | the empty **"Admitted today"** list on a fresh morning | open `/reception` before the day's first admission — no setup needed, the day supplies it |
+  | 2 | the **today-list unreachable** state (*"the live server is unreachable — this list is not shown rather than shown wrong"*) | stop the API service, reload `/reception` |
+  | 3 | the **admitting-doctor unreachable** state (*"Unavailable — the server is unreachable"*) | same stopped service, same screen — the picker and the list must BOTH say it |
+  | 4 | the **deceased guard** in the match dialog | submit the identity of a patient whose last discharge disposition was `died`; the dialog must offer no Readmit |
+  | 5 | the **readmit path** in the match dialog | submit the identity of a discharged patient; the dialog must offer Readmit and it must work |
+
+  **WHY THIS IS THE STRONGER INSTRUMENT, not a consolation prize.** Another
+  screenshot from an uncommitted script would prove the least of what is
+  available: a state, on a dev server, on a working tree, reproducible by
+  nobody. On-site observation beats it on all three axes that matter — it is
+  taken against **the pushed build**, on **the real install** with the
+  hospital's own configuration, by a **person who can say why the state
+  appeared** (see "the right text for the wrong reason" against the rendered
+  tier above — a human who stopped the service knows the empty list is the
+  unreachable state, which no capture can establish about itself). Items 2 and
+  3 in particular are the ones a script most easily fakes and a human most
+  easily verifies: pulling the plug is a one-second act on site and a
+  fragile simulation in a harness.
+  **This does NOT discharge the rendered tier** — the tier remains OWED above,
+  and this checklist is a one-time observation at one site, not a standing
+  check. It closes the specific five, once, on evidence stronger than the
+  screenshots would have been.
 
 - **🔴 §3.2's REQUIRED fields are not enforced as required — a DATED follow-up,
   not an open-ended one** (recorded 2026-08-18 with step 5; the design's

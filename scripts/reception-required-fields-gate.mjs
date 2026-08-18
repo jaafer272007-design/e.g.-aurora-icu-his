@@ -41,6 +41,34 @@
   it fails, naming the field. Verified that way before being committed, by
   deleting each of the five in turn — not by a synthetic string.
 
+  🔴 WHAT THIS GATE DOES NOT PROVE, AND MUST NOT BE READ AS PROVING.
+
+  IT READS SOURCE. It proves the enforcement is PRESENT in the file; it does
+  not prove the enforcement FIRES. Nothing here renders the screen, fills the
+  form, or clicks the button. Every one of these would pass this gate while
+  the requirement is dead in the browser:
+
+    - `formOk` is computed, and the submit handler ignores it and posts anyway
+    - the button is `disabled={!formOk}` but a keypress path submits the form
+    - a state variable is referenced but never bound to its input, so it is
+      permanently '' and the gate is satisfied by a field nobody can fill
+    - the route is unreachable, or the screen throws before the form mounts
+
+  So this is a PRESENCE check standing in for a BEHAVIOURAL one. It is the
+  strongest standing check available in this repository, and the reason is
+  itself a recorded gap, not an oversight: there is NO browser driver here —
+  not in `dependencies`, not in `devDependencies`, not in any workflow. The
+  rendered proofs this project has recorded were all produced by session-local
+  scripts that no longer exist, so none of them can be re-run from the repo
+  alone. See 02_PROJECT_STATUS.md → Known Feature Gaps, beside the missing
+  rendered-verification tier and the contrast auditor.
+
+  THE HONEST CLAIM, stated so a future reader does not inflate it: a green run
+  means "the five required fields are still written into the gate expression,
+  and the expression is still wired to the submit button". It does not mean
+  "a clerk cannot create an admission without a department". Proving THAT
+  needs a driver, and until one is committed the difference stands.
+
   Usage:  node scripts/reception-required-fields-gate.mjs
   Exit 0 = all five enforced, 1 = one is missing (or the scan found nothing to
   scan, which is a failure: a gate that reads no file cannot fail).
@@ -139,5 +167,7 @@ if (!/disabled=\{!formOk/.test(code)) {
   process.exit(1)
 }
 
-console.log(`confirmed: ${FILE} — all ${REQUIRED.length} of design §3.2's required fields are enforced by the submit gate`)
+/* The success line says SOURCE, deliberately. "enforced" alone would read as
+   a behavioural claim this gate cannot make (see the header). */
+console.log(`confirmed: ${FILE} — all ${REQUIRED.length} of design §3.2's required fields are present in the submit gate and it still disables the button (SOURCE check: this does not exercise the screen)`)
 process.exit(0)
