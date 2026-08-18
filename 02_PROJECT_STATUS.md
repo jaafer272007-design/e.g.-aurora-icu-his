@@ -11473,6 +11473,56 @@ instruction, source stated per the documentation rule.]*
   (#202 fixed the instance, not the class — see "Closing one instance of a
   defect class is not closing the class" in 03).
 
+- **🔴 The rendered-verification tier has never been a committed artifact, so
+  none of the ~800 rendered assertions recorded in this file can be re-run**
+  (recorded 2026-08-18, following the contrast-auditor entry above; owed as a
+  standing tier). The contrast auditor above is not a lone omission — it is the
+  visible edge of the whole tier. **VERIFIED against the repository and its full
+  history, not inferred from the auditor's absence:**
+  - `package.json` declares **8 dependencies** (react, react-dom,
+    react-router-dom, @types/react, @types/react-dom, @vitejs/plugin-react,
+    typescript, vite) — no browser driver, **no test runner of any kind**, and
+    **no `test` script** (only `dev`, `build`, `preview`).
+  - the tracked `package-lock.json` resolves **117 packages** with **zero**
+    matches for playwright / puppeteer / selenium / cypress / chromedriver.
+  - across **478 distinct paths ever added in the entire git history**, the only
+    one matching render/browser/screenshot/contrast/playwright/visual/a11y/axe
+    is **`render.yaml`** — the Render.com deploy config, not a renderer.
+  - pickaxe over all history: `chromium.launch` enters in **2 commits, both
+    carrying the same single file**; `puppeteer` **0**; `toMatchSnapshot` **0**.
+  - **`scripts/` already exists as the committed home for verification tooling**
+    (`vocab-registration-gate.mjs`, `promotion-gate.sh`, `verify-release-bundle.sh`,
+    `make-release-bundle.sh`, `ai-translation-eval.mjs`, `aurora-backup.sh`).
+    **None of them touches a browser.** So the tier is not missing for want of a
+    place to put it — there was an obvious committed home and nothing was ever
+    put in it.
+  **NAMED ACCURATELY, because "no committed renderer exists" would be false:**
+  exactly one committed file has ever driven a browser —
+  **`.github/workflows/deployed-print-e2e.yml`** — and it does not cover this
+  tier. It is `workflow_dispatch`-only (never a standing check), it installs
+  `playwright-core@1` **inline in a workflow step** rather than declaring it, and
+  it renders **one document** (a Discharge Summary, asserting MRN/age/sex/
+  allergies render without dashes). It asserts nothing about screens, themes,
+  contrast, RBAC visibility or empty states. **The screen-level proofs therefore
+  cannot have come from it.**
+  **WHAT IS UNBACKED:** **44** `N/N real-browser` / `N/N rendered` claims in this
+  file, summing to **802 individual assertions**, plus 14 "both themes" claims —
+  every one produced by a session-local script in a scratchpad that was never
+  committed and no longer exists. Observed first-hand rather than reconstructed:
+  #202's own render pass (the `--ink` defect, the 409 refusal, all four empty
+  states, both themes) ran from exactly such a script.
+  **THE SHARP EDGE:** the rule *"Verification proves the tree you rendered, not
+  the tree you pushed"* (03, added 2026-08-17) is itself **a rule about rendered
+  verification, codified on a tier with no committed artifact** — the rule
+  survives, its instrument does not. Same for the two-theme sweep that drove
+  638 flagged elements to 0: it survives only as a description above.
+  **OWED:** a committed, re-runnable renderer under `scripts/`, driving a
+  declared dependency, exercised as a standing check. **Not built now, and
+  deliberately not started as a side-quest** — this entry names the gap; it does
+  not open the tier (see "Closing one instance of a defect class is not closing
+  the class" in 03). Until it exists, **every rendered claim in this file is a
+  historical report, not a reproducible result**, and should be read as one.
+
 - **🔴 The bed registry has no ROOM concept** (recorded 2026-08-17 with the
   reception design's §4 amendment, #200; owed to the Ward design). `BedRow` is
   `BedId` · `Area` · `Seq` · `Active` plus the append-only audit — there is no
