@@ -80,7 +80,6 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
-      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - run: dotnet build server --nologo
 
       - name: A production boot seeds catalogues + bootstrap admin, ZERO patients / demo creds
@@ -99,7 +98,28 @@ jobs:
           [ -n "$up" ] || { echo "no healthz after 180s"; tail -30 boot.log; exit 1; }
           curl -s http://localhost:8080/healthz | grep -q '"environment":"production"' \
             || { echo "healthz did not report environment=production"; curl -s http://localhost:8080/healthz; exit 1; }
-          PSQL() { PGPASSWORD=ci psql -h localhost -U aurora -d aurora -tAc "$1"; }
+          # THE POSTGRES CLIENT COMES FROM THE SERVICE CONTAINER, NOT FROM apt.
+          # This job used to `apt-get install postgresql-client` on every run —
+          # a network fetch in the middle of CI — and it STALLED TWICE in one
+          # evening (2026-08-18), wedging the job for 20+ minutes each time
+          # against a ~2 minute normal runtime, on a commit whose content had
+          # already passed. The client was always right there: the
+          # `postgres:16-alpine` service container ships psql. Using it removes
+          # the fetch, and the whole class of failure goes with it.
+          # Resolve the service container by IMAGE, then by any postgres image
+          # as a fallback — the runner names service containers itself, so the
+          # image is the stable handle. FAILS LOUDLY if neither matches: an
+          # unresolvable client must stop the job, never let the assertions
+          # below skip quietly (a green run with them skipped is worse than
+          # the stall this change removes).
+          PG=$(docker ps --filter "ancestor=postgres:16-alpine" --format '{{.ID}}' | head -1)
+          [ -n "$PG" ] || PG=$(docker ps --format '{{.ID}} {{.Image}}' | awk '/postgres/{print $1; exit}')
+          [ -n "$PG" ] || { echo "FAIL: no postgres service container found — psql is unreachable"; docker ps; exit 1; }
+          echo "  psql via service container $PG ($(docker exec "$PG" psql --version))"
+          # -w on every call: psql must FAIL rather than wait on a hidden stdin
+          # (the field failure the installer gate at the bottom of this file
+          # exists for — the same discipline, applied here by choice).
+          PSQL() { docker exec -e PGPASSWORD=ci "$PG" psql -w -U aurora -d aurora -tAc "$1"; }
           fail=0
           check0() { local n; n=$(PSQL "select count(*) from \"$1\""); [ "$n" = "0" ] && echo "  ok  $1=0" || { echo "  FAIL $1=$n (expected 0)"; fail=1; }; }
           checkpos() { local n; n=$(PSQL "select count(*) from \"$1\""); [ "$n" -gt 0 ] 2>/dev/null && echo "  ok  $1=$n" || { echo "  FAIL $1=$n (expected > 0)"; fail=1; }; }
@@ -154,7 +174,28 @@ jobs:
 
       - name: T1 refuses the shared demo password as the bootstrap credential
         run: |
-          PGPASSWORD=ci createdb -h localhost -U aurora aurora_t1
+          # THE POSTGRES CLIENT COMES FROM THE SERVICE CONTAINER, NOT FROM apt.
+          # This job used to `apt-get install postgresql-client` on every run —
+          # a network fetch in the middle of CI — and it STALLED TWICE in one
+          # evening (2026-08-18), wedging the job for 20+ minutes each time
+          # against a ~2 minute normal runtime, on a commit whose content had
+          # already passed. The client was always right there: the
+          # `postgres:16-alpine` service container ships psql. Using it removes
+          # the fetch, and the whole class of failure goes with it.
+          # Resolve the service container by IMAGE, then by any postgres image
+          # as a fallback — the runner names service containers itself, so the
+          # image is the stable handle. FAILS LOUDLY if neither matches: an
+          # unresolvable client must stop the job, never let the assertions
+          # below skip quietly (a green run with them skipped is worse than
+          # the stall this change removes).
+          PG=$(docker ps --filter "ancestor=postgres:16-alpine" --format '{{.ID}}' | head -1)
+          [ -n "$PG" ] || PG=$(docker ps --format '{{.ID}} {{.Image}}' | awk '/postgres/{print $1; exit}')
+          [ -n "$PG" ] || { echo "FAIL: no postgres service container found — psql is unreachable"; docker ps; exit 1; }
+          echo "  psql via service container $PG ($(docker exec "$PG" psql --version))"
+          # -w on every call: psql must FAIL rather than wait on a hidden stdin
+          # (the field failure the installer gate at the bottom of this file
+          # exists for — the same discipline, applied here by choice).
+          docker exec -e PGPASSWORD=ci "$PG" createdb -w -U aurora aurora_t1
           set +e
           APP_ENV=production DATABASE_URL="postgres://aurora:ci@localhost:5432/aurora_t1" \
             FORMULARY_SEED=starter ADMIN_BOOTSTRAP_PASSWORD='Aurora2026!' \
@@ -221,7 +262,28 @@ jobs:
           done
           [ -n "$up" ] || { echo "no healthz after 180s"; tail -30 vocab.log; exit 1; }
 
-          PSQL() { PGPASSWORD=ci psql -h localhost -U aurora -d aurora -tAc "$1"; }
+          # THE POSTGRES CLIENT COMES FROM THE SERVICE CONTAINER, NOT FROM apt.
+          # This job used to `apt-get install postgresql-client` on every run —
+          # a network fetch in the middle of CI — and it STALLED TWICE in one
+          # evening (2026-08-18), wedging the job for 20+ minutes each time
+          # against a ~2 minute normal runtime, on a commit whose content had
+          # already passed. The client was always right there: the
+          # `postgres:16-alpine` service container ships psql. Using it removes
+          # the fetch, and the whole class of failure goes with it.
+          # Resolve the service container by IMAGE, then by any postgres image
+          # as a fallback — the runner names service containers itself, so the
+          # image is the stable handle. FAILS LOUDLY if neither matches: an
+          # unresolvable client must stop the job, never let the assertions
+          # below skip quietly (a green run with them skipped is worse than
+          # the stall this change removes).
+          PG=$(docker ps --filter "ancestor=postgres:16-alpine" --format '{{.ID}}' | head -1)
+          [ -n "$PG" ] || PG=$(docker ps --format '{{.ID}} {{.Image}}' | awk '/postgres/{print $1; exit}')
+          [ -n "$PG" ] || { echo "FAIL: no postgres service container found — psql is unreachable"; docker ps; exit 1; }
+          echo "  psql via service container $PG ($(docker exec "$PG" psql --version))"
+          # -w on every call: psql must FAIL rather than wait on a hidden stdin
+          # (the field failure the installer gate at the bottom of this file
+          # exists for — the same discipline, applied here by choice).
+          PSQL() { docker exec -e PGPASSWORD=ci "$PG" psql -w -U aurora -d aurora -tAc "$1"; }
           # "<count>|<comma-joined codes>" — the code set is ordered BY POSTGRES, and every
           # later comparison re-reads it the same way, so no client-side sort can disagree
           # with the database's collation.
