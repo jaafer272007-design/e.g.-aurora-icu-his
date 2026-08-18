@@ -536,6 +536,72 @@ local run unchallenged.
   `git rev-parse HEAD`, reports the mismatch and aborts before any assertion —
   which is precisely the run that produced eight "ordinary failures" above.
 
+### The third face: through what LENS you read it (added 2026-08-18)
+
+The first face asks which TREE the evidence came from. The second asks which
+PROCESS answered. This one asks **through what VIEW you read it** — and it is
+the one that can defeat its own correction, which is why it is stated
+separately rather than as a footnote to the other two.
+
+**CODIFIED RULE — a confirmation that passes through the transform which
+introduced the error cannot detect that error.**
+
+**WHAT HAPPENED (step 6 prep, 2026-08-18).** `ci.yml` was inspected with a
+command that piped the file through `sed 's/^/  /'` to indent it for reading.
+The indentation on screen was therefore two spaces deeper than the file's. An
+exact-match anchor was written from what was on screen, and the edit failed to
+match. The natural next move — *check the indentation* — was run **through the
+same pipeline**, which added the same two spaces again and confirmed the wrong
+value. Two independent-looking observations agreed, because they were not
+independent: both had been through the transform that caused the mistake.
+`repr()` on the raw line settled it in one call — six spaces, not eight.
+
+**WHY THIS IS NOT MERELY CARELESSNESS.** The transform is INVISIBLE IN ITS OWN
+OUTPUT. A two-space indent prefix looks exactly like a file indented two spaces
+more. Nothing in the rendering says "something was added here", so there is no
+signal to be careful about — the reader is not ignoring a warning, they are
+reading a faithful-looking picture of something that is not there. That is what
+makes re-reading useless as a correction: the second look is as faithful, and
+as wrong, as the first.
+
+**THE TRANSFORMS ARE EVERYWHERE, AND MOSTLY UNNOTICED:**
+
+| transform | what it silently adds or changes |
+|---|---|
+| `sed 's/^/  /'`, `column -t`, indenting a quote by hand | leading whitespace |
+| `grep -n`, `cat -n`, editor gutters, most diff views | a line-number prefix |
+| `git diff` and review UIs | a leading `+`/`-`/space on EVERY line |
+| syntax highlighting, prettifiers, `jq`, log viewers | whitespace, quoting, key order |
+| a terminal at narrow width | wrapping that reads as a line break |
+
+**PRACTICE — binding whenever an EXACT MATCH is at stake** (an anchor for a
+scripted edit, a byte comparison, a hash, an assertion string):
+
+- **Verify the anchor against RAW BYTES, never a rendering.** `repr()`, `od -c`,
+  `cat -A`, or reading the file through no pipeline at all. The question is
+  never "what does it look like" but "what bytes are there".
+- **Never build an anchor from output that was formatted for reading.** If a
+  command was run to *display* something, its output is a picture of the thing,
+  not the thing.
+- **When a match fails, change the LENS before changing the anchor.** A failed
+  exact match is evidence that the picture and the file disagree; re-reading
+  through the same picture cannot say which one is wrong.
+- **Prefer anchors that cannot be broken by indentation** — anchor on
+  distinctive inner text where the tool allows it. An anchor immune to the
+  transform beats one verified carefully every time.
+
+**THE THREE FACES TOGETHER.** Evidence is only as good as the tree it came from,
+the process that produced it, and the lens it was read through. Each is
+invisible in the output when it goes wrong, and each has now cost this repo a
+real error: a file missing from a commit, a stale binary answering `/healthz`,
+and a display prefix baked into an anchor.
+
+*[Recorded 2026-08-18: this rule was written on the same day its own mistake
+was made twice — once building the anchor, once "confirming" it. The second
+occurrence is the evidence for the rule, not an embarrassment beside it: it
+shows the failure survives an ordinary re-check, which is exactly the claim.]*
+
+
 ## 🔴 Never squash migrations while a hospital may be behind (added 2026-08-01)
 
 **CODIFIED RULE — existing EF migrations are append-only once any install
