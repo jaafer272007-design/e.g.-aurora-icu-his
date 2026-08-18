@@ -381,7 +381,46 @@ record IdentityEventDto(string Time, string Actor, string Role, string Reason, s
 record MeasurementEventDto(
     string Time, string Actor, string Field, string Action, double? Prior, double Value);
 
-record AdtEventDto(string Time, string Actor, string Action, string? Detail);
+/* ONE governed code as it read AT THE MOMENT OF ADMISSION — the label
+   SNAPSHOT required by the Inpatient Reception design's ruling 3, on the
+   CodeStatusEventDto precedent (`Code` + the `Label` the clinician saw).
+   `Field` names which of the four §3.2 vocabularies this is
+   ("admissionType" | "department" | "service" | "admissionSource"), so a
+   reader never has to infer it from position.
+
+   WHY A SNAPSHOT AT ALL. The encounter stores CODES; a code is identity,
+   never meaning. Labels are editable — `PUT /api/icu/{vocab}/{code}` changes
+   one, and #202 shipped the Configuration UI that does it. Without a
+   snapshot, renaming "General Surgery" silently re-renders every admission
+   ever recorded under it, which is exactly what ruling 3 exists to prevent.
+
+   WHY IT CANNOT WAIT. A snapshot is only ever written at admission time;
+   it can never be applied retroactively, because the label it would have
+   to capture is the one that was on screen that day and is not recoverable
+   afterwards. Every admission written before this ships is permanently
+   unprotected. That is why this landed before the reception screen rather
+   than with it.
+
+   WHO READS IT: historical rendering — a printed document naming the
+   department reads THIS, never the live vocabulary (the results-range
+   precedent the code-status snapshot cites). Live configuration surfaces
+   still resolve labels at read, so a corrected typo propagates where it
+   should: the two are different questions, and the snapshot answers
+   "what did this record say when it was made". */
+record AdmissionCodingDto(string Field, string Code, string Label);
+
+/* an ADT event: four strings, and now an ADDITIVE NULLABLE TAIL.
+   `Coding` is populated on the "admitted" event ONLY, carrying the label
+   snapshot above. Every other ADT event (transfer, discharge, isolation)
+   serializes without it (WhenWritingNull) and keeps its pre-feature wire
+   bytes exactly, so nothing that reads the existing four strings changes.
+   The tail is STRUCTURED rather than more prose in `Detail` deliberately:
+   ruling 1 notes this record has no structured from/to and that the
+   concatenated string IS the audit record — which is precisely why a
+   value a document must later READ BACK does not belong in that string.
+   Prose is for humans; a snapshot a renderer consumes is a field. */
+record AdtEventDto(string Time, string Actor, string Action, string? Detail,
+    List<AdmissionCodingDto>? Coding = null);
 
 /* weightKg/heightCm/measurements are the Weight & Height capture —
    ENCOUNTER-SCOPED, ADDITIVE nullable tail (WhenWritingNull: encounters

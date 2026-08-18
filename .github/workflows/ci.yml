@@ -435,6 +435,55 @@ jobs:
           echo "  ok   department with an active service refuses to retire (409, department still active)"
           echo "the bespoke services insert is covered by SQL — the one path #197's compiler guarantee cannot reach"
 
+          # ---- THE LABEL SNAPSHOT, and the rename it exists to survive ------
+          # Ruling 3 requires the admission event to snapshot the LABEL, so a
+          # later rename cannot reinterpret a record already written. The
+          # assertion that proves it is not "a snapshot exists" — it is that
+          # the snapshot DOES NOT MOVE when the vocabulary underneath it does.
+          # This runs HERE, on the ephemeral production database, because the
+          # test renames a department: doing that against the shared staging
+          # service would leave real vocabulary edited if the run died midway.
+          # The office Administrator minted above holds admissions.create
+          # (reception's atom) and NOT adt.admit, so it admits without a bed —
+          # which is also the reception path end to end.
+          echo "LABEL SNAPSHOT (ruling 3):"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"nameFirst\":\"Snap\",\"nameSecond\":\"Shot\",\"nameFamily\":\"Case\",\"sex\":\"M\",\"allergies\":\"None\",\"dateOfBirth\":\"1980-01-01\",\"diagnosis\":\"CI snapshot probe\",\"attending\":\"CI Probe\",\"departmentCode\":\"$DEP\",\"serviceCode\":\"$SVC\"}" \
+            "$API/api/icu/adt/admissions")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "reception-style admission -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          ENCID=$(echo "$out" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+          echo "  ok   admitted $ENCID with no bed (admissions.create, no adt.admit)"
+          SNAP_BEFORE=$(PSQL "select \"EventsJson\"::json->0->'coding' from \"Encounters\" where \"EncounterId\" = '$ENCID'")
+          echo "$SNAP_BEFORE" | grep -q "CI department probe $GITHUB_RUN_ID" \
+            || die "the admitted event carries no department label snapshot: $SNAP_BEFORE"
+          echo "  ok   the admitted event snapshotted the labels: $SNAP_BEFORE"
+          # rename the department underneath the record
+          curl -sf -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"label\":\"RENAMED after the admission $GITHUB_RUN_ID\"}" "$API/api/icu/departments/$DEP" >/dev/null \
+            || die "the rename was refused — the test cannot prove anything"
+          [ "$(PSQL "select \"Label\" from \"Departments\" where \"Code\" = '$DEP'")" = "RENAMED after the admission $GITHUB_RUN_ID" ] \
+            || die "the live vocabulary did NOT change — the rename is not exercising anything"
+          echo "  ok   the LIVE vocabulary now reads the new name"
+          SNAP_AFTER=$(PSQL "select \"EventsJson\"::json->0->'coding' from \"Encounters\" where \"EncounterId\" = '$ENCID'")
+          [ "$SNAP_BEFORE" = "$SNAP_AFTER" ] \
+            || die "THE SNAPSHOT MOVED WITH THE RENAME — history was rewritten: [$SNAP_AFTER]"
+          echo "$SNAP_AFTER" | grep -q "RENAMED after the admission" \
+            && die "the snapshot absorbed the new name — it is resolving live, not snapshotting"
+          echo "  ok   the snapshot is UNMOVED — the record still reads what it read when it was written"
+
+          # ---- the date filter: every status, bounded by the day ------------
+          TODAY=$(date -u +%F)
+          curl -sf -H "Authorization: Bearer $OFF" "$API/api/icu/adt/encounters?admittedOn=$TODAY" -o /tmp/admitted-today.json \
+            || die "admittedOn query failed"
+          ENCID="$ENCID" python3 -c '
+          import json, os
+          rows = json.load(open("/tmp/admitted-today.json"))
+          assert any(r["encounterId"] == os.environ["ENCID"] for r in rows), (os.environ["ENCID"], [r["encounterId"] for r in rows])
+          print(f"  ok   admittedOn lists {len(rows)} encounter(s) including this one")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OFF" "$API/api/icu/adt/encounters?admittedOn=18-08-2026")
+          [ "$rc" = "400" ] || die "a malformed admittedOn -> HTTP $rc, expected 400"
+          echo "  ok   malformed admittedOn -> 400 (four-code discipline holds)"
+
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #
   # Why this job exists: aurora-update.ps1 shipped with PowerShell 7 ternary

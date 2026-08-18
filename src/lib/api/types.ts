@@ -1305,13 +1305,29 @@ export interface CreateBedDraft {
   seq?: number
 }
 
-/* ---------- GET /api/icu/adt/encounters?patientId&status ---------- */
+/* ---------- GET /api/icu/adt/encounters?patientId&status&admittedOn ------ */
+
+/** one governed code as it read AT THE MOMENT OF ADMISSION — the label
+ *  SNAPSHOT (Inpatient Reception ruling 3, on the code-status precedent).
+ *  HISTORICAL RENDERING READS THIS AND NEVER THE LIVE VOCABULARY: a
+ *  document naming the department must say what the record said when it
+ *  was made, not what the list says today. Live configuration surfaces
+ *  still resolve labels at read — a corrected typo should propagate there;
+ *  it must not propagate into a document already issued. */
+export interface AdmissionCoding {
+  /** admissionType | department | service | admissionSource */
+  field: string
+  code: string
+  label: string
+}
 
 export interface AdtEvent {
   time: string
   actor: string
   action: string // admitted | transferred | discharged
   detail?: string
+  /** present on the "admitted" event only, and only when codes were named */
+  coding?: AdmissionCoding[]
 }
 
 export interface Encounter {
