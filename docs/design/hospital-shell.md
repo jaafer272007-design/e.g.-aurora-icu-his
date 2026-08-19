@@ -426,3 +426,59 @@ authority with the bed as the discriminator, and patient search that is inline,
 honest about what it cannot conclude, ordered under race, and running on an
 endpoint that reads four bounded queries instead of two tables — with the
 unindexed-scan residual on the record for the day the registry outgrows it.*
+
+---
+
+## Amendments
+
+*Appended with the endpoint-rewrite build. Everything above this line is the
+approved design, byte-unchanged (original 24,776 bytes hash-verified before
+and after this append; 0 deletions in the diff).*
+
+### A1 · §4.1's "behaviour-preserving" was MEASURED against three engine shapes — and it holds everywhere except one class, which is recorded rather than papered over (2026-08-19)
+
+§4.1 promised the rewrite behaviour-preserving and §4.1's verification plan
+promised the byte diff on the shipping engine; the owner then required it on
+BOTH engines, with Arabic in the matrix, and divergence stated plainly rather
+than resolved by picking the engine that agrees with the old code. That
+instruction turned out to be the load-bearing one. The committed harness
+(`scripts/search-parity.sh`) ran old-vs-new on THREE engine shapes:
+
+| leg | ctype reality | result |
+|---|---|---|
+| PostgreSQL, `C.UTF-8` (a stock Linux cluster) | full-Unicode `LOWER()` | **byte-identical, zero masks** — every matrix line |
+| PostgreSQL, `--locale=C` (**the hospital initdb**, `aurora-provision.ps1:256`) | ASCII-only `LOWER()` | identical **except** the two cased-non-ASCII cases |
+| SQLite (the demo path local dev and CI run) | ASCII-only `lower()` | identical **except** the same two cases, after the two stated per-boot masks (discharge stamps + random MRNs) |
+
+**THE MECHANISM, so the next reader does not re-derive it.** The old code
+lowered BOTH sides in-process (`ToLowerInvariant`) — engine-independent, and
+it folds É→é even under `InvariantGlobalization`. The rewrite lowers the
+QUERY in-process but the COLUMNS by the engine's `LOWER()` — which is
+full-Unicode on `C.UTF-8` and ASCII-only under plain `C` and on SQLite. So
+`émile`/`ÉMILE` found the stored "Émile" under the old code everywhere, and
+under the new code only on `C.UTF-8`.
+
+**WHAT IS PROVEN UNAFFECTED, because it is the population that matters here:**
+Arabic is caseless — every Arabic probe (partial, exact, cross-part span) is
+byte-identical on all three shapes — and ASCII case-folding is identical
+everywhere. The divergent class is cased accented Latin (É, Ñ, Cyrillic, …)
+in stored names.
+
+**THE RULING SOUGHT FROM THE OWNER VIA THIS PR: accept the delta, and assign
+its closure to the §4.2 follow-up.** The engine-independent fix is a stored
+.NET-lowered shadow search column — which is EXACTLY the computed column the
+§4.2 trigram index wants to sit on, so building it now would pull half the
+indexing step into a PR whose whole claim is behaviour-preservation, and
+building it twice would be worse. Until then the harness carries the delta as
+teeth, not as blindness: `--known-divergence` names the two measured cases,
+a diff confined to them reports DIVERGENCE-AS-RECORDED, and a diff touching
+ANY other case still fails.
+
+**Two harness facts recorded because they are evidence, not embarrassment:**
+its first run failed on the OLD side because the 400-message assertion did not
+account for JSON `'` escaping (the message rule catching its own
+assertion), and its second run was stopped by the `/healthz` build gate when
+the OLD server's wrapper-subshell kill left the OLD process holding the port —
+this repo's #204 failure shape, refused this time by the gate built from it.
+
+Nothing in §§0–8 is altered by this entry.
