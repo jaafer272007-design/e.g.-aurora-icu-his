@@ -367,3 +367,82 @@ absent on a bedless row.
 right per §3.2 — the awaiting-bed list is the surface for those patients, not the bed
 board, which is a map of beds. Recorded here so a later reader does not mistake the
 absence for an oversight and "repair" it by inventing a bedless slot on a board of beds.
+
+### A6 · §3.3 RESOLVED by the owner — whoever is on shift covers everyone, so this is NO WORK (recorded 2026-08-19)
+
+**Supersedes A2's "OPEN pending the owner" status.** A2 stands as written — it is
+the finding; this is the ruling on it.
+
+**THE OWNER'S ANSWER: whoever is on shift covers everyone.** *"Per shift"* in
+§3.3 is satisfied **operationally, by who is on duty** — it was never a
+statement about something the system should store. The rota lives in the ward,
+not in the database.
+
+**CONSEQUENCE: §3.3 resolves to NO WORK. The shipped opt-out coverage model
+stands unchanged**, and each half of it is now the answer rather than an
+obstacle:
+- **Every nurse covers every patient by default.** Coverage is DERIVED — active
+  Nurse-profile accounts minus active removals (`AssignmentsApi.cs:35`) — which
+  is exactly "whoever is on shift covers everyone" expressed in the only terms
+  the system needs.
+- **The only stored object stays the `AssignmentRemoval`** — one carved
+  exception, restored-never-deleted. (`PatientAssignments` remains the frozen
+  #114 audit table: history, no new rows, readable via `/assignments/history`.)
+- **Removing the last covering nurse stays a 409** (`AssignmentsApi.cs:164`):
+  *"a patient must never have zero nurse coverage."* An uncovered patient
+  cannot exist, and that guarantee is untouched by this ruling.
+
+**TWO THINGS EXPLICITLY FORBIDDEN, because they are what a reader would
+otherwise build from §3.3's wording:**
+1. **Do NOT add a shift dimension to removals.** A removal is *"this nurse is
+   not covering this patient"*, full stop. Time-boxing it would store the rota,
+   which is the thing the owner has just said is not the system's to hold.
+2. **Do NOT introduce a positive assignment beside the opt-out model.** That is
+   the fork §3.3 itself warns against, and A2 identified the shipped model as
+   what it would fork. Two models answering the same question is the defect,
+   regardless of which one is nicer.
+
+**§3.3's own text is not wrong — it is satisfied.** *"A nurse is assigned per
+shift, not per patient and not permanently"* describes precisely what
+everyone-covers-everyone delivers: no per-patient assignment exists, nothing is
+permanent, and the shift is the duty roster. The design asked for a property;
+the shipped model already has it. What was refuted in A2 was the assumption that
+delivering it required building something.
+
+### A6.1 · §7's estimate, final — one held, one refuted UPWARD, one refuted to ZERO
+
+A4 scored §7's verify-first items with item 3 still open. It is now closed, and
+this is the settled scoring. **Supersedes A4's table for item 3 only**; items 1,
+2 and 4 are unchanged.
+
+| item | expectation | outcome |
+|---|---|---|
+| 1 · Is `Area` the ward? | wards already master data | **REFUTED UPWARD** — free text; a governed Ward vocabulary **and** a bed edit path are new work (A1) |
+| 2 · Ward-to-ward already covered by transfer? | already free | **HELD** — but only downstream of A1: a cross-ward move is a transfer whose beds differ in ward, derived at read, stored nowhere |
+| 3 · Staff assignment / shift | existing machinery | **REFUTED DOWNWARD, TO ZERO** — not "use existing machinery" but "no machinery, and none to add" (A6) |
+| 4 · Readers assuming a bed | enumerate | **HELD** — enumerated in A5; one was a live defect, fixed and merged separately |
+
+**WARD'S GENUINELY NEW WORK, the whole of it:**
+1. **The Ward vocabulary** — a fifth #199 tenant, add/retire-never-delete,
+   backfilled from the distinct `Area` values already in the bed registry.
+2. **A bed edit path** — because a bed's area cannot be changed today at all,
+   so without it a backfilled typo is permanent and a ward can never be renamed.
+3. **Bed assignment** — its own path, its own action string, its own atom
+   (`beds.assign`), never the transfer path (§3.1, and see the merged transfer
+   refusal that made the reason concrete).
+4. **The awaiting-bed list** — new work, per A3; §1's "shipped in step 5" was
+   wrong, and today a bedless admission from yesterday is on no list anywhere.
+
+**EVERYTHING ELSE IS EXISTING, DERIVED, OR READER CLEANUP:**
+- **Existing, unchanged:** nurse coverage (A6), transfer, discharge and its
+  dispositions, the `isDeath` flag, the bed registry, the audit trail.
+- **Derived, so no code:** occupancy, the awaiting-bed STATE itself, ward census,
+  ward-to-ward as a bed-difference, and the bed freeing on discharge — §3.5's
+  *"requires no code"* holds exactly as written.
+- **Reader cleanup:** A5's list — `BedChip` once, the `??` sites treated as
+  absent-when-empty, and "awaiting bed" **in words** on the printed documents.
+
+**The shape of the estimate changed, not its order.** §7's build order — bed
+assignment and the awaiting-bed list first, because without them reception's
+output goes nowhere — is unaffected and still right. What moved is that item 1
+grew a prerequisite and item 3 disappeared.
