@@ -209,3 +209,161 @@ Rooms do not exist here, because a room and a bed are the same thing at this hos
 The admitting note, the OR transfer and the day-case area are each deliberately absent
 and each have their own design. This document is the specification Claude Code builds
 from, after it reports the five open items.*
+
+
+---
+
+## Amendments
+
+*Appended 2026-08-19, after the §7 verification pass. Everything above this
+line is the design exactly as received and is unchanged — these entries
+supersede rather than rewrite (03's documentation discipline). Two of §7's
+four verify-first items came back REFUTED, one came back WRONG, and one held.*
+
+### A1 · §2's premise is REFUTED — `Area` is not the ward. RULING: promote it to a governed Ward vocabulary
+
+**Verified against the repository, not inferred:**
+- `BedRow.Area` (`server/Core/Adt/AdtModels.cs:338`) is a plain `string`.
+- **No vocabulary, no foreign key, no validation.** Nothing in
+  `server/Core/MasterData/` references it; nothing in `AuroraDb.cs` constrains it.
+- **Labelled as free text to the user.** `src/pages/Configuration/Configuration.tsx:937`
+  reads: *"Area (free text — the board groups beds by area)"*.
+- **Set once at creation, never editable.** `CreateBedRequest` carries it; there is
+  **no** `EditBedRequest` and **no** `MapPut` on the bed registry. A typo is permanent,
+  and a ward could never be renamed.
+- Seeds as `Pod A` ×8 / `Pod B` ×8 — ICU board grouping, exactly as §2 guessed.
+
+So §2's instruction *"do not create a parallel Ward entity on the assumption that one is
+missing"* pointed the right way, but its premise does not hold: **wards are not already
+master data.** Adopting `Area` as the ward as it stands would commit precisely the
+mistake §2 forbids one paragraph earlier — *"a real thing living as free text, joined to
+nothing… the `Encounter.Attending` mistake"* — and on a field with no edit path at all.
+
+**RULING (owner, 2026-08-19): promote `Area` to a governed WARD VOCABULARY on the #199
+pattern.** A fifth tenant beside admission types, departments, services and admission
+sources: add / retire-never-delete, managed in Configuration, the same mapper.
+**Backfilled from the DISTINCT values already in the bed registry** — honest backfill
+from real data, never fabrication; whatever a hospital has typed becomes its starting
+vocabulary and it curates from there.
+**It also needs a bed EDIT path**, because a bed's area cannot be changed today at all —
+without one, a backfilled typo is unfixable and a ward cannot be renamed.
+**NOT a Ward entity.** Nothing beyond a name has been asked of a ward; a vocabulary is
+the whole requirement, and anything more would be built on speculation.
+
+**Consequence for §3.4 — ward-to-ward movement needs NO new operation.** It is a transfer
+whose two beds differ in ward. That difference is **derived at read time from the beds,
+never stored on the encounter** (the derived-stays-derived rule in §5). No second path,
+no move type, no ward field on the encounter.
+
+### A2 · §3.3's premise is REFUTED — the shipped model is opt-out coverage, and this is OPEN pending the owner
+
+**What actually shipped** (`server/Core/Assignments/AssignmentModels.cs:6` states it
+outright — *"the OPT-OUT coverage model … REPLACING #114's many-to-many opt-in model"*):
+- **Nurses cover ALL patients by default.** There is no assignment act.
+- The stored concept is a **`AssignmentRemoval`** — one carved exception taking one
+  patient off one nurse's focused worklist. Restored-never-deleted.
+- **Doctors have no assignment concept at all** — *"a formal doctor-assignment is a
+  fiction; the doctor view is simply 'all patients'"*.
+- **Primary/secondary was dropped.** It is *covering / not covering*.
+- The endpoints are **`/assignments/remove`** and **`/assignments/restore`**. There is
+  **no assign endpoint.**
+- Hard invariant: removing the **last** covering nurse is refused **409**. An uncovered
+  patient cannot exist.
+- Authority is `assignments.manage` on **SeniorDoctor**, with a recorded interim note
+  that a real ICU's charge nurse does this and the follow-up is a SeniorNurse profile row.
+
+**And there is NO SHIFT on the model.** `AssignmentRemoval` carries `EncounterId`,
+`UserId`, removed/restored actor + time + role, and an optional reason. No shift field,
+no time window. A `Shifts` vocabulary exists (seeded `day` / `night`) and the coverage
+model **does not reference it**.
+
+So §3.3's expectation — *"very likely a use of existing machinery rather than new
+machinery"* — **does not hold.** *"A nurse is assigned per shift"* is not expressible
+against a model whose only concept is *this nurse is not covering this patient,
+indefinitely*. Delivering it means either adding a shift dimension to removals, or
+introducing a positive assignment beside the opt-out one — and that second option is the
+fork §3.3 warns against, now aimed at the model that actually shipped.
+
+**STATUS: OPEN, pending the owner.** Nothing is built for nurse-per-shift until this is
+answered.
+
+**Also recorded: `docs/design/patient-assignment.md` is STALE.** It specifies the
+many-to-many opt-in model with primary/secondary and a doctor assignment — all three of
+which were superseded by the opt-out coverage build. It should be read as the superseded
+design, not as the description of the shipped system. Whoever picks up A2 should start
+from the code and from this entry, not from that document.
+
+### A3 · §1 is WRONG where it says the pending view shipped in step 5 — the awaiting-bed list is NEW WORK
+
+§1 lists, under *"Already shipped and clinician-validated"*:
+> **Admission with an optional bed** — `bedId` optional, "awaiting bed" derived from
+> `open && BedId == ""`, plus the pending view. Shipped in step 5.
+
+The optional `bedId` and the derivation are correct. **The pending view is not.**
+Evidence:
+- The **only** `awaiting bed` text on the server is an **audit detail string**
+  (`server/Core/Adt/AdtApi.cs:1201`), written into the admit event when no bed is named.
+  It is a record of what happened, not a view.
+- On the client, the phrase appears only in a type comment and in Reception's own row
+  label. **No awaiting-bed list exists on any screen.**
+- `getEncounters` supports `patientId`, `status` and `admittedOn` — and **no bedless
+  filter**.
+- Reception's *"Admitted today"* is **date-filtered**, so **a bedless admission from
+  yesterday appears on no list anywhere in the product.**
+
+That last point is the operational consequence and the reason this correction matters:
+today a patient can be admitted with no bed and, from the next calendar day, be visible
+on no worklist at all. §7's build order already puts the awaiting-bed list first; this
+entry records that it is **new work**, and that §1's "already shipped" line must not be
+relied on when estimating it.
+
+### A4 · §7's expectation held for ONE of three — the estimate moves
+
+§7 asks four verify-first questions in the expectation that they would reveal existing
+machinery. Scored honestly:
+
+| item | expectation | finding |
+|---|---|---|
+| 1 · Is `Area` the ward? | wards already master data | **REFUTED** — free text; a governed vocabulary + a bed edit path are new work (A1) |
+| 2 · Does transfer already cover ward-to-ward? | already free | **HOLDS, but only after A1** — once ward is a vocabulary, a cross-ward move is a transfer whose beds differ, derived and stored nowhere |
+| 3 · Staff assignment / shift | existing machinery | **REFUTED** — opposite polarity, no shift dimension, no assign endpoint; OPEN pending the owner (A2) |
+| 4 · Readers assuming a bed | enumerate | **HELD** — enumerated in A5; one was a live defect, fixed separately |
+
+**One of three came back as expected.** The design's own build-order reasoning is
+unchanged and still right; what changes is the size of the first two items. Recorded
+plainly rather than left to be discovered mid-build.
+
+### A5 · Item 4 — the readers that assume a bed exists, and what to do about each
+
+Enumerated before building, as §7.4 asks.
+
+**Already fixed, separately and ahead of any ward work** — `POST /adt/encounters/{id}/transfer`
+wrote its audit as `"{from} → {to}"` with no guard that the encounter had a bed, so a
+bedless encounter produced `" → B-05"`, a dangling arrow with an empty source, permanent
+in `EventsJson`. It was reachable from the shipped Discharges screen. **The fix was
+REFUSAL, not string repair** — 409, nothing written — because making the string read well
+would legitimise an operation §3.1 says does not exist. The Transfer control is now
+absent on a bedless row.
+
+**To fix when the ward build starts:**
+- **`BedChip` (`src/components/Tag.tsx:33`) — fix ONCE, with an explicit empty
+  rendering.** It is `<span>{bedId}</span>` with no empty handling, and it is the shared
+  renderer for roughly ten call sites (Discharges, DoctorWorkspace, Alerts,
+  MissionControl, AiChat ×3, NurseWorkspace). One change covers most of this class.
+- **The `??` sites catch `null` but not `""`.** `MissionControl.tsx:362` is
+  `Bed {p?.bedId ?? '—'}`, which renders **`Bed `** with nothing after it for a bedless
+  patient. **Treat empty as absent everywhere** — the nullish guard is not enough, and
+  this is the same shape as the match dialog's `"admitted to Bed —"` defect.
+- **`PrintLayout.tsx:78` and `SbarSheet.tsx:16` put the bed on a PRINTED CLINICAL
+  DOCUMENT.** A blank field on paper is ambiguous — the reader cannot tell "no bed" from
+  "nobody filled this in". These must read **"awaiting bed" in words**, not render empty.
+- Also in this class, on the Discharges screen: the confirm text *"Close encounter X and
+  free **{bedId}**?"* and the discharge toast *"— {bedId} is now free"*, both of which
+  read with a gap for a bedless encounter. A bedless discharge is routine, not exotic —
+  §2.1's day cases are exactly it.
+
+**CORRECT AS IT STANDS, do not "fix" it:** `BedOverview` iterates beds and reads
+`b.patient`, so **a bedless admission does not appear on the bed board at all.** That is
+right per §3.2 — the awaiting-bed list is the surface for those patients, not the bed
+board, which is a map of beds. Recorded here so a later reader does not mistake the
+absence for an oversight and "repair" it by inventing a bedless slot on a board of beds.
