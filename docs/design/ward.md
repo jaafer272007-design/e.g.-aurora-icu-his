@@ -446,3 +446,36 @@ this is the settled scoring. **Supersedes A4's table for item 3 only**; items 1,
 assignment and the awaiting-bed list first, because without them reception's
 output goes nowhere — is unaffected and still right. What moved is that item 1
 grew a prerequisite and item 3 disappeared.
+
+### A7 · Two ICU-scoped surfaces the Ward build must clear — recorded from the Hospital Shell design (2026-08-19)
+
+**Source: the Hospital Shell design (`docs/design/hospital-shell.md` §5) and the
+owner's shell brief.** Both entries are TRUE today and become FALSE the day the
+first ward admission exists. They are corrected **in the Ward build itself** —
+not before (correcting a true statement early is its own small lie), and not
+silently after (a scope statement that has quietly become false is the worse
+failure). Recorded here because this file is where the Ward build starts, so
+the build cannot begin without seeing them. Verified against the repository,
+file and line named:
+
+1. **`src/pages/PatientHistory/PatientHistory.tsx:154-156`** — the scope
+   statement reads: *"Aurora holds no external, pre-Aurora or non-ICU
+   records."* The sidebar footer on the same screen says *"Aurora ICU records
+   only."* The moment Ward ships, Aurora holds non-ICU records and both
+   sentences lie — on the one surface whose stated job is that *"silence must
+   never imply completeness."* The Ward build rewrites the scope statement to
+   say what Aurora then actually holds (ICU and ward encounters; still no
+   external or pre-Aurora records).
+
+2. **Both AI prompts are ICU-scoped** — the translator
+   (`server/Core/Ai/AiApi.cs:101`: *"a clinician's question about ICU
+   patients"*, and its refusal instruction names *"non-ICU data"* as
+   unanswerable) and the interpreter (`AiApi.cs:355`: *"the interpretation
+   layer of an ICU information system"*). The failure mode is not a bug but a
+   correctly-functioning model following its instructions: a clinician asking
+   about a ward patient can be REFUSED as out of scope. The Ward build
+   re-scopes both prompts to the hospital, and its verification must include
+   the direction that cannot pass by accident: an AI question about a
+   ward-admitted patient answered, not refused.
+
+Nothing in §§0–8 or in amendments A1–A6.1 is altered by this entry.
