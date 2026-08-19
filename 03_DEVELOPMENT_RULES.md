@@ -46,6 +46,20 @@ each cites where the underlying claim is recorded.]*
   recording it is incomplete work. *(Codified 2026-07-11 per project
   owner; the "Last updated / current through" marker at the top of 02
   is refreshed with each such update.)*
+- *[Recorded 2026-08-19 per the project owner (the 02 marker drift flagged in
+  the Hospital Shell design PR, #214): **POSITION WITHIN 02's BODY IS NOT A
+  RELIABLE RECENCY SIGNAL — the recency index is the marker at the VERY TOP of
+  the file plus the dated record headers.** Records are prepended at the top,
+  but historical "Last updated" strata remain embedded mid-file where the top
+  once was; a "Last updated" line found anywhere below the top is a stratum,
+  not the file's state. Every handover in this project says "the newest marker
+  is at the top" and the owner has already inherited a month-stale snapshot
+  from a mid-file marker read as current — 02's ordering is load-bearing, which
+  is why this is a stated convention rather than a formatting nit. Two binding
+  consequences: the TOP marker (and only it) is refreshed with each update per
+  the rule above; and drift is never "fixed" by reordering the file — an
+  11,000-line reshuffle destroys readability and blame for no gain, and a
+  superseded-in-place note on the stale line is the honest repair.]*
 
 ## 🔴 A design is recorded before it is built — no versioned source, no build (added 2026-08-17)
 

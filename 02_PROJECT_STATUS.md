@@ -1,5 +1,13 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**Last updated: 2026-08-19 · current through the Hospital Shell design (#214 —
+`docs/design/hospital-shell.md` recorded, ward.md amendment A7, the arc index
+record below) and this marker repair.** This line is THE recency marker and is
+refreshed with each update (03, Documentation discipline). Any "Last updated"
+line found deeper in the body is a historical stratum from when it sat at the
+top — position within the body is NOT a recency signal; the dated record
+headers below the housekeeping note are the index.
+
 *[Housekeeping, 2026-08-17 — DE-DUPLICATED, nothing superseded, nothing
 rewritten. This file had carried the SAME body twice: lines 345-11125 and
 11177-21957 were one contiguous, byte-identical run of 10,781 lines (verified
@@ -1081,6 +1089,17 @@ discipline #197 added to 03, applied to itself.
 mapper (#195 omission route closed at compile time, #196 de-duplication of this
 file, #197 copy-paste route closed by construction + the runtime table-routing
 proof with its own positive control).**
+
+*[Superseded as the file's recency marker, 2026-08-19 (the marker drift flagged
+in #214, resolved per the project owner): this line was accurate when it sat at
+the top of the file; four 08-18 records and the 08-19 arc index were prepended
+above it without refreshing it, which made its position misleading rather than
+its text wrong. The LIVE marker now sits at the very top of the file and is the
+only line that claims currency; this one stays in place as the historical
+stratum it is — the file is deliberately NOT reordered (an 11,000-line
+reshuffle would destroy readability and blame for no gain). The stated
+convention is recorded in 03 § Documentation discipline.]*
+
 **2026-08-06 · THE SKIPPED-RELEASE UPDATE DRILL PASSED, ON TWO REAL MACHINES.
 The app-only updater has now applied an update in the field — for the first
 time in this product's life.** Three hops, all applied, zero rollbacks:
