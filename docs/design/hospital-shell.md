@@ -685,3 +685,61 @@ PR):**
    guard tightens).
 
 Nothing in §§0–8, in A1, or in A1.1 is altered by this entry.
+
+### A2.1 · A2's two open decisions are RULED — fold generously, guards compare folded behind a human-resolved migration — and the MRN regex ships immediately as its own item (owner, 2026-08-19)
+
+**RULING 1 — THE FOLD TABLE: fold generously.** The table's contents:
+
+| class | fold |
+|---|---|
+| alef forms | أ إ آ ا → ا |
+| taa marbuta | ة → ه |
+| alef maqsura | ى → ي |
+| tatweel | removed |
+| harakat | stripped |
+| hamza carriers | ؤ → و · ئ → ي |
+| final hamza | dropped |
+| Arabic-Indic digits | ٠–٩ → 0–9 |
+| Eastern Arabic-Indic digits | ۰–۹ → 0–9 |
+
+**The reason, in the owner's words, because it is what makes the table's
+contents defensible: THE COST IS ASYMMETRIC. Over-folding produces a probable
+match that a human reads and dismisses in two seconds. Under-folding produces
+two records for one person that nobody ever sees. Names are not
+uniqueness-guarded, so a name-fold collision costs a review and nothing else.
+When a class is arguable, fold it.**
+
+**The registration-policy statement, recorded in the owner's words because
+ة↔ه and ى↔ي are exactly the arguable classes and both fold: in NAMES, فاطمة
+and فاطمه are one person, and مصطفى and مصطفي are one person.**
+
+**RULING 2 — THE UNIQUENESS GUARDS: yes, compare folded.** Two scripts of one
+number is precisely what those guards exist to prevent, and today the same
+national ID can be stored twice.
+
+**THE ENFORCEMENT ORDER MATTERS MORE THAN THE DECISION. Never turn a folded
+guard on against data that has not been checked:** the migration BUILDS the
+folded column, then DETECTS and REPORTS existing collisions, and a human
+resolves them before enforcement is enabled. **NEVER auto-merge.** Merging two
+patient records is a clinical act, and the never-destroy principle forbids
+the system doing it on its own — **a collision report is the deliverable, not
+a fix.**
+
+**The fold applies to the fourth site.** The AI patient resolver
+(`src/lib/ai/tools.ts`, `resolveAgainst`) must use the same fold function, or
+the assistant will fail to resolve patients the rest of the product finds —
+and it will do so silently.
+
+**RULING 3 — THE MRN REGEX SHIPS NOW, on its own, ahead of all of this.**
+`^MRN-\d{6}$` accepting `MRN-٠٠٠١٢٣` is a live hole with a one-character
+fix: an identity correction can set an MRN that is then unfindable by MRN, on
+a path that is merged and reachable today. It does not wait for the fold
+work. Its own item, its own test leg proving the Arabic-Indic form is now
+refused — and a check of every other `\d` in a validation pattern for the
+same problem, because **one instance of a defect class is not the class.**
+The fix and the class sweep are recorded in `02_PROJECT_STATUS.md` with the
+commit that ships them.
+
+Everything else in A2 stands as recorded: the versioned explicit fold table
+over a framework call, and the NFC/NFKC evidence that settles it. Nothing in
+§§0–8, in A1, in A1.1, or in A2's findings is altered by this entry.
