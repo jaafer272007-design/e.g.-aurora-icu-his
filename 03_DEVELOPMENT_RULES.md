@@ -238,6 +238,49 @@ who hits it and has to bisect to learn what the log should have said.
 - and ask **can the actor this leg uses actually reach the code under test** — a
   403 is a green-looking way of testing nothing
 
+## 🔴 ACCEPTORS NARROW, GUARDS WIDE — the direction of a validation pattern is decided by what its match GATES (added 2026-08-19, owner's ruling)
+
+**CODIFIED RULE — before changing what a validation pattern matches, name the
+branch its match feeds. A pattern whose match gates ACCEPTANCE is kept as
+narrow as the system can honour (`[0-9]`, exact codes, closed lists). A
+pattern whose match gates a REFUSAL is kept as wide as what a human could
+read as the refused thing (`\d`, look-alikes included). Widening an acceptor
+admits what the system cannot handle; narrowing a guard admits what the guard
+exists to refuse. The same edit is a fix on one side and a hole on the other.**
+
+This is general — it applies to every validation pattern in the codebase, not
+to the two sites that taught it. It earned its place by producing two
+OPPOSITE changes in one sweep (the `\d` class fix, 2026-08-19), and a future
+mechanical sweep would have broken a safety guard precisely because the rule
+was not written down:
+
+**Worked example 1 — an acceptor, narrowed.** The identity-correction MRN gate
+(`AdtApi.cs`) matched a typed MRN against `^MRN-\d{6}$` and its match gated
+ACCEPTANCE — a matching value was stored. .NET's `\d` is Unicode-wide, so
+`MRN-٠٠٠١٢٣` was accepted: an MRN the generator never produces, MRN search
+(exact ASCII `==`) never finds, and the uniqueness guard never collides with.
+The acceptor is now `[0-9]{6}` — the system only accepts what every consumer
+of the value can honour.
+
+**Worked example 2 — a guard, kept wide.** The named-frequency create's q<n>h
+collision guard (`VocabApi.cs`) matches a proposed vocabulary value against
+`^q\d+h$` and its match gates a REFUSAL — a matching value is rejected
+because MAR derives dose schedules by parsing q<n>h structurally, and a NAMED
+'q6h' would shadow the built-in meaning. `\d` stays, deliberately: `q٦h`
+reads as q6h to the humans the guard protects while deriving no schedule, so
+the guard must refuse everything a human could read as structural, not only
+what the parser accepts. Its acceptor twin (`FormularyLogic.
+IsStructuredFrequency`, `[0-9]{1,2}`) is NARROWER than the guard — the
+asymmetry is the point, and the paired comments at both sites say so: do not
+unify them.
+
+**The test the rule compresses to:** ask "if this pattern matches MORE, who
+wins — the user or the defect?" On an acceptor, the defect wins (bad data
+gets in). On a guard, the user wins (more look-alikes get refused). Then ask
+the same question for matching LESS, and check the answer inverts. If it does
+not invert, the pattern is doing two jobs and should be split before it is
+edited.
+
 ## 🔴 Closing one instance of a defect class is not closing the class (added 2026-08-17)
 
 **CODIFIED RULE — before declaring a class of defect closed, enumerate the ways
