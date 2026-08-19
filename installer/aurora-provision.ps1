@@ -67,6 +67,13 @@ param(
   [string]$AiModel = 'qwen2.5-7b-instruct-q4_k_m'  # AI_MODEL the server sends (Qwen2.5-7B - GQA, sec 5.5)
 )
 $ErrorActionPreference = 'Stop'
+# Per-run identity for the APPEND transcript (owner's ruling, 2026-08-19):
+# provision.log accumulates strata across installs/re-provisions, and on a
+# real production machine we could not tell WHICH run's claims we were
+# reading. Every run gets an id; the start header, the failure line and the
+# completion line all carry it, so a claim in this log is always attributable
+# to a dated run.
+$runId = [guid]::NewGuid().ToString('N').Substring(0, 8)
 function Say([string]$m) { Write-Host "[aurora-provision] $m" }
 function Fail([string]$m) {
   # Write the REASON into the transcript BEFORE closing it. Stop-Transcript ends
@@ -75,7 +82,7 @@ function Fail([string]$m) {
   # is to record where provisioning stalled. A real install died at the database
   # step with a log that simply ended (2026-07-26), and the message even said
   # "see provision.log". Say it first, then close, then surface it to the caller.
-  Write-Host "[aurora-provision] FAILED: $m"
+  Write-Host "[aurora-provision] FAILED (run $runId at $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) UTC): $m"
   try { Stop-Transcript | Out-Null } catch {}
   Write-Error "[aurora-provision] $m"
   exit 1
@@ -97,6 +104,7 @@ $pgPort   = 5432                                     # local-only; never exposed
 # record of WHERE provisioning stalled. Always leave a readable log beside the
 # app; Fail/exit both flush it.
 try { Start-Transcript -Path (Join-Path $InstallDir 'provision.log') -Append -Force | Out-Null } catch {}
+Say "===== run $runId - started $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) UTC ====="
 Say "aurora-provision starting - InstallDir=$InstallDir DataDir=$DataDir Port=$Port AiEnabled=$AiEnabled"
 
 # ---- 0a. RECOVERABILITY POSTURE - state it plainly in the log ----
@@ -575,7 +583,16 @@ if (Test-Path $keyFilePath) {
 }
 
 # ---- 7. register the nightly backup (native - NOT the Docker backup.ps1) ----
-Say "registering the automatic nightly backup (Task Scheduler 'AuroraBackup', 02:00)"
+# THE CLAIM FOLLOWS THE MEASUREMENT (owner's ruling after the 2026-08-19 field
+# finding): the old log line announced the registration BEFORE attempting it,
+# and on a real production install that line sat in provision.log while NO
+# task existed on the machine. The pre-line below is deliberately an attempt
+# marker only (the transcript's job is to show WHERE a hidden-window run
+# stalled); the claim line prints after Get-ScheduledTask has actually seen
+# the task, and a machine the task cannot be found on FAILS provisioning -
+# a hospital without this task takes no automatic backups at all, which is
+# the one failure this project cannot correct after the fact.
+Say "step 7: nightly backup task (AuroraBackup, daily 02:00) - attempting registration"
 $backupScript = Join-Path $server 'scripts\aurora-backup.ps1'
 $action  = New-ScheduledTaskAction -Execute 'powershell.exe' `
   -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$backupScript`"" -WorkingDirectory $server
@@ -585,6 +602,14 @@ $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd
   -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 10)
 Register-ScheduledTask -TaskName 'AuroraBackup' -Action $action -Trigger $trigger `
   -Principal $principal -Settings $settings -Force | Out-Null
+$backupTask = Get-ScheduledTask -TaskName 'AuroraBackup' -ErrorAction SilentlyContinue
+if (-not $backupTask) {
+  Fail ("the nightly backup task did NOT register: Register-ScheduledTask returned, but " +
+    "Get-ScheduledTask finds no 'AuroraBackup' on this machine. Aurora's services are up, but " +
+    "WITHOUT this task the hospital takes NO automatic backups. Fix Task Scheduler (service " +
+    "'Schedule' running?) and re-run provisioning, or register the task manually per the runbook.")
+}
+Say "step 7 VERIFIED: scheduled task 'AuroraBackup' exists (state: $($backupTask.State)) - nightly at 02:00, runs $backupScript"
 
 # ---- 8. open the Windows Firewall for the API port (ALL profiles) ----
 # The rule MUST cover the Public profile, not just Domain+Private. Windows
@@ -593,13 +618,26 @@ Register-ScheduledTask -TaskName 'AuroraBackup' -Action $action -Trigger $trigge
 # from every other device: localhost works on the server, both services show
 # RUNNING, yet every tablet/phone/laptop gets "site can't be reached". Opening
 # -Profile Any makes the system reachable immediately after a next-next-finish
-# install with NO manual command. Remove-then-create so the final rule is
-# exactly right (Any profile + the chosen port) even if an older, narrower rule
-# was left behind by a previous install - idempotent across re-provision.
-Say "opening the Windows Firewall for TCP $Port (all profiles: Domain, Private, Public)"
-Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName 'Aurora ICU' -Direction Inbound -Action Allow `
-  -Protocol TCP -LocalPort $Port -Profile Any | Out-Null
+# install with NO manual command. CREATE BEFORE REMOVE (owner's ruling,
+# 2026-08-19 - this replaces remove-then-create): Windows allows several
+# firewall rules with one DisplayName, so the correct new rule is created
+# FIRST and the older instances are removed afterwards by instance id. The
+# machine is never ruleless - the old ordering designed in a window with no
+# rule at all - and the final state is still exactly one correct rule
+# (Any profile + the chosen port), idempotent across re-provision.
+Say "step 8: Windows Firewall rule 'Aurora ICU' (TCP $Port, all profiles) - attempting create"
+$fwNew = New-NetFirewallRule -DisplayName 'Aurora ICU' -Direction Inbound -Action Allow `
+  -Protocol TCP -LocalPort $Port -Profile Any
+Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyContinue |
+  Where-Object { $_.InstanceID -ne $fwNew.InstanceID } |
+  Remove-NetFirewallRule -ErrorAction SilentlyContinue
+$fwCheck = @(Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyContinue)
+if ($fwCheck.Count -eq 0) {
+  Fail ("the firewall rule did NOT register: New-NetFirewallRule returned, but no rule named " +
+    "'Aurora ICU' exists. Without it every other device gets 'site can't be reached' while the " +
+    "server itself looks healthy. Check the Windows Firewall service and re-run provisioning.")
+}
+Say "step 8 VERIFIED: firewall rule 'Aurora ICU' exists ($($fwCheck.Count) rule(s), enabled: $($fwCheck[0].Enabled), TCP $Port, profile Any)"
 
 # ---- 9. record the REAL, working access URL for the installer's finish page ----
 # What the operator typed can be wrong (no port) or already stale (DHCP moved
@@ -628,6 +666,6 @@ if ($UrlOutFile) {
   } catch { Say "NOTE: could not write the access-URL relay file ($($_.Exception.Message))." }
 }
 
-Say "PROVISIONING COMPLETE - Aurora is running as a Windows service and will start on every boot."
+Say "PROVISIONING COMPLETE (run $runId - finished $((Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) UTC) - Aurora is running as a Windows service and will start on every boot."
 try { Stop-Transcript | Out-Null } catch {}
 exit 0
