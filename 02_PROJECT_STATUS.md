@@ -1,5 +1,14 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
+**Last updated: 2026-08-19 · current through the search-endpoint rewrite
+(shell build-order item 2: four bounded queries, the committed two-engine
+parity harness, and the recorded cased-non-ASCII divergence — the record
+below), after the Hospital Shell design (#214) and the marker repair.** This line is THE recency marker and is
+refreshed with each update (03, Documentation discipline). Any "Last updated"
+line found deeper in the body is a historical stratum from when it sat at the
+top — position within the body is NOT a recency signal; the dated record
+headers below the housekeeping note are the index.
+
 *[Housekeeping, 2026-08-17 — DE-DUPLICATED, nothing superseded, nothing
 rewritten. This file had carried the SAME body twice: lines 345-11125 and
 11177-21957 were one contiguous, byte-identical run of 10,781 lines (verified
@@ -21,6 +30,84 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-19 · THE SEARCH ENDPOINT READS FOUR BOUNDED QUERIES, NOT TWO TABLES
+— shell build-order item 2, with the old-vs-new byte diff proven on BOTH
+ENGINES and one measured divergence recorded instead of papered over.**
+Server + a committed harness; no UI.
+
+**WHAT CHANGED** (`server/Core/Adt/AdtApi.cs`). `GET /adt/patients/search`
+materialised the ENTIRE patients and encounters tables per call, filtered and
+sorted in memory, applied `limit` AFTER the scan, and `ToMatchCard` then
+re-queried encounters plus a disposition once per returned card (~2N). It was
+written for a click; two shipped screens already fire it per keystroke and
+reception's inline search (design §4.3) is next. Now: filter, scope, ordering
+and limit run in SQL — the composed display name and full legal name as the
+EXACT CASE-joins (never a whitespace-collapsing Replace), so substrings
+spanning name parts keep matching, including the display-span that skips
+middle names — and the card reads are batched (one encounters query for the
+page's ids + one dispositions read) through a preloaded-lookup `ToMatchCard`
+overload that the per-db form DELEGATES to, so the two derivations cannot
+drift. `/patients/match` is byte-untouched through that delegation. Ordering
+keys are unchanged, with PatientId appended as the final tiebreak (the old
+in-memory sort left full ties in unspecified table order; under
+`InvariantGlobalization` the process compares ordinally, which is why
+ordering came out byte-identical against byte-ordered collations in every
+leg below). **Still NOT indexed** — `LOWER(col)` substring is a sequential
+scan, linear in the registry forever; the pg_trgm option stays costed in the
+design (§4.2) and deliberately not adopted here.
+
+**VERIFIED — `scripts/search-parity.sh`, a COMMITTED harness, not a
+session script** (the recorded rendered-tier lesson applied to the server:
+two published builds and a Postgres in, a verdict out). Twenty-four captured
+lines per side — Arabic partial/exact/cross-part, the display-span and
+full-legal spans, ASCII case, cased non-ASCII probes, legacy seeded
+single-names, MRN/national-id/file-number/patientId fragments, literal
+`%`/`_` wildcards (proven literal: 0 hits on both sides, where a leaked
+wildcard would have matched everything), deceased/discharged cards,
+truncation totals, discharged-scope browse + query ordering — plus three
+400s asserted by MESSAGE, not code (03's 2026-08-19 rule). Every boot gates
+on `/healthz`.`build` equal to the expected stamp BEFORE the first capture.
+Old = a clean worktree publish of merge-base `3558c1a`; new = a clean
+worktree publish of the rewrite commit — working-tree runs were development
+only, and the recorded run below is from the committed tree (rule 5, face 1).
+
+| leg | engine shape | result |
+|---|---|---|
+| 1 | PostgreSQL 16, `C.UTF-8` cluster | **byte-identical, ZERO masks** — one durable dataset read by both binaries |
+| 2 | PostgreSQL 16, **`--locale=C` database — the hospital initdb shape** (`aurora-provision.ps1:256`) | identical EXCEPT the two cased-non-ASCII cases |
+| 3 | SQLite (the demo path local dev and CI run) | identical EXCEPT the same two cases, after the two per-boot masks the demo path forces (server-stamped discharge times; `Random.Shared` MRNs) — stated in the harness header, not hidden |
+
+**🔴 THE MEASURED DIVERGENCE, stated plainly (the owner's requirement on this
+build, and it was the load-bearing one): cased non-ASCII matching is
+engine-shaped under the rewrite where the old code was engine-independent.**
+Old lowered both sides in-process (folds É→é everywhere, even under
+`InvariantGlobalization`); new lowers the query in-process but columns by the
+engine's `LOWER()` — full-Unicode on `C.UTF-8`, ASCII-only under plain `C`
+and on SQLite. So `émile`/`ÉMILE` find a stored "Émile" under old everywhere,
+and under new only on `C.UTF-8`. **Arabic is caseless and proven
+byte-identical on all three shapes; ASCII folding identical everywhere** —
+the divergent class is cased accented Latin in stored names. The remedy that
+restores engine-independence is a stored .NET-lowered shadow column — exactly
+the computed column the §4.2 trigram index wants — so closure is assigned
+there rather than pulling half the indexing step into a
+behaviour-preservation PR. Until then the harness carries the delta as
+TEETH: `--known-divergence` names the two cases; a diff confined to them
+reports DIVERGENCE-AS-RECORDED; a diff touching any other case fails.
+Recorded as amendment A1 in `docs/design/hospital-shell.md` (pure append —
+the original 24,776 bytes hash identically; 0 deletions).
+
+**The harness's own first runs are part of the evidence.** Run 1 failed on
+the OLD side because the 400-message assertion missed JSON `'` escaping —
+the assert-the-MESSAGE rule catching its own assertion. Run 2 was stopped by
+the `/healthz` build gate: the wrapper-subshell kill had left the OLD
+process holding the port and answering for the new one — this repo's #204
+failure shape, refused this time by the gate built from it (the fix:
+`exec`, so the tracked pid IS the server).
+
+**Blast radius checked, not assumed:** no workflow — `ci.yml`,
+`production-seed`, any deployed suite — calls `/adt/patients/search` (0
+grep hits); its three UI callers are covered by the byte parity above.
 
 **2026-08-19 · THE HOSPITAL SHELL DESIGN IS RECORDED — docs only, nothing
 built.** The owner used the merged Reception screen for the first time and
@@ -1081,6 +1168,17 @@ discipline #197 added to 03, applied to itself.
 mapper (#195 omission route closed at compile time, #196 de-duplication of this
 file, #197 copy-paste route closed by construction + the runtime table-routing
 proof with its own positive control).**
+
+*[Superseded as the file's recency marker, 2026-08-19 (the marker drift flagged
+in #214, resolved per the project owner): this line was accurate when it sat at
+the top of the file; four 08-18 records and the 08-19 arc index were prepended
+above it without refreshing it, which made its position misleading rather than
+its text wrong. The LIVE marker now sits at the very top of the file and is the
+only line that claims currency; this one stays in place as the historical
+stratum it is — the file is deliberately NOT reordered (an 11,000-line
+reshuffle would destroy readability and blame for no gain). The stated
+convention is recorded in 03 § Documentation discipline.]*
+
 **2026-08-06 · THE SKIPPED-RELEASE UPDATE DRILL PASSED, ON TWO REAL MACHINES.
 The app-only updater has now applied an update in the field — for the first
 time in this product's life.** Three hops, all applied, zero rollbacks:

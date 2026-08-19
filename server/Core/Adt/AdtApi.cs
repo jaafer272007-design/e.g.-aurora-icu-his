@@ -275,41 +275,120 @@ static class AdtApi
             if (scope == "all" && q.Length < 2)
                 return ApiError.BadRequest("provide a search term of at least 2 characters (q)");
 
-            var patients = db.AdtPatients.AsNoTracking().AsEnumerable().ToList();
-            var encByPatient = db.Encounters.AsNoTracking().AsEnumerable()
-                .GroupBy(e => e.PatientId).ToDictionary(g => g.Key, g => g.ToList());
+            /* REWRITTEN for the inline search (Hospital Shell design §4.1).
+               The original materialised the ENTIRE patients and encounters
+               tables per call, filtered/sorted in memory, applied `limit`
+               AFTER the scan, and ToMatchCard then re-queried encounters and
+               a disposition once per returned card (~2N). Written for a
+               click; the discharged-records and print screens already fire
+               it per keystroke (200ms debounce) and reception's inline
+               search will too. This form pushes filter, scope, order and
+               limit into SQL and batches the card reads: ~4 bounded queries
+               per call, independent of table size.
+
+               FAITHFUL TO THE OLD MATCHES, BY CONSTRUCTION (proven by the
+               old-vs-new byte diff recorded with the rewrite PR, on BOTH
+               engines): every stored column the old `Has` chain checked,
+               PLUS the composed DISPLAY name (structured "First Second
+               Family", else the legacy Name — dto.Name), PLUS the composed
+               FULL LEGAL name (all present parts in order, single-spaced —
+               dto.FullName, expressed as the exact CASE-join, so a
+               substring SPANNING parts keeps matching: "Hassan Al-" and
+               the display-span "Hassan Al-Janabi" that skips a middle
+               name both hit exactly as before).
+
+               STATED DELTAS, measured not assumed (design §4.1's residuals):
+               - casing: the query is lowered invariantly in .NET; columns by
+                 the engine's LOWER(). Identical for ASCII and for caseless
+                 scripts (Arabic); cased non-ASCII can differ per engine —
+                 probed on both engines in the rewrite PR's matrix.
+               - ordering: same keys (discharged-recency, then the sort
+                 name), but ties now break on PatientId LAST instead of the
+                 old unspecified table order, and string order follows the
+                 database collation (locale C = bytes on hospital installs)
+                 instead of the host culture — deterministic where the old
+                 was environment-shaped.
+               🔴 STILL NOT INDEXED (design §4.2): LOWER(col) LIKE/substring
+               cannot use a btree index — this is a sequential scan of ONE
+               table, linear in the registry forever. The pg_trgm option is
+               costed in the design; nobody should read this rewrite as
+               having indexed the search. */
+            var ql = q.ToLowerInvariant();
+
+            var pool = db.AdtPatients.AsNoTracking().AsQueryable();
+
             /* "discharged" = has ≥1 encounter and NONE open (currently-
                admitted excluded; a registered-but-never-admitted row is
                not a discharged patient, so it is excluded too) */
-            bool NotAdmitted(Patient p) =>
-                encByPatient.TryGetValue(p.PatientId, out var es)
-                && es.Count > 0 && es.All(e => e.Status != "open");
+            if (scope == "discharged")
+                pool = pool.Where(p =>
+                    db.Encounters.Any(e => e.PatientId == p.PatientId)
+                    && !db.Encounters.Any(e => e.PatientId == p.PatientId
+                                              && e.Status == "open"));
 
-            var ql = q.ToLowerInvariant();
-            bool Matches(Patient p)
-            {
-                if (ql.Length == 0) return true;
-                var dto = p.ToDto();
-                bool Has(string? s) => s is not null && s.ToLowerInvariant().Contains(ql);
-                return Has(dto.Name) || Has(dto.FullName)
-                    || Has(p.NameFirst) || Has(p.NameSecond) || Has(p.NameThird)
-                    || Has(p.NameFourth) || Has(p.NameFamily)
-                    || Has(p.Mrn) || Has(p.PatientFileNumber) || Has(p.NationalId)
-                    || Has(p.PatientId);
-            }
+            if (ql.Length > 0)
+                pool = pool.Where(p =>
+                    /* composed display name — dto.Name */
+                    (((p.NameFirst ?? "") != "" && (p.NameSecond ?? "") != ""
+                        && (p.NameFamily ?? "") != ""
+                        ? p.NameFirst + " " + p.NameSecond + " " + p.NameFamily
+                        : p.Name)!).ToLower().Contains(ql)
+                    /* composed full legal name — dto.FullName (structured
+                       rows only; ToDto serves null otherwise). The optional
+                       middles join by CASE, never a whitespace-collapsing
+                       Replace: a legacy name storing a genuine double space
+                       must keep it. */
+                    || ((p.NameFirst ?? "") != "" && (p.NameSecond ?? "") != ""
+                        && (p.NameFamily ?? "") != ""
+                        && (p.NameFirst + " " + p.NameSecond
+                            + ((p.NameThird ?? "") == "" ? "" : " " + p.NameThird)
+                            + ((p.NameFourth ?? "") == "" ? "" : " " + p.NameFourth)
+                            + " " + p.NameFamily)!.ToLower().Contains(ql))
+                    || (p.NameFirst ?? "").ToLower().Contains(ql)
+                    || (p.NameSecond ?? "").ToLower().Contains(ql)
+                    || (p.NameThird ?? "").ToLower().Contains(ql)
+                    || (p.NameFourth ?? "").ToLower().Contains(ql)
+                    || (p.NameFamily ?? "").ToLower().Contains(ql)
+                    || p.Mrn.ToLower().Contains(ql)
+                    || (p.PatientFileNumber ?? "").ToLower().Contains(ql)
+                    || (p.NationalId ?? "").ToLower().Contains(ql)
+                    || p.PatientId.ToLower().Contains(ql));
 
-            string LastDisch(Patient p) => encByPatient.TryGetValue(p.PatientId, out var es)
-                ? es.Where(e => e.Status != "open").Select(e => e.DischargedAt ?? "")
-                     .DefaultIfEmpty("").Max()! : "";
-            string SortName(Patient p) { var d = p.ToDto(); return d.FullName ?? d.Name; }
+            var total = pool.Count();
 
-            var pool = scope == "discharged" ? patients.Where(NotAdmitted) : patients;
-            var hits = pool.Where(Matches).ToList();
-            var total = hits.Count;
-            var ordered = scope == "discharged"
-                ? hits.OrderByDescending(LastDisch).ThenBy(SortName)
-                : hits.OrderBy(SortName);
-            var page = ordered.Take(limit).Select(p => AdtLogic.ToMatchCard(p, db)).ToList();
+            /* sort name = dto.FullName ?? dto.Name, exactly as before */
+            System.Linq.Expressions.Expression<Func<Patient, string>> sortName = p =>
+                ((p.NameFirst ?? "") != "" && (p.NameSecond ?? "") != ""
+                    && (p.NameFamily ?? "") != ""
+                    ? p.NameFirst + " " + p.NameSecond
+                        + ((p.NameThird ?? "") == "" ? "" : " " + p.NameThird)
+                        + ((p.NameFourth ?? "") == "" ? "" : " " + p.NameFourth)
+                        + " " + p.NameFamily
+                    : p.Name)!;
+
+            var pageRows = (scope == "discharged"
+                    ? pool
+                        .OrderByDescending(p => db.Encounters
+                            .Where(e => e.PatientId == p.PatientId && e.Status != "open")
+                            .Max(e => (string?)(e.DischargedAt ?? "")) ?? "")
+                        .ThenBy(sortName).ThenBy(p => p.PatientId)
+                    : pool.OrderBy(sortName).ThenBy(p => p.PatientId))
+                .Take(limit).ToList();
+
+            /* batch the card reads: ONE encounters query for the page's ids
+               and ONE dispositions read replace the old per-card lookups */
+            var pageIds = pageRows.Select(p => p.PatientId).ToList();
+            var encsByPatient = db.Encounters.AsNoTracking()
+                .Where(e => pageIds.Contains(e.PatientId)).AsEnumerable()
+                .GroupBy(e => e.PatientId).ToDictionary(g => g.Key, g => g.ToList());
+            var deathCodes = db.Dispositions.AsNoTracking()
+                .Where(d => d.IsDeath).Select(d => d.Code).ToHashSet();
+            var page = pageRows
+                .Select(p => AdtLogic.ToMatchCard(p,
+                    encsByPatient.TryGetValue(p.PatientId, out var es)
+                        ? es : new List<Encounter>(),
+                    code => code is not null && deathCodes.Contains(code)))
+                .ToList();
 
             return Results.Json(new
             {
@@ -1438,14 +1517,23 @@ static class AdtLogic
        discharged), age through the canonical Patient.ToDto resolver
        (no fork), and the national ID leaves here MASKED TO ITS LAST 4 —
        the full number is never in this DTO at all. */
-    public static MatchCardDto ToMatchCard(Patient p, AuroraDb db)
+    public static MatchCardDto ToMatchCard(Patient p, AuroraDb db) =>
+        ToMatchCard(p,
+            db.Encounters.AsNoTracking()
+                .Where(e => e.PatientId == p.PatientId).AsEnumerable().ToList(),
+            code => IsDeathDisposition(db, code));
+
+    /* preloaded-lookup overload (the search rewrite's batch path): the
+       per-db form above DELEGATES here so the two derivations can never
+       drift — one body, two entry points (the no-fork rule applied to a
+       projection). */
+    public static MatchCardDto ToMatchCard(Patient p, List<Encounter> encs,
+        Func<string?, bool> isDeath)
     {
-        var encs = db.Encounters.AsNoTracking()
-            .Where(e => e.PatientId == p.PatientId).AsEnumerable().ToList();
         var open = encs.FirstOrDefault(e => e.Status == "open");
         var latest = encs.OrderByDescending(e => EncounterSeq(e.EncounterId)).FirstOrDefault();
         var status = open is not null ? "admitted"
-            : latest is not null && IsDeathDisposition(db, latest.Disposition) ? "deceased" : "discharged";
+            : latest is not null && isDeath(latest.Disposition) ? "deceased" : "discharged";
         var dto = p.ToDto();
         /* masking must SURVIVE short values (adversarial-review finding):
            for a stored ID of 4 characters or fewer, "the last 4" IS the

@@ -426,3 +426,127 @@ authority with the bed as the discriminator, and patient search that is inline,
 honest about what it cannot conclude, ordered under race, and running on an
 endpoint that reads four bounded queries instead of two tables — with the
 unindexed-scan residual on the record for the day the registry outgrows it.*
+
+---
+
+## Amendments
+
+*Appended with the endpoint-rewrite build. Everything above this line is the
+approved design, byte-unchanged (original 24,776 bytes hash-verified before
+and after this append; 0 deletions in the diff).*
+
+### A1 · §4.1's "behaviour-preserving" was MEASURED against three engine shapes — and it holds everywhere except one class, which is recorded rather than papered over (2026-08-19)
+
+§4.1 promised the rewrite behaviour-preserving and §4.1's verification plan
+promised the byte diff on the shipping engine; the owner then required it on
+BOTH engines, with Arabic in the matrix, and divergence stated plainly rather
+than resolved by picking the engine that agrees with the old code. That
+instruction turned out to be the load-bearing one. The committed harness
+(`scripts/search-parity.sh`) ran old-vs-new on THREE engine shapes:
+
+| leg | ctype reality | result |
+|---|---|---|
+| PostgreSQL, `C.UTF-8` (a stock Linux cluster) | full-Unicode `LOWER()` | **byte-identical, zero masks** — every matrix line |
+| PostgreSQL, `--locale=C` (**the hospital initdb**, `aurora-provision.ps1:256`) | ASCII-only `LOWER()` | identical **except** the two cased-non-ASCII cases |
+| SQLite (the demo path local dev and CI run) | ASCII-only `lower()` | identical **except** the same two cases, after the two stated per-boot masks (discharge stamps + random MRNs) |
+
+**THE MECHANISM, so the next reader does not re-derive it.** The old code
+lowered BOTH sides in-process (`ToLowerInvariant`) — engine-independent, and
+it folds É→é even under `InvariantGlobalization`. The rewrite lowers the
+QUERY in-process but the COLUMNS by the engine's `LOWER()` — which is
+full-Unicode on `C.UTF-8` and ASCII-only under plain `C` and on SQLite. So
+`émile`/`ÉMILE` found the stored "Émile" under the old code everywhere, and
+under the new code only on `C.UTF-8`.
+
+**WHAT IS PROVEN UNAFFECTED, because it is the population that matters here:**
+Arabic is caseless — every Arabic probe (partial, exact, cross-part span) is
+byte-identical on all three shapes — and ASCII case-folding is identical
+everywhere. The divergent class is cased accented Latin (É, Ñ, Cyrillic, …)
+in stored names.
+
+**THE RULING SOUGHT FROM THE OWNER VIA THIS PR: accept the delta, and assign
+its closure to the §4.2 follow-up.** The engine-independent fix is a stored
+.NET-lowered shadow search column — which is EXACTLY the computed column the
+§4.2 trigram index wants to sit on, so building it now would pull half the
+indexing step into a PR whose whole claim is behaviour-preservation, and
+building it twice would be worse. Until then the harness carries the delta as
+teeth, not as blindness: `--known-divergence` names the two measured cases,
+a diff confined to them reports DIVERGENCE-AS-RECORDED, and a diff touching
+ANY other case still fails.
+
+**Two harness facts recorded because they are evidence, not embarrassment:**
+its first run failed on the OLD side because the 400-message assertion did not
+account for JSON `'` escaping (the message rule catching its own
+assertion), and its second run was stopped by the `/healthz` build gate when
+the OLD server's wrapper-subshell kill left the OLD process holding the port —
+this repo's #204 failure shape, refused this time by the gate built from it.
+
+Nothing in §§0–8 is altered by this entry.
+
+### A1.1 · A1 RULED: the delta is ACCEPTED — on the condition that `/patients/match` still folds in .NET, which is now VERIFIED, not asserted (recorded 2026-08-19)
+
+**The ruling (owner, 2026-08-19): accept the delta; closure stays assigned to
+the §4.2 follow-up** — the engine-independent fix is the stored .NET-lowered
+shadow column, which is the same computed column the trigram index needs, so
+pulling it forward would half-build the indexing step inside a
+behaviour-preservation PR and blur what that PR proves. Arabic is caseless and
+byte-identical on all three engine shapes, ASCII is identical everywhere, and
+this hospital's registry is Arabic and unaccented Latin transliteration. The
+exposure is real but narrow.
+
+**THE CONDITION, in the owner's words, because it decides whether "narrow" is
+the right word:** the delta's failure mode is a FALSE NEGATIVE — searching
+`émile` finds nothing when "Émile" is stored — and a false negative in patient
+lookup is what makes a clerk register a duplicate: the same hazard the
+composed-name rule (§4.3) exists for. If `/patients/match` still folds case in
+.NET, browse may miss an accented name but the submit-time match still catches
+the duplicate before anything is created, and the delta is bounded to
+inconvenience. If match now folds through the engine too, accepting the delta
+silently weakens duplicate prevention, and the shadow column comes forward
+after all.
+
+**VERIFIED — match folds in .NET. Three facts, each checked against the PR
+head (`58fb6e9`), not recalled:**
+
+1. **The match endpoint is byte-identical to the merge base.** The block from
+   its comment header to the search endpoint's (`AdtApi.cs`, the
+   `/patients/match` handler) is 4,715 bytes on both `3558c1a` and the PR
+   head, equal by string comparison — not "we didn't mean to touch it";
+   compared.
+2. **No fold on the match path ever reaches the engine.** The handler
+   materialises rows first (`AsEnumerable().ToList()`) — the engine never
+   sees a predicate. Tier A (nationalId / fileNumber / MRN) is exact `==`:
+   identifiers are matched fold-free, case never enters. Tier B compares
+   every name part with `string.Equals(…, StringComparison.OrdinalIgnoreCase)`
+   — .NET's own simple case folding, in-process. Zero `ToLower`, zero
+   `EF.Functions` in the block. The one thing the rewrite touched near match
+   is the delegating `ToMatchCard` overload — the card PROJECTION, after
+   matching is decided; the predicate half never moved.
+3. **The divergence's own pair matches under Tier B's exact comparison —
+   run, not remembered.** On .NET 8 (the server's target), through
+   `string.Equals(q, stored, StringComparison.OrdinalIgnoreCase)`:
+   `émile` vs stored `Émile` → **true**. Controls: Arabic identity → true;
+   `ali`/`Ali` → true; `EMILE` vs `Émile` → **false** (see the boundary
+   below — that is a different letter, not this delta).
+
+**THE SENTENCE THAT MAKES THE DELTA ACCEPTABLE, now in the design rather than
+in anyone's head: browse may miss it; match still catches it.** On the
+hospital initdb shape a clerk typing `émile` may fail to FIND the stored
+"Émile" in the browse list — but if they proceed to register, the submit-time
+match compares the same typed parts against the stored row in .NET and the
+dialog interposes before anything is created; and an identifier supplied at
+registration (Tier A) confirms exactly, fold-free. Duplicate prevention did
+not move. The delta is bounded to browse inconvenience.
+
+**THE BOUNDARY, stated so this entry is never quoted as accent insurance: the
+guarantee covers the CASE dimension only.** Typing accent-dropped `Emile` for
+a stored "Émile" misses in browse AND in match, under the old code and the
+new, on every engine — é and e are different letters on every path in this
+codebase; nothing has ever accent-folded, and this PR changes nothing about
+it. Tier B's own preconditions are likewise unchanged: a stored row without a
+real DOB or without a structured name never enters Tier B (Tier A still
+covers it when an identifier is supplied). Both are pre-existing design
+shape, recorded here so the guarantee is read at its verified width.
+
+Nothing in §§0–8, and nothing in A1's measurements, is altered by this entry.
+A1's ruling request is resolved by it.
