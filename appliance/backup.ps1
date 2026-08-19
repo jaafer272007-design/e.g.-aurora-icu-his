@@ -30,7 +30,13 @@ if ($Install) {
   # parse the run time from BACKUP_SCHEDULE ("daily HH:mm") unless overridden
   $sched = Get-EnvVal "BACKUP_SCHEDULE"
   if (-not $Time) {
-    if ($sched -match 'daily\s+(\d{2}:\d{2})') { $Time = $Matches[1] } else { $Time = "02:00" }
+    # [0-9], never \d: PowerShell \d matches Arabic-Indic digits too, and a
+    # matched non-ASCII time throws at -At's [datetime] binding — run.ps1
+    # catches that into a warning and NO nightly backup exists. A non-match
+    # falls to the 02:00 default, REGISTERS the task, and the confirmation
+    # line below names the time actually used. A backup at the default time
+    # beats no backup.
+    if ($sched -match 'daily\s+([0-9]{2}:[0-9]{2})') { $Time = $Matches[1] } else { $Time = "02:00" }
   }
   $script = Join-Path $PSScriptRoot "backup.ps1"
   $action = New-ScheduledTaskAction -Execute "powershell.exe" `

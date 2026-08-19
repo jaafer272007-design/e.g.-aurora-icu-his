@@ -1,9 +1,9 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-19 · current through the search-endpoint rewrite
-(shell build-order item 2: four bounded queries, the committed two-engine
-parity harness, and the recorded cased-non-ASCII divergence — the record
-below), after the Hospital Shell design (#214) and the marker repair.** This line is THE recency marker and is
+**Last updated: 2026-08-19 · current through the Unicode-digit class fix
+(the MRN gate, the admittedOn filter, the appliance backup schedule, and the
+full `\d` sweep with its one deliberate survivor — the record below), after the search-endpoint
+rewrite (#215) and the Arabic-normalisation finding (design A2).** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -30,6 +30,96 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-19 · `\d` IS NOT `[0-9]` IN .NET — the MRN gate and the admittedOn
+filter were live holes, ten sites are narrowed, ONE site deliberately keeps
+`\d`, and one first-read "keep it" call was OVERTURNED by adversarial
+verification.** Server + appliance + two CI legs; docs design A2.1 carries
+the owner's three rulings this executes.
+
+**THE CLASS (design A2, ruling 3).** .NET's `\d` matches any Unicode decimal
+digit — Arabic-Indic ٠-٩ and Eastern ۰-۹ included — and this codebase's
+population types them. Every `\d` in the repo was swept (server `.cs`,
+installer/appliance PowerShell — also .NET regex — workflows, client,
+plus the adjacent constructs `char.IsDigit`/`StartsWith`), each site traced
+to its input source and downstream, and every HOLE verdict adversarially
+re-verified before anything was changed.
+
+**TWO LIVE HOLES, both API-reachable on merged paths:**
+
+- **The MRN gate** (`AdtApi.cs`, identity correction): `^MRN-\d{6}$` PASSED
+  `MRN-٠٠٠١٢٣` — an MRN Aurora's generator never produces, MRN search
+  (exact ASCII `==`) never finds, and the uniqueness guard never collides
+  with. Now `[0-9]`, and the non-ASCII-digit case gets its OWN message —
+  both because the value LOOKS canonical to the person who typed it (the
+  generic format message would read as wrong), and because the 03 message
+  rule requires it: a five-digit MRN shares the 400, so only the message
+  distinguishes the failure under test. **The UI was never the hole:** the
+  client (`IdentityDialog.tsx`) validates with JS `/^MRN-\d{6}$/`, and
+  JavaScript's `\d` is ASCII-only — the browser path already refused these.
+  The API path (and any non-Aurora caller) did not. Defense-in-depth held
+  at the one layer that is not a guard and failed at the one that is.
+- **The admittedOn filter** (`AdtApi.cs`, the encounters read behind
+  Reception's "Admitted today"): `^\d{4}-\d{2}-\d{2}$` passed an
+  Arabic-Indic date, which then prefix-matched no stored ASCII stamp — a
+  SILENT EMPTY 200 where the malformed-date 400 was designed to fire. The
+  worse of the two shapes: nothing refused, nothing wrong on screen, the
+  answer simply false. Now `[0-9]` → the intended 400.
+
+**THE SWEEP TABLE.** Narrowed to `[0-9]` (outcome-identical for all ASCII
+input — `[0-9]` ⊂ `\d` — and structurally unable to admit non-ASCII digits):
+the two holes above, the `admittedAt` and both `performedAt` stamp gates
+(these were already loud — regex ∧ invariant `TryParse`, so Arabic digits
+400'd anyway; the narrowing makes that property structural rather than
+culture-dependent), `MarSchedule` q<n>h and D-n time parsing, `FormularyLogic.
+IsStructuredFrequency`, `TimelineApi` D-n, `BackupService.NextScheduled`
+(its `int.Parse` sits inside a catch — same null either way), and the
+appliance schedule parse above. Verified
+unreachable-by-input and left alone: four `StartsWith`+`TryParse` sites over
+system-generated ids, the installer/CI version regexes (developer-controlled
+file content), and every client `\d` (JS is ASCII-only by engine).
+
+**🔴 THE TWO LESSONS THE SWEEP BOUGHT — the class fix is NOT uniform, and
+the direction call itself needs verifying:**
+
+1. **The one deliberate survivor — `VocabApi` named-frequency create:** the
+   q<n>h match gates a REFUSAL (the shadowing guard — MAR parses q<n>h
+   structurally, so a NAMED 'q6h' would shadow the built-in meaning).
+   Narrowing it would ACCEPT `q٦h` as a named frequency — which reads as
+   q6h to the humans the guard protects while deriving no schedule.
+   Unicode-wide is the SAFE direction there; the site now carries a comment
+   saying so, and `IsStructuredFrequency` carries the paired comment
+   (acceptor narrow, guard wide — the asymmetry is the point, do not unify
+   them).
+2. **The overturned call — `appliance/backup.ps1` schedule parse.** The
+   first read said keep `\d`: a Unicode match throws at `-At`'s
+   `[datetime]` binding, and "a loud throw beats a silent 02:00 fallback".
+   The adversarial verify pass traced ONE level deeper and refuted it:
+   `run.ps1` wraps the install in try/catch, so the throw lands as a YELLOW
+   WARNING and the appliance start continues — **with no nightly backup
+   registered at all**, the worst outcome this project has (04: the backup
+   is the only real ransomware defence). The narrowed regex instead falls
+   to the 02:00 default, REGISTERS the task, and the confirmation line
+   prints the time actually used. Fixed to `[0-9]`, with the direction
+   reasoning in a comment at the site.
+
+A mechanical `\d`→`[0-9]` sweep would have broken the frequency guard; a
+mechanical "keep it loud" instinct would have kept the missing-backup path.
+Reading the branch direction at every site — and then adversarially
+verifying the direction calls — is what the owner's "one instance of a
+defect class is not the class" actually required.
+
+**VERIFIED.** Live against a booted server (SQLite dev mode, the fixed
+binary): `MRN-٠٠٠١٢٣` and `MRN-۰۰۰۱۲۳` → 400 naming the digit rule ·
+`MRN-424242` → 200, stored · `MRN-12345` → the generic canonical message,
+unchanged · Arabic-Indic `admittedOn` → 400 naming the format ·
+ASCII date → 200. In CI, `production-seed` gains a named-banner MRN leg —
+both digit ranges refused BY MESSAGE, MRN proven unchanged after refusal,
+then an ASCII control proven stored (the refusal alone would also pass if
+correction were simply broken; the control MRN is picked from proven-free
+candidates because `NextMrn` is random) — and the existing admittedOn
+check gains the Arabic-digit probe, message-asserted, percent-encoded so
+the assertion does not depend on the runner shell's byte handling.
 
 **2026-08-19 · THE SEARCH ENDPOINT READS FOUR BOUNDED QUERIES, NOT TWO TABLES
 — shell build-order item 2, with the old-vs-new byte diff proven on BOTH
