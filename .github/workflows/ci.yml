@@ -612,6 +612,71 @@ jobs:
           [ "$(echo "$out" | tail -1)" = "200" ] || die "bed named WITH both fields -> HTTP $(echo "$out" | tail -1), expected 200: $(echo "$out" | head -1)"
           echo "  ok   bed named WITH both fields -> 200 (ICU's shipped path is unchanged)"
 
+          # ---- TRANSFER REFUSES A BEDLESS ENCOUNTER --------------------------
+          # /transfer writes its audit detail as "{from} → {to}" where `from` is
+          # the CURRENT bed. Reception opens episodes with NO bed (step 5) and
+          # this endpoint predates that: on a bedless encounter it wrote
+          # " → B-05" — a dangling arrow with an empty source, permanent in
+          # EventsJson. Reachable from the shipped Discharges screen, which lists
+          # every open encounter with no bed filter and offered Move on each row.
+          # THE FIX IS REFUSAL, NOT A TIDIER STRING. Giving a bed to a bedless
+          # patient is bed ASSIGNMENT (ward design §3.1 — "This is NOT a
+          # transfer"), a path with its own atom that is NOT BUILT. Until it is,
+          # the operation is unavailable rather than approximated.
+          echo "TRANSFER REFUSES A BEDLESS ENCOUNTER:"
+          # adt.transfer is NURSING authority — the Consultant and the office
+          # Administrator minted above are both 403 here, so this leg needs its
+          # own Nurse account. A clinical job title needs a justification.
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $ADM" -H 'Content-Type: application/json' \
+            -d '{"username":"ci.transfer.rn","name":"CI Transfer Nurse","roles":["Staff Nurse"],"initialPassword":"CI-Transfer-RN-9xTmp","justification":"production-seed CI — bedless-transfer refusal proof"}' \
+            "$API/api/icu/users")
+          [ "$(echo "$out" | tail -1)" = "200" ] \
+            || die "could not create the CI nurse -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          resp=$(curl -sf -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
+            -d '{"username":"ci.transfer.rn","password":"CI-Transfer-RN-9xTmp"}')
+          CT4=$(echo "$resp" | python3 -c 'import json,sys; print(json.load(sys.stdin)["changeToken"])')
+          RN=$(curl -sf -X POST "$API/api/auth/change-password" -H 'Content-Type: application/json' \
+            -d "{\"token\":\"$CT4\",\"newPassword\":\"CI-Transfer-RN-9x\"}" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["jobTitle"]=="Staff Nurse", d; print(d["token"])')
+          [ -n "$RN" ] || die "no session token for the CI nurse"
+          # A GENUINELY FREE BED, computed fresh. $CIBED is OCCUPIED by the
+          # with-both-fields admission above, and transferring into an occupied
+          # bed also 409s — which would make this assertion pass for the WRONG
+          # REASON, indistinguishable from the refusal it is meant to prove.
+          FREEBED=$(PSQL "select \"BedId\" from \"Beds\" where \"Active\" and \"BedId\" not in (select \"BedId\" from \"Encounters\" where \"Status\" = 'open' and \"BedId\" <> '') order by \"Seq\" limit 1")
+          [ -n "$FREEBED" ] || die "no free bed — the bedless-transfer direction cannot be exercised"
+          # $ENCID is the office Administrator's BEDLESS admission from the
+          # label-snapshot leg. Assert that, rather than assume it.
+          [ "$(PSQL "select \"BedId\" from \"Encounters\" where \"EncounterId\" = '$ENCID'")" = "" ] \
+            || die "$ENCID unexpectedly HAS a bed — the bedless direction cannot be exercised"
+          before_ev=$(PSQL "select \"EventsJson\" from \"Encounters\" where \"EncounterId\" = '$ENCID'")
+          [ -n "$before_ev" ] || die "EventsJson read back EMPTY — a byte-identical comparison would pass vacuously"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $RN" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"$FREEBED\"}" "$API/api/icu/adt/encounters/$ENCID/transfer")
+          [ "$(echo "$out" | tail -1)" = "409" ] || die "bedless transfer -> HTTP $(echo "$out" | tail -1), expected 409: $(echo "$out" | head -1)"
+          # the MESSAGE matters: a 409 could also mean occupied/retired/discharged,
+          # and this must be the bedless one specifically.
+          echo "$out" | head -1 | grep -q "nothing to transfer from" \
+            || die "the 409 was NOT the bedless refusal: $(echo "$out" | head -1)"
+          after_ev=$(PSQL "select \"EventsJson\" from \"Encounters\" where \"EncounterId\" = '$ENCID'")
+          [ "$before_ev" = "$after_ev" ] || die "THE REFUSAL WROTE TO THE AUDIT: [$after_ev]"
+          echo "  ok   bedless transfer -> 409 stating the reason, EventsJson BYTE-IDENTICAL (nothing written)"
+          # BOTH DIRECTIONS. The refusal alone would also pass if transfer were
+          # simply broken, or if this nurse lacked authority — so the SAME token
+          # must still move a BEDDED encounter, with the audit string unchanged.
+          SRC=$(PSQL "select \"EncounterId\" from \"Encounters\" where \"Status\" = 'open' and \"BedId\" <> '' order by \"EncounterId\" limit 1")
+          [ -n "$SRC" ] || die "no bedded open encounter — the real-transfer direction cannot be exercised"
+          SRCBED=$(PSQL "select \"BedId\" from \"Encounters\" where \"EncounterId\" = '$SRC'")
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $RN" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"$FREEBED\"}" "$API/api/icu/adt/encounters/$SRC/transfer")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "real transfer -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          detail=$(PSQL "select \"EventsJson\"::json->-1->>'detail' from \"Encounters\" where \"EncounterId\" = '$SRC'")
+          [ "$detail" = "$SRCBED → $FREEBED" ] \
+            || die "the transfer audit string CHANGED: got [$detail], expected [$SRCBED → $FREEBED]"
+          [ "$(PSQL "select \"EventsJson\"::json->-1->>'action' from \"Encounters\" where \"EncounterId\" = '$SRC'")" = "transferred" ] \
+            || die "the transfer action string changed"
+          echo "  ok   real bed-to-bed transfer -> 200, audit detail exactly '$detail' — unchanged"
+
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #
   # Why this job exists: aurora-update.ps1 shipped with PowerShell 7 ternary

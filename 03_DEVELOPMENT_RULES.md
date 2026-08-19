@@ -150,6 +150,80 @@ holds". Opening the PR is what made CI evaluate the commit; it then failed with
 the expected `CS0029`. The proof was intact only because the run was checked
 per-workflow rather than per-branch.
 
+## 🔴 A status code is not evidence when the failure under test shares it with an unrelated failure — assert the MESSAGE (added 2026-08-19)
+
+The third member of the CI-evidence family. The two rules above ask whether the
+check RAN and whether it ran on the RIGHT COMMIT. This one asks the next
+question: **it ran, it was red-then-green, and it still may not have touched the
+thing under test.**
+
+**CODIFIED RULE — when a leg asserts a non-2xx, assert the `{error}` MESSAGE, not
+only the status code.** A code-only assertion is evidence exactly when that code
+has one possible cause on that endpoint. It almost never does.
+
+**THIS IS STRUCTURAL, NOT AN EDGE CASE.** It follows directly from the four-code
+rule in `01`, which is deliberately a COMPRESSION: every "the resource exists but
+its current state forbids this" collapses into one 409, and every "malformed, or
+can never succeed against this resource" collapses into one 400. That
+compression is right — it is what makes error handling uniform across the API —
+but the same property that makes four codes easy to consume makes them
+**lossy as assertions**. The information distinguishing one refusal from another
+survives only in the `{error}` string, which is why the four-code rule requires
+every non-2xx to carry a precise one. A suite that asserts the code and discards
+the message is throwing away the only discriminating half. **This applies to
+every 409 and 400 assertion in every suite**, not to the examples below.
+
+*(The generic 403 is the deliberate exception and needs no message assertion —
+it explains nothing by design. But note the second worked example: 403 is
+precisely the code that lets a leg pass without ever reaching the code under
+test.)*
+
+### Three worked examples, all from one PR (the bedless-transfer refusal, 2026-08-19)
+
+**1 · Two different refusals, one code.** `/adt/encounters/{id}/transfer` returns
+**409** for a bedless encounter (`AdtApi.cs:1361`, the guard under test) and
+**409** for a target bed that is already occupied (`AdtApi.cs:1376`, unrelated and
+pre-existing). A leg asserting only `= "409"` therefore **passes identically
+whether or not the guard it was written to prove exists at all** — and the trap
+is live, because the natural bed to reuse in that job is already occupied by an
+earlier leg. The assertion must grep `"nothing to transfer from"`.
+
+**2 · A 403 that never reaches the code under test.** `adt.transfer` is held by
+**exactly one profile — Nurse** (`Rbac.cs:161`; it appears once in the file).
+`production-seed` already mints a Consultant (`SeniorDoctor`) and an office
+Administrator, and **neither holds it**. A leg written with either token gets
+403 at the RBAC line, never reaches the guard, and — if it asserted only
+"non-2xx", or asserted 409 and was then "fixed" to match the 403 it observed —
+goes green having tested the permission system instead of the bug. The leg must
+mint an account of the profile that can actually reach the code.
+
+**3 · A die message that cannot distinguish its own causes.** The first version
+of that leg used
+`curl -sf … || die "could not create the CI nurse"`. It failed in CI and printed
+exactly that: **true, useless, and indistinguishable from a bad payload, a
+duplicate username, a missing justification, or the 401 it actually was** —
+caused by using `$TOKEN` where that job's admin session is `$ADM`. `curl -sf`
+discards the status and the body, so the leg destroyed the evidence of its own
+failure.
+
+### The reporting half
+
+**A failure message that cannot distinguish its own causes costs more than the
+bug it reports.** The bug is one fix; the message is paid again by every person
+who hits it and has to bisect to learn what the log should have said.
+
+**PRACTICE, binding on every assertion leg:**
+- assert the **message** alongside the code for every 409 and 400
+- prefer a substring unique to the guard under test, not one shared with its
+  neighbours ("when a bed is named", "nothing to transfer from")
+- **`die` prints the HTTP code AND the body.** Never `curl -sf … || die "<prose>"`
+  — capture with `-w '\n%{http_code}'` and print both halves
+- before writing a leg, ask **which other causes return this same code on this
+  endpoint** — if the answer is "one or more", the code alone cannot be the
+  assertion
+- and ask **can the actor this leg uses actually reach the code under test** — a
+  403 is a green-looking way of testing nothing
+
 ## 🔴 Closing one instance of a defect class is not closing the class (added 2026-08-17)
 
 **CODIFIED RULE — before declaring a class of defect closed, enumerate the ways

@@ -1335,6 +1335,33 @@ static class AdtApi
             if (enc.Status == "discharged")
                 return ApiError.StateConflict(
                     $"encounter '{encounterId}' is discharged — a closed encounter cannot be transferred");
+            /* 🔴 A BEDLESS ENCOUNTER HAS NOTHING TO TRANSFER FROM.
+               Reception opens episodes with no bed (step 5), and this endpoint
+               was written when every open encounter had one. Its audit detail is
+               $"{from} → {bedId}" and `from` is the CURRENT bed, so a bedless
+               encounter wrote " → B-05" — a dangling arrow with an empty source,
+               permanent in EventsJson. Reachable today: the Discharges screen
+               lists every open encounter with no bed filter and offers Move on
+               each row.
+               THE FIX IS REFUSAL, NOT A TIDIER STRING. Making the detail read
+               well for an empty source would legitimise an operation the ward
+               design says does not exist: giving a bed to a bedless patient is
+               bed ASSIGNMENT (ward design §3.1 — "This is NOT a transfer, and
+               must not reuse the transfer path"), which has its own path, its
+               own action string and its own atom, and is NOT BUILT YET. Until
+               it is, the operation is unavailable rather than approximated.
+               409, not 400: the encounter exists, the actor may transfer, and
+               the identical request succeeds once the encounter has a bed — the
+               four-code rule's "it is there, but not like that". Placed with the
+               other state guards and BEFORE the target-bed lookup, so a bedless
+               encounter reports its own state rather than a 400 about the
+               target (the guard-before-status ordering the administer path
+               established). */
+            if (string.IsNullOrWhiteSpace(enc.BedId))
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' has no bed — there is nothing to transfer from. "
+                    + "Giving a bed to a patient who is awaiting one is bed assignment, not a transfer, "
+                    + "and that path does not exist yet");
             var targetBed = db.Beds.AsNoTracking().FirstOrDefault(b => b.BedId == req.BedId);
             if (targetBed is null)
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
