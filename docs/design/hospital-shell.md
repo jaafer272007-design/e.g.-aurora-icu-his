@@ -550,3 +550,138 @@ shape, recorded here so the guarantee is read at its verified width.
 
 Nothing in §§0–8, and nothing in A1's measurements, is altered by this entry.
 A1's ruling request is resolved by it.
+
+### A2 · Arabic orthography and Arabic-Indic digits are normalised NOWHERE — the duplicate-registration hazard fires on the common case, and it predates everything in this design (recorded 2026-08-19)
+
+**Its own finding, deliberately not an A1 amendment (owner's instruction):
+A1 is about a delta the rewrite introduced and closed; this is older and
+larger.** It was found by following A1.1's boundary one step further — "é and
+e are different letters on every path" — and asking what that means for the
+population this hospital actually registers, where orthographic variation is
+not an edge case but the norm of Iraqi data entry: alef forms (أ إ آ ا), taa
+marbuta ة vs haa ه, alef maqsura ى vs yaa ي, inserted tatweel (ـ), hamza
+carried or dropped — and identifiers typed in Arabic-Indic digits
+(٠١٢٣٤٥٦٧٨٩, and the Eastern ۰–۹).
+
+**1 · VERIFIED: nothing anywhere normalises — write, read, search, or match.**
+Checked by grep and by reading every comparison site, not reasoned from the
+accent finding:
+
+- **No framework normalisation.** `.Normalize(`/`NormalizationForm` appear
+  nowhere in the identity paths (the only `Normalize` in the codebase is
+  `ObservationService.Normalize` — numeric range/unit handling, not text).
+  No fold table, no tatweel/hamza/marbuta/maqsura handling, no digit mapping,
+  anywhere (zero hits, server and client).
+- **Writes store as typed, trim only.** Admission create (`AdtApi.cs`,
+  the `new Patient` block) and identity correction both apply `Trim()` and
+  nothing else — which is what `patient-name-national-id.md` §4 ORDERED for
+  the national ID ("stored exactly as it appears on the identity card — no
+  format invention, no normalisation"). That decision governs the STORED
+  RECORD and is correct; it is silent about comparison, and comparison
+  inherited it.
+- **Every comparison is codepoint comparison.** Browse search: case-fold only
+  (query lowered in-process, columns by engine `LOWER()` — identity on
+  caseless Arabic). Match Tier B: `OrdinalIgnoreCase` equality. Match Tier A
+  and all three uniqueness guards (national ID, MRN, file number): exact
+  `==`. The AI assistant's patient resolver (`src/lib/ai/tools.ts`,
+  `resolveAgainst`): `toLowerCase()` + `includes` — the same class, a fourth
+  site. The client transforms nothing on the identity inputs.
+
+**2 · THE EXPOSURE, measured through the exact shipped comparisons** (.NET 8,
+the code's own expressions — every row also unchanged under NFC and NFKC,
+so framework Unicode normalisation would close none of it):
+
+| pair | Tier B (match) | Tier A / guards (`==`) | browse (lowered substring) |
+|---|---|---|---|
+| احمد / أحمد (alef) | ✗ | ✗ | ✗ |
+| امنة / آمنة (madda) | ✗ | ✗ | ✗ |
+| اسماعيل / إسماعيل (hamza below) | ✗ | ✗ | ✗ |
+| فاطمة / فاطمه (taa marbuta) | ✗ | ✗ | ✗ |
+| مصطفى / مصطفي (maqsura) | ✗ | ✗ | ✗ |
+| محمد / محمـد (tatweel) | ✗ | ✗ | ✗ |
+| شيماء / شيما (final hamza) | ✗ | ✗ | one direction only¹ |
+| 19850312345 / ١٩٨٥٠٣١٢٣٤٥ | ✗ | ✗ | ✗ |
+| 58 / ۵۸ (Eastern digits) | ✗ | ✗ | ✗ |
+
+¹ the hamza-dropped form is a SUBSTRING of the carried form, so typing the
+shorter finds the longer in browse; the reverse misses, and match misses both
+directions.
+
+**So the hazard is exactly as feared, and one layer wider.** The same clerk
+typing the same patient's name two ways misses in browse AND in match: browse
+finds nothing → they register → Tier B compares codepoints and stays silent →
+the dialog never opens → **two patient records for one person** — the
+duplicate-registration hazard the whole find-or-register machinery exists to
+prevent, firing on the common case rather than the rare one. And for
+identifiers it is worse than a miss: a national ID typed in Arabic-Indic
+digits does not merely fail Tier A — **the uniqueness 409 stays silent too**,
+so "national identity numbers are unique" holds only per-script; the same
+number can be stored twice. Downstream, one-person-two-records silently
+corrupts everything keyed on patientId: re-admission linking, and the
+Statistics readmission inference (`patient with >1 encounter`) undercounts —
+each half of the split shows one encounter.
+
+**One extra defect found while verifying the "immune" case:** generated MRNs
+are ASCII (`AdtLogic.NextMrn`), but the identity-correction gate that claims
+to enforce the canonical form — `^MRN-\d{6}$` — PASSES `MRN-٠٠٠١٢٣` and
+`MRN-۰۰۰۱۲۳`, because .NET's `\d` matches any Unicode decimal digit. Proven
+by running the exact regex. The one identifier that was supposed to be
+immune can be corrected into a non-ASCII-digit form that the generator's
+sequence space and the uniqueness guard will never collide with. The fix is
+`[0-9]`; it is independent of everything else in this entry.
+
+**Also recorded for honesty about A1: both findings are true at once.** A1's
+"Arabic is caseless and byte-identical on all three shapes" holds — the
+parity matrix proved old and new behave IDENTICALLY on its Arabic probes, all
+of which used one spelling. Identical on both sides is not correct on either:
+parity proves preservation, not adequacy, and this exposure predates the
+rewrite, the search endpoint, and this design. **It is not a regression from
+any PR; it has been true since the identity model shipped.**
+
+**3 · THE ABSORPTION PATH: the §4.2 shadow column can carry it — one fold,
+written once.** A1 already assigns the case-delta closure to a stored
+.NET-lowered shadow column, which is the same computed column the §4.2
+trigram index sits on. The same write sites, the same backfill migration and
+the same index can carry ONE canonical fold instead of case alone: lower +
+Arabic orthographic fold + digit fold, applied to the shadow columns on every
+identity write, with queries folded in-process through the SAME function and
+match/browse comparing folded-to-folded. That closes A1's engine delta and
+this entry's classes in the one PR already scheduled — absorbed into planned
+work, not a new workstream. Constraints that make it fit this project:
+
+- **The fold is an explicit, versioned mapping table, not a framework call**
+  — proven above: NFC/NFKC unify none of the nine pairs, so there is nothing
+  to delegate to. An explicit table is also the auditable form: which classes
+  fold (alef unification, ة→ه, ى→ي, strip tatweel, strip harakat — the
+  diacritic class belongs on the list even though data entry rarely types
+  it — hamza handling, both digit ranges → ASCII) is REGISTRATION POLICY,
+  decided and versioned like a vocabulary, testable pair by pair.
+- **Storage is untouched.** §4's "stored exactly as on the card" and the
+  #145 free-text rule stand: the fold is a comparison shadow, never a
+  rewrite; display and print always read the stored original. Amend-never-
+  erase is not disturbed.
+- **"No fuzzy" is not violated but must be re-affirmed.**
+  `patient-name-national-id.md` open item 6 rules out fuzzy/phonetic
+  matching — a near-miss on identity is a safety risk. Deterministic
+  canonicalisation is not fuzz: same input, same fold, every time, no
+  distance metric, no ranking. The adopting PR should say so against that
+  line explicitly, and keep phonetic matching as forbidden as it is today.
+- **Where the fold widens behaviour, a human is already in the loop.** A
+  folded Tier B widens "probable" matches — which land in the match dialog a
+  human confirms, never an auto-merge. The widening surfaces candidates; it
+  decides nothing.
+
+**TWO DECISIONS THIS ENTRY DOES NOT MAKE (the owner's, before the adopting
+PR):**
+
+1. **The fold table's contents** — each class above, in or out. ة↔ه and
+   ى↔ي equate spellings that are the same name in Iraqi practice; the table
+   is short, but it is a registration-policy statement, not a code detail.
+2. **Whether the three uniqueness guards compare folded.** That is a
+   BEHAVIOUR CHANGE, not an internal detail: 409s will fire where none fired
+   (the two-script national ID above would start being refused — which is
+   the guarantee working, but it must be decided and tested as its own legs,
+   including what happens to two-script duplicates already stored when the
+   guard tightens).
+
+Nothing in §§0–8, in A1, or in A1.1 is altered by this entry.
