@@ -22,6 +22,79 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-08-19 · THE HOSPITAL SHELL DESIGN IS RECORDED — docs only, nothing
+built.** The owner used the merged Reception screen for the first time and
+could not tell how the system worked: four findings, one diagnosis — the shell
+is still an ICU shell. Per 03's design-before-build rule the design is now the
+versioned source (`docs/design/hospital-shell.md`) and the build starts only
+from it. This PR carries three commits: the design alone, the ward.md A7
+append, this record.
+
+**WHAT THE DESIGN RULES** (the full statements and their file:line evidence
+live in the document; this is the index):
+- **Navigation grouped by OWNERSHIP** — the owner's rule, and it answered both
+  of the report's open judgment calls: a screen owned by one module sits under
+  that module, a hospital-wide screen sits in a hospital-wide group. Patient
+  Flow (Reception · Discharges & Transfers — the entrance and the exit,
+  overruled OUT of ICU because shared ADT under a module banner is a row that
+  moves between releases), Ward and OR (empty groups render nothing until
+  their screens ship), ICU (ICU Beds · Bed Admission · Statistics), Patient
+  Chart (the chart follows the PATIENT — confirmed as its own group; four
+  modules are anchors, not a quota), Records, Administration.
+- **The wordmark becomes AURORA HIS** (three sites + the browser title; the
+  sidebar footer already said it) with a do-not-rename ledger: `/api/icu/*`,
+  the `AuroraIcu.Api` assembly, the `AuroraServer` service identity the
+  updater resolves installs FROM, the installer AppName, and the three
+  ICU-computed measures — each with its verified reason.
+- **A disabled control names its blocker** — `formOk` becomes a blockers list
+  rendered at the button (`role="status"` + `aria-describedby`), split
+  *unfilled* (remedy on this screen) vs *unfillable* (remedy named:
+  Configuration, User Accounts, the unreachable server). The empty
+  ward-doctor-list case — reachable on any install before doctor accounts
+  exist, currently surfaced NOWHERE — is a first-class case. The CI
+  required-fields gate moves in the same PR, teeth re-measured, with the
+  binding sentence recorded: **if the gate fails after the restructure, the
+  gate is fixed to match the new shape, never loosened to pass.** The ICU
+  Admissions form gets the same component as its own PR BEFORE the Ward build
+  starts — Ward copies whatever convention exists when it starts.
+- **One admission entry per authority** — the Admissions nav row gates on
+  `adt.admit` and renames to Bed Admission (the by-bed discriminator), route
+  gate unchanged so deep links resolve, distinct icons, and the Decision C
+  Reception pointer deleted deliberately rather than orphaned.
+- **Inline patient search, endpoint first** — the search endpoint's rewrite
+  (it materialises both tables per call, filters in memory, limits after the
+  scan, then issues ~2 queries per returned card) precedes any client change;
+  the inline search queries the SINGLE field being typed, never renders a
+  sentence meaning "no such patient exists" (the current "No patient
+  matches…" sentence leaves WITH the search box it belongs to — a decision,
+  not an accident), and carries a monotonic request id, applied also to the
+  two shipped debounce sites (closing the class, not the instance). **The
+  stated residual: the rewritten search is still NOT indexed** — `LIKE '%q%'`
+  sequential-scans Postgres; the pg_trgm option is costed in the design
+  against both shipping bundles (`postgres:16-alpine` and the EDB
+  binaries-only zip), trusted-extension mechanics included, adoption
+  deliberately deferred.
+- **Ward's two clears** are now in `docs/design/ward.md` as amendment A7
+  (pure append — the original 25,713 bytes hash identically before and after,
+  0 deletions): the PatientHistory "no non-ICU records" scope statement and
+  both ICU-scoped AI prompts, corrected in the Ward build, not before, not
+  silently after.
+
+**BUILD ORDER, as approved:** 1 this PR → 2 endpoint rewrite → 3 shell PR
+(nav + wordmark + admission-entry fixes) → 4 blockers PR → 5 inline-search PR
+→ 6 Admissions-form blockers PR → then Ward. Every build PR ends with a
+walkthrough a person actually follows — the discipline this arc exists
+because of.
+
+**Flagged, not fixed (03: doc contradictions are flagged for the owner):**
+03 says the "Last updated / current through" marker at the top of this file is
+refreshed with each update, but the newest such marker (2026-08-17, mid-file)
+sits below four 08-18 records that were prepended without refreshing it — the
+practice has drifted to dated record headers with no separate top marker.
+
+**Files.** `docs/design/hospital-shell.md` (new); `docs/design/ward.md` (A7,
+pure append); this record. No code.
+
 **2026-08-18 · STEP 6 — THE INPATIENT RECEPTION SCREEN (`/reception`).** The
 ward's front door: find or register a patient, open the admission, stop. First
 UI of the Inpatient Reception arc; every server capability it consumes was
