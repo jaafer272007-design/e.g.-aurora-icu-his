@@ -502,6 +502,11 @@ static class VocabApi
             if (value.Length == 0) return ApiError.BadRequest("value is required");
             if (value.Length > FormularyLogic.MaxTextLength)
                 return ApiError.BadRequest($"value exceeds {FormularyLogic.MaxTextLength} characters");
+            /* \d KEPT DELIBERATELY (the one survivor of the [0-9]
+               class fix): this match gates a REFUSAL, so Unicode-wide \d is
+               the SAFE direction — 'q٦h' reads as q6h to the humans this
+               guard protects, and narrowing to [0-9] would let it become a
+               named frequency that shadows the structural meaning. */
             if (System.Text.RegularExpressions.Regex.IsMatch(value, @"^q\d+h$"))
                 return ApiError.BadRequest("structured q<n>h frequencies are built in (q1h-q48h) — add NAMED frequencies only");
             if (db.NamedFrequencies.FirstOrDefault(f => f.Value == value) is NamedFrequencyRow existing)

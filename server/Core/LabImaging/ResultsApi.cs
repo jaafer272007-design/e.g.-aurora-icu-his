@@ -497,7 +497,7 @@ static class ResultsApi
             if (!ResultsLogic.ImagingModalities.Contains(modality))
                 return ApiError.BadRequest($"modality must be one of: {string.Join(", ", ResultsLogic.ImagingModalities)}");
             var performedAt = (req.PerformedAt ?? "").Trim();
-            if (!System.Text.RegularExpressions.Regex.IsMatch(performedAt, @"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+            if (!System.Text.RegularExpressions.Regex.IsMatch(performedAt, @"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$")
                 || !DateTime.TryParse(performedAt, System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var performed))
                 return ApiError.BadRequest("performedAt must be a real 'yyyy-MM-dd HH:mm' timestamp (UTC) — when the study was performed");
@@ -718,7 +718,7 @@ static class ResultsApi
             if (req.PerformedAt is not null)
             {
                 var performedAt = req.PerformedAt.Trim();
-                if (!System.Text.RegularExpressions.Regex.IsMatch(performedAt, @"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+                if (!System.Text.RegularExpressions.Regex.IsMatch(performedAt, @"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$")
                     || !DateTime.TryParse(performedAt, System.Globalization.CultureInfo.InvariantCulture,
                         System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var performed))
                     return ApiError.BadRequest("performedAt must be a real 'yyyy-MM-dd HH:mm' timestamp (UTC) — when the study was performed");

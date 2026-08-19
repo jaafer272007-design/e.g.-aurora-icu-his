@@ -56,7 +56,7 @@ static class MarSchedule
     public static Parsed Parse(MedicationDto m)
     {
         if (m.Prn) return new(Kind.Prn, 0);
-        var q = System.Text.RegularExpressions.Regex.Match(m.Frequency, @"^q(\d+)h$");
+        var q = System.Text.RegularExpressions.Regex.Match(m.Frequency, @"^q([0-9]+)h$");
         if (q.Success && int.TryParse(q.Groups[1].Value, out var h) && h is >= 1 and <= 168)
             return new(Kind.Interval, h);
         return m.Frequency switch
@@ -82,7 +82,7 @@ static class MarSchedule
                 System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
                 out var dated))
             return dated;
-        var m = System.Text.RegularExpressions.Regex.Match(t, @"^(?:D-(\d+) )?(\d{2}):(\d{2})$");
+        var m = System.Text.RegularExpressions.Regex.Match(t, @"^(?:D-([0-9]+) )?([0-9]{2}):([0-9]{2})$");
         if (!m.Success) return null;
         var days = m.Groups[1].Success ? int.Parse(m.Groups[1].Value) : 0;
         return nowUtc.Date.AddDays(-days).AddHours(int.Parse(m.Groups[2].Value)).AddMinutes(int.Parse(m.Groups[3].Value));

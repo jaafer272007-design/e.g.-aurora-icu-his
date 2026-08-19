@@ -128,7 +128,7 @@ static class AdtApi
                one day's admissions. */
             var admittedOn = ctx.Request.Query["admittedOn"].ToString().Trim();
             if (admittedOn.Length > 0
-                && !System.Text.RegularExpressions.Regex.IsMatch(admittedOn, @"^\d{4}-\d{2}-\d{2}$"))
+                && !System.Text.RegularExpressions.Regex.IsMatch(admittedOn, @"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))
                 return ApiError.BadRequest("admittedOn must be a date formatted yyyy-MM-dd (UTC)");
             var q = db.Encounters.AsNoTracking().AsQueryable();
             if (patientId.Length > 0) q = q.Where(e => e.PatientId == patientId);
@@ -493,8 +493,21 @@ static class AdtApi
                 mrn = req.Mrn.Trim();
                 if (mrn == "")
                     return ApiError.BadRequest("clearing an MRN is not an identity correction — provide the corrected number, or regenerateMrn to have Aurora assign one");
-                if (!System.Text.RegularExpressions.Regex.IsMatch(mrn, @"^MRN-\d{6}$"))
-                    return ApiError.BadRequest("a corrected MRN must use the canonical MRN-###### format — free-form record numbers are the class of error this path removes; use regenerateMrn to have Aurora assign one");
+                /* [0-9], NEVER \d: .NET \d matches any Unicode decimal
+                   digit, so ^MRN-\d{6}$ accepted MRN-٠٠٠١٢٣ — an MRN whose
+                   digits Aurora never generates, that MRN search (exact
+                   ASCII ==) never finds, and that the uniqueness guard
+                   never collides with. The non-ASCII-digit case gets its
+                   own message because to the person who typed it the value
+                   LOOKS canonical — the generic format message would read
+                   as wrong. */
+                if (!System.Text.RegularExpressions.Regex.IsMatch(mrn, @"^MRN-[0-9]{6}$"))
+                    return System.Text.RegularExpressions.Regex.IsMatch(mrn, @"^MRN-\d{6}$")
+                        ? ApiError.BadRequest(
+                            $"'{mrn}' spells the six digits in non-ASCII digits — an MRN's digits are "
+                            + "the ASCII digits 0-9 (Aurora generates them that way, and a value stored "
+                            + "otherwise would never be found by MRN); retype the number in Western digits")
+                        : ApiError.BadRequest("a corrected MRN must use the canonical MRN-###### format — free-form record numbers are the class of error this path removes; use regenerateMrn to have Aurora assign one");
             }
             if (!anyName && nationalId is null && fileNumber is null && dob is null && mrn is null && !regenerateMrn)
                 return ApiError.BadRequest("nothing to correct — provide the structured name, nationalId, fileNumber, dateOfBirth, mrn, and/or regenerateMrn");
@@ -1108,7 +1121,7 @@ static class AdtApi
             if (!string.IsNullOrWhiteSpace(req.AdmittedAt))
             {
                 var stamp = req.AdmittedAt.Trim();
-                if (!System.Text.RegularExpressions.Regex.IsMatch(stamp, @"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$")
+                if (!System.Text.RegularExpressions.Regex.IsMatch(stamp, @"^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}$")
                     || !DateTime.TryParse(stamp, System.Globalization.CultureInfo.InvariantCulture,
                         System.Globalization.DateTimeStyles.AssumeUniversal
                         | System.Globalization.DateTimeStyles.AdjustToUniversal, out var admitted))

@@ -45,7 +45,12 @@ static class FormularyLogic
 
     /** the structured q<1-48>h pattern — code, never data */
     public static bool IsStructuredFrequency(string f) =>
-        System.Text.RegularExpressions.Regex.Match(f, @"^q(\d{1,2})h$") is { Success: true } m
+        /* [0-9], deliberately NARROWER than the naming guard's \d
+           (VocabApi, named-frequency create): the acceptor admits only what
+           MAR can parse; the guard refuses anything a human could READ as
+           structural, Arabic-Indic digits included. The asymmetry is the
+           point — do not unify them. */
+        System.Text.RegularExpressions.Regex.Match(f, @"^q([0-9]{1,2})h$") is { Success: true } m
         && int.TryParse(m.Groups[1].Value, out var h) && h is >= 1 and <= 48;
 
     /** the named row exists but is retired — the 409 state at order

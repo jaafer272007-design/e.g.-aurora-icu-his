@@ -965,7 +965,7 @@ public static class BackupService
      *  conversion path like every other stamp) */
     static string? NextScheduled()
     {
-        var m = System.Text.RegularExpressions.Regex.Match(Schedule, @"daily (\d{2}):(\d{2})");
+        var m = System.Text.RegularExpressions.Regex.Match(Schedule, @"daily ([0-9]{2}):([0-9]{2})");
         if (!m.Success) return null;
         try
         {

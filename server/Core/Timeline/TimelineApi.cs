@@ -83,7 +83,7 @@ static class TimelineLogic
             dayOffset = (dated.Date - DateTime.UtcNow.Date).Days;
         else
         {
-            var m = System.Text.RegularExpressions.Regex.Match(t, @"^D-(\d+)");
+            var m = System.Text.RegularExpressions.Regex.Match(t, @"^D-([0-9]+)");
             dayOffset = m.Success ? -int.Parse(m.Groups[1].Value) : 0;
         }
         var hm = t.Split(' ')[^1].Split(':');

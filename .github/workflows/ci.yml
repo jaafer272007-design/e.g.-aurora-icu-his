@@ -568,6 +568,17 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OFF" "$API/api/icu/adt/encounters?admittedOn=18-08-2026")
           [ "$rc" = "400" ] || die "a malformed admittedOn -> HTTP $rc, expected 400"
           echo "  ok   malformed admittedOn -> 400 (four-code discipline holds)"
+          # the \d class fix's SECOND live hole: an Arabic-Indic-digit date
+          # passed ^\d{4}-\d{2}-\d{2}$ and then prefix-matched nothing —
+          # a silent empty 200 where the malformed-date 400 was meant to fire
+          # ٢٠٢٦-٠٨-١٩, percent-encoded so the assertion does not depend on
+          # the runner shell's byte handling
+          out=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $OFF" \
+            "$API/api/icu/adt/encounters?admittedOn=%D9%A2%D9%A0%D9%A2%D9%A6-%D9%A0%D9%A8-%D9%A1%D9%A9")
+          [ "$(echo "$out" | tail -1)" = "400" ] || die "an Arabic-Indic-digit admittedOn -> HTTP $(echo "$out" | tail -1), expected 400"
+          echo "$out" | head -1 | grep -q "formatted yyyy-MM-dd" \
+            || die "the 400 was NOT the date-format refusal: $(echo "$out" | head -1)"
+          echo "  ok   Arabic-Indic-digit admittedOn -> 400 naming the format (was a silent empty 200 under \d)"
 
           # ---- THE REQUIREMENT FOLLOWS THE BED ------------------------------
           # diagnosis and attending are required WHEN A BED IS NAMED and
@@ -676,6 +687,43 @@ jobs:
           [ "$(PSQL "select \"EventsJson\"::json->-1->>'action' from \"Encounters\" where \"EncounterId\" = '$SRC'")" = "transferred" ] \
             || die "the transfer action string changed"
           echo "  ok   real bed-to-bed transfer -> 200, audit detail exactly '$detail' — unchanged"
+
+          # ---- A TYPED MRN REFUSES NON-ASCII DIGITS (the \d class fix) ------
+          # .NET's \d matches ANY Unicode decimal digit, so the canonical-MRN
+          # gate ^MRN-\d{6}$ accepted MRN-٠٠٠١٢٣ — six Arabic-Indic digits.
+          # An identity correction could store an MRN Aurora's generator never
+          # produces, MRN search (exact ASCII ==) never finds, and the
+          # uniqueness guard never collides with. The gate is now [0-9]; the
+          # refusal is asserted BY MESSAGE (03: a five-digit MRN shares the
+          # 400), and the ASCII direction is asserted too — the refusal alone
+          # would also pass if correction were simply broken.
+          echo "MRN CORRECTION REFUSES NON-ASCII DIGITS:"
+          MRNPID=$(PSQL "select \"PatientId\" from \"AdtPatients\" where \"NameFirst\" = 'Snap' and \"NameFamily\" = 'Case'")
+          [ -n "$MRNPID" ] || die "the label-snapshot patient is missing — the MRN leg has no subject"
+          MRN_BEFORE=$(PSQL "select \"Mrn\" from \"AdtPatients\" where \"PatientId\" = '$MRNPID'")
+          for BAD in "MRN-٠٠٠١٢٣" "MRN-۰۰۰۱۲۳"; do
+            out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+              -d "{\"mrn\":\"$BAD\",\"reason\":\"CI digit-class probe\"}" "$API/api/icu/adt/patients/$MRNPID/identity")
+            [ "$(echo "$out" | tail -1)" = "400" ] || die "$BAD -> HTTP $(echo "$out" | tail -1), expected 400: $(echo "$out" | head -1)"
+            echo "$out" | head -1 | grep -q "non-ASCII digits" \
+              || die "the 400 was NOT the digit refusal: $(echo "$out" | head -1)"
+          done
+          [ "$(PSQL "select \"Mrn\" from \"AdtPatients\" where \"PatientId\" = '$MRNPID'")" = "$MRN_BEFORE" ] \
+            || die "a refused correction CHANGED the MRN"
+          echo "  ok   MRN-٠٠٠١٢٣ and MRN-۰۰۰۱۲۳ -> 400 naming the digit rule, MRN unchanged ($MRN_BEFORE)"
+          # the ASCII control value must not collide with a randomly generated
+          # MRN (NextMrn is Random.Shared) — pick a proven-free candidate
+          CTRL=""
+          for cand in MRN-424242 MRN-424243 MRN-424244; do
+            [ -z "$(PSQL "select 1 from \"AdtPatients\" where \"Mrn\" = '$cand'")" ] && { CTRL=$cand; break; }
+          done
+          [ -n "$CTRL" ] || die "all three control MRNs are taken — investigate the seed"
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"mrn\":\"$CTRL\",\"reason\":\"CI digit-class ASCII control\"}" "$API/api/icu/adt/patients/$MRNPID/identity")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "the ASCII control -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"Mrn\" from \"AdtPatients\" where \"PatientId\" = '$MRNPID'")" = "$CTRL" ] \
+            || die "the ASCII correction did not store"
+          echo "  ok   $CTRL (ASCII control) -> 200, stored — the gate narrowed, correction still works"
 
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #
