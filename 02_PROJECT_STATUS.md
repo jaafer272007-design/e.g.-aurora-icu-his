@@ -2,7 +2,9 @@
 
 **Last updated: 2026-08-19 · current through the Unicode-digit class fix
 (the MRN gate, the admittedOn filter, the appliance backup schedule, and the
-full `\d` sweep with its one deliberate survivor — the record below), after the search-endpoint
+full `\d` sweep with its one deliberate survivor — the record below, now
+carrying the owner's defence-in-depth note) and the `03`
+acceptors-narrow-guards-wide rule, after the search-endpoint
 rewrite (#215) and the Arabic-normalisation finding (design A2).** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
@@ -65,6 +67,19 @@ re-verified before anything was changed.
   SILENT EMPTY 200 where the malformed-date 400 was designed to fire. The
   worse of the two shapes: nothing refused, nothing wrong on screen, the
   answer simply false. Now `[0-9]` → the intended 400.
+
+*[Addition, owner's ruling 2026-08-19 — recorded in the owner's words because
+it names the mechanism: "Defence in depth hid the missing depth." Both live
+holes were invisible from every browser path, for two different reasons that
+look identical from a chair in reception: the MRN gate was masked by the
+client's own validation (`IdentityDialog.tsx` checks `/^MRN-\d{6}$/`, and
+JavaScript's `\d` is ASCII-only — the stricter engine sat in FRONT of the
+weaker one), and the admittedOn filter was masked because the client never
+lets a date be typed at all (Reception computes "today" itself). So the
+product LOOKED correct precisely because the UI layer was strong — which is
+what kept anyone from noticing the API layer, the layer that is actually the
+guard, was not. The owner's ruling also promoted the sweep's two opposite
+direction calls into `03` as a standing rule: ACCEPTORS NARROW, GUARDS WIDE.]*
 
 **THE SWEEP TABLE.** Narrowed to `[0-9]` (outcome-identical for all ASCII
 input — `[0-9]` ⊂ `\d` — and structurally unable to admit non-ASCII digits):
