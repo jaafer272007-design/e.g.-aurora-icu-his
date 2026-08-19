@@ -151,7 +151,18 @@ export function Discharges() {
                         <small>{e.attending}{e.admittedAt ? ` · admitted ${displayStamp(e.admittedAt)}` : ''}</small>
                       </span>
                       <span className="disacts">
-                        {canTransfer && (
+                        {/* NO TRANSFER WITHOUT A BED TO LEAVE. Reception opens
+                            episodes with no bed, and this row used to offer
+                            Transfer on them — the dialog read "Move X from  to:"
+                            with an empty source, and the server wrote " → B-05"
+                            into the permanent audit. The server now refuses
+                            (409); the affordance goes with it, because offering
+                            an action that can only fail is its own defect.
+                            Giving a bed to a patient awaiting one is bed
+                            ASSIGNMENT (ward design §3.1), a different path that
+                            is not built yet — when it is, its control belongs on
+                            the awaiting-bed list, not here. */}
+                        {canTransfer && e.bedId !== '' && (
                           <button className="disact" onClick={() => { setTransferId(transferId === e.encounterId ? null : e.encounterId); setTargetBed(''); setRowError(null) }}>
                             Transfer
                           </button>
