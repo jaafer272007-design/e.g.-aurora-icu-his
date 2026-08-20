@@ -190,7 +190,7 @@ static class Rbac
            decision grants it to BOTH profiles (unit command + facility
            administration). Beds carry no clinical data. */
         ["Administrator"] = ["admin.view", "patients.view", "identity.correct", "hospital.configure",
-            "beds.manage", "admissions.create"],
+            "beds.manage", "admissions.create", "backup.status.view"],
         /* the highest-privilege authority in the system: whoever holds it
            controls who can reach patient data — while never reaching it
            themselves (NO clinical atoms, not even patients.view; the
@@ -201,7 +201,18 @@ static class Rbac
            profile ONLY; every clinical profile 403s on the Backup area.
            Consistent with the exclusion above: backups are opaque
            encrypted blobs — managing them never reads patient data. */
-        ["SystemAdministrator"] = ["users.manage", "users.view", "backup.manage"],
+        /* backup.status.view (backup ruling 2, 2026-08-20): the READ-ONLY
+           status atom, SPLIT from backup.manage on the labcatalog/
+           imagingcatalog precedent — two atoms kept apart so a later split
+           costs a row edit. Reading "your last backup was 6 days ago" is
+           not the same authority as restoring an archive. It rides on BOTH
+           profiles below because the person who should panic about no
+           backups is not necessarily the person who runs restores; the
+           mutating surface (run/verify/restore/rotate — backup.manage)
+           stays SystemAdministrator-only, and the status payload is
+           operational metadata, never patient data, so the office
+           profile's clinical exclusion is untouched. */
+        ["SystemAdministrator"] = ["users.manage", "users.view", "backup.manage", "backup.status.view"],
         /* formulary.manage (Layer 4): maintaining the drug formulary is
            PHARMACY's authority — the same polarity flip as results.create
            on Ancillary (doctor/nurse/administrator tokens are 403'd on

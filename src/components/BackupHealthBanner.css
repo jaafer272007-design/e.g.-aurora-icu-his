@@ -1,0 +1,47 @@
+/* backup ruling 2 — the shell-level backup-health banner. Fixed TOP strip
+   (the bottom strip belongs to the staging/dev EnvironmentBanner), sitting
+   over every screen for whoever holds backup.status.view. No close control
+   by design — it is not dismissible while the condition holds. */
+.bkbanner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  background: linear-gradient(120deg, #7a1220, #8f1a12);
+  color: #ffe3e6;
+  border-bottom: 1px solid rgba(255, 120, 130, 0.55);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+.bkbadge {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 2px 9px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 160, 168, 0.6);
+  white-space: nowrap;
+}
+.bkdetail { font-weight: 600; line-height: 1.35; max-width: 72ch; }
+.bkgo {
+  min-height: 28px;
+  padding: 3px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 200, 205, 0.7);
+  background: rgba(0, 0, 0, 0.25);
+  color: #ffe3e6;
+  font-weight: 700;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.bkgo:hover, .bkgo:focus-visible { background: rgba(0, 0, 0, 0.45); }
+/* printed clinical documents are governed by the Print Center's layout —
+   an infrastructure banner never prints (same rule as the env strip) */
+@media print { .bkbanner { display: none; } }

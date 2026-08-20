@@ -1,10 +1,9 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-19 · current through backup-registration ruling 1
-(provisioning claims are now measured: verify-after-create on the nightly
-task and the firewall rule, create-before-remove, per-run transcript
-headers — the record below), after the \d class fix (#216) and the
-acceptors-narrow-guards-wide rule (#217).** This line is THE recency marker and is
+**Last updated: 2026-08-20 · current through backup-registration ruling 2
+(the `backup.status.view` atom split from `backup.manage`, and the
+shell-level backup-health banner — push, not pull; the record below), after
+ruling 1's provisioning measurement (#218).** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -31,6 +30,66 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-20 · BACKUP-REGISTRATION RULING 2 — the truth comes to the
+person: `backup.status.view` split from `backup.manage`, and a shell-level
+banner on `none`/`stale` that no one has to go looking for.** Server RBAC +
+one re-gated read + a new shell component; the structural half of the
+two-things-at-once failure recorded under ruling 1.
+
+**THE ATOM.** `backup.status.view` — READ-ONLY, split from `backup.manage`
+on the labcatalog/imagingcatalog precedent (two atoms kept apart so a later
+split costs a row edit). Reading "your last backup was 6 days ago" is not
+the same authority as restoring an archive. Held by the office
+**Administrator** (Hospital Administrator title) AND
+**SystemAdministrator** — the person who should panic about no backups is
+not necessarily the person who runs restores. `Rbac.cs` is the source;
+`session.ts` and 01's matrix updated as mirrors (the mirror discipline).
+Exactly ONE endpoint moved to it: `GET /api/backup/status`. Every mutating
+endpoint (`run`/`verify`/`test-restore`/`restore`/`rotate-key`), `history`,
+`events`, and the `/backup` route itself stay `backup.manage` —
+SystemAdministrator only.
+
+**THE BANNER (`BackupHealthBanner`, mounted at the shell, above every
+route).** Push, not pull: a screen nobody opens is exactly what failed on
+the owner's production install, so the answer is not a better screen.
+- Fires on health **`none`** (no backup has ever succeeded) or **`stale`**
+  (newest breaches the 24h RPO) — the owner's ruling, exactly. The lesser
+  states (`failed` with a fresh good copy, the `offsite-*` tiers) stay the
+  dashboard's business: a banner that cries on every degradation teaches
+  people to ignore the banner.
+- **Persistent and NOT dismissible while the condition holds** — no close
+  control exists. It leaves only when a fresh read reports the condition
+  gone (the shared LIVE_POLL_MS cadence).
+- **Deliberately NOT in the clinical Alerts centre** — an infrastructure
+  alert in a clinical stream teaches people to ignore the stream, the same
+  reason a boarding reason recorded on 100% of admissions records nothing.
+- **An unanswered read renders nothing**: the banner asserts a MEASURED
+  condition, never a guess — reassurance may not default (display-honesty)
+  and neither may alarm. The API-unreachable state has its own app-wide
+  surface (EnvironmentGate); this component does not duplicate it.
+- The `Backup & Recovery →` link renders only for a session that also
+  holds `backup.manage` — a button to a route the holder cannot open would
+  be a dead end dressed as help (the Admissions-pointer precedent).
+- Hidden in print CSS — printed clinical documents are governed by the
+  Print Center's layout, same rule as the environment strip.
+
+**VERIFIED — live, all four directions, then rendered, all three:**
+against a booted server: Hospital Administrator GET `/api/backup/status` →
+200 (health `none`, the loud detail) · the same session POST
+`/api/backup/run` → 403 (the read atom carries no manage authority) ·
+SystemAdministrator → 200 · Staff Nurse → 403. Then rendered through the
+real bundle in Chromium: the office Administrator SEES the banner (NO
+BACKUP EXISTS, no manage link) · a Staff Nurse sees NO banner · the
+SystemAdministrator sees it WITH the Backup & Recovery link. In CI,
+`production-seed` gains a three-direction leg (office admin reads status
+200 with a recognised `health` value asserted from the body; office admin
+CANNOT run a backup, 403; Staff Nurse cannot read status, 403) — any one
+direction alone is compatible with the split being wrong.
+
+**Ruling 3 (the windows-latest CI leg that RUNS provisioning's
+registration step and asserts the task exists, with its positive control)
+follows as its own PR once this merges — the last of the three.**
 
 **2026-08-19 · BACKUP-REGISTRATION RULING 1 — the provisioning claims are
 now MEASURED: verify-after-create on the nightly task and the firewall rule,

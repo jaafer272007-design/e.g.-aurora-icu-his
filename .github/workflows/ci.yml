@@ -725,6 +725,23 @@ jobs:
             || die "the ASCII correction did not store"
           echo "  ok   $CTRL (ASCII control) -> 200, stored — the gate narrowed, correction still works"
 
+          # ---- THE BACKUP-STATUS ATOM SPLIT (backup ruling 2) ----------------
+          # backup.status.view is READ-ONLY, split from backup.manage: the
+          # office Administrator reads the health the shell banner shows and
+          # CANNOT run a backup; a clinical profile can do neither. All three
+          # directions, because any one alone is compatible with the split
+          # being wrong (a widened gate would also pass the read).
+          echo "BACKUP-STATUS ATOM SPLIT:"
+          out=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $OFF" "$API/api/backup/status")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "office admin GET /backup/status -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          echo "$out" | head -1 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["health"] in ("ok","stale","failed","none","offsite-none","offsite-stale","offsite-failed"), d; print("  ok   office Administrator reads backup status (health: " + d["health"] + ")")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/backup/run")
+          [ "$rc" = "403" ] || die "office admin POST /backup/run -> HTTP $rc, expected 403 — the READ atom must not carry manage authority"
+          echo "  ok   office Administrator CANNOT run a backup (403) — the split is real"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $RN" "$API/api/backup/status")
+          [ "$rc" = "403" ] || die "Staff Nurse GET /backup/status -> HTTP $rc, expected 403"
+          echo "  ok   clinical profile (Staff Nurse) cannot read it (403)"
+
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #
   # Why this job exists: aurora-update.ps1 shipped with PowerShell 7 ternary

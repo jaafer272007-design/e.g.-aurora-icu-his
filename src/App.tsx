@@ -29,6 +29,7 @@ import { PrintDocument } from './pages/PrintCenter/PrintDocument'
 import { Login } from './pages/Login/Login'
 import { RequireSession } from './components/RequireSession'
 import { EnvironmentBanner, EnvironmentGate } from './components/EnvironmentChrome'
+import { BackupHealthBanner } from './components/BackupHealthBanner'
 import { getSession, landingRouteOf } from './lib/session'
 
 /* Route map (all except /login require a session; each route also requires
@@ -74,6 +75,12 @@ export default function App() {
        production bundles. */
     <EnvironmentGate>
       <BrowserRouter basename={BASENAME}>
+      {/* backup ruling 2: the shell-level backup-health banner — push, not
+          pull. Inside the router (it needs location to re-check the session
+          across login/logout and navigate() for the manage link), above the
+          routes so it overlays EVERY screen for whoever holds
+          backup.status.view. */}
+      <BackupHealthBanner />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<HomeRedirect />} />
