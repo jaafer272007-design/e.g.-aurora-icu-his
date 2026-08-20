@@ -734,7 +734,7 @@ jobs:
           echo "BACKUP-STATUS ATOM SPLIT:"
           out=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $OFF" "$API/api/backup/status")
           [ "$(echo "$out" | tail -1)" = "200" ] || die "office admin GET /backup/status -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
-          echo "$out" | head -1 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["health"] in ("ok","stale","failed","none","offsite-none","offsite-stale","offsite-failed"), d; print(f"  ok   office Administrator reads backup status (health: {d[\"health\"]})")'
+          echo "$out" | head -1 | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["health"] in ("ok","stale","failed","none","offsite-none","offsite-stale","offsite-failed"), d; print("  ok   office Administrator reads backup status (health: " + d["health"] + ")")'
           rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/backup/run")
           [ "$rc" = "403" ] || die "office admin POST /backup/run -> HTTP $rc, expected 403 — the READ atom must not carry manage authority"
           echo "  ok   office Administrator CANNOT run a backup (403) — the split is real"
