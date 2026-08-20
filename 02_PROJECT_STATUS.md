@@ -1,11 +1,10 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-19 · current through the Unicode-digit class fix
-(the MRN gate, the admittedOn filter, the appliance backup schedule, and the
-full `\d` sweep with its one deliberate survivor — the record below, now
-carrying the owner's defence-in-depth note) and the `03`
-acceptors-narrow-guards-wide rule, after the search-endpoint
-rewrite (#215) and the Arabic-normalisation finding (design A2).** This line is THE recency marker and is
+**Last updated: 2026-08-19 · current through backup-registration ruling 1
+(provisioning claims are now measured: verify-after-create on the nightly
+task and the firewall rule, create-before-remove, per-run transcript
+headers — the record below), after the \d class fix (#216) and the
+acceptors-narrow-guards-wide rule (#217).** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -32,6 +31,76 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-19 · BACKUP-REGISTRATION RULING 1 — the provisioning claims are
+now MEASURED: verify-after-create on the nightly task and the firewall rule,
+create-before-remove, and a transcript that can date its own claims.**
+Installer only (`aurora-provision.ps1`); rulings 2 (the structural
+`backup.status.view` atom + shell banner) and 3 (the windows-latest CI leg
+that runs provisioning and asserts the task exists) follow as their own PRs,
+in that order.
+
+**THE FIELD FINDING THIS EXECUTES.** On the owner's own production install,
+provision.log claims the nightly `AuroraBackup` task was registered at 02:00
+and the firewall opened — and NEITHER exists on that machine (no scheduled
+task matching "Aurora", no rule, cross-checked with `Get-ScheduledTask` and
+`schtasks`). The same day, the `\d` sweep independently found
+`appliance/run.ps1` swallowing a backup-registration throw into a yellow
+warning. Two signals, one class: **a backup registration that can fail
+without anyone being told.**
+
+**WHAT CHANGED — four things, all in the one script:**
+
+1. **The claim follows the measurement.** The old line announced
+   *"registering the automatic nightly backup"* BEFORE the attempt — an
+   intention, printed unconditionally, which is exactly what sat in the
+   owner's log above a machine with no task. The pre-line is now explicitly
+   an attempt marker (kept because the transcript's documented job is to
+   show WHERE a hidden-window run stalled), and the claim line prints only
+   after `Get-ScheduledTask` has actually seen the task, stating what was
+   found (name, state, schedule, script).
+2. **Verify after create, and REFUSE on absence.** If `Register-ScheduledTask`
+   returns but the task cannot be found, provisioning now FAILS, saying
+   plainly that the services are up but the hospital takes no automatic
+   backups, and what to fix. Prevent, not warn: a silent no-backups install
+   is the one defect this project cannot correct after the fact, and a loud
+   install failure gets a phone call where a yellow line gets ignored.
+3. **The firewall is create-before-remove.** The old remove-then-create was
+   a designed-in window where the machine has NO rule — that is not
+   idempotence. Windows permits several rules with one DisplayName, so the
+   correct rule is created first and the older instances removed by
+   instance id; the machine is never ruleless and the end state is still
+   exactly one correct rule. Verified after, same as the task, with the
+   same refuse-on-absence.
+4. **The transcript can date its own claims.** provision.log is APPEND
+   across runs, and on the owner's machine the strata were inseparable — we
+   could not tell which run's claims we were reading. Every run now gets an
+   8-hex run id; the start header, any FAILED line and the COMPLETE line all
+   carry it with a UTC timestamp.
+
+**WHY THIS IS THREE PRs AND NOT ONE — in this record because it is the
+shape of the failure, not a scheduling detail.** This failure needed TWO
+things to go wrong at once: the registration was never verified, and the
+truth about backups was reachable only by a person who chose to look at one
+screen behind one permission. Each is survivable alone — a verified
+registration makes the pull-only screen merely quiet; a pushed banner makes
+an unverified registration merely late to be noticed. Together they made a
+production hospital with no nightly backups indistinguishable from a healthy
+one. This PR closes the first half; ruling 2's atom + shell banner closes
+the second; ruling 3 makes the first half something CI can refuse rather
+than something we believe. Closing only the cheap half would have left the
+structure — nobody-need-ever-look — fully intact.
+
+**RECORDED, DELIBERATELY NOT FIXED HERE (owner: "not now"):** the
+uninstaller removes the `AuroraBackup` task but leaves the `Aurora ICU`
+firewall rule behind — real drift between install and uninstall, noted for
+the PR that next touches the uninstaller.
+
+**VERIFICATION HONESTY:** these edits are covered by the 5.1 parse gate
+(every installer .ps1 must parse under real Windows PowerShell 5.1) and by
+review; the RUNTIME proof — provisioning actually registering a task CI can
+find — is deliberately ruling 3's leg, not claimed here. This PR makes the
+script measure its own claims; ruling 3 makes CI measure the script.
 
 **2026-08-19 · `\d` IS NOT `[0-9]` IN .NET — the MRN gate and the admittedOn
 filter were live holes, ten sites are narrowed, ONE site deliberately keeps
