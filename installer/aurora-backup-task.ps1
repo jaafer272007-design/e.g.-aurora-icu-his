@@ -28,8 +28,13 @@ function Register-AuroraBackupTask {
   $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
   $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
     -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 10)
-  Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
-    -Principal $principal -Settings $settings -Force | Out-Null
+  # ===== POSITIVE CONTROL (backup ruling 3) - DO NOT MERGE THIS STATE =====
+  # The registration is deliberately a NO-OP for exactly one commit: the
+  # shape of the field failure (a run that claims and does nothing). The CI
+  # leg must go RED on this commit or the leg proves nothing. Reverted by
+  # the next commit; the two runs are the evidence.
+  # Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
+  #   -Principal $principal -Settings $settings -Force | Out-Null
   # VERIFY AFTER CREATE (ruling 1): the claim is a measurement or it is
   # nothing.
   $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
