@@ -281,8 +281,8 @@ PermissionProfile → Permissions (and Dashboard landing view):
 | Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, results.document, notes.document, ai.view, adt.admit, admissions.create, adt.discharge, observations.record, patients.measure, codestatus.set, attachments.view, attachments.add | /workspace |
 | SeniorDoctor         | everything Doctor has + results.correct, labcatalog.manage, ordersets.manage, observations.correct, observations.configure, assignments.manage, codestatus.manage, imagingcatalog.manage, beds.manage, dispositions.manage, isolation.manage, shifts.manage. HARD CONSTRAINT: the Consultant-tier authorities NEVER sit on the office Administrator profile | /workspace |
 | Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, handoff.document, results.view, results.document, ai.view, adt.transfer, observations.record, patients.measure, attachments.view, attachments.add | /nurse |
-| Administrator        | admin.view, patients.view, identity.correct, hospital.configure, beds.manage, admissions.create *(office profile: NO clinical panes — no orders/results/ai/attachments; users.manage moved to SystemAdministrator)* | /admin |
-| SystemAdministrator  | users.manage, users.view, backup.manage — and nothing else (no patients.view: access governance without patient-data reach) | /admin/users |
+| Administrator        | admin.view, patients.view, identity.correct, hospital.configure, beds.manage, admissions.create, backup.status.view *(office profile: NO clinical panes — no orders/results/ai/attachments; users.manage moved to SystemAdministrator)* | /admin |
+| SystemAdministrator  | users.manage, users.view, backup.manage, backup.status.view — and nothing else (no patients.view: access governance without patient-data reach) | /admin/users |
 | Pharmacist           | patients.view, orders.view, results.view, attachments.view, formulary.manage, frequencies.manage | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view, attachments.view | /beds |
 | Ancillary            | patients.view, orders.view, results.view, results.create, labcatalog.manage, imagingcatalog.manage, attachments.view, attachments.add | /beds |
@@ -324,6 +324,22 @@ made that mirror the decisive argument for deferring the atom: a row
 showing a capability the code does not honour is a false row. The mirror
 went stale in the opposite direction when step 5 (#204) added the atom to
 the code and not to this table; this closes it.]*
+
+*[Amendment, 2026-08-20 — `backup.status.view` (backup ruling 2). The
+READ-ONLY backup-status atom, SPLIT from `backup.manage` on the
+labcatalog/imagingcatalog precedent (two atoms kept apart so a later split
+costs a row edit): reading "your last backup was 6 days ago" is not the
+same authority as restoring an archive. Held by the office Administrator
+AND SystemAdministrator — the person who should panic about no backups is
+not necessarily the person who runs restores. It gates exactly one read
+(`GET /api/backup/status`) and the SHELL-LEVEL backup-health banner that
+read feeds: persistent, not dismissible while health is `none` or `stale`,
+rendered on every screen for whoever holds the atom, and deliberately NOT
+part of the clinical Alerts centre — an infrastructure alert in a clinical
+stream teaches people to ignore the stream. The `/backup` route and every
+mutating backup endpoint stay `backup.manage` (SystemAdministrator only);
+the status payload is operational metadata, never patient data, so the
+office profile's clinical exclusion is untouched.]*
 
 *[Amendment, 2026-08-18 — the route the atom now gates. `/reception` =
 `admissions.create` (Inpatient Reception step 6). It is the ONLY route

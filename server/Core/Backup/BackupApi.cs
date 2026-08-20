@@ -29,7 +29,13 @@ static class BackupApi
            external-disk status (honest, from the audit trail), key id. */
         app.MapGet("/api/backup/status", (ClaimsPrincipal user) =>
         {
-            if (Rbac.Deny(user, "backup.manage") is IResult denied) return denied;
+            /* backup.status.view, NOT backup.manage (backup ruling 2): the
+               one read the shell banner needs. The office Administrator
+               holds it — the person who should panic about no backups is
+               not necessarily the person who runs restores — while every
+               mutating endpoint below, and the /backup screen itself,
+               stay backup.manage. */
+            if (Rbac.Deny(user, "backup.status.view") is IResult denied) return denied;
             return Results.Json(BackupService.Status(), JsonOpts.Web);
         }).RequireAuthorization();
 
