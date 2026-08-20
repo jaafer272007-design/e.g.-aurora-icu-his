@@ -898,6 +898,44 @@ jobs:
       # build by reading installer\SHIPPED_VERSIONS.txt. These tests cover the
       # gate itself AND assert the committed ledger is valid and that
       # aurora.iss AppVer is not behind what has already shipped.
+      - name: Provisioning REGISTERS the backup task + firewall - measured on this real Windows runner (backup ruling 3)
+        shell: powershell
+        run: |
+          # The field failure all three backup rulings answer: a production
+          # install's log claimed the AuroraBackup task and firewall rule and
+          # the machine had NEITHER. This leg runs the SAME registration code
+          # aurora-provision.ps1 runs (dot-sourced from
+          # aurora-backup-task.ps1 - one implementation, no fork) and asserts
+          # the task and the rule actually exist afterwards. The probes see
+          # BOTH states of the world in one run (absence before, presence
+          # after, absence again after cleanup) - a vacuous probe that
+          # answers the same in both worlds cannot pass this leg.
+          $ErrorActionPreference = 'Stop'
+          . .\installer\aurora-backup-task.ps1
+          $taskName = 'AuroraBackup'
+          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+          if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) { Write-Host 'FAIL - task exists before registration; the absence half of the probe is broken'; exit 1 }
+          Write-Host 'ok   pre-state: no AuroraBackup task (the probe sees absence)'
+          $script = Join-Path $PWD 'installer\aurora-backup.ps1'
+          try { $t = Register-AuroraBackupTask -BackupScript $script -WorkingDir "$PWD" }
+          catch { Write-Host "FAIL - $($_.Exception.Message)"; exit 1 }
+          $found = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+          if (-not $found) { Write-Host 'FAIL - the leg cannot find the task the function claims it verified'; exit 1 }
+          Write-Host "ok   AuroraBackup task EXISTS on the runner (state: $($found.State))"
+          $tr = $found.Triggers | Select-Object -First 1
+          if ("$($tr.StartBoundary)" -notmatch 'T02:00') { Write-Host "FAIL - trigger is not 02:00: $($tr.StartBoundary)"; exit 1 }
+          Write-Host 'ok   daily at 02:00 confirmed from the REGISTERED trigger, not the script text'
+          try {
+            [void](Register-AuroraFirewallRule -Port 48620 -DisplayName 'Aurora ICU CI')
+            $rules = @(Register-AuroraFirewallRule -Port 48620 -DisplayName 'Aurora ICU CI')
+          } catch { Write-Host "FAIL - $($_.Exception.Message)"; exit 1 }
+          if ($rules.Count -ne 1) { Write-Host "FAIL - $($rules.Count) rule(s) after TWO registrations; create-before-remove must converge on exactly one"; exit 1 }
+          Write-Host 'ok   firewall rule exists, and TWO registrations converge on exactly ONE rule (never ruleless, never duplicated)'
+          Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+          Remove-NetFirewallRule -DisplayName 'Aurora ICU CI'
+          if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) { Write-Host 'FAIL - cleanup left the task behind'; exit 1 }
+          if (@(Get-NetFirewallRule -DisplayName 'Aurora ICU CI' -ErrorAction SilentlyContinue).Count -ne 0) { Write-Host 'FAIL - cleanup left the rule behind'; exit 1 }
+          Write-Host 'ok   cleanup verified - the probes saw BOTH states, so a vacuous probe cannot pass'
       - name: Release version-gate tests + the committed ledger, ON 5.1
         run: .\installer\test-version-gate.ps1
 

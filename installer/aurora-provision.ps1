@@ -88,6 +88,7 @@ function Fail([string]$m) {
   exit 1
 }
 . (Join-Path $PSScriptRoot 'aurora-ai-service.ps1')   # shared AI helpers (Register-AuroraAI, Find-AiModelGguf, ...)
+. (Join-Path $PSScriptRoot 'aurora-backup-task.ps1')  # backup-task + firewall registration - ONE implementation, shared with the CI leg (ruling 3)
 
 $server   = Join-Path $InstallDir 'server'
 $pgbin    = Join-Path $InstallDir 'pgsql\bin'
@@ -592,22 +593,20 @@ if (Test-Path $keyFilePath) {
 # the task, and a machine the task cannot be found on FAILS provisioning -
 # a hospital without this task takes no automatic backups at all, which is
 # the one failure this project cannot correct after the fact.
+# The registration itself lives in aurora-backup-task.ps1 (dot-sourced
+# above) so CI runs THE SAME code on a real Windows runner (ruling 3) -
+# never a copy that could drift.
 Say "step 7: nightly backup task (AuroraBackup, daily 02:00) - attempting registration"
 $backupScript = Join-Path $server 'scripts\aurora-backup.ps1'
-$action  = New-ScheduledTaskAction -Execute 'powershell.exe' `
-  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$backupScript`"" -WorkingDirectory $server
-$trigger = New-ScheduledTaskTrigger -Daily -At '02:00'
-$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
-$settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd `
-  -RestartCount 2 -RestartInterval (New-TimeSpan -Minutes 10)
-Register-ScheduledTask -TaskName 'AuroraBackup' -Action $action -Trigger $trigger `
-  -Principal $principal -Settings $settings -Force | Out-Null
-$backupTask = Get-ScheduledTask -TaskName 'AuroraBackup' -ErrorAction SilentlyContinue
-if (-not $backupTask) {
+$backupTask = $null
+try {
+  $backupTask = Register-AuroraBackupTask -BackupScript $backupScript -WorkingDir $server
+} catch {
   Fail ("the nightly backup task did NOT register: Register-ScheduledTask returned, but " +
     "Get-ScheduledTask finds no 'AuroraBackup' on this machine. Aurora's services are up, but " +
     "WITHOUT this task the hospital takes NO automatic backups. Fix Task Scheduler (service " +
-    "'Schedule' running?) and re-run provisioning, or register the task manually per the runbook.")
+    "'Schedule' running?) and re-run provisioning, or register the task manually per the runbook. " +
+    "($($_.Exception.Message))")
 }
 Say "step 7 VERIFIED: scheduled task 'AuroraBackup' exists (state: $($backupTask.State)) - nightly at 02:00, runs $backupScript"
 
@@ -626,16 +625,14 @@ Say "step 7 VERIFIED: scheduled task 'AuroraBackup' exists (state: $($backupTask
 # rule at all - and the final state is still exactly one correct rule
 # (Any profile + the chosen port), idempotent across re-provision.
 Say "step 8: Windows Firewall rule 'Aurora ICU' (TCP $Port, all profiles) - attempting create"
-$fwNew = New-NetFirewallRule -DisplayName 'Aurora ICU' -Direction Inbound -Action Allow `
-  -Protocol TCP -LocalPort $Port -Profile Any
-Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyContinue |
-  Where-Object { $_.InstanceID -ne $fwNew.InstanceID } |
-  Remove-NetFirewallRule -ErrorAction SilentlyContinue
-$fwCheck = @(Get-NetFirewallRule -DisplayName 'Aurora ICU' -ErrorAction SilentlyContinue)
-if ($fwCheck.Count -eq 0) {
+$fwCheck = @()
+try {
+  $fwCheck = @(Register-AuroraFirewallRule -Port $Port)
+} catch {
   Fail ("the firewall rule did NOT register: New-NetFirewallRule returned, but no rule named " +
     "'Aurora ICU' exists. Without it every other device gets 'site can't be reached' while the " +
-    "server itself looks healthy. Check the Windows Firewall service and re-run provisioning.")
+    "server itself looks healthy. Check the Windows Firewall service and re-run provisioning. " +
+    "($($_.Exception.Message))")
 }
 Say "step 8 VERIFIED: firewall rule 'Aurora ICU' exists ($($fwCheck.Count) rule(s), enabled: $($fwCheck[0].Enabled), TCP $Port, profile Any)"
 
