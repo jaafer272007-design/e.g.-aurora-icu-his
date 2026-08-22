@@ -1,10 +1,9 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-22 · current through Ward PR B — the governed
-Wards vocabulary (Area promoted, backfilled from the bed registry), the
-bed EDIT path (re-parent + position; identity immutable), and
-ward-to-ward proven as a DERIVATION of transfer (no new operation, no
-stored state) — the record below.** This line is THE recency marker and is
+**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-1 —
+build-identity instrument fixed (the frontend build.txt reader now reads
+LINE 1 of the two-line stamp) and root .env Git hygiene — the record
+below.** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -31,6 +30,39 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-22 · ENVIRONMENT SEPARATION PR-1 — instruments + configuration
+hygiene (owner-authorized item 1 of the approved sequence; no environment
+decision made, no deployment/database/seed behavior changed).** Three
+changes exactly. (1) `getFrontendBuild()` (`src/lib/api/index.ts`) read
+`build.txt` by trimming the WHOLE body and testing it against
+`^[0-9a-f]{40}$` — but every producer writes the §11-step-1 TWO-LINE stamp
+(sha, then environment), so the reader rejected every real stamp and
+Settings showed "no build stamp in this serve" wherever one existed. It now
+takes LINE 1 and validates it with the same unweakened 40-hex regex; the
+two-line contract and its producers are untouched. Failure-first proof, on
+the REAL module both times (esbuild-bundled `src/lib/api/index.ts`, real
+HTTP fixtures, 7 cases): pristine tree — the valid two-line stamp returns
+null (the defect, demonstrated) while legacy one-line passes and all
+invalid shapes (bad sha, UPPERCASE sha, SPA-fallback HTML, 404, empty)
+reject; fixed tree — the two-line stamp returns its sha and the other six
+outcomes are byte-identical. (2) `.gitignore`: a root `.env` /
+`.env.production` was COMMITTABLE (only `*.local` and `appliance/.env`
+were covered) while Vite auto-loads root env files into builds — now
+`/.env` + `/.env.*` with `!/.env.example`; proven by `git check-ignore`
+before/after (before: `.env` NOT ignored; after: ignored, the example
+still tracked, `appliance/.env` and `*.local` behavior unchanged). (3)
+`.env.example` rewritten to the CURRENT contract: the retired
+`VITE_API_BASE_URL` documentation and the demo-credential comment are
+gone; it now documents `VITE_APP_ENV` and points at the runtime-config
+mechanism (one line names the retirement so the variable does not return
+from memory). Regression: `tsc -b --force` clean; default and
+`VITE_APP_ENV=production` builds clean; the production bundle greps free
+of deployment hostnames and of the demo-password marker (compile-out
+intact); the three source gates (reception §3.2, awaiting-bed, vocab
+registration) pass. No server file touched. PR-2 (the `VITE_APP_ENV`
+build-time allow-list) and every owner decision from the environment
+separation report remain unimplemented, awaiting authorization.
 
 **2026-08-22 · WARD PR B — the Wards vocabulary, the bed edit path, and
 ward-to-ward as a derivation.** The last of ward.md A6.1's "genuinely new

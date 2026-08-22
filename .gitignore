@@ -1,6 +1,12 @@
 node_modules
 dist
 *.local
+# real root environment files are never committed — Vite auto-loads them
+# into builds, so a committed one is a silent build input (.env.example is
+# the tracked template and stays; appliance/.env has its own rule below)
+/.env
+/.env.*
+!/.env.example
 .DS_Store
 *.tsbuildinfo
 vite.config.js

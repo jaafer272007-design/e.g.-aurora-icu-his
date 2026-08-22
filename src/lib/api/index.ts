@@ -243,10 +243,13 @@ export async function getFrontendBuild(): Promise<string | null> {
   try {
     const res = await fetch(`${import.meta.env.BASE_URL}build.txt`, { cache: 'no-store' })
     if (!res.ok) return null
-    const text = (await res.text()).trim()
-    /* the SPA fallback serves index.html for unknown paths — only a real
-       40-hex commit SHA counts as a build stamp */
-    return /^[0-9a-f]{40}$/.test(text) ? text : null
+    /* build.txt is TWO lines since environment-separation §11 step 1 —
+       line 1 the commit SHA, line 2 the environment identity. The SHA is
+       line 1; testing the whole body rejected every real stamp. The SPA
+       fallback serves index.html for unknown paths — only a real 40-hex
+       commit SHA counts as a build stamp */
+    const firstLine = ((await res.text()).trim().split('\n')[0] ?? '').trim()
+    return /^[0-9a-f]{40}$/.test(firstLine) ? firstLine : null
   } catch {
     return null
   }
