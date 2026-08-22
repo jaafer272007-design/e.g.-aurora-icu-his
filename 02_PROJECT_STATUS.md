@@ -1,9 +1,9 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-20 · current through backup-registration ruling 2
-(the `backup.status.view` atom split from `backup.manage`, and the
-shell-level backup-health banner — push, not pull; the record below), after
-ruling 1's provisioning measurement (#218).** This line is THE recency marker and is
+**Last updated: 2026-08-20 · current through backup-registration ruling 3
+(registration is a MEASUREMENT: the windows-latest CI leg runs the same
+registration code provisioning runs and asserts the task and rule exist —
+the record below), completing the three-PR backup arc (#218, #219).** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -30,6 +30,50 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-20 · BACKUP-REGISTRATION RULING 3 — registration is a
+MEASUREMENT: CI runs the real registration on a real Windows runner and
+asserts the task and the rule exist, with a demonstrated positive
+control.** The last of the three backup PRs; converts "we believe
+provisioning registers the task" into something CI can refuse.
+
+**ONE IMPLEMENTATION, NO FORK.** Steps 7–8's registration+verification
+moved from inline provisioning code into `installer/aurora-backup-task.ps1`
+(`Register-AuroraBackupTask`, `Register-AuroraFirewallRule`) on the
+`aurora-ai-service.ps1` dot-source precedent. `aurora-provision.ps1`
+dot-sources it and keeps its exact ruling-1 behaviour (attempt marker →
+register → verify-after-create → Fail-on-absence with the operator
+message, now carrying the inner exception too); the CI leg runs THE SAME
+functions — a copy of the logic inside the leg would drift from the
+shipped code, which is the fork the no-fork rule forbids. `aurora.iss`
+ships the new file beside the other scripts; the 5.1 parse gate covers it
+automatically.
+
+**THE LEG** (`installer-powershell`, real Windows PowerShell 5.1 on
+windows-latest): the probes see BOTH states of the world in one run —
+absence before (task unregistered, probe confirms nothing there),
+presence after (`Get-ScheduledTask` finds `AuroraBackup`; the 02:00
+trigger is asserted from the REGISTERED trigger's StartBoundary, not from
+the script text), and absence again after cleanup. A vacuous probe that
+answers the same in both worlds cannot pass. The firewall half registers
+TWICE and asserts exactly ONE rule remains — create-before-remove's
+convergence measured, not argued — using a CI-only DisplayName so a real
+'Aurora ICU' rule is never touched. Failure-path discipline: cleanup is
+asserted, not assumed.
+
+**THE POSITIVE CONTROL (the owner's requirement: break it once, watch the
+leg go red, restore it).** Demonstrated on the PR itself as three runs —
+green (the leg proves registration), red (a commit makes the registration
+a no-op inside the shared function, the exact shape of the field failure,
+and the leg REFUSES with the verify's message), green again (the break
+reverted). The PR's run history is the evidence, the #212 precedent; the
+run ids are recorded in the PR body.
+
+This closes the backup-registration arc: ruling 1 made the script measure
+its own claims, ruling 2 made the truth reach a person unasked, ruling 3
+makes CI measure the script. The two-things-at-once failure (registration
+unverified · truth pull-only) now has both halves closed and a standing
+regression gate.
 
 **2026-08-20 · BACKUP-REGISTRATION RULING 2 — the truth comes to the
 person: `backup.status.view` split from `backup.manage`, and a shell-level
