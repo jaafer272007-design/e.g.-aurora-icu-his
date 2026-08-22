@@ -894,9 +894,15 @@ Cross-references (each rule recorded verbatim at the cited site):
   results-audit, and formulary records in 02_PROJECT_STATUS.md.
 - The do-NOT-reset-the-live-database rule stands: the spent-well record in
   02_PROJECT_STATUS.md (Database persistence).
-- Every test write lands permanently in the single live environment — see
-  02_PROJECT_STATUS.md § Single environment and 01_ARCHITECTURE.md §
-  Environment separation.
+- Every test write lands permanently in the STAGING environment — the
+  redesignated cloud tier — and stays there forever (never-destroy
+  unchanged); production is per-hospital, on-premises, and unreachable by
+  any suite. See 02_PROJECT_STATUS.md § Single environment (with its
+  2026-08-22 supersede note) and 01_ARCHITECTURE.md § "The environment
+  model (BUILT)". *[Corrected 2026-08-22, environment-separation closure
+  (PR-3): this bullet previously said "the single live environment" and
+  pointed at 01's missing-concept section — both stale once the approved
+  design redesignated the stack as staging and the model was built.]*
 
 ## Live verification
 

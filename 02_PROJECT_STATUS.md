@@ -1,9 +1,10 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-2 —
-the build-time VITE_APP_ENV allow-list gate in vite.config.ts (mirrors the
-server's AppEnv.Known; unknown/empty values refuse the build; unset stays
-the documented development default) — the record below.** This line is THE
+**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-3 —
+the documentation closure (§11 step 6): 01 gains "The environment model
+(BUILT)" as constitution, the missing-concept claim and its dependents are
+superseded in place, and the open owner decisions are recorded — the
+record below.** This line is THE
 recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
@@ -31,6 +32,53 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-22 · ENVIRONMENT SEPARATION PR-3 — the documentation closure
+(§11 step 6; owner-authorized; DOCUMENTATION ONLY — no application,
+workflow, deployment, database, or installer behavior changed; no B-list
+decision made).** The stale claims are superseded in place, never erased.
+(1) 01's "Environment separation (MISSING ARCHITECTURAL CONCEPT — NOT YET
+BUILT)" gains a supersede note and is followed by the new constitutional
+section **"The environment model (BUILT) — three tiers, one codebase"**:
+the DEV/STAGING/PRODUCTION tuple table (explicit `APP_ENV=development`
+with local PG/SQLite dev fallback · Render+Pages staging with the staging
+PG and the 16 environment-gated staging-only suites · per-hospital
+on-premises offline-first production on native Windows services with
+hospital-local private PostgreSQL and the same-origin no-hostname
+production frontend), the full list of built identity/safety mechanisms
+(APP_ENV allow-list/refuse-boot, /healthz + two-line build.txt identity,
+JWT aud==environment, T1/T2, seed modes, mock compile-out,
+runtime-config, EnvironmentGate, PR-1's instruments, PR-2's build-time
+allow-list), the **Compose→native-Windows-installer historical
+supersede** ("environment identity and isolation are architectural;
+container technology is not"), the **dormant promotion path** stated
+honestly (release-production.yml exists, locally proven, `production`
+branch never created, no release tag — never the shipping route; suite
+list stale at 13/16, deliberately uncorrected pending the ship-gate
+decision), and the **paid-database boundary** (production needs NO cloud
+database — hospital-resident PostgreSQL per the locked decision; a paid
+Render DB is a staging-durability question only). (2) 02: the roadmap
+item-2 chain no longer stops at "step 1 built" — a dated supersede
+records steps 2–3 built, step 4 partial/dormant, step 5 superseded by the
+installer channel (ledger evidence), step 6 = this PR, with the precise
+wording "the core environment isolation architecture is built;
+environment-separation follow-up work is NOT all complete"; the "Single
+environment" record gains its resolved-by-redesignation supersede; both
+"real use requires a paid database" notes gain the staging-vs-production
+precision note. (3) 03: the "single live environment" bullet under
+Never-destroy corrected to STAGING with attribution; nothing else in 03
+was stale (checked: the CI-evidence family, deployed-suite disciplines,
+release routine, and cross-references all remain true). (4)
+04_OPERATIONS_RUNBOOK.md, docs/design/environment-separation.md,
+HOSPITAL_INSTALLER_RUNTIME_DESIGN.md, LIVE_DATA_DESIGN.md: checked, NOT
+edited — no direct factual contradiction; the design doc remains the
+provenance record (its Compose §4.1 is historical by its own
+reference-deployment rule, and the installer design records its own
+supersede). OPEN OWNER DECISIONS, recorded, deliberately unresolved: paid
+staging-DB durability · ship-gate convergence into the installer path ·
+Pages branch-preview policy · appliance E2E suite parameterization ·
+requiredEnvKeys warn-vs-refuse on update · repo-visibility scheduling ·
+staging-DB expiry posture. PR-4 (ship-gate convergence) is NOT started.
 
 **2026-08-22 · ENVIRONMENT SEPARATION PR-2 — the build-time VITE_APP_ENV
 allow-list gate (owner-authorized item 2; no deployment/database/installer
@@ -5529,7 +5577,12 @@ moved to 03_DEVELOPMENT_RULES.md § Deployed E2E suite disciplines.]*
   fails at boot, `/healthz` goes down, the frontend falls back to mock
   (never a broken UI). Recovery: upgrade the plan (data kept) or create
   a fresh free DB (real writes LOST; seeds repopulate baseline on next
-  boot). Any real use requires a paid database.
+  boot). Any real use requires a paid database. *[Superseded 2026-08-22
+  (PR-3): written when the cloud tier was the ONLY environment. Under
+  the approved model this tier is STAGING; production data lives in
+  hospital-resident PostgreSQL per hospital and needs NO cloud database.
+  A paid Render database is a staging-DURABILITY question only — an open
+  owner decision, not a production prerequisite.]*
 - **Verification**: dotnet build clean; full-surface SQLite-vs-Postgres
   byte parity (~100 checks incl. every ordered path, error surface, CORS
   preflight, live create+sign) — zero diffs; the first-ever
@@ -5556,6 +5609,16 @@ design), and two inactive e2e drugs from suite runs.
 
 *[Docs split note: the missing-concept statement ("This is NOT a hygiene
 problem…") moved to 01_ARCHITECTURE.md § Environment separation.]*
+
+*[Superseded 2026-08-22 — environment-separation closure (PR-3): the
+single environment was RESOLVED BY REDESIGNATION, not cleanup — the
+owner-approved design (docs/design/environment-separation.md, D2/§9) made
+this entire stack the STAGING tier wholesale, so the artifacts listed
+above are test data in a test environment, correctly permanent (the
+never-destroy rule stands untouched). Production is per-hospital,
+on-premises, starts empty of clinical data, and is unreachable by any
+suite. The live constitutional record is 01_ARCHITECTURE.md § "The
+environment model (BUILT)".]*
 
 ### Layer 2 — ADT (built) — the first Aurora Core-native domain
 Patient / Encounter / Bed live in `server/Core/Adt/` from day one — never
@@ -12423,8 +12486,10 @@ is DONE** (see "Database persistence (built)" above): Render Postgres via
 `EnsureDeleted`/seed; writes survive restarts/redeploys. Two operational
 notes bind: Render's FREE Postgres expires after 30 days (+14-day grace,
 then deletion — see the constraint above; real use needs a paid
-database), and ADT can now be built on a durable system of record as
-required.
+database *[superseded 2026-08-22 (PR-3): the cloud tier is STAGING under
+the approved model — production needs no cloud database; a paid one is a
+staging-durability owner decision only]*), and ADT can now be built on a
+durable system of record as required.
 
 Build order (locked, amended by the architectural review): Phase 3
 (all five domains), the Core relocation (option (a)), database
@@ -12491,6 +12556,30 @@ Stage 11") and extends it. It was not moved from the pre-split file.]*
    the owner) and implementation began per its §11 order — step 1
    (environment identity) is built; see "Environment identity (built)"
    above. Remaining: the `aud` claim rider, then steps 2–6.]*
+   *[Superseded 2026-08-22 — the chain above stopped at step 1; the
+   verified record since: the `aud` rider and §11 steps 2 and 3 are
+   BUILT and live-verified (see "aud-claim environment rider (built)",
+   "Seed modes + boot tripwires (built)", "Production build & serving
+   mode (built)" above); step 4 is PARTIAL as its own record states —
+   the promotion gate, release bundle and backup engine are built, but
+   the `production` branch has NEVER been created and no release tag
+   exists, so that path is DORMANT and has never shipped anything;
+   step 5 happened in a SUPERSEDING FORM — the real production delivery
+   channel became the protected NATIVE WINDOWS INSTALLER
+   (`build-protected.ps1` + the `SHIPPED_VERSIONS.txt` ledger gate +
+   `AuroraUpdate`; see the installer-arc records above; ledger: 1.0.0
+   setup on the two owner machines, 1.1.0/1.2.0 updates), not the
+   Compose release bundle; and step 6 (docs) is the PR-3 closure — 01
+   now carries "The environment model (BUILT)" as constitution.
+   PRECISE STATUS WORDING: the CORE ENVIRONMENT ISOLATION ARCHITECTURE
+   IS BUILT; environment-separation follow-up work is NOT all complete —
+   the open owner decisions are recorded with the PR-3 record at the top
+   of this file (paid staging-DB durability · ship-gate convergence ·
+   Pages branch-preview policy · suite parameterization ·
+   requiredEnvKeys warn-vs-refuse · repo visibility · staging-DB expiry
+   posture). PR-1 (#224) added the build-identity instruments and env
+   hygiene; PR-2 (#225) added the frontend build-time identity
+   allow-list.]*
 3. Print Center
    *[2026-07-11 per project owner: the Print Center FOUNDATION (Phase 1 —
    rendering architecture + the first three templates) was pulled forward
