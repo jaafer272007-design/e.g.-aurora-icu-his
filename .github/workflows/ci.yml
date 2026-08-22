@@ -54,6 +54,43 @@ jobs:
       # pinned fact in turn (the gate's header records how).
       - name: Awaiting-bed stays wired to assignment, bedless=true, beds.assign (Ward A2)
         run: node scripts/awaiting-bed-gate.mjs
+      # PR-2 (environment separation): VITE_APP_ENV is allow-listed at the ONE
+      # chokepoint every build entry point passes through — vite.config.ts —
+      # mirroring the server's AppEnv.Known (the source of truth). Three legs,
+      # none vacuous: (1) the two allow-lists must be EQUAL at source level, and
+      # the check dies if either anchor stops matching (a regex that silently
+      # finds nothing would certify drift); (2) the refusal is EXECUTED — an
+      # unknown value must fail the REAL build with the gate's own message, so a
+      # build that fails for any other reason fails the grep, and a gate that
+      # stopped firing fails the exit-code check; (3) the production identity
+      # must still build (unset/dev is already proven by the plain
+      # `npx vite build` step above; staging by the deploy/package pipelines).
+      - name: VITE_APP_ENV allow-list gate has teeth (environment-separation PR-2)
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          vite = open('vite.config.ts').read()
+          cs = open('server/Core/Shared/AppEnv.cs').read()
+          vm = re.search(r"KNOWN_APP_ENVS = \[([^\]]*)\]", vite)
+          cm = re.search(r"Known = \[([^\]]*)\]", cs)
+          if not vm or not cm:
+              sys.exit("mirror check could not FIND a list — an anchor drifted; fix the gate, never the grep")
+          norm = lambda m: sorted(t.strip().strip('\'"') for t in m.group(1).split(',') if t.strip())
+          if norm(vm) != norm(cm):
+              sys.exit(f"allow-list DRIFT: vite {norm(vm)} != server AppEnv.Known {norm(cm)}")
+          print("ok: vite allow-list mirrors AppEnv.Known:", " | ".join(norm(vm)))
+          PY
+          set +e
+          out=$(VITE_APP_ENV=definitely-invalid npx vite build 2>&1); rc=$?
+          set -e
+          if [ "$rc" = "0" ]; then
+            echo "GATE DID NOT FIRE: an unknown VITE_APP_ENV built successfully"; exit 1
+          fi
+          echo "$out" | grep -q "UNKNOWN ENVIRONMENT IDENTITY: VITE_APP_ENV is 'definitely-invalid'" \
+            || { echo "the build failed but NOT by the gate's own message:"; echo "$out" | tail -5; exit 1; }
+          echo "ok: unknown VITE_APP_ENV refused by the gate's own message"
+          VITE_APP_ENV=production npx vite build --base=/ > /dev/null
+          echo "ok: production identity still builds"
 
   server:
     runs-on: ubuntu-latest
