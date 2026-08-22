@@ -613,6 +613,17 @@ build record in 02_PROJECT_STATUS.md.]*
 writes to the system of record" in 02_PROJECT_STATUS.md, where the live
 artifact list stays.]*
 
+*[Superseded 2026-08-22 — environment-separation §11 step 6, the
+documentation closure (owner-authorized PR-3). The concept is NO LONGER
+MISSING: the design this section called for was authored and
+owner-approved (`docs/design/environment-separation.md`, Revision 3 — the
+provenance record, unchanged), and implemented — §11 steps 1–3 fully,
+step 4 partially (the promotion path exists but is dormant), and step 5
+in a superseding form (the native Windows installer). The heading and
+paragraph below are kept as the historical statement of the problem; the
+section that follows — "The environment model (BUILT)" — is the live
+constitutional record.]*
+
 This is NOT a hygiene problem — it is a MISSING ARCHITECTURAL CONCEPT:
 dev/staging/production separation. It must be resolved BEFORE any real
 patient data exists (test writes mixed into a record containing real
@@ -620,6 +631,88 @@ patients would be a clinical-integrity failure, not clutter), and it
 gets harder to resolve the longer the durable database grows — every
 accumulated artifact is one more row a future environment split has to
 classify.
+
+## The environment model (BUILT) — three tiers, one codebase
+
+*[Attributed addition 2026-08-22 — environment-separation §11 step 6
+(documentation closure, PR-3). The approved design is
+`docs/design/environment-separation.md` (Revision 3) — the provenance
+record; this section is the live constitution of what actually shipped.
+Every claim below is verified against the tree at the commit carrying
+this section. When this section and the code disagree, the CODE wins and
+this section gets the next refresh note (the RBAC-matrix mirror
+discipline).]*
+
+| | DEVELOPMENT | STAGING | PRODUCTION |
+|---|---|---|---|
+| Purpose | build | verify/demo — never the system of record | the system of record, per hospital |
+| Server identity | `APP_ENV=development`, set explicitly (unknown/unset refuses to boot — `AppEnv.Known` + BootGuards) | `APP_ENV=staging` (`render.yaml`, blueprint-synced) | `APP_ENV=production` — a hard literal the installer writes into ACL-locked `aurora.env` |
+| Runtime | local `dotnet` + Vite dev server; the `appliance/` Compose stack is the validator's testbed | Render `ICU` Docker service (auto-deploys `main`, serves its own frontend same-origin) + the GitHub Pages frontend | native Windows services: `AuroraPostgres` → `AuroraServer` (SPA + API, one origin) → optional `AuroraAI` (llama-server, `127.0.0.1` only) — on-premises, offline-first, per hospital |
+| Database | developer-local PostgreSQL, or the ephemeral SQLite fallback (a dev convenience; T2 forbids it in production) | the Render `aurora-db` PostgreSQL — test data lives here BY DESIGN (the redesignated former single environment; artifact list in 02 § Single environment) | hospital-local private PostgreSQL; the firewall opens the app port only |
+| Frontend identity | `VITE_APP_ENV` unset = the documented development default (mock layer + banner compiled in) | `VITE_APP_ENV=staging` compiled in; API base delivered at deploy time via `runtime-config.js` (the one cross-origin deployment: Pages → Render) | `VITE_APP_ENV=production` compiled in; same-origin relative base — the artifact carries NO deployment hostname, and the mock/demo layer is compiled OUT |
+| Verification | compile CI + local proofs | the 16 deployed suites — staging-only in-file targets, environment-gated before any write leg | `ci.yml`'s production-seed job (clean-slate production boot + tripwires on every push); on-prem, the updater's build-identity health check and the Backup dashboard |
+
+**Identity and safety mechanisms, all built**: the `APP_ENV` allow-list
+with refuse-boot (`server/Core/Shared/AppEnv.cs`, BootGuards); `/healthz`
+reporting `build` + `environment`, and the two-line `build.txt` contract
+(sha, then environment — served dynamically by the server, stamped
+statically by the Pages/release builds); JWT audience == environment,
+fail-closed (a token minted in one tier is structurally invalid in
+another even under a shared secret); the T1 demo-credential and T2
+demo-config production tripwires; environment-moded seeding (production:
+non-hospital-specific reference data + the `FORMULARY_SEED` install
+policy + ONE bootstrap admin — zero patients, zero demo credentials); the
+production mock compile-out (statically-replaced guards, tree-shaken
+stores); fail-loud `runtime-config.js` for the staging cross-origin
+frontend; the client `EnvironmentGate` full-screen WRONG-ENVIRONMENT
+refusal and the staging/development banner; the fixed frontend
+build-stamp reader + root-`.env` Git hygiene (PR-1, #224); and the
+build-time `VITE_APP_ENV` allow-list in `vite.config.ts` — a
+CI-asserted mirror of `AppEnv.Known` with an executed-refusal leg
+(PR-2, #225).
+
+**The production runtime — the native Windows installer SUPERSEDES the
+Compose reference shape (a historical supersede, not a contradiction).**
+The approved design named Docker Compose as the v1 REFERENCE deployment
+and stated its own upgrade rule: the contract it fixed (one origin;
+app + database + backup; no cloud in the serving path) is upgradeable
+"without changing the environment model". That is what happened: Docker
+Desktop cannot run always-on with nobody logged in, and needs internet
+activation plus a paid licence a fully-isolated hospital cannot satisfy
+(`HOSPITAL_INSTALLER_RUNTIME_DESIGN.md` §1.2) — so production shipped as
+the password-protected Inno Setup installer registering native Windows
+services, and `appliance/` Compose remains the explicitly-labelled
+dev/validator testbed. **Environment identity and isolation are
+architectural; container technology is not.** Delivery and versioning:
+`build-protected.ps1` + the `SHIPPED_VERSIONS.txt` ledger gate +
+`AuroraUpdate` packages (checksum verify → pre-update restore-verified
+backup → swap → migrate at boot → build-identity health check →
+one-meaning exit codes). Operations: `04_OPERATIONS_RUNBOOK.md`.
+
+**The dormant promotion path, recorded honestly.**
+`release-production.yml` (the `production` branch → promotion gate →
+release bundle, §11 step 4's target-independent half) exists and was
+locally proven, but the `production` branch has never been created and no
+`release/r<N>` tag exists — that path has never been the shipping route;
+the installer channel above is. The workflow stays in the tree, dormant,
+pending the owner's ship-gate convergence decision (recorded open in 02);
+its suite list is stale (13 of the 16 suites) and is deliberately NOT
+corrected until that decision.
+
+**The paid-database boundary, stated precisely.** Production does NOT
+require — and must not acquire — a cloud database: production data lives
+in hospital-resident PostgreSQL, per the locked per-hospital/on-prem
+decision (the AI-architecture section above). A paid Render database is a
+STAGING-DURABILITY question only (the free `aurora-db` expires on the
+recorded 30-day cycle — under redesignation an operational note, not an
+incident), and it remains an open owner decision.
+
+**Open owner decisions (recorded in 02, deliberately unresolved here):**
+paid staging-DB durability · ship-gate convergence into the installer
+path · the Pages branch-preview policy · appliance E2E suite
+parameterization · `requiredEnvKeys` warn-vs-refuse on update · repo
+visibility scheduling · the staging-DB expiry posture. Nothing in this
+section resolves any of them.
 
 ## Verification-gate content equality
 
