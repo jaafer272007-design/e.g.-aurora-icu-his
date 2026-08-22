@@ -1562,8 +1562,10 @@ static class AdtApi
             if (enc.Status == "discharged")
                 return ApiError.StateConflict(
                     $"encounter '{encounterId}' is discharged — a closed encounter cannot be assigned a bed");
-            /* POSITIVE CONTROL — the partition guard is a no-op for exactly
-               this commit; the WARD A1 leg must refuse. Reverted next. */
+            /* the partition's other half — see transfer's bedless guard */
+            if (!string.IsNullOrWhiteSpace(enc.BedId))
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' already has bed '{enc.BedId}' — moving a bedded patient is a transfer, not an assignment: use the transfer path");
             var targetBed = db.Beds.AsNoTracking().FirstOrDefault(b => b.BedId == req.BedId);
             if (targetBed is null)
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
