@@ -1,9 +1,10 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-1 —
-build-identity instrument fixed (the frontend build.txt reader now reads
-LINE 1 of the two-line stamp) and root .env Git hygiene — the record
-below.** This line is THE recency marker and is
+**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-2 —
+the build-time VITE_APP_ENV allow-list gate in vite.config.ts (mirrors the
+server's AppEnv.Known; unknown/empty values refuse the build; unset stays
+the documented development default) — the record below.** This line is THE
+recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -30,6 +31,46 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-22 · ENVIRONMENT SEPARATION PR-2 — the build-time VITE_APP_ENV
+allow-list gate (owner-authorized item 2; no deployment/database/installer
+behavior changed; PR-3 and every B-list decision remain unimplemented).**
+The hazard: the server refuses an unknown `APP_ENV` at boot
+(`AppEnv.Known`), but the bundle's compiled-in identity had NO equivalent —
+an unset/typo'd/unknown `VITE_APP_ENV` evaluated as "not production" in all
+~95 guards and silently shipped a mock-carrying, banner-showing bundle.
+The gate: `vite.config.ts` now validates the identity at config load — the
+ONE chokepoint every build entry point passes through (npm run dev/build,
+ci.yml, deploy-pages, release-production, server/Dockerfile,
+installer/build.ps1, the appliance), so no entry-point file changed and no
+duplicate gates exist. Rule, derived from source: `development | staging |
+production` (mirror of `server/Core/Shared/AppEnv.cs` `Known`) pass;
+UNSET passes (the documented local-development default — env.ts's
+fallback, 01's §11-step-3 residual); anything else INCLUDING set-but-empty
+refuses with a message naming the value and the allow-list. Sources
+covered with explicit precedence: process env first, then the (gitignored)
+`.env` file via `loadEnv`. Two build-machine facts found and handled en
+route: `tsc -b` EMITS `vite.config.js` (tsconfig.node.json composite) and
+Vite loads the `.js` BEFORE the `.ts` — so the compiled artifact carries
+the gate wherever tsc runs (ci.yml runs tsc first; Dockerfile/installer
+builds have no `.js` and read the `.ts`), and a stale local `.js` briefly
+made the first local proof test the WRONG config (caught by the refusal
+probe coming back green; recompiled, re-proven); and the node tsconfig's
+lib predates ES2016, so the gate uses `indexOf` and a file-scoped ambient
+`process` declaration instead of new dependencies. CI: one frontend-job
+step, three non-vacuous legs — the vite list must EQUAL `AppEnv.Known` at
+source level (anchors that stop matching die loudly), the refusal is
+EXECUTED (`VITE_APP_ENV=definitely-invalid npx vite build` must fail AND
+by the gate's own message), and the production identity must still build.
+Verified locally: tsc clean; all four valid identities build (unset /
+development / staging / production); three refusals fire (unknown, empty,
+`.env`-file-driven); the step body goes RED with "GATE DID NOT FIRE" when
+the gate is deliberately neutered and green restored; mock compile-out
+regression PASS both directions (Aurora2026!, "Dr. Sara Rahman", "Layla
+Hassan" present in the staging bundle, absent in production; no deployment
+hostname) — the login placeholder "e.g. sara.rahman" was identified as a
+pre-existing unconditional UI hint, not a compile-out leak. CI positive
+control demonstrated on the PR (run ids in the PR body).
 
 **2026-08-22 · ENVIRONMENT SEPARATION PR-1 — instruments + configuration
 hygiene (owner-authorized item 1 of the approved sequence; no environment
