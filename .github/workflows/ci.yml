@@ -43,6 +43,17 @@ jobs:
       # five in turn before it was committed.
       - name: Reception still enforces design §3.2's required admission fields
         run: node scripts/reception-required-fields-gate.mjs
+      # Ward A2 — the awaiting-bed screen's structural wiring: the action is
+      # ASSIGNMENT (never transferEncounter — the §3.1 partition, which the
+      # server enforces with a 409 the client must not invite), the list
+      # reads the A1 `bedless=true` filter (never a client-side
+      # recomputation), the route costs beds.assign, and the shared BedChip
+      # + print layout keep their explicit bedless renderings (ward.md A5).
+      # SOURCE check like the gate above it — presence and wiring, not
+      # firing; its teeth were measured before commit by breaking each
+      # pinned fact in turn (the gate's header records how).
+      - name: Awaiting-bed stays wired to assignment, bedless=true, beds.assign (Ward A2)
+        run: node scripts/awaiting-bed-gate.mjs
 
   server:
     runs-on: ubuntu-latest

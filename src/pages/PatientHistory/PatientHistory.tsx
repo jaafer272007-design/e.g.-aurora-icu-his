@@ -126,9 +126,9 @@ export function PatientHistory() {
   if (missing) {
     return (
       <div className="app-frame ph">
-        <AppHeader subtitle="Patient History · Aurora ICU records" kpis={[]} user={user} />
+        <AppHeader subtitle="Patient History · Aurora records" kpis={[]} user={user} />
         <div className="shell">
-          <NavSidebar active="beds" footerLines={['Patient history', 'Aurora ICU records only']} />
+          <NavSidebar active="beds" footerLines={['Patient history', 'Aurora records only']} />
           <main><NotFoundCard /></main>
         </div>
       </div>
@@ -138,7 +138,7 @@ export function PatientHistory() {
   return (
     <div className="app-frame ph">
       <AppHeader
-        subtitle="Patient History · Aurora ICU records"
+        subtitle="Patient History · Aurora records"
         kpis={[{
           icon: <IconClock />, iconBg: 'rgba(var(--cyan-rgb),.16)',
           value: encRows.length, label: 'Aurora admissions',
@@ -146,14 +146,19 @@ export function PatientHistory() {
         user={user}
       />
       <div className="shell">
-        <NavSidebar active="beds" footerLines={['Patient history', 'Aurora ICU records only']} />
+        <NavSidebar active="beds" footerLines={['Patient history', 'Aurora records only']} />
         <main>
           {/* THE SCOPE STATEMENT (§5.3, required): the page omits what it
-              doesn't hold, so silence must never imply completeness */}
+              doesn't hold, so silence must never imply completeness.
+              REWRITTEN in the Ward build (ward.md A7): the moment ward
+              records exist, "no non-ICU records" is a lie on the one
+              surface whose stated job is that silence must never imply
+              completeness — the statement now says what Aurora actually
+              holds. */}
           <div className="phscope" role="note">
-            <b>Aurora ICU records only.</b> This page shows the encounters, allergies, medications,
-            labs and imaging recorded in Aurora — it is <b>not</b> the patient&apos;s complete medical
-            history. Aurora holds no external, pre-Aurora or non-ICU records.
+            <b>Aurora records only.</b> This page shows the encounters — ICU and ward — allergies,
+            medications, labs and imaging recorded in Aurora — it is <b>not</b> the patient&apos;s
+            complete medical history. Aurora holds no external or pre-Aurora records.
           </div>
 
           <Card
@@ -171,7 +176,7 @@ export function PatientHistory() {
                   ? <span className="num">File no. {pid.fileNumber}</span>
                   : <span className="phmuted">no file number recorded</span>}
                 {encounters !== null && deceased && <span className="phdead">Deceased</span>}
-                {encounters !== null && openEnc && <span className="phadm">Currently admitted · Bed {openEnc.bedId}</span>}
+                {encounters !== null && openEnc && <span className="phadm">Currently admitted · {openEnc.bedId ? `Bed ${openEnc.bedId}` : 'Awaiting bed'}</span>}
               </div>
             )}
             <div className="phactions">

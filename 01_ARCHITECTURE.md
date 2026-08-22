@@ -365,6 +365,18 @@ awaiting-bed SCREEN (Ward PR A2) will render for holders of this atom per
 §6. No clinical pane opens with the atom on either profile — the locked
 clinical exclusion is untouched.]*
 
+*[Amendment, 2026-08-22 (later) — the route `beds.assign` now gates (Ward
+PR A2): `/awaiting-bed` = `beds.assign` — the awaiting-bed worklist, the
+screen the atom's amendment above promised. It renders exactly the derived
+state (`open && BedId == ""`, read via the A1 `bedless=true` filter), its
+one action calls `POST /assign-bed`, and it is listed in the sidebar
+directly after Reception because it is the next step of the same journey:
+reception opens the episode with no bed; this list gives it one. Sessions
+without the atom (Doctor/SeniorDoctor included) get the explicit Access
+Restricted state. Delivered with A2's bedless-reader fixes and ward.md
+A7's two scope corrections (the PatientHistory scope statement and both
+AI prompts re-scoped from ICU to the hospital).]*
+
 *[Amendment, 2026-08-18 — the route the atom now gates. `/reception` =
 `admissions.create` (Inpatient Reception step 6). It is the ONLY route
 guarded by that atom, and it is the ward's front door: find or register a

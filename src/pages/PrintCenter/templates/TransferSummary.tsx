@@ -22,7 +22,7 @@ export function TransferSummary({ data }: { data: TransferSummaryData }) {
           ['Allergies', p.allergies ?? '—'],
           ['Diagnosis', p.diagnosis],
           ['Attending', p.attending],
-          ['Bed', p.bedId],
+          ['Bed', p.bedId || 'awaiting bed'],
           ['Code status', p.codeStatus ?? 'Not recorded'],
         ]} />
       </Section>

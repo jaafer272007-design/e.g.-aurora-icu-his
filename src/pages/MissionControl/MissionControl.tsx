@@ -359,7 +359,11 @@ export function MissionControl() {
                   serves everywhere else; legacy single names render as-is */}
               <h1>{pid?.fullName ?? p?.name ?? '—'}</h1>
               <div className="sub">
-                <span>{p?.mrn ?? 'MRN —'}</span> · <span>Bed {p?.bedId ?? '—'}</span>
+                {/* EMPTY IS ABSENT, not a value (ward.md A5): the nullish
+                    guard alone rendered "Bed " for a bedless patient — ""
+                    is how the model spells "no bed", so it gets the words,
+                    while a still-loading p keeps the honest dash */}
+                <span>{p?.mrn ?? 'MRN —'}</span> · <span>{p ? (p.bedId ? `Bed ${p.bedId}` : 'Awaiting bed') : 'Bed —'}</span>
                 {pid?.nationalId && <> · <span className="num" title="National identity number — as on the identity card">ID {pid.nationalId}</span></>}
                 {pid?.fileNumber && <> · <span className="num" title="Patient file number — the hospital's own chart number">File {pid.fileNumber}</span></>}
                 {(pid?.identity?.length ?? 0) > 0 && (
@@ -528,7 +532,7 @@ export function MissionControl() {
                 key={pt.patientId}
                 className={`ptcard${pt.patientId === patientId ? ' sel' : ''}`}
                 onClick={() => navigate(`/patients/${pt.patientId}`)}
-                aria-label={`Open ${pt.name}, bed ${pt.bedId}`}
+                aria-label={`Open ${pt.name}, ${pt.bedId ? `bed ${pt.bedId}` : 'awaiting bed'}`}
               >
                 <div className="r1">
                   <BedChip bedId={pt.bedId} />

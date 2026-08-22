@@ -7,3 +7,6 @@
 .tag.tag-sm{font-size:8.5px;letter-spacing:.5px;padding:2px 6px;border-radius:5px}
 
 .bedchip{font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:7px;background:rgba(var(--blue-rgb),.14);color:var(--blue);font-weight:700}
+/* the explicit BEDLESS rendering — words, not a blank; amber (attention,
+   never alarm) and non-mono so it cannot be misread as a bed id */
+.bedchip.bedchip-awaiting{font-family:inherit;font-weight:600;background:rgba(var(--amber-rgb),.13);color:var(--amber);white-space:nowrap}

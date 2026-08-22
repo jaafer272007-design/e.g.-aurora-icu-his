@@ -13,7 +13,9 @@ export function SbarSheet({ data }: { data: SbarData }) {
   return (
     <>
       <Section title="Situation" keepTogether>
-        <p>{context.patient.name} · {context.patient.bedId} · {context.patient.diagnosis}</p>
+        {/* printed document: a bedless patient reads "awaiting bed" in
+            words — a gap between separators is ambiguous on paper (A5) */}
+        <p>{context.patient.name} · {context.patient.bedId || 'awaiting bed'} · {context.patient.diagnosis}</p>
         <WriteIn lines={2} />
       </Section>
 

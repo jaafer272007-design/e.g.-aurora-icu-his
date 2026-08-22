@@ -1,0 +1,38 @@
+/* Ward — Awaiting Bed (/awaiting-bed, Ward PR A2). The Discharges row
+   language exactly (same shell, same row anatomy), amber-accented: this
+   is a worklist of people WAITING, and amber is attention without alarm
+   (severity colours stay earned — 01 Design System). */
+.awb .shell{display:grid;grid-template-columns:198px 1fr;min-height:0}
+.awb main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.awb .awbrows{display:flex;flex-direction:column;gap:8px;max-height:640px;overflow-y:auto}
+.awb .awbrow{border:1px solid var(--stroke);border-radius:12px;padding:9px 12px;background:rgba(var(--lift-rgb),.02)}
+.awb .awbmain{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center}
+.awb .awbtag{font-size:11px;font-weight:600;padding:3px 8px;border-radius:7px;white-space:nowrap;
+ background:rgba(var(--amber-rgb),.13);color:var(--amber)}
+.awb .awbwho{display:flex;flex-direction:column;gap:2px;text-align:left;min-height:44px;justify-content:center;
+ border-radius:8px;transition:.15s}
+.awb .awbwho b{font-size:12.5px;color:var(--text)}
+.awb .awbwho small{font-size:10.5px;color:var(--dim)}
+.awb button.awbwho:hover b,.awb button.awbwho:focus-visible b{color:var(--blue)}
+.awb .awbwho.asplain{cursor:default}
+.awb .awbmeta{display:flex;flex-direction:column;gap:2px;align-items:flex-end}
+.awb .awbmeta .num{font-size:11px;color:var(--text)}
+.awb .awbmeta small{font-size:10px;color:var(--faint)}
+.awb .awbacts{display:flex;gap:7px}
+.awb .awbact{min-height:40px;padding:8px 13px;border-radius:9px;font-size:11.5px;font-weight:600;color:var(--blue);
+ border:1px solid rgba(var(--blue-rgb),.4);background:rgba(var(--blue-rgb),.08);transition:.15s}
+.awb .awbact:hover:not(:disabled),.awb .awbact:focus-visible{background:rgba(var(--blue-rgb),.18)}
+.awb .awbact:disabled{opacity:.45}
+.awb .awbact.primary{color:var(--green);border-color:rgba(var(--green-rgb),.4);background:rgba(var(--green-rgb),.08)}
+.awb .awbact.primary:hover:not(:disabled),.awb .awbact.primary:focus-visible{background:rgba(var(--green-rgb),.18)}
+.awb .awbconfirm{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-top:9px;padding-top:9px;
+ border-top:1px dashed rgba(var(--steel-rgb),.15);font-size:11.5px;color:var(--dim)}
+.awb .awbconfirm b{color:var(--text)}
+.awb .awbconfirm select{min-height:40px;padding:7px 10px;border-radius:9px;font-size:12px;color:var(--text);
+ border:1px solid var(--stroke);background:rgba(var(--lift-rgb),.03)}
+.awb .awbconfirm select:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.awb .awberr{margin-top:8px;font-size:11.5px;line-height:1.5;color:var(--red);border:1px solid rgba(var(--red-rgb),.4);
+ background:rgba(var(--red-rgb),.08);border-radius:10px;padding:8px 11px}
+.awb .awbempty{font-size:11.5px;color:var(--faint);padding:8px 2px}
+@media(max-width:1180px){.awb .shell{grid-template-columns:64px 1fr}}
+@media(max-width:1180px){.awb.app-frame{height:auto;overflow:visible}.awb main{overflow:visible}}
