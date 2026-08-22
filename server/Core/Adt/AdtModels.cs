@@ -681,6 +681,14 @@ record MatchCardDto(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record TransferRequest(string? BedId);
 
+/* bed assignment (Ward PR A1) — the SAME one-field shape as transfer but
+   deliberately its OWN record: the two operations are a partition
+   (bedless → assign, bedded → transfer), and sharing a request type would
+   invite the path-sharing §3.1 forbids the first time either contract
+   grows a field */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record AssignBedRequest(string? BedId);
+
 /* discharge body — OPTIONAL at the API, deliberately (flagged design
    point): the discharge POST took no body for its whole life, and every
    deployed suite's discharge legs AND failure-path cleanups rely on the

@@ -632,8 +632,9 @@ jobs:
           # every open encounter with no bed filter and offered Move on each row.
           # THE FIX IS REFUSAL, NOT A TIDIER STRING. Giving a bed to a bedless
           # patient is bed ASSIGNMENT (ward design §3.1 — "This is NOT a
-          # transfer"), a path with its own atom that is NOT BUILT. Until it is,
-          # the operation is unavailable rather than approximated.
+          # transfer"), a path with its own atom — built in Ward PR A1 as
+          # POST /assign-bed (its legs are below); this guard is the transfer
+          # half of the bedless/bedded partition the two endpoints enforce.
           echo "TRANSFER REFUSES A BEDLESS ENCOUNTER:"
           # adt.transfer is NURSING authority — the Consultant and the office
           # Administrator minted above are both 403 here, so this leg needs its
@@ -741,6 +742,174 @@ jobs:
           rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $RN" "$API/api/backup/status")
           [ "$rc" = "403" ] || die "Staff Nurse GET /backup/status -> HTTP $rc, expected 403"
           echo "  ok   clinical profile (Staff Nurse) cannot read it (403)"
+
+          # ---- WARD A1 — THE BEDLESS FILTER (GET /adt/encounters?bedless=true)
+          # "open encounters with no bed assigned", IN FULL: the open half is
+          # part of the filter's meaning — a BedId-only filter would hand every
+          # closed bedless episode (day cases, §2.1) to the awaiting-bed
+          # worklist. Derived from open && BedId == '' at read; never stored,
+          # never a third Status value. $ENCID is the office Administrator's
+          # bedless admission from the label-snapshot leg, still bedless here
+          # (the transfer leg only proved refusal); the closed-bedless and
+          # bedded exclusions each get a REAL subject, because an exclusion
+          # asserted against nothing passes vacuously.
+          echo "WARD A1 - BEDLESS FILTER:"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d '{"nameFirst":"Ward","nameSecond":"A1","nameFamily":"Closed","sex":"M","allergies":"None","dateOfBirth":"1985-05-05"}' \
+            "$API/api/icu/adt/admissions")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "the closed-subject admission -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          WCLOSED=$(echo "$out" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' -d '{}' "$API/api/icu/adt/encounters/$WCLOSED/discharge")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "discharging $WCLOSED -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          BEDDED=$(PSQL "select \"EncounterId\" from \"Encounters\" where \"Status\" = 'open' and \"BedId\" <> '' order by \"EncounterId\" limit 1")
+          [ -n "$BEDDED" ] || die "no bedded open encounter — the bedded-exclusion direction cannot be exercised"
+          curl -sf -H "Authorization: Bearer $OFF" "$API/api/icu/adt/encounters?bedless=true" -o /tmp/ward-bedless.json \
+            || die "bedless query failed"
+          ENCID="$ENCID" WCLOSED="$WCLOSED" BEDDED="$BEDDED" python3 -c '
+          import json, os
+          rows = json.load(open("/tmp/ward-bedless.json"))
+          ids = [r["encounterId"] for r in rows]
+          assert os.environ["ENCID"] in ids, ("the open bedless encounter is missing", ids)
+          assert os.environ["WCLOSED"] not in ids, ("a CLOSED bedless encounter is listed", ids)
+          assert os.environ["BEDDED"] not in ids, ("a BEDDED encounter is listed", ids)
+          assert all(r["status"] == "open" and r["bedId"] == "" for r in rows), rows
+          print(f"  ok   bedless=true -> {len(ids)} row(s), open+bedless only (open-bedless in, closed-bedless out, bedded out)")'
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OFF" "$API/api/icu/adt/encounters?bedless=true&status=open")
+          [ "$rc" = "200" ] || die "bedless=true&status=open -> HTTP $rc, expected 200 (redundant but legal)"
+          # the two 400s, BY MESSAGE (03: a malformed-value 400 and a
+          # contradiction 400 share the code; only the message tells them apart)
+          out=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $OFF" "$API/api/icu/adt/encounters?bedless=true&status=discharged")
+          [ "$(echo "$out" | tail -1)" = "400" ] || die "bedless+discharged -> HTTP $(echo "$out" | tail -1), expected 400"
+          echo "$out" | head -1 | grep -q "cannot combine with status=discharged" \
+            || die "the 400 was NOT the contradiction refusal: $(echo "$out" | head -1)"
+          out=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $OFF" "$API/api/icu/adt/encounters?bedless=banana")
+          [ "$(echo "$out" | tail -1)" = "400" ] || die "bedless=banana -> HTTP $(echo "$out" | tail -1), expected 400"
+          echo "$out" | head -1 | grep -q "bedless must be" \
+            || die "the 400 was NOT the value refusal: $(echo "$out" | head -1)"
+          echo "  ok   bedless&status=open 200 · bedless&status=discharged 400 (contradiction) · bedless=banana 400 (value rule)"
+
+          # ---- WARD A1 — BED ASSIGNMENT (POST /adt/encounters/{id}/assign-bed)
+          # The ward design §3.1 path: its OWN route, its OWN atom
+          # (beds.assign — office Administrator + Nurse, NOT doctors), its OWN
+          # action string ("bed assigned"), an audit detail that names a
+          # DESTINATION ONLY, and the partition with transfer: bedless →
+          # assignment, bedded → transfer, enforced from both sides. Every
+          # refusal is asserted BY MESSAGE (03: five causes share two codes
+          # here) and proven to write NOTHING against the database itself.
+          echo "WARD A1 - BED ASSIGNMENT:"
+          wa_p=$(PSQL "select count(*) from \"AdtPatients\"")
+          wa_e=$(PSQL "select count(*) from \"Encounters\"")
+          wa_b=$(PSQL "select count(*) from \"Beds\"")
+          { [ -n "$wa_p" ] && [ -n "$wa_e" ] && [ -n "$wa_b" ]; } || die "row counts read back EMPTY — nothing-written comparisons would pass vacuously"
+          wa_ev=$(PSQL "select \"EventsJson\" from \"Encounters\" where \"EncounterId\" = '$ENCID'")
+          [ -n "$wa_ev" ] || die "EventsJson read back EMPTY — a byte-identical comparison would pass vacuously"
+          wa_refused() { # label expected_code message_substring token encounterId bedId
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $4" -H 'Content-Type: application/json' \
+              -d "{\"bedId\":\"$6\"}" "$API/api/icu/adt/encounters/$5/assign-bed")
+            [ "$(echo "$out" | tail -1)" = "$2" ] || die "$1 -> HTTP $(echo "$out" | tail -1), expected $2: $(echo "$out" | head -1)"
+            if [ -n "$3" ]; then
+              echo "$out" | head -1 | grep -q "$3" || die "$1: the $2 was NOT the expected refusal: $(echo "$out" | head -1)"
+            fi
+            [ "$(PSQL "select count(*) from \"AdtPatients\"")" = "$wa_p" ] || die "$1 WROTE a patient row"
+            [ "$(PSQL "select count(*) from \"Encounters\"")" = "$wa_e" ] || die "$1 WROTE an encounter row"
+            [ "$(PSQL "select count(*) from \"Beds\"")" = "$wa_b" ] || die "$1 WROTE a bed row"
+            [ "$(PSQL "select \"EventsJson\" from \"Encounters\" where \"EncounterId\" = '$ENCID'")" = "$wa_ev" ] || die "$1 WROTE to the audit"
+            [ "$(PSQL "select \"BedId\" from \"Encounters\" where \"EncounterId\" = '$ENCID'")" = "" ] || die "$1 assigned a bed"
+            echo "  ok   $1 -> $2 with the right message, NOTHING written"
+          }
+          wa_refused "nonexistent bed" 400 "does not match any bed" "$OFF" "$ENCID" "NO-SUCH-BED-A1"
+          # a retired bed needs to EXIST retired: create + deactivate via
+          # beds.manage (the office Administrator holds it), then re-snapshot
+          # the beds count — the setup legitimately added one row.
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d '{"bedId":"CI-A1-RET","area":"Pod A","seq":9001}' "$API/api/icu/adt/beds")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "creating CI-A1-RET -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/adt/beds/CI-A1-RET/deactivate")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "retiring CI-A1-RET -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          wa_b=$(PSQL "select count(*) from \"Beds\"")
+          wa_refused "retired bed" 409 "is retired" "$OFF" "$ENCID" "CI-A1-RET"
+          OCCBED=$(PSQL "select \"BedId\" from \"Encounters\" where \"EncounterId\" = '$BEDDED'")
+          [ -n "$OCCBED" ] || die "the bedded encounter lost its bed — the occupied direction cannot be exercised"
+          wa_refused "occupied bed" 409 "already occupied" "$OFF" "$ENCID" "$OCCBED"
+          # closed encounter: aim at a FREE ACTIVE bed so the closed status is
+          # the ONLY possible cause — and the message assertion pins it anyway
+          # (03: this 409 shares its code with occupied/retired).
+          A1FREE=$(PSQL "select \"BedId\" from \"Beds\" where \"Active\" and \"BedId\" not in (select \"BedId\" from \"Encounters\" where \"Status\" = 'open' and \"BedId\" <> '') order by \"Seq\" limit 1")
+          [ -n "$A1FREE" ] || die "no free bed — the closed-encounter direction cannot be exercised"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"$A1FREE\"}" "$API/api/icu/adt/encounters/$WCLOSED/assign-bed")
+          [ "$(echo "$out" | tail -1)" = "409" ] || die "assign on closed encounter -> HTTP $(echo "$out" | tail -1), expected 409: $(echo "$out" | head -1)"
+          echo "$out" | head -1 | grep -q "closed encounter cannot be assigned a bed" \
+            || die "the 409 was NOT the closed refusal: $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"BedId\" from \"Encounters\" where \"EncounterId\" = '$WCLOSED'")" = "" ] || die "the closed encounter GAINED a bed"
+          echo "  ok   closed encounter -> 409 with the right message, nothing written"
+          # doctors do NOT gain placement authority (the atom is the desk's
+          # and the ward's — Consultant reaches the RBAC line and stops)
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"$A1FREE\"}" "$API/api/icu/adt/encounters/$ENCID/assign-bed")
+          [ "$rc" = "403" ] || die "Consultant assign -> HTTP $rc, expected 403 — doctors must not gain beds.assign"
+          echo "  ok   Consultant assign -> 403 (no new placement authority for doctors)"
+          # THE VALID ASSIGNMENT — office Administrator direction. Audit: the
+          # assignment's OWN action string, and a detail naming the
+          # DESTINATION ONLY — an assignment has no source bed, so the "→"
+          # of the transfer detail must never appear.
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"$A1FREE\"}" "$API/api/icu/adt/encounters/$ENCID/assign-bed")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "office Administrator assign -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"BedId\" from \"Encounters\" where \"EncounterId\" = '$ENCID'")" = "$A1FREE" ] || die "the assignment did not store"
+          wa_act=$(PSQL "select \"EventsJson\"::json->-1->>'action' from \"Encounters\" where \"EncounterId\" = '$ENCID'")
+          wa_det=$(PSQL "select \"EventsJson\"::json->-1->>'detail' from \"Encounters\" where \"EncounterId\" = '$ENCID'")
+          [ "$wa_act" = "bed assigned" ] || die "audit action is [$wa_act], expected [bed assigned]"
+          [ "$wa_det" = "to $A1FREE" ] || die "audit detail is [$wa_det], expected [to $A1FREE]"
+          case "$wa_det" in *"→"*) die "the assignment detail implies a SOURCE bed: [$wa_det]";; esac
+          echo "  ok   office Administrator assigned $A1FREE -> 200; audit action 'bed assigned', detail 'to $A1FREE' (destination only, no fake source)"
+          # THE PARTITION, enforced from the assignment side: the encounter is
+          # now BEDDED, so a second assignment is refused — moves are
+          # transfers. (The transfer side of the partition — bedless → 409
+          # "nothing to transfer from" — is the leg above.)
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"NO-SUCH-BED-A1\"}" "$API/api/icu/adt/encounters/$ENCID/assign-bed")
+          [ "$(echo "$out" | tail -1)" = "409" ] || die "assign on bedded encounter -> HTTP $(echo "$out" | tail -1), expected 409: $(echo "$out" | head -1)"
+          echo "$out" | head -1 | grep -q "is a transfer, not an assignment" \
+            || die "the 409 was NOT the partition refusal: $(echo "$out" | head -1)"
+          echo "  ok   already-bedded -> 409 naming the partition (moving a bedded patient is a transfer)"
+          # ...and the assigned encounter has LEFT the bedless list — the
+          # awaiting-bed state is derived from the bed field, never stored.
+          curl -sf -H "Authorization: Bearer $OFF" "$API/api/icu/adt/encounters?bedless=true" -o /tmp/ward-bedless2.json \
+            || die "bedless re-query failed"
+          ENCID="$ENCID" python3 -c '
+          import json, os
+          ids = [r["encounterId"] for r in json.load(open("/tmp/ward-bedless2.json"))]
+          assert os.environ["ENCID"] not in ids, ("the assigned encounter is still listed bedless", ids)
+          print("  ok   the assigned encounter left the bedless list (derived state, nothing stored)")'
+          # THE NURSE DIRECTION — the atom's second holder assigns a fresh
+          # bedless admission. Without this, green cannot tell "the pair holds
+          # the atom" from "only the office does".
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d '{"nameFirst":"Ward","nameSecond":"A1","nameFamily":"NurseAssign","sex":"F","allergies":"None","dateOfBirth":"1985-05-05"}' \
+            "$API/api/icu/adt/admissions")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "the nurse-direction admission -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          WNURSE=$(echo "$out" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["encounter"]["encounterId"])')
+          A1FREE2=$(PSQL "select \"BedId\" from \"Beds\" where \"Active\" and \"BedId\" not in (select \"BedId\" from \"Encounters\" where \"Status\" = 'open' and \"BedId\" <> '') order by \"Seq\" limit 1")
+          [ -n "$A1FREE2" ] || die "no free bed — the nurse direction cannot be exercised"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $RN" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"$A1FREE2\"}" "$API/api/icu/adt/encounters/$WNURSE/assign-bed")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "Staff Nurse assign -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"BedId\" from \"Encounters\" where \"EncounterId\" = '$WNURSE'")" = "$A1FREE2" ] || die "the nurse assignment did not store"
+          echo "  ok   Staff Nurse assigned $A1FREE2 -> 200 (the atom's second holder)"
+          # NEITHER HOLDER GAINS adt.admit: a bed-NAMED admission stays 403
+          # for both. (For the office Administrator the refusal is the
+          # adt.admit check itself; for the Nurse it fires at
+          # admissions.create — the FIRST gate — which proves the same
+          # outcome: beds.assign unlocked no admission-with-bed for either.)
+          for actor in OFF RN; do
+            eval "T=\$$actor"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+              -d '{"nameFirst":"Ward","nameSecond":"A1","nameFamily":"Deny","sex":"M","allergies":"None","dateOfBirth":"1985-05-05","diagnosis":"x","attending":"y","bedId":"ICU-01"}' \
+              "$API/api/icu/adt/admissions")
+            [ "$rc" = "403" ] || die "$actor bed-named admission -> HTTP $rc, expected 403 — beds.assign must not unlock admitting into a bed"
+          done
+          echo "  ok   neither the office Administrator nor the Nurse can admit INTO a bed (403 both — beds.assign is not adt.admit)"
 
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #

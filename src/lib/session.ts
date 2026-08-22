@@ -94,6 +94,7 @@ export type Permission =
   | 'admissions.create'    // Inpatient Reception (Amendment 4): open an episode WITHOUT naming a bed. The split is by BED, not by endpoint — one admission path; naming a bed still costs adt.admit, which the office Administrator does not hold. The Receptionist job title already maps to the Administrator profile, so reception receives this by mapping, not by a new profile.
   | 'adt.discharge'        // Layer 2 ADT: close an encounter (doctor authority)
   | 'adt.transfer'         // Layer 2 ADT: move within the unit (nursing action)
+  | 'beds.assign'          // Ward §6 (PR A1): give a bed to an already-admitted BEDLESS patient — the awaiting-bed list's one action. Distinct from beds.manage (registry admin, not placement) and adt.admit (doctor authority; admitting INTO a bed). Office Administrator + Nurse.
   | 'users.manage'         // user administration mutations (System Administrator ONLY — moved from the office profile by the User Management design)
   | 'users.view'           // read the account list (System Administrator ONLY)
   | 'formulary.manage'     // Layer 4: maintain the drug formulary (Pharmacy authority)
@@ -156,7 +157,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
   Nurse: [
     'patients.view', 'orders.view', 'orders.implement', 'meds.administer',
     'notes.document', 'handoff.document', 'results.view', 'results.document', 'ai.view', 'adt.transfer',
-    'observations.record', 'patients.measure', 'attachments.view', 'attachments.add',
+    'beds.assign', 'observations.record', 'patients.measure', 'attachments.view', 'attachments.add',
   ],
   /* administrative landing view + census-level board + user administration */
   /* users.manage MOVED to the System Administrator (User Management
@@ -174,7 +175,7 @@ const PROFILE_PERMISSIONS: Record<PermissionProfile, readonly Permission[]> = {
      that IS the office profile's). The System Administrator does NOT
      hold it — accounts, not identity. */
   Administrator: ['admin.view', 'patients.view', 'identity.correct', 'hospital.configure', 'beds.manage',
-    'admissions.create', 'backup.status.view'],
+    'beds.assign', 'admissions.create', 'backup.status.view'],
   /* the highest-privilege authority: controls who can reach patient data
      while never reaching it (no clinical atoms, not even patients.view).
      backup.manage: backup/restore is IT operations (design §1) — and an

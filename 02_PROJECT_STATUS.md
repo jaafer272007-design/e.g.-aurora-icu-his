@@ -1,9 +1,10 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-20 · current through backup-registration ruling 3
-(registration is a MEASUREMENT: the windows-latest CI leg runs the same
-registration code provisioning runs and asserts the task and rule exist —
-the record below), completing the three-PR backup arc (#218, #219).** This line is THE recency marker and is
+**Last updated: 2026-08-22 · current through Ward PR A1 — server only
+(the `beds.assign` atom on office Administrator + Nurse, the dedicated
+`POST /adt/encounters/{id}/assign-bed` path with its own action string and
+the bedless/bedded partition against transfer, and the `bedless=true`
+filter on `GET /adt/encounters` — the record below).** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -30,6 +31,82 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-22 · WARD PR A1 — SERVER ONLY: bed assignment gets its own path,
+its own atom and its own audit sentence; transfer and assignment now
+PARTITION the open encounters; and the awaiting-bed read exists
+(`bedless=true`).** The first Ward implementation PR, built from
+`docs/design/ward.md` §§3.1/3.2/6 and amendments A3/A6.1 exactly; A2 (the
+awaiting-bed screen + A5's bedless-reader fixes) and B (the Ward
+vocabulary, the bed edit path) are deliberately NOT here.
+
+**THE ATOM — `beds.assign`, the design's provisional name confirmed.** The
+naming precedent decided it: atoms are domain.verb, the bed domain already
+carries `beds.manage`, and the labcatalog/imagingcatalog rule (two atoms
+kept apart so a later split costs a row edit) is exactly the relationship
+this atom has to both neighbours — registry administration is not
+placement (`beds.manage`), and placing the bedless is not admitting into a
+bed (`adt.admit`, doctor authority, untouched). Held by the office
+Administrator AND Nurse (`Rbac.cs` the source; `session.ts` and 01's
+matrix updated as mirrors, with 01 carrying the dated amendment);
+Doctor/SeniorDoctor deliberately gain nothing.
+
+**THE ENDPOINT — `POST /api/icu/adt/encounters/{id}/assign-bed`, NOT a
+transfer.** Own route, own request record, own action string
+(`"bed assigned"`), and an audit detail (`"to {bed}"`) that names a
+DESTINATION ONLY — an assignment has no source bed, so its record implies
+none (the dangling-arrow lesson that created this path requirement).
+Refusals, all message-discriminated per 03 and all proven to write
+nothing: unknown encounter 404; missing bedId 400; unknown bed 400 (a
+payload reference, the bedId precedent); retired bed 409; occupied bed
+409; closed encounter 409; ALREADY-BEDDED 409 — the partition guard.
+
+**THE PARTITION, enforced from both sides.** #212 made transfer refuse a
+BEDLESS encounter (nothing to transfer from); this PR makes assignment
+refuse a BEDDED one (a move is a transfer). Every open encounter is
+reachable by exactly one of the two operations — bedless → assignment,
+bedded → transfer — no overlap, no gap, both halves in code rather than
+in prose. Transfer's bedless-409 message no longer claims the assignment
+path "does not exist yet" — it now directs to it (the #212 CI leg's
+`nothing to transfer from` assertion is unchanged and still passes).
+
+**THE BEDLESS FILTER — `GET /adt/encounters?bedless=true`, meaning
+"open encounters with no bed assigned" IN FULL.** The open half is part of
+the filter's meaning, not the caller's homework: a BedId-only filter would
+hand every closed bedless episode (day cases, §2.1) to the awaiting-bed
+worklist. Derived from `open && BedId == ""` at read — never stored,
+never a third Status value. Only the literal `true` is accepted (a
+`bedless=false` has two readings and is refused rather than guessed);
+`status=discharged&bedless=true` is a contradiction in terms → 400 naming
+it (an empty 200 would be a truthful-looking answer to a meaningless
+question); `status=open`/`patientId`/`admittedOn` compose. Rides the
+endpoint's existing `patients.view` gate — a subset of what the endpoint
+already returns creates no new read authority. This closes A3's
+operational finding for the SERVER: a bedless admission from yesterday is
+now one query away; putting it on a screen is A2.
+
+**FAILURE-FIRST, per guard (03's discipline + the owner's protocol).**
+Eight deliberate breaks, each demonstrated RED locally against the
+CI-identical production-seed environment (postgres 16, real tokens per
+profile) and each restored: the partition guard off (fell through to the
+bed lookup — 400 where 409 was asserted), the closed guard off (the 409
+came from OCCUPIED — the message assertion caught what the code alone
+would have passed, 03's exact scenario), the occupied guard off (a
+double-occupancy 200), the retired guard off (200 into a retired bed),
+the bed-exists guard off (500), the filter's open half off (the closed
+encounter leaked into the list), the atom withheld from Administrator
+(403 on the first office leg), and the contradiction 400 off (a silent
+empty 200). Final run: all 21 assertions green. The CI legs are the same
+assertions on the production-seed job; their positive control (break the
+partition guard once on the PR, red with the leg's own message, revert)
+is demonstrated in the PR's run history — the #212/#220 protocol.
+
+**RECORDED, NOT BUILT (the owner's stop condition):** the awaiting-bed
+screen and A5's bedless-reader fixes (A2); the Ward vocabulary, the bed
+edit path and ward-to-ward derivation (B); A7's two ICU-scope corrections
+(the PatientHistory scope statement and the two AI prompts) — those are
+tied to ward records becoming user-visible, which is A2, and are already
+recorded in ward.md A7 so the build cannot start without seeing them.
 
 **2026-08-20 · BACKUP-REGISTRATION RULING 3 — registration is a
 MEASUREMENT: CI runs the real registration on a real Windows runner and

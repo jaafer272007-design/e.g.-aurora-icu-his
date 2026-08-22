@@ -157,9 +157,26 @@ static class Rbac
             "assignments.manage", "codestatus.set", "codestatus.manage", "imagingcatalog.manage",
             "beds.manage", "dispositions.manage", "isolation.manage", "shifts.manage",
             "attachments.view", "attachments.add"],
+        /* beds.assign (Ward design §6 — Ward PR A1): giving a bed to an
+           ALREADY-ADMITTED, bedless patient — the awaiting-bed worklist's
+           one action. A DISTINCT atom from both neighbours, on the
+           labcatalog/imagingcatalog precedent (kept apart so a later
+           split costs a row edit):
+           - beds.manage is bed REGISTRY administration (add/retire), not
+             placement — holding the layout is not placing a patient;
+           - adt.admit stays DOCTOR authority and still governs admitting
+             straight INTO a bed (how ICU admits) — reception and nursing
+             do not gain that here, and the admissions endpoint's
+             bed-names-cost-adt.admit check is untouched.
+           Held by the office Administrator (the receptionist works the
+           awaiting-bed list) AND Nurse (the ward nurse beds the patient) —
+           the design's stated pair. Doctor/SeniorDoctor deliberately do
+           NOT receive it: they admit into beds via adt.admit; the
+           placement-of-the-bedless authority is the desk's and the
+           ward's. */
         ["Nurse"] = ["patients.view", "orders.view", "orders.implement", "meds.administer",
             "notes.document", "handoff.document", "results.view", "results.document", "ai.view", "adt.transfer",
-            "observations.record", "patients.measure", "attachments.view", "attachments.add"],
+            "beds.assign", "observations.record", "patients.measure", "attachments.view", "attachments.add"],
         /* users.manage MOVED to the System Administrator (User Management
            design §5: the atoms are held ONLY by that role) — the office
            Administrator (receptionist/billing/records) keeps the
@@ -189,8 +206,13 @@ static class Rbac
         /* beds.manage — see the SeniorDoctor comment above: the validator's
            decision grants it to BOTH profiles (unit command + facility
            administration). Beds carry no clinical data. */
+        /* beds.assign — see the Nurse comment above: the office profile's
+           half of the design's pair (the receptionist assigns from the
+           awaiting-bed list). Placement is a LOCATION act on an episode
+           the desk already opened (admissions.create); no clinical pane
+           opens with it — the locked clinical exclusion is untouched. */
         ["Administrator"] = ["admin.view", "patients.view", "identity.correct", "hospital.configure",
-            "beds.manage", "admissions.create", "backup.status.view"],
+            "beds.manage", "beds.assign", "admissions.create", "backup.status.view"],
         /* the highest-privilege authority in the system: whoever holds it
            controls who can reach patient data — while never reaching it
            themselves (NO clinical atoms, not even patients.view; the

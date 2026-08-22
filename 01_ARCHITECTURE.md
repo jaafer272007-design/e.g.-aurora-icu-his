@@ -280,8 +280,8 @@ PermissionProfile → Permissions (and Dashboard landing view):
 |---|---|---|
 | Doctor               | patients.view, orders.view, orders.create, orders.sign, orders.modify, orders.discontinue, results.view, results.acknowledge, results.document, notes.document, ai.view, adt.admit, admissions.create, adt.discharge, observations.record, patients.measure, codestatus.set, attachments.view, attachments.add | /workspace |
 | SeniorDoctor         | everything Doctor has + results.correct, labcatalog.manage, ordersets.manage, observations.correct, observations.configure, assignments.manage, codestatus.manage, imagingcatalog.manage, beds.manage, dispositions.manage, isolation.manage, shifts.manage. HARD CONSTRAINT: the Consultant-tier authorities NEVER sit on the office Administrator profile | /workspace |
-| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, handoff.document, results.view, results.document, ai.view, adt.transfer, observations.record, patients.measure, attachments.view, attachments.add | /nurse |
-| Administrator        | admin.view, patients.view, identity.correct, hospital.configure, beds.manage, admissions.create, backup.status.view *(office profile: NO clinical panes — no orders/results/ai/attachments; users.manage moved to SystemAdministrator)* | /admin |
+| Nurse                | patients.view, orders.view, orders.implement, meds.administer, notes.document, handoff.document, results.view, results.document, ai.view, adt.transfer, beds.assign, observations.record, patients.measure, attachments.view, attachments.add | /nurse |
+| Administrator        | admin.view, patients.view, identity.correct, hospital.configure, beds.manage, beds.assign, admissions.create, backup.status.view *(office profile: NO clinical panes — no orders/results/ai/attachments; users.manage moved to SystemAdministrator)* | /admin |
 | SystemAdministrator  | users.manage, users.view, backup.manage, backup.status.view — and nothing else (no patients.view: access governance without patient-data reach) | /admin/users |
 | Pharmacist           | patients.view, orders.view, results.view, attachments.view, formulary.manage, frequencies.manage | /beds |
 | RespiratoryTherapist | patients.view, orders.view, results.view, ai.view, attachments.view | /beds |
@@ -340,6 +340,30 @@ stream teaches people to ignore the stream. The `/backup` route and every
 mutating backup endpoint stay `backup.manage` (SystemAdministrator only);
 the status payload is operational metadata, never patient data, so the
 office profile's clinical exclusion is untouched.]*
+
+*[Amendment, 2026-08-22 — `beds.assign` (Ward design §6, Ward PR A1). The
+BED-ASSIGNMENT atom: giving a bed to an already-admitted, BEDLESS patient —
+the awaiting-bed worklist's one action. A DISTINCT atom from both
+neighbours, on the labcatalog/imagingcatalog precedent (two atoms kept
+apart so a later split costs a row edit): `beds.manage` is bed REGISTRY
+administration (add/retire), not placement; `adt.admit` stays doctor
+authority and still governs admitting a patient straight INTO a bed, which
+is how ICU admits — reception and nursing do not gain that, and the
+admissions endpoint's naming-a-bed-costs-adt.admit check is untouched.
+Held by the office Administrator (the receptionist works the awaiting-bed
+list) AND Nurse (the ward nurse beds the patient) — the design's stated
+pair; Doctor/SeniorDoctor deliberately do not receive it. It gates exactly
+one endpoint: `POST /api/icu/adt/encounters/{id}/assign-bed`, which is NOT
+a transfer — its own path, its own action string ("bed assigned"), an
+audit detail naming a destination only, and the partition enforced from
+both sides: transfer refuses a bedless encounter (nothing to move from),
+assignment refuses a bedded one (a move is a transfer). The awaiting-bed
+READ is the `bedless=true` filter on `GET /adt/encounters` and rides that
+endpoint's existing `patients.view` gate — the filter is a subset of what
+the endpoint already returns, so no new read authority is created; the
+awaiting-bed SCREEN (Ward PR A2) will render for holders of this atom per
+§6. No clinical pane opens with the atom on either profile — the locked
+clinical exclusion is untouched.]*
 
 *[Amendment, 2026-08-18 — the route the atom now gates. `/reception` =
 `admissions.create` (Inpatient Reception step 6). It is the ONLY route

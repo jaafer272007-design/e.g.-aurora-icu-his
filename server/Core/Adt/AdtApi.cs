@@ -96,19 +96,47 @@ static class AdtApi
             return Results.Json(doctors, JsonOpts.Web);
         }).RequireAuthorization();
 
-        /* GET /api/icu/adt/encounters?patientId&status&admittedOn — encounter
-           list (open census, discharge history, per-patient lookup, and the
-           reception desk's "admitted on this date" view). Both roles. */
+        /* GET /api/icu/adt/encounters?patientId&status&admittedOn&bedless —
+           encounter list (open census, discharge history, per-patient lookup,
+           the reception desk's "admitted on this date" view, and the ward's
+           awaiting-bed read). Both roles. */
         app.MapGet("/api/icu/adt/encounters", (HttpContext ctx, System.Security.Claims.ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Identity.Rbac.Deny(user, "patients.view") is IResult denied) return denied;
             foreach (var key in ctx.Request.Query.Keys)
-                if (key is not ("patientId" or "status" or "admittedOn"))
+                if (key is not ("patientId" or "status" or "admittedOn" or "bedless"))
                     return ApiError.BadRequest($"unknown query parameter '{key}'");
             var patientId = ctx.Request.Query["patientId"].ToString();
             var status = ctx.Request.Query["status"].ToString();
             if (status.Length > 0 && status is not ("open" or "discharged"))
                 return ApiError.BadRequest("status must be one of: open, discharged");
+            /* bedless=true — "OPEN encounters with no bed assigned", the ward
+               design's awaiting-bed read (§3.2), IN FULL: the OPEN half is
+               part of the filter's meaning, not the caller's homework. A
+               BedId-only filter would hand every closed bedless episode
+               (day cases especially — §2.1 discharges them bedless the same
+               day) to a worklist whose whole point is patients still waiting.
+               Awaiting-bed stays DERIVED (open && BedId == "") — this
+               parameter is a read over that derivation, never a stored state
+               and never a third Status value.
+               ONLY the literal 'true' is accepted: 'bedless=false' has two
+               readings (no filter? bedded-only?) and a parameter that could
+               mean either is refused rather than guessed.
+               'status=discharged&bedless=true' is a CONTRADICTION IN TERMS —
+               bedless means open, so the combination describes an empty set
+               BY CONSTRUCTION. Answering [] would be a truthful-looking
+               answer to a meaningless question; the four-code rule's 400 (a
+               request that can never succeed regardless of the world's
+               state) is the honest one. 'status=open&bedless=true' is
+               redundant and legal — the natural spelling for a caller
+               already filtering by status. */
+            var bedless = ctx.Request.Query["bedless"].ToString();
+            if (bedless.Length > 0 && bedless != "true")
+                return ApiError.BadRequest(
+                    "bedless must be 'true' when present — it means exactly \"open encounters with no bed assigned\"; omit it to list encounters regardless of bed");
+            if (bedless == "true" && status == "discharged")
+                return ApiError.BadRequest(
+                    "bedless=true cannot combine with status=discharged — bedless means OPEN encounters with no bed assigned, and a closed encounter is not awaiting one");
             /* admittedOn=yyyy-MM-dd — EVERY encounter admitted on that date,
                REGARDLESS OF STATUS. That combination is the point of the
                parameter and the reason status alone could not serve it: a DAY
@@ -134,6 +162,11 @@ static class AdtApi
             if (patientId.Length > 0) q = q.Where(e => e.PatientId == patientId);
             if (status.Length > 0) q = q.Where(e => e.Status == status);
             if (admittedOn.Length > 0) q = q.Where(e => e.AdmittedAt.StartsWith(admittedOn));
+            /* both halves applied HERE, together — the ENCOUNTER's own bed
+               field, never a join through bed occupancy: whether some OTHER
+               encounter occupies a bed has no bearing on whether THIS one is
+               awaiting its own */
+            if (bedless == "true") q = q.Where(e => e.Status == "open" && e.BedId == "");
             var names = db.AdtPatients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.DisplayName);
             return Results.Json(q.OrderBy(e => e.EncounterId).AsEnumerable()
                 .Select(e => e.ToDto(names.GetValueOrDefault(e.PatientId, ""))), JsonOpts.Web);
@@ -1437,11 +1470,17 @@ static class AdtApi
                each row.
                THE FIX IS REFUSAL, NOT A TIDIER STRING. Making the detail read
                well for an empty source would legitimise an operation the ward
-               design says does not exist: giving a bed to a bedless patient is
-               bed ASSIGNMENT (ward design §3.1 — "This is NOT a transfer, and
-               must not reuse the transfer path"), which has its own path, its
-               own action string and its own atom, and is NOT BUILT YET. Until
-               it is, the operation is unavailable rather than approximated.
+               design says is not a transfer: giving a bed to a bedless patient
+               is bed ASSIGNMENT (ward design §3.1 — "This is NOT a transfer,
+               and must not reuse the transfer path"), which has its own path
+               (POST /assign-bed below, Ward PR A1), its own action string and
+               its own atom (beds.assign).
+               THIS GUARD IS HALF OF A PARTITION, and the assign-bed endpoint
+               enforces the other half: a BEDLESS encounter is refused here
+               (nothing to transfer from) and accepted there; an ALREADY-BEDDED
+               encounter is accepted here and refused there (a move is not an
+               assignment). No open encounter is reachable by both operations,
+               and none is reachable by neither.
                409, not 400: the encounter exists, the actor may transfer, and
                the identical request succeeds once the encounter has a bed — the
                four-code rule's "it is there, but not like that". Placed with the
@@ -1452,8 +1491,8 @@ static class AdtApi
             if (string.IsNullOrWhiteSpace(enc.BedId))
                 return ApiError.StateConflict(
                     $"encounter '{encounterId}' has no bed — there is nothing to transfer from. "
-                    + "Giving a bed to a patient who is awaiting one is bed assignment, not a transfer, "
-                    + "and that path does not exist yet");
+                    + "Giving a bed to a patient who is awaiting one is bed assignment, not a transfer: "
+                    + "use the bed-assignment path");
             var targetBed = db.Beds.AsNoTracking().FirstOrDefault(b => b.BedId == req.BedId);
             if (targetBed is null)
                 return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
@@ -1471,6 +1510,76 @@ static class AdtApi
             var from = enc.BedId;
             enc.BedId = req.BedId!;
             enc.EventsJson = AdtLogic.AppendEvent(enc.EventsJson, new(time, actor, "transferred", $"{from} → {req.BedId}"));
+            db.SaveChanges();
+            var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
+            return Results.Json(enc.ToDto(name), JsonOpts.Web);
+        }).RequireAuthorization();
+
+        /* POST /api/icu/adt/encounters/{encounterId}/assign-bed — BED
+           ASSIGNMENT (Ward design §3.1, Ward PR A1): give a bed to an
+           already-admitted, BEDLESS patient. Body: { bedId }.
+
+           NOT A TRANSFER, BY CONSTRUCTION. The design's reason is recorded
+           in the reception amendments: AdtEventDto is four strings with no
+           structured from/to, the concatenated string IS the audit record,
+           and reusing transfer on a bedless encounter wrote "  → B-05" — a
+           dangling arrow asserting a source that never existed. So this
+           path has its own route, its own atom (beds.assign — the office
+           Administrator and Nurse; NOT adt.admit, NOT adt.transfer, NOT
+           beds.manage), its own action string ("bed assigned"), and an
+           audit detail ("to {bed}") that names a DESTINATION ONLY —
+           an assignment has no source bed and its record must not imply
+           one.
+
+           THE PARTITION (the mirror of transfer's bedless guard): transfer
+           refuses a BEDLESS encounter — nothing to move from; assignment
+           refuses a BEDDED one — giving a bedded patient another bed is a
+           MOVE, and moves go through transfer (§3.4). Together the two
+           guards partition the open encounters: bedless → assignment only,
+           bedded → transfer only, no overlap and no gap. Each half is
+           ENFORCED in code at the operation it protects, never assumed
+           from the other's existence.
+
+           GUARD ORDER (transfer's own order, guard-before-status): RBAC →
+           payload shape → encounter lookup (404 — the ADDRESSED id) →
+           the encounter's own state (discharged, then already-bedded) →
+           the target bed (unknown 400 — a PAYLOAD reference, the bedId
+           precedent — then retired 409, occupied 409). The encounter
+           reports its own state before any complaint about the target.
+
+           REFUSALS WRITE NOTHING, structurally: the handler's ONLY
+           SaveChanges() sits after the last guard; there is no partial
+           audit event because the event is appended in the same
+           mutation block the save commits. */
+        app.MapPost("/api/icu/adt/encounters/{encounterId}/assign-bed",
+            (string encounterId, AssignBedRequest req, ClaimsPrincipal user, AuroraDb db) =>
+        {
+            if (Rbac.Deny(user, "beds.assign") is IResult denied) return denied;
+            if (string.IsNullOrWhiteSpace(req.BedId))
+                return ApiError.BadRequest("bedId is required");
+            var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
+            if (enc is null) return ApiError.NotFound();
+            if (enc.Status == "discharged")
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' is discharged — a closed encounter cannot be assigned a bed");
+            /* the partition's other half — see transfer's bedless guard */
+            if (!string.IsNullOrWhiteSpace(enc.BedId))
+                return ApiError.StateConflict(
+                    $"encounter '{encounterId}' already has bed '{enc.BedId}' — moving a bedded patient is a transfer, not an assignment: use the transfer path");
+            var targetBed = db.Beds.AsNoTracking().FirstOrDefault(b => b.BedId == req.BedId);
+            if (targetBed is null)
+                return ApiError.BadRequest($"bedId '{req.BedId}' does not match any bed");
+            if (!targetBed.Active)
+                return ApiError.StateConflict(
+                    $"bed '{req.BedId}' is retired — reactivate it in Configuration before assigning into it");
+            var occupant = db.Encounters.AsNoTracking()
+                .FirstOrDefault(e => e.Status == "open" && e.BedId == req.BedId);
+            if (occupant is not null)
+                return ApiError.StateConflict($"bed '{req.BedId}' is already occupied by {occupant.PatientId}");
+            var actor = user.FindFirst("name")?.Value ?? "Unknown";
+            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+            enc.BedId = req.BedId!;
+            enc.EventsJson = AdtLogic.AppendEvent(enc.EventsJson, new(time, actor, "bed assigned", $"to {req.BedId}"));
             db.SaveChanges();
             var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
             return Results.Json(enc.ToDto(name), JsonOpts.Web);
