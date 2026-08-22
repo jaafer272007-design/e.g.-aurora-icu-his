@@ -699,6 +699,21 @@ pending the owner's ship-gate convergence decision (recorded open in 02);
 its suite list is stale (13 of the 16 suites) and is deliberately NOT
 corrected until that decision.
 
+*[Superseded in part — environment-separation PR-4, 2026-08-22: the
+ship-gate convergence decision has been made, and the convergence landed
+in the INSTALLER channel, not by activating this path. **A protected
+hospital installer may only be produced from content that passes the ship
+gate**: `build-protected.ps1` refuses, before the password prompt, any
+build whose exact content is not a clean-tree `origin/main` commit with
+`ci.yml` green (by workflow identity, all required jobs), staging serving
+that content, and every deployed suite green on it — fail-closed,
+message-discriminated (`installer/ship-gate.ps1`). The promotion path
+above remains dormant exactly as described — still no `production`
+branch, no `release/r<N>` tag, no GitHub Release — but its suite list is
+NO LONGER stale: both gates now read the same drift-checked inventory,
+`scripts/ship-requirements.json` (all 16 suites; a suite on disk that the
+list does not name fails both gates loudly).]*
+
 **The paid-database boundary, stated precisely.** Production does NOT
 require — and must not acquire — a cloud database: production data lives
 in hospital-resident PostgreSQL, per the locked per-hospital/on-prem
@@ -713,6 +728,10 @@ path · the Pages branch-preview policy · appliance E2E suite
 parameterization · `requiredEnvKeys` warn-vs-refuse on update · repo
 visibility scheduling · the staging-DB expiry posture. Nothing in this
 section resolves any of them.
+
+*[Amendment, environment-separation PR-4 (2026-08-22): "ship-gate
+convergence into the installer path" is now RESOLVED — built, see the
+supersede note above. The other decisions in this list remain open.]*
 
 ## Verification-gate content equality
 
