@@ -1305,6 +1305,18 @@ jobs:
       - name: Release version-gate tests + the committed ledger, ON 5.1
         run: .\installer\test-version-gate.ps1
 
+      # The SHIP gate (environment-separation PR-4): what Aurora ships must
+      # be what Aurora verified. Pure fixture tests cover every refusal
+      # class (source/ci/staging/suite evidence, fail-closed on unavailable
+      # verification), the AST pins that make build-protected.ps1's
+      # chokepoint structural (gate before the password prompt, pinned
+      # parameter list, no skip switch in any spelling), and the sync
+      # between scripts/ship-requirements.json and the repository (suite
+      # inventory on disk, ci.yml job names, the print suite's ctx list,
+      # promotion-gate.sh reading the shared truth). No network.
+      - name: Ship-gate pure tests + chokepoint pins + shared-truth sync, ON 5.1
+        run: .\installer\test-ship-gate.ps1
+
       # The gate is only worth having if it can actually stop a build. Prove
       # that here by running build-protected.ps1's own refusal path against a
       # version that IS already in the committed ledger, and asserting the
@@ -1340,6 +1352,38 @@ jobs:
           # The child process exited 1 ON PURPOSE - that is the assertion. Without
           # this the shell wrapper inherits $LASTEXITCODE and marks the step failed
           # for proving exactly what it was asked to prove.
+          exit 0
+
+      # ...and the SHIP gate must stop a real build too (PR-4). Bump AppVer
+      # PAST the ledger so the VERSION gate passes and any refusal can only
+      # be the ship gate's; the bump itself dirties the tree, which is the
+      # deterministic, OFFLINE refusal (SOURCE-DIRTY-TREE: an artifact built
+      # from a dirty tree matches no commit, so no evidence can vouch for
+      # it). This proves, on the real shipping engine, that build-protected
+      # cannot compile unverified content, that the refusal is
+      # message-discriminated, that it fires BEFORE the password prompt, and
+      # that the offline check really short-circuits (no network stage runs).
+      - name: Prove the SHIP gate stops a real build (build-protected.ps1 refuses unverified content)
+        run: |
+          $iss = '.\installer\aurora.iss'
+          $orig = Get-Content -Raw $iss
+          try {
+            (Get-Content -Raw $iss) -replace '(#define\s+AppVer\s+")[^"]+(")', '${1}99.99.99${2}' |
+              Set-Content -NoNewline -Encoding ascii $iss
+            $out = & powershell -NoProfile -ExecutionPolicy Bypass -File .\installer\build-protected.ps1 `
+                     -PgZip C:\does-not-exist.zip -SkipStage 2>&1 | Out-String
+            $rc = $LASTEXITCODE
+          } finally {
+            Set-Content -NoNewline -Encoding ascii -Path $iss -Value $orig
+          }
+          Write-Host $out
+          if ($rc -eq 0) { Write-Host "FAIL - build-protected.ps1 did NOT refuse a dirty (unverifiable) tree"; exit 1 }
+          if ($out -match 'REFUSED - VERSION GATE') { Write-Host "FAIL - the VERSION gate refused 99.99.99, so the ship gate was never even reached"; exit 1 }
+          if ($out -notmatch 'REFUSED - SHIP GATE') { Write-Host "FAIL - it exited $rc but not via the ship gate"; exit 1 }
+          if ($out -notmatch 'SOURCE-DIRTY-TREE') { Write-Host "FAIL - the refusal is not message-discriminated as SOURCE-DIRTY-TREE"; exit 1 }
+          if ($out -match 'Company install password') { Write-Host "FAIL - it reached the password prompt; the ship gate must refuse BEFORE any secret is requested"; exit 1 }
+          if ($out -match 'ci evidence: querying') { Write-Host "FAIL - the offline source check did not short-circuit; the gate went to the network with a dirty tree"; exit 1 }
+          Write-Host "confirmed: build-protected.ps1 refused unverified content [SOURCE-DIRTY-TREE] before prompting, compiling, or touching the network (exit $rc)"
           exit 0
 
       # aurora.iss must be pure ASCII (the Inno compiler and the 5.1 engine

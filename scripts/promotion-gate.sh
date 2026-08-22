@@ -22,12 +22,20 @@
 #                      build context equals the promoted commit's (the
 #                      print suite's ctx_hash, same 8 paths), and its
 #                      environment line reads staging.
-#   5. SUITES GREEN ON THIS CONTENT — for each of the thirteen deployed
-#                      suites: the most recent completed run concluded
-#                      SUCCESS and ran against content equal to the
-#                      promoted commit's (server tree; the print suite
-#                      additionally the frontend context). A green run
-#                      against different bytes is NOT evidence.
+#   5. SUITES GREEN ON THIS CONTENT — for each suite in the SHARED
+#                      inventory (scripts/ship-requirements.json — the
+#                      single source of shipping-verification truth this
+#                      gate now shares with installer/ship-gate.ps1): the
+#                      most recent completed run concluded SUCCESS and ran
+#                      against content equal to the promoted commit's
+#                      (server tree; frontend-context suites additionally
+#                      the frontend context). A green run against
+#                      different bytes is NOT evidence. The inventory is
+#                      drift-checked against the promoted commit's own
+#                      workflow files first — the hardcoded suite list
+#                      this replaced (PR-4) had silently gone stale at 13
+#                      of the 16 deployed suites, exactly the omission the
+#                      drift check makes impossible to miss.
 #
 # Parameterized so it can be DRY-RUN locally against mock staging
 # endpoints (the workflow passes the real ones):
@@ -47,6 +55,22 @@ STAGING_PAGES=${STAGING_PAGES:?STAGING_PAGES is required}
 GH_API=${GH_API:-https://api.github.com}
 MAIN_REF=${MAIN_REF:-origin/main}
 
+# ---- the shared verification truth (environment-separation PR-4) ----------
+# The suite inventory and content-path lists live in ship-requirements.json,
+# read by BOTH this gate and installer/ship-gate.ps1 — one list, two
+# consumers, no drift. An unreadable or empty truth file BLOCKS: a gate that
+# silently iterated over nothing would pass vacuously.
+REQS="$(dirname "$0")/ship-requirements.json"
+[ -f "$REQS" ] || { echo "BLOCK  the shared requirements file is missing: $REQS"; exit 1; }
+req_list() { # $1 = field name -> space-joined list, or fail loudly
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(" ".join(d[sys.argv[2]]))' "$REQS" "$1"
+}
+SUITES=$(req_list deployedSuites) || { echo "BLOCK  cannot read deployedSuites from $REQS"; exit 1; }
+[ -n "$SUITES" ] || { echo "BLOCK  deployedSuites is empty in $REQS — a gate over zero suites is vacuous"; exit 1; }
+CTX_PATHS=$(req_list frontendContextPaths) || { echo "BLOCK  cannot read frontendContextPaths from $REQS"; exit 1; }
+[ -n "$CTX_PATHS" ] || { echo "BLOCK  frontendContextPaths is empty in $REQS"; exit 1; }
+CTX_SUITES=$(req_list frontendContextSuites) || { echo "BLOCK  cannot read frontendContextSuites from $REQS"; exit 1; }
+
 FAILURES=()
 fail() { FAILURES+=("$1"); echo "BLOCK  $1"; }
 ok()   { echo "ok     $1"; }
@@ -55,11 +79,12 @@ gh_get() { # $1=path — GitHub API GET with optional token
   curl -s --max-time 30 ${GH_TOKEN:+-H "Authorization: Bearer $GH_TOKEN"} "$GH_API/repos/$REPO/$1"
 }
 
-# the print suite's frontend build context — keep this list IN SYNC with
-# .github/workflows/deployed-print-e2e.yml (ctx_hash)
+# the frontend build context — paths come from ship-requirements.json;
+# installer/test-ship-gate.ps1 asserts that list equals the ctx_hash list
+# inside .github/workflows/deployed-print-e2e.yml (same paths, same order)
 ctx_hash() {
   local c=$1
-  { for p in src index.html package-lock.json vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json .github/workflows/deploy-pages.yml; do
+  { for p in $CTX_PATHS; do
       git rev-parse -q --verify "$c:$p" 2>/dev/null || echo "MISSING:$p"
     done; } | sha256sum | cut -d' ' -f1
 }
@@ -107,10 +132,20 @@ else
 fi
 
 # ---- 5. every suite green ON THIS CONTENT ----------------------------------
-SUITES="deployed-auth-e2e.yml deployed-adt-e2e.yml deployed-users-e2e.yml deployed-labs-e2e.yml \
-deployed-orders-e2e.yml deployed-mar-e2e.yml deployed-timeline-e2e.yml deployed-ai-e2e.yml \
-deployed-encounter-scope-e2e.yml deployed-formulary-e2e.yml deployed-labcatalog-e2e.yml deployed-print-e2e.yml \
-deployed-observations-e2e.yml"
+# INVENTORY DRIFT CHECK first: the required list must equal the deployed
+# suites the promoted commit itself carries. A suite the list does not know
+# is a suite this gate does not demand — that omission fails loudly here
+# instead of silently shrinking the gate.
+DISK_SUITES=$(git ls-tree --name-only "$PROMOTED_SHA" ".github/workflows/" 2>/dev/null |
+  sed 's|.*/||' | grep -E '^deployed-.*-e2e\.yml$' | sort | tr '\n' ' ' | sed 's/ $//')
+WANT_SET=$(printf '%s\n' $SUITES | sort | tr '\n' ' ' | sed 's/ $//')
+if [ -z "$DISK_SUITES" ]; then
+  fail "SUITE INVENTORY: could not list deployed-*-e2e.yml files at $PROMOTED_SHA — cannot prove the inventory is complete"
+elif [ "$DISK_SUITES" != "$WANT_SET" ]; then
+  fail "SUITE INVENTORY DRIFT: ship-requirements.json requires [$WANT_SET] but $PROMOTED_SHA carries [$DISK_SUITES] — update deployedSuites deliberately, then re-run"
+else
+  ok "suite inventory: ship-requirements.json matches the promoted commit's deployed-*-e2e.yml files ($(echo "$WANT_SET" | wc -w) suites)"
+fi
 for wf in $SUITES; do
   run=$(gh_get "actions/workflows/$wf/runs?status=completed&per_page=1")
   read -r R_SHA R_CONC <<<"$(echo "$run" | python3 -c '
@@ -126,13 +161,13 @@ print((r["head_sha"] + " " + str(r.get("conclusion"))) if r else "<none> <none>"
     fail "SUITE $wf: last green run was against server tree $R_SRV (commit $R_SHA), not the promoted tree — re-run the suites on this content"
     continue
   fi
-  if [ "$wf" = "deployed-print-e2e.yml" ]; then
+  case " $CTX_SUITES " in *" $wf "*)
     R_CTX=$(ctx_hash "$R_SHA")
     if [ "$R_CTX" != "$WANT_CTX" ]; then
       fail "SUITE $wf: last green run was against frontend context $R_CTX, not the promoted context — re-run it on this content"
       continue
     fi
-  fi
+  ;; esac
   ok "suite $wf: green on the promoted content (run head $R_SHA)"
 done
 

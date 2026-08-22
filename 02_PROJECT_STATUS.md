@@ -1,10 +1,11 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-3 —
-the documentation closure (§11 step 6): 01 gains "The environment model
-(BUILT)" as constitution, the missing-concept claim and its dependents are
-superseded in place, and the open owner decisions are recorded — the
-record below.** This line is THE
+**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-4 —
+ship-gate convergence: the protected installer now mechanically refuses to
+compile content that has not been verified (clean-tree origin/main commit ·
+ci.yml green by workflow identity · staging serving that content · all 16
+deployed suites green on it, inventory drift-checked), and the dormant
+promotion gate reads the same shared truth — the record below.** This line is THE
 recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
@@ -32,6 +33,101 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-22 · ENVIRONMENT SEPARATION PR-4 — SHIP-GATE CONVERGENCE
+(owner-authorized; the dormant production-branch path is NOT resurrected —
+no `production` branch, no tag, no GitHub Release, nothing shipped, no
+version bumped, no ledger entry added; no other B-list decision made).**
+THE INVARIANT, now mechanical: **what Aurora ships must be what Aurora
+verified.** `build-protected.ps1` gains step 0b — after the version gate,
+BEFORE the password prompt — which refuses to compile unless the exact
+content being shipped carries all four kinds of evidence: **(A) source
+identity** (clean working tree at a commit on `origin/main` — a dirty tree
+matches no commit, a feature branch never ships), **(B) ci.yml green for
+that exact commit**, resolved by WORKFLOW IDENTITY (never "some suite
+reported success") with every required job green (frontend · server ·
+production-seed · installer-powershell), **(C) staging serving that
+content NOW** (healthz identity=staging; its build's `server/` tree +
+`render.yaml` blob equal the shipping commit's; the Pages `build.txt`
+commit's 8-path frontend context equals the shipping commit's — trees
+compared, never version strings), **(D) every deployed suite green ON
+that content** — the latest completed run of each of the 16 suites, each
+qualified by server-tree equality (the print suite additionally by
+frontend context; a green run against different bytes is NOT evidence,
+a green run for a different commit with EQUAL trees is). FAIL-CLOSED:
+every failure, including verification being UNAVAILABLE (offline, API
+down, staging suspended), is a refusal — never a warning — and every
+refusal names exactly one of 15 classes (`SOURCE-DIRTY-TREE`,
+`SOURCE-NOT-ON-MAIN`, `CI-EVIDENCE-MISSING`, `CI-RED`, `CI-JOB-MISSING`,
+`CI-JOB-RED`, `STAGING-UNAVAILABLE`, `STAGING-WRONG-ENVIRONMENT`,
+`STAGING-CONTENT-MISMATCH`, `SUITE-INVENTORY-DRIFT`,
+`SUITE-EVIDENCE-MISSING`, `SUITE-RED`, `SUITE-STALE-CONTENT`,
+`VERIFY-UNAVAILABLE`, `VERIFY-MALFORMED`) plus what to do; no secret is
+ever printed. No skip switch exists; `-UNPROTECTED` smoke builds
+(`build.ps1`) stay ungated as the structurally non-shippable dev/test
+packaging mode; `-RebuildVersion` re-cuts are gated like any build.
+SHARED TRUTH: `scripts/ship-requirements.json` (schema
+aurora-ship-requirements/1) now carries the workflow identity, required
+jobs, server/frontend context paths, the FULL 16-suite inventory, the
+frontend-context suite list, and the endpoints; `installer/ship-gate.ps1`
+(pure judges + thin fetchers, the version-gate library pattern) and the
+dormant `scripts/promotion-gate.sh` BOTH read it — the promotion gate's
+hardcoded suite list, which had silently gone stale at 13 of 16
+(assignments/frontend/handoff omitted), is deleted, and both gates now
+drift-check the inventory against the repository's actual
+`deployed-*-e2e.yml` files, so a suite the list does not know fails
+LOUDLY. Factoring proven locally against mock endpoints (parameterization
+was promotion-gate's designed dry-run seam): all-green mock → PASS with
+all 16 suites checked; one red suite → BLOCK on its own message; print
+suite green at a stale-frontend-context sha → BLOCK on the ctx message
+while a NON-ctx suite at the same equal-server-tree sha passes (both
+directions of content equality); doctored 15-suite JSON → SUITE INVENTORY
+DRIFT naming both sets; missing JSON → hard block. TESTS + CI (the
+installer-powershell job, on real 5.1): `installer/test-ship-gate.ps1`
+proves every refusal class and the authorize path on fixtures, the
+MISSING==MISSING vacuity guard (a context path absent from the shipping
+commit refuses as VERIFY-MALFORMED, never passes as equal), the
+no-false-authorization rule (a run for commit B never vouches for A), and
+the STRUCTURAL chokepoint pins by AST: Invoke-ShipGate exists in
+build-protected.ps1, sits AFTER Test-ReleaseVersionGate and BEFORE the
+password prompt, the script's 9-parameter list is pinned exactly (a new
+parameter fails the test until a human proves it cannot bypass), no
+skip-spelling exists, and the JSON↔repo sync holds (suite set vs disk,
+job names vs ci.yml, ctx paths vs deployed-print-e2e.yml in order,
+endpoints vs the suites' env, promotion-gate reads the shared truth). A
+second new CI leg RUNS `build-protected.ps1` for real: AppVer temporarily
+99.99.99 (so the version gate passes and any refusal can only be the ship
+gate's), the bump itself dirties the tree → deterministic OFFLINE
+`SOURCE-DIRTY-TREE` refusal, asserted to fire before the password prompt
+and WITHOUT touching the network, aurora.iss byte-restored (the existing
+restore-check leg covers it). The version gate and its own
+refuses-a-real-build CI proof are UNTOUCHED and still pass — both gates
+guard the same chokepoint, in order. REAL-WORLD VERIFICATION (2026-08-22,
+read-only, reported honestly, staging NOT mutated or faked): the gate run
+against `origin/main` 512c68f REFUSES today on 18 grounds — the Render
+staging service is OWNER-SUSPENDED (healthz serves a "Service Suspended"
+HTML page → staging identity + server content unverifiable), and ALL 16
+suites' latest green runs predate Ward B's server changes (they verified
+server tree `016b3496…`/`85458d62…` at f2317325/f5cf8598; main carries
+`33888f81…`) → stale content; the Pages frontend alone is current
+(b13cb69's context equals main's). Truthful consequence: CURRENT MAIN
+CANNOT SHIP TODAY, and the gate names exactly why — reviving staging and
+re-dispatching the suites are operations, deliberately outside this PR.
+CI evidence: the first green run was inspected at job level with the two
+new legs' logs read, and the Run A/B/C positive control (break =
+neutering the source judge so a dirty tree would authorize → the legs go
+red on their OWN messages → revert → tree byte-identical) is recorded
+with run ids in the PR body — this record's commit precedes those runs by
+construction. Docs: 03 release routine gains the ship-gate amendment; 01's
+dormant-path paragraph gains the supersede (decision RESOLVED into the
+installer channel; suite list no longer stale; path still dormant) and the
+open-decisions list its amendment; installer/BUILD_WINDOWS.md documents
+the gate in the shipping-build section; README.md and
+HOSPITAL_INSTALLER_RUNTIME_DESIGN.md checked — no statement in either
+became false, neither edited. Remaining open B-list decisions are
+unchanged: paid staging-DB durability · Pages branch-preview policy ·
+appliance E2E parameterization · requiredEnvKeys warn-vs-refuse ·
+repo-visibility scheduling · staging-DB expiry posture.
 
 **2026-08-22 · ENVIRONMENT SEPARATION PR-3 — the documentation closure
 (§11 step 6; owner-authorized; DOCUMENTATION ONLY — no application,
