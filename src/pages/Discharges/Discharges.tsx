@@ -199,7 +199,7 @@ export function Discharges() {
                         <span>Move <b>{e.patientName}</b> from <b>{e.bedId}</b> to:</span>
                         <select value={targetBed} onChange={ev => setTargetBed(ev.target.value)} aria-label="Target bed">
                           <option value="" disabled>Free bed…</option>
-                          {freeBeds.map(b => <option key={b.bedId} value={b.bedId}>{b.bedId} · {b.area}</option>)}
+                          {freeBeds.map(b => <option key={b.bedId} value={b.bedId}>{b.bedId} · {b.wardLabel ?? b.area}</option>)}
                         </select>
                         <button className="disact" disabled={!targetBed || busy} onClick={() => doTransfer(e.encounterId)}>
                           {busy ? 'Transferring…' : 'Confirm transfer'}

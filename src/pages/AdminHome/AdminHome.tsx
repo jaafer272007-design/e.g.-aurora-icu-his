@@ -44,6 +44,7 @@ export function AdminHome() {
     const occupied = beds.beds.filter(b => b.patient)
     const byArea = beds.areas.map(area => ({
       area,
+      label: beds.beds.find(b => b.area === area)?.wardLabel ?? area,
       total: beds.beds.filter(b => b.area === area).length,
       occupied: occupied.filter(b => b.area === area).length,
     }))
@@ -114,7 +115,7 @@ export function AdminHome() {
               <div className="adpods">
                 {stats?.byArea.map(a => (
                   <div className="adpod" key={a.area}>
-                    <span className="adpodname">{a.area}</span>
+                    <span className="adpodname">{a.label}</span>
                     <span className="adpodbar"><i style={{ width: `${(a.occupied / a.total) * 100}%` }} /></span>
                     <span className="adpodnum num">{a.occupied} / {a.total}</span>
                   </div>

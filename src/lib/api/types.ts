@@ -74,7 +74,10 @@ export interface BedPatient {
 
 export interface Bed {
   bedId: string
+  /** the ward CODE (identity — filters match on it) */
   area: string
+  /** the ward's display label (Ward B) — render wardLabel ?? area */
+  wardLabel?: string
   /** null = bed available */
   patient: BedPatient | null
 }
@@ -1296,7 +1299,12 @@ export interface AiQueryResponse {
 
 export interface AdtBed {
   bedId: string
+  /** the bed's WARD CODE (Ward B: Area promoted to the governed Wards
+   *  vocabulary — identity, never meaning; render wardLabel ?? area) */
   area: string
+  /** the ward's display label, resolved at read from the vocabulary —
+   *  additive/optional (absent only on pre-backfill data mid-upgrade) */
+  wardLabel?: string
   seq: number
   /** Bed Registry (4th Configuration tenant): retired beds leave the
    *  board and the admit/transfer pickers but keep rendering on
@@ -1493,6 +1501,17 @@ export interface AdmissionTypeEntry {
 }
 
 export interface DepartmentEntry {
+  code: string
+  label: string
+  seq: number
+  active: boolean
+  history: FormularyEvent[]
+}
+
+/** WARD — the fifth reception-era tenant (ward.md A1): Area promoted to a
+ *  governed vocabulary. Backfilled codes are the typed area values
+ *  verbatim (code === label until the hospital renames the label). */
+export interface WardEntry {
   code: string
   label: string
   seq: number

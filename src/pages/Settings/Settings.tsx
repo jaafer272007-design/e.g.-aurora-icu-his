@@ -152,7 +152,7 @@ export function Settings() {
                         beds leave the layout but keep rendering on the
                         historical records that carry them */}
                     <p className="se-sub">
-                      {beds.filter(b => b.active).length} beds · {areas.map(a => `${a}: ${beds.filter(b => b.active && b.area === a).length}`).join(' · ')}
+                      {beds.filter(b => b.active).length} beds · {areas.map(a => `${beds.find(b => b.area === a)?.wardLabel ?? a}: ${beds.filter(b => b.active && b.area === a).length}`).join(' · ')}
                       {beds.some(b => !b.active) ? ` · ${beds.filter(b => !b.active).length} retired` : ''}
                     </p>
                     <div className="se-beds num">

@@ -415,7 +415,7 @@ export function Admissions() {
                   <label>Bed (free only)
                     <select value={bedId} onChange={e => setBedId(e.target.value)} disabled={!canAdmit} required>
                       <option value="" disabled>Select a free bed…</option>
-                      {freeBeds.map(b => <option key={b.bedId} value={b.bedId}>{b.bedId} · {b.area}</option>)}
+                      {freeBeds.map(b => <option key={b.bedId} value={b.bedId}>{b.bedId} · {b.wardLabel ?? b.area}</option>)}
                     </select>
                   </label>
                 </div>
@@ -443,7 +443,7 @@ export function Admissions() {
                   >
                     <BedChip bedId={b.bedId} />
                     <span className="admwho">{b.patientId ? b.patientName : 'Available'}</span>
-                    <span className="admarea">{b.area}</span>
+                    <span className="admarea">{b.wardLabel ?? b.area}</span>
                   </button>
                 ))}
               </div>

@@ -113,6 +113,46 @@ class ServiceRow : IVocabRow
         JsonSerializer.Deserialize<List<FormularyEventDto>>(EventsJson, JsonOpts.Web)!);
 }
 
+/* WARD — the FIFTH tenant beside the four above (ward.md Amendment A1, the
+   owner's ruling): `BedRow.Area` promoted to a governed vocabulary — add /
+   retire-never-delete, managed in Configuration, the same mapper. NOT a Ward
+   entity: nothing beyond a name has been asked of a ward, and anything more
+   would be built on speculation (the ruling's own words).
+
+   THE CODE IS THE JOIN KEY BEDS ALREADY CARRY. The backfill (Seeder) turns
+   each DISTINCT `Area` value in the bed registry into a ward whose CODE and
+   LABEL are that value verbatim — honest backfill from real data, never
+   fabrication. Beds keep storing the ward CODE in `Area`, so promotion
+   rewrites no bed row and every historical reference stays resolvable
+   (retire-never-delete makes resolution total). Renaming a ward is a LABEL
+   edit here; moving a bed between wards is the bed EDIT path
+   (BedRegistryApi) — the two halves the ruling names as the reason this
+   tenant and that path ship together.
+
+   GATED hospital.configure — the same atom as the four tenants above, per
+   the ruling's own analogy ("a fifth tenant beside admission types,
+   departments, services and admission sources") and this file's recorded
+   split: a ward NAME is how a hospital describes itself, administrative
+   structure with no clinical data. `beds.manage` stays the BED registry's
+   atom, untouched — laying out beds and naming wards are different
+   authorities, exactly as beds and departments already are.
+
+   SEEDING: nothing is invented — the vocabulary is EXACTLY what the bed
+   registry implies. A fresh install's seeded beds (Pod A / Pod B) yield
+   those two wards; an install with no beds starts with no wards. */
+class WardRow : IVocabRow
+{
+    [Key]
+    public string Code { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int Seq { get; set; }
+    public bool Active { get; set; } = true;
+    public string EventsJson { get; set; } = "[]";
+
+    public WardDto ToDto() => new(Code, Label, Seq, Active,
+        JsonSerializer.Deserialize<List<FormularyEventDto>>(EventsJson, JsonOpts.Web)!);
+}
+
 /* SOURCE OF ADMISSION — Home / Clinic / Emergency Dept / … (design §2). Flat. */
 class AdmissionSourceRow : IVocabRow
 {
@@ -142,6 +182,9 @@ record ServiceDto(string Code, string Label, string DepartmentCode, int Seq, boo
     List<FormularyEventDto> History);
 
 record AdmissionSourceDto(string Code, string Label, int Seq, bool Active,
+    List<FormularyEventDto> History);
+
+record WardDto(string Code, string Label, int Seq, bool Active,
     List<FormularyEventDto> History);
 
 /* REQUEST DTO — Disallow: an unrecognized field fails binding → automatic 400,

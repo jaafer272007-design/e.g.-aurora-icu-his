@@ -922,6 +922,155 @@ jobs:
           done
           echo "  ok   neither the office Administrator nor the Nurse can admit INTO a bed (403 both — beds.assign is not adt.admit)"
 
+          # ==== WARD B (ward.md Amendment A1, the owner's ruling) ============
+          # Area promoted to the governed Wards vocabulary; the bed edit path;
+          # ward-to-ward DERIVED from the beds, never claimed or stored. The
+          # A1/A2 regression evidence is the WARD A1 + BEDLESS FILTER legs
+          # ABOVE, which run unchanged in this same step on every commit.
+          # ---- the backfill: honest promotion, nothing invented -------------
+          echo "WARD B - THE BACKFILL:"
+          WCOUNT=$(PSQL "select count(*) from \"Wards\"")
+          DAREAS=$(PSQL "select count(distinct \"Area\") from \"Beds\"")
+          [ "$WCOUNT" = "$DAREAS" ] || die "Wards has $WCOUNT rows, beds carry $DAREAS distinct areas — the backfill invented or missed"
+          [ "$WCOUNT" -gt 0 ] || die "Wards is EMPTY — the backfill did not run (a vacuous equality would hide this)"
+          [ "$(PSQL "select count(*) from \"Wards\" where \"Code\" = \"Label\"")" = "$WCOUNT" ] || die "a backfilled ward's code != label"
+          [ "$(PSQL "select count(*) from \"Wards\" w where not exists (select 1 from \"Beds\" b where b.\"Area\" = w.\"Code\")")" = "0" ] \
+            || die "a backfilled ward matches NO bed — something was invented"
+          echo "  ok   Wards == exactly the bed registry's distinct areas ($WCOUNT), code==label, nothing invented"
+          # ---- vocabulary RBAC + lifecycle ---------------------------------
+          echo "WARD B - VOCABULARY RBAC + LIFECYCLE:"
+          for tok in DOC RN; do
+            eval "T=\$$tok"
+            rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+              -d '{"label":"a clinical profile must not configure wards"}' "$API/api/icu/wards")
+            [ "$rc" = "403" ] || die "$tok POST /wards -> HTTP $rc, expected 403"
+          done
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $RN" "$API/api/icu/wards")
+          [ "$rc" = "200" ] || die "GET /wards as nurse -> HTTP $rc — the vocabulary must READ for any session (labels resolve everywhere)"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d '{"label":"CI Ward B"}' "$API/api/icu/wards")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "office admin ward create -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          W1=$(echo "$out" | head -1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["code"])')
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d '{"label":"CI Ward B Renamed"}' "$API/api/icu/wards/$W1")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "ward label edit -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"EventsJson\"::json->-1->>'action' from \"Wards\" where \"Code\" = '$W1'")" = "changed" ] || die "the rename is not audited"
+          echo "  ok   clinical profiles 403 · any session reads · office admin creates '$W1' + renames it, audited"
+          # ---- the retire guard, BOTH directions ---------------------------
+          echo "WARD B - RETIRE GUARD:"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/wards/Pod%20A/deactivate")
+          [ "$(echo "$out" | tail -1)" = "409" ] || die "retiring Pod A (active beds) -> HTTP $(echo "$out" | tail -1), expected 409: $(echo "$out" | head -1)"
+          echo "$out" | head -1 | grep -q "active bed" || die "the 409 was NOT the active-beds refusal: $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"Active\" from \"Wards\" where \"Code\" = 'Pod A'")" = "t" ] || die "the refused retirement RETIRED Pod A anyway"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/wards/$W1/deactivate")
+          [ "$rc" = "200" ] || die "retiring the bedless '$W1' -> HTTP $rc"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/wards/$W1/reactivate")
+          [ "$rc" = "200" ] || die "reactivating '$W1' -> HTTP $rc"
+          echo "  ok   active beds block retirement (409 naming them, nothing written); a bedless ward retires + reactivates"
+          # ---- bed placement guards (create) -------------------------------
+          echo "WARD B - BED PLACEMENT:"
+          wb_beds=$(PSQL "select count(*) from \"Beds\"")
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d '{"bedId":"CI-WB-1","area":"NO-SUCH-WARD","seq":9101}' "$API/api/icu/adt/beds")
+          [ "$(echo "$out" | tail -1)" = "400" ] || die "bed create with unknown ward -> HTTP $(echo "$out" | tail -1), expected 400: $(echo "$out" | head -1)"
+          echo "$out" | head -1 | grep -q "does not match any ward" || die "the 400 was NOT the unknown-ward refusal: $(echo "$out" | head -1)"
+          [ "$(PSQL "select count(*) from \"Beds\"")" = "$wb_beds" ] || die "the refused create WROTE a bed"
+          W2=$(curl -sf -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' -d '{"label":"CI Ward B Retired"}' "$API/api/icu/wards" | python3 -c 'import json,sys; print(json.load(sys.stdin)["code"])')
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/wards/$W2/deactivate")
+          [ "$rc" = "200" ] || die "retiring W2 -> $rc"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"CI-WB-1\",\"area\":\"$W2\",\"seq\":9101}" "$API/api/icu/adt/beds")
+          [ "$(echo "$out" | tail -1)" = "409" ] || die "bed create in a RETIRED ward -> HTTP $(echo "$out" | tail -1), expected 409: $(echo "$out" | head -1)"
+          echo "$out" | head -1 | grep -q "is retired" || die "the 409 was NOT the retired-ward refusal: $(echo "$out" | head -1)"
+          [ "$(PSQL "select count(*) from \"Beds\"")" = "$wb_beds" ] || die "the refused create WROTE a bed"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"bedId\":\"CI-WB-1\",\"area\":\"$W1\",\"seq\":9101}" "$API/api/icu/adt/beds")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "bed create in the active '$W1' -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/wards/$W1/deactivate")
+          [ "$(echo "$out" | tail -1)" = "409" ] || die "retiring '$W1' (now has CI-WB-1) -> HTTP $(echo "$out" | tail -1), expected 409"
+          echo "$out" | head -1 | grep -q "CI-WB-1" || die "the 409 does not NAME the blocking bed: $(echo "$out" | head -1)"
+          echo "  ok   unknown ward 400 · retired ward 409 · nothing written · the new bed arms the retire guard by name"
+          # ---- the bed EDIT path -------------------------------------------
+          echo "WARD B - BED EDIT:"
+          wb_ev0=$(PSQL "select \"EventsJson\" from \"Beds\" where \"BedId\" = 'CI-WB-1'")
+          [ -n "$wb_ev0" ] || die "CI-WB-1 EventsJson read back EMPTY"
+          wb_refedit() { # label code grep body
+            out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+              -d "$4" "$API/api/icu/adt/beds/CI-WB-1")
+            [ "$(echo "$out" | tail -1)" = "$2" ] || die "$1 -> HTTP $(echo "$out" | tail -1), expected $2: $(echo "$out" | head -1)"
+            [ -z "$3" ] || echo "$out" | head -1 | grep -q "$3" || die "$1: wrong message: $(echo "$out" | head -1)"
+            [ "$(PSQL "select \"Area\" from \"Beds\" where \"BedId\" = 'CI-WB-1'")" = "$W1" ] || die "$1 CHANGED the area"
+            [ "$(PSQL "select \"EventsJson\" from \"Beds\" where \"BedId\" = 'CI-WB-1'")" = "$wb_ev0" ] || die "$1 WROTE audit"
+            echo "  ok   $1 -> $2, nothing written"
+          }
+          wb_refedit "edit to an unknown ward" 400 "does not match any ward" '{"area":"NO-SUCH-WARD"}'
+          wb_refedit "edit to the retired ward" 409 "is retired" "{\"area\":\"$W2\"}"
+          wb_refedit "no-change edit" 400 "no field change" "{\"area\":\"$W1\",\"seq\":9101}"
+          wb_refedit "edit claiming a new bedId" 400 "" "{\"bedId\":\"CI-WB-RENAMED\",\"area\":\"Pod B\"}"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $RN" -H 'Content-Type: application/json' -d '{"area":"Pod B"}' "$API/api/icu/adt/beds/CI-WB-1")
+          [ "$rc" = "403" ] || die "Nurse bed edit -> HTTP $rc, expected 403 (beds.manage)"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' -d '{"area":"Pod B"}' "$API/api/icu/adt/beds/NO-SUCH-BED")
+          [ "$rc" = "404" ] || die "edit of an unknown bed -> HTTP $rc, expected 404"
+          echo "  ok   Nurse 403 · unknown bed 404"
+          # occupied: an A1 leg left a bedded encounter — pick its bed fresh
+          OCCB=$(PSQL "select \"BedId\" from \"Encounters\" where \"Status\" = 'open' and \"BedId\" <> '' order by \"EncounterId\" limit 1")
+          [ -n "$OCCB" ] || die "no occupied bed — the occupied direction cannot be exercised"
+          occ_area=$(PSQL "select \"Area\" from \"Beds\" where \"BedId\" = '$OCCB'")
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"area\":\"$([ "$occ_area" = "Pod A" ] && echo "Pod B" || echo "Pod A")\"}" "$API/api/icu/adt/beds/$OCCB")
+          [ "$(echo "$out" | tail -1)" = "409" ] || die "area change on OCCUPIED $OCCB -> HTTP $(echo "$out" | tail -1), expected 409: $(echo "$out" | head -1)"
+          echo "$out" | head -1 | grep -q "cannot change the ward of a bed a patient is in" || die "the 409 was NOT the occupied refusal: $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"Area\" from \"Beds\" where \"BedId\" = '$OCCB'")" = "$occ_area" ] || die "the refused move CHANGED the ward"
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d "{\"area\":\"$occ_area\",\"seq\":9555}" "$API/api/icu/adt/beds/$OCCB")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "seq-only edit on the occupied bed -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          echo "  ok   occupied bed: area change 409 by message (ward unchanged) · seq-only edit 200 (no location hazard)"
+          # the RE-PARENT — the ruling's typo-fix flow end to end
+          out=$(curl -s -w '\n%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' \
+            -d '{"area":"Pod B"}' "$API/api/icu/adt/beds/CI-WB-1")
+          [ "$(echo "$out" | tail -1)" = "200" ] || die "re-parent CI-WB-1 -> HTTP $(echo "$out" | tail -1): $(echo "$out" | head -1)"
+          [ "$(PSQL "select \"Area\" from \"Beds\" where \"BedId\" = 'CI-WB-1'")" = "Pod B" ] || die "the re-parent did not store"
+          PSQL "select \"EventsJson\"::json->-1->>'detail' from \"Beds\" where \"BedId\" = 'CI-WB-1'" | grep -q "ward '$W1' → 'Pod B'" \
+            || die "the re-parent audit detail is wrong"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $OFF" "$API/api/icu/wards/$W1/deactivate")
+          [ "$rc" = "200" ] || die "retiring '$W1' after its bed moved away -> HTTP $rc — the guard did not release"
+          echo "  ok   re-parent stored + audited with the prior ward named; the emptied ward then retires (typo-fix flow END TO END)"
+          # ---- label resolution: a rename actually renames ------------------
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $OFF" -H 'Content-Type: application/json' -d '{"label":"Pod B Renamed"}' "$API/api/icu/wards/Pod%20B")
+          [ "$rc" = "200" ] || die "renaming Pod B -> $rc"
+          curl -sf -H "Authorization: Bearer $OFF" "$API/api/icu/adt/beds" -o /tmp/wb-beds.json || die "beds read failed"
+          python3 -c '
+          import json
+          rows = json.load(open("/tmp/wb-beds.json"))
+          b = next(r for r in rows if r["bedId"] == "CI-WB-1")
+          assert b["area"] == "Pod B", b
+          assert b.get("wardLabel") == "Pod B Renamed", b
+          print("  ok   beds read: area stays the CODE, wardLabel resolves to the new name (rename renames everywhere)")'
+          # ---- ward-to-ward: DERIVED from the beds, never claimed or stored -
+          echo "WARD B - WARD-TO-WARD DERIVATION:"
+          [ "$(PSQL "select count(*) from information_schema.columns where table_name = 'Encounters' and column_name ilike '%ward%'")" = "0" ] \
+            || die "the Encounters table has a ward column — derivation was stored"
+          OCC_ENC=$(PSQL "select \"EncounterId\" from \"Encounters\" where \"Status\" = 'open' and \"BedId\" = '$OCCB'")
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $RN" -H 'Content-Type: application/json' \
+            -d '{"bedId":"CI-WB-1","wardTo":"Pod A"}' "$API/api/icu/adt/encounters/$OCC_ENC/transfer")
+          [ "$rc" = "400" ] || die "a transfer CLAIMING a ward -> HTTP $rc, expected a binding 400 — the wards must come from the beds"
+          T_SAME=$(PSQL "select \"BedId\" from \"Beds\" where \"Active\" and \"Area\" = '$occ_area' and \"BedId\" <> '$OCCB' and \"BedId\" not in (select \"BedId\" from \"Encounters\" where \"Status\" = 'open' and \"BedId\" <> '') order by \"Seq\" limit 1")
+          [ -n "$T_SAME" ] || die "no second free bed in '$occ_area' — the same-ward direction cannot be exercised"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $RN" -H 'Content-Type: application/json' -d "{\"bedId\":\"$T_SAME\"}" "$API/api/icu/adt/encounters/$OCC_ENC/transfer")
+          [ "$rc" = "200" ] || die "same-ward transfer -> $rc"
+          [ "$(PSQL "select \"Area\" from \"Beds\" where \"BedId\" = '$T_SAME'")" = "$occ_area" ] || die "test bug: expected same-ward target"
+          det=$(PSQL "select \"EventsJson\"::json->-1->>'detail' from \"Encounters\" where \"EncounterId\" = '$OCC_ENC'")
+          [ "$det" = "$OCCB → $T_SAME" ] || die "same-ward transfer audit changed: [$det]"
+          echo "  ok   same-ward move: both beds' wards derive EQUAL ('$occ_area') — NOT ward-to-ward; audit unchanged '$det'"
+          rc=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $RN" -H 'Content-Type: application/json' -d '{"bedId":"CI-WB-1"}' "$API/api/icu/adt/encounters/$OCC_ENC/transfer")
+          [ "$rc" = "200" ] || die "cross-ward transfer -> $rc"
+          [ "$(PSQL "select \"Area\" from \"Beds\" where \"BedId\" = 'CI-WB-1'")" != "$occ_area" ] || die "test bug: expected cross-ward target"
+          det2=$(PSQL "select \"EventsJson\"::json->-1->>'detail' from \"Encounters\" where \"EncounterId\" = '$OCC_ENC'")
+          [ "$det2" = "$T_SAME → CI-WB-1" ] || die "cross-ward transfer audit changed: [$det2]"
+          case "$det2" in *Pod*|*ward*|*Ward*) die "the transfer audit STORED ward text: [$det2]";; esac
+          echo "  ok   cross-ward move: the beds' wards derive DIFFERENT = ward-to-ward, from the ACTUAL beds; audit stays bed-ids-only '$det2'"
+          echo "  ok   encounter schema carries NO ward column · a caller cannot claim a transition (binding 400) — derived stays derived"
+
   # installer-powershell — the Windows PowerShell 5.1 gate.
   #
   # Why this job exists: aurora-update.ps1 shipped with PowerShell 7 ternary

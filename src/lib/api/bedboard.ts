@@ -55,9 +55,9 @@ export function composeBedsResponse(adtBeds: AdtBed[], roster: RosterRecordDto[]
       ? DEMO_DOCS
       : [...new Set(roster.map(r => r.attending).filter(Boolean))],
     areas: [...new Set(active.map(b => b.area))],
-    beds: active.map(({ bedId, area, patientId }): Bed => {
+    beds: active.map(({ bedId, area, wardLabel, patientId }): Bed => {
       const record = patientId ? byId.get(patientId) : undefined
-      return { bedId, area, patient: record ? toBedPatient(record) : null }
+      return { bedId, area, ...(wardLabel ? { wardLabel } : {}), patient: record ? toBedPatient(record) : null }
     }),
   }
 }

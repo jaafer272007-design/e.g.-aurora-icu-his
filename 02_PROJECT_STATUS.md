@@ -1,9 +1,10 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-22 · current through Ward PR A2 — the awaiting-bed
-worklist (`/awaiting-bed`, beds.assign), the bedless-reader fixes (BedChip
-once + the `??`/print/dialog sites), and ward.md A7's two scope
-corrections (PatientHistory + both AI prompts) — the record below.** This line is THE recency marker and is
+**Last updated: 2026-08-22 · current through Ward PR B — the governed
+Wards vocabulary (Area promoted, backfilled from the bed registry), the
+bed EDIT path (re-parent + position; identity immutable), and
+ward-to-ward proven as a DERIVATION of transfer (no new operation, no
+stored state) — the record below.** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -30,6 +31,96 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-22 · WARD PR B — the Wards vocabulary, the bed edit path, and
+ward-to-ward as a derivation.** The last of ward.md A6.1's "genuinely new
+work": items 1 (the vocabulary) and 2 (the bed edit) built; items 3–4
+were A1/A2. Ward-to-ward needed NO code — A6.1's own line — and is now
+PROVEN as a derivation rather than assumed.
+
+**THE VOCABULARY (ward.md A1, the owner's ruling implemented exactly).**
+`Wards` — the FIFTH tenant beside admission types, departments, services
+and admission sources, on the SAME `MapVocab<TRow>` mapper (the #197
+compile-time guarantee covers its insert), gated `hospital.configure`
+per the ruling's own "fifth tenant beside" analogy and the recorded
+administrative/clinical split: a ward NAME is how a hospital describes
+itself. NOT a Ward entity. Add / label-edit / retire-never-delete /
+reactivate, audited append-only. THE RETIRE GUARD is the department/
+active-services precedent through the mapper's own `deactivateGuard`
+hook: a ward with ACTIVE beds refuses to retire, 409 naming the beds —
+a bed may never point at a retired ward; retired beds do not block
+(historical references stay resolvable — resolution is total).
+**THE BACKFILL:** seed-if-empty at boot, both modes and upgrades alike —
+the vocabulary starts as EXACTLY the bed registry's distinct `Area`
+values, code AND label the typed value verbatim (so promotion rewrites
+NO bed row — the code is the join key beds already carry), no invented
+audit, idempotent (a curated list is never re-polluted). Nothing is
+invented: a fresh install's seeded beds yield {Pod A, Pod B}; no beds,
+no wards. Migration `AddWards` (append-only; the #199 table shape).
+
+**THE PROMOTION'S CONSEQUENCES.** `BedRow.Area` is now the WARD CODE —
+identity, never meaning. Bed CREATE validates it (unknown → 400 naming
+the actives, the departmentCode precedent; RETIRED → 409 — "a retired
+Ward cannot be selected for new bed placement", enforced where placement
+happens). Labels RESOLVE AT READ: `AdtBedDto` gains an additive nullable
+`wardLabel` tail (resolved from the vocabulary on every beds read), and
+every display surface renders `wardLabel ?? area` — the board's area
+filter and pod headers, the free-bed pickers (Admissions, Discharges,
+Awaiting Bed), AdminHome, Settings, Configuration. Renaming a ward
+therefore actually renames it everywhere — the ruling's point — while
+codes keep filters and history stable.
+
+**THE BED EDIT PATH (`PUT /adt/beds/{bedId}`, beds.manage).** The
+MUTABLE subset only: ward (area) + board position (seq). BedId is
+deliberately NOT on the contract (`EditBedRequest`,
+unmapped-members-Disallow) — the ServiceRow parent-immutability
+mechanism: identity cannot change by construction, so the locked
+never-rename rule survives the edit path's arrival (the BedRegistryApi
+header carries the supersede note). RE-PARENTING IS THE POINT: the
+ruling's typo-fix flow — move the beds out, retire the typo ward — is
+proven end to end. Guards, message-discriminated, nothing written:
+unknown ward 400 · retired ward 409 · unknown bed 404 · no-change 400 ·
+bedId claim 400 (binding) · Nurse 403 · and AREA CHANGE WHILE OCCUPIED
+409 — the registry's own live-occupancy principle applied to the same
+hazard the rename rule names (silently moving an admitted patient's
+displayed ward); a seq-only edit carries no location hazard and is
+allowed. Audited into the bed's append-only history with the prior
+value named ("ward 'X' → 'Y'").
+
+**WARD-TO-WARD — DERIVED, PROVEN, ZERO CODE (ward.md A1 consequence +
+A6.1's "derived, so no code").** No second endpoint, no move type, no
+WardTransfer entity, no stored transition: a ward-to-ward move IS a
+transfer whose two beds' wards differ, derived at read from the ACTUAL
+beds. Proven three ways: (1) schema-asserted — the Encounters table has
+NO ward column; (2) a caller CANNOT claim a transition — a transfer body
+naming a ward is a binding 400 (TransferRequest's Disallow, its teeth
+measured by removing the attribute and watching the claim bind silently
+and succeed); (3) same-ward and cross-ward moves through the unchanged
+transfer path, the wards derived from the beds in the test, the audit
+byte-shape unchanged ("{from} → {to}", bed ids only — ward text asserted
+ABSENT). The #212 bedless-transfer guard runs unchanged in the same CI
+step.
+
+**VERIFICATION.** The CI production-seed step gains the WARD B legs
+(backfill honesty · vocabulary RBAC three directions + lifecycle ·
+retire guard both directions · placement guards · all seven edit-path
+refusals with DB-unchanged proofs · label resolution · the three
+derivation proofs); the A1/A2 regression evidence is the WARD A1 +
+BEDLESS FILTER legs above them in the same step, running unchanged on
+every commit. Failure-first per structural guard, locally against the
+CI-identical rig: SEVEN breaks each demonstrated RED then restored —
+the retire guard off (retiring Pod A succeeded), create-time unknown-
+ward off (a bed landed in 'NO-SUCH-WARD'), the retired-ward 409 off
+(a bed landed in a retired ward), the occupied guard off (an admitted
+patient's ward moved), the backfill off (Wards empty), TransferRequest's
+Disallow off (the ward CLAIM bound and the transfer succeeded), and
+EditBedRequest's Disallow off (a bedId claim bound silently). The CI
+positive control (break once → red → revert) is demonstrated on the PR
+for the retire guard; run ids in the PR body. Rendered verification of
+the Configuration surfaces (the Wards tenant, the ward-select create
+form, the edit panel, the label rename propagating to the board filter)
+from a clean checkout with both identities asserted — evidence in the
+PR.
 
 **2026-08-22 · WARD PR A2 — the awaiting-bed WORKLIST, the bedless
 READERS, and A7's two scope corrections.** The UI half of the ward's first
