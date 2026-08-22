@@ -154,7 +154,7 @@ export function DoctorWorkspace() {
                     className={`rcard sev-${derived[p.patientId]?.severity ?? 'unscored'}`}
                     role="listitem"
                     tabIndex={0}
-                    aria-label={`Open chart ${p.name}, bed ${p.bedId}`}
+                    aria-label={`Open chart ${p.name}, ${p.bedId ? `bed ${p.bedId}` : 'awaiting bed'}`}
                     onClick={() => navigate(`/patients/${p.patientId}`)}
                     onKeyDown={e => { if (e.key === 'Enter') navigate(`/patients/${p.patientId}`) }}
                   >
@@ -195,7 +195,9 @@ export function DoctorWorkspace() {
                 {consults?.map(c => (
                   <div className="consult" key={c.consultId}>
                     <span className="cav">{c.specialty.split(' ').map(w => w[0]).slice(0, 2).join('')}</span>
-                    <div className="ct"><b>{c.specialty}</b> — Re: {c.bedId} {c.patientName} — {c.message}<small>{c.time}</small></div>
+                    {/* the bed is a display SNAPSHOT and may be empty
+                        (bedless admission) — empty is absent, never a gap */}
+                    <div className="ct"><b>{c.specialty}</b> — Re: {c.bedId ? `${c.bedId} ` : ''}{c.patientName} — {c.message}<small>{c.time}</small></div>
                   </div>
                 ))}
               </div>
@@ -225,7 +227,7 @@ export function DoctorWorkspace() {
                     <div className={`qrow${o.leaving ? ' done' : ''}`} key={o.orderId}>
                       <span className="qi">{QUEUE_ICON.orders}</span>
                       <div className="qt">
-                        <b>{o.summary} — {o.bedId} {o.patientName}</b><br />
+                        <b>{o.summary} — {o.bedId ? `${o.bedId} ` : ''}{o.patientName}</b><br />
                         {o.priority} · {o.category}
                         <small>{displayStamp(o.orderedTime)} · {o.orderedBy} · {o.orderId}</small>
                       </div>

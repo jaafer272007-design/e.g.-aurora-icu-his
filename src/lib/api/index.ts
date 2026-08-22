@@ -1761,11 +1761,18 @@ export function reactivateBed(bedId: string): Promise<AdtWriteResult<AdtBed>> {
  *  so `status=open` would drop the population that desk creates most. */
 export async function getEncounters(filter?: {
   patientId?: string; status?: 'open' | 'discharged'; admittedOn?: string
+  /** Ward A1's awaiting-bed read: exactly "OPEN encounters with no bed
+   *  assigned" — the open half is part of the server filter's meaning,
+   *  never this caller's homework. Only `true` exists (the server refuses
+   *  any other value); combining with status 'discharged' is a
+   *  contradiction the server 400s. */
+  bedless?: true
 }): Promise<Encounter[]> {
   const params = new URLSearchParams()
   if (filter?.patientId) params.set('patientId', filter.patientId)
   if (filter?.status) params.set('status', filter.status)
   if (filter?.admittedOn) params.set('admittedOn', filter.admittedOn)
+  if (filter?.bedless) params.set('bedless', 'true')
   const qs = params.toString()
   const real = await apiGet<Encounter[]>(`/api/icu/adt/encounters${qs ? `?${qs}` : ''}`, 'ADT encounters')
   if (real) return real
@@ -1775,6 +1782,9 @@ export async function getEncounters(filter?: {
        filter; returning the open census would be answering a different
        question than the one asked. Empty is the honest answer offline. */
     if (filter?.admittedOn) return respond([], 120)
+    /* every mock-roster patient occupies a bed, so the mock's honest
+       awaiting-bed answer is the empty list — never a fabricated one */
+    if (filter?.bedless) return respond([], 120)
     const open = allPatients()
       .filter(p => !filter?.patientId || p.patientId === filter.patientId)
       .map((p): Encounter => ({
@@ -2115,6 +2125,15 @@ export function dischargeEncounter(encounterId: string, disposition?: Dispositio
 /** POST /api/icu/adt/encounters/:id/transfer — NURSE RBAC (adt.transfer). REAL-ONLY write. */
 export function transferEncounter(encounterId: string, bedId: string): Promise<AdtWriteResult<Encounter>> {
   return adtPost<Encounter>(`/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/transfer`, 'ADT transfer', { bedId })
+}
+
+/** POST /api/icu/adt/encounters/:id/assign-bed — BED ASSIGNMENT (Ward A1;
+ *  beds.assign — office Administrator + Nurse). NOT a transfer: gives a bed
+ *  to an already-admitted BEDLESS patient; the server refuses a bedded one
+ *  (409 — that move is a transfer) and refuses with nothing written on a
+ *  closed encounter or an unknown/retired/occupied bed. REAL-ONLY write. */
+export function assignBed(encounterId: string, bedId: string): Promise<AdtWriteResult<Encounter>> {
+  return adtPost<Encounter>(`/api/icu/adt/encounters/${encodeURIComponent(encounterId)}/assign-bed`, 'ADT bed assignment', { bedId })
 }
 
 /* ---------------- Layer 3 — User Administration (Aurora Core) ----------------

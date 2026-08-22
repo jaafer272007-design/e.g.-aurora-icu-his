@@ -98,8 +98,16 @@ static class AiApi
         ("unanswerable", "Use when the question cannot be answered by any tool here (wrong domain, asks for treatment/medication/management advice or a prediction, requires data Aurora does not hold, or requires writing/ordering — this assistant is read-only).", """{"type":"object","properties":{"reason":{"type":"string","description":"one short sentence saying why"}},"required":["reason"],"additionalProperties":false}"""),
     };
 
+    /* RE-SCOPED TO THE HOSPITAL (ward.md A7, delivered with the Ward
+       build): "ICU patients" here would make a correctly-functioning
+       model REFUSE a clinician's question about a ward-admitted patient
+       as out of scope — not a bug but the model following its
+       instructions, which is exactly why the instruction had to change
+       the moment ward records became user-visible. Aurora's admitted
+       patients are the scope; the refusal boundary below names what
+       Aurora does not HOLD, never a unit it does. */
     const string SystemPrompt =
-        "You translate a clinician's question about ICU patients into EXACTLY ONE tool call from the provided tools. "
+        "You translate a clinician's question about the hospital's admitted patients into EXACTLY ONE tool call from the provided tools. "
         + "You are a query translator, not a clinical assistant: you never answer in prose, never state clinical values, "
         + "never predict, rank by your own judgment, or give treatment, medication or management advice. "
         + "For questions about a patient's condition, how they are doing, an overall impression, an interpretation of their data, or their data/full picture AS A WHOLE ('give me the patient data', 'everything about X'), call condition_interpretation — Aurora fetches the full current picture and a separate, clearly-labeled step comments on it. A question about ONE named domain (only the orders, only the labs, only the observations) still uses that domain's own tool. "
@@ -110,7 +118,7 @@ static class AiApi
            never silently converted into a related read — enumerate the verbs
            so a small model cannot miss the class */
         + "You can only LOOK THINGS UP. If the user asks you to DO anything — order, prescribe, give, administer, discontinue, hold, chart, document, record, acknowledge, sign, correct, amend, assign, transfer, admit, discharge — call unanswerable saying this assistant is read-only; NEVER answer an action request with a lookup instead. "
-        + "If the question asks for anything else outside the tools (treatment or management advice, predictions, non-ICU data), call unanswerable.";
+        + "If the question asks for anything else outside the tools (treatment or management advice, predictions, data Aurora does not hold), call unanswerable.";
 
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(AiConfig.TimeoutSeconds) };
 
@@ -352,8 +360,12 @@ static class AiApi
        generation happens: comment on the snapshot, never manage the
        patient. Everything the model writes lands in a UI block labeled
        as AI commentary; nothing it writes is ever merged into a record. */
+    /* re-scoped to the hospital with the translator above (ward.md A7):
+       the interpreter comments on any admitted patient's snapshot — ward
+       or ICU — and the kept boundary (never manage the patient) is
+       unit-independent */
     const string InterpretPrompt =
-        "You are the interpretation layer of an ICU information system. You receive a clinician's question and a JSON "
+        "You are the interpretation layer of a hospital information system. You receive a clinician's question and a JSON "
         + "snapshot of ONE patient's real data (clinical scores, recent observations, recent labs, active orders) that the "
         + "system just fetched from the record and displayed. Write a SHORT interpretation — three to five plain sentences: "
         + "describe the trends, abnormalities and overall severity visible in the snapshot, citing only values that are "

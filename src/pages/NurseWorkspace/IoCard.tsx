@@ -70,7 +70,7 @@ export function IoCard({ entries, patients, onRecord }: IoCardProps) {
         <div className="field">
           <label htmlFor="ioPatient">Patient</label>
           <select id="ioPatient" value={pid} onChange={e => setPatientId(e.target.value)}>
-            {patients.map(p => <option key={p.patientId} value={p.patientId}>{p.name} — {p.bedId}</option>)}
+            {patients.map(p => <option key={p.patientId} value={p.patientId}>{p.name} — {p.bedId || 'awaiting bed'}</option>)}
           </select>
         </div>
         <div className="field">

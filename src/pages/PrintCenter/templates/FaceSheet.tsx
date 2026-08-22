@@ -30,7 +30,7 @@ export function FaceSheet({ data }: { data: FaceSheetData }) {
           <FactGrid facts={[
             ['Encounter', e.encounterId],
             ['Status', e.status],
-            ['Bed', p.bedId],
+            ['Bed', p.bedId || 'awaiting bed'],
             ['Admission diagnosis', p.diagnosis],
             ['Attending', p.attending],
             ['Admitted', e.admittedAt ? `${displayFullStamp(e.admittedAt)}${mark} · ${e.admittedBy || '—'}` : '—'],

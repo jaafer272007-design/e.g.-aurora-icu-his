@@ -21,6 +21,7 @@ import { LabCatalog } from './pages/LabCatalog/LabCatalog'
 import { OrderSetsAdmin } from './pages/OrderSetsAdmin/OrderSetsAdmin'
 import { Admissions } from './pages/Admissions/Admissions'
 import { Reception } from './pages/Reception/Reception'
+import { AwaitingBed } from './pages/AwaitingBed/AwaitingBed'
 import { PatientHistory } from './pages/PatientHistory/PatientHistory'
 import { Discharges } from './pages/Discharges/Discharges'
 import { DischargedRecords } from './pages/DischargedRecords/DischargedRecords'
@@ -111,6 +112,11 @@ export default function App() {
             Administrator staffs it. Naming a bed still costs adt.admit, and
             reception never names one (design §3.5). */}
         <Route path="/reception" element={<RequireSession permission="admissions.create"><Reception /></RequireSession>} />
+        {/* Ward A2 — the awaiting-bed worklist. Gated on beds.assign (design
+            §6): readable by exactly the two profiles that can act on a row —
+            the office Administrator and the Nurse. Doctors get the explicit
+            Access Restricted state, never a silent redirect. */}
+        <Route path="/awaiting-bed" element={<RequireSession permission="beds.assign"><AwaitingBed /></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />
         {/* Discharged Patients — records retrieval (the go-live gap fix):

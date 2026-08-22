@@ -51,7 +51,7 @@ export function AssignedPatientsCard({ patients }: { patients: AssignedPatient[]
           <button
             key={p.patientId}
             className={`apcard sev-${derived[p.patientId]?.severity ?? 'unscored'}`}
-            aria-label={`Open chart ${p.name}, bed ${p.bedId}`}
+            aria-label={`Open chart ${p.name}, ${p.bedId ? `bed ${p.bedId}` : 'awaiting bed'}`}
             onClick={() => navigate(`/patients/${p.patientId}`)}
           >
             <div className="apr1">

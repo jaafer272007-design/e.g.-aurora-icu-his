@@ -1,10 +1,9 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-22 · current through Ward PR A1 — server only
-(the `beds.assign` atom on office Administrator + Nurse, the dedicated
-`POST /adt/encounters/{id}/assign-bed` path with its own action string and
-the bedless/bedded partition against transfer, and the `bedless=true`
-filter on `GET /adt/encounters` — the record below).** This line is THE recency marker and is
+**Last updated: 2026-08-22 · current through Ward PR A2 — the awaiting-bed
+worklist (`/awaiting-bed`, beds.assign), the bedless-reader fixes (BedChip
+once + the `??`/print/dialog sites), and ward.md A7's two scope
+corrections (PatientHistory + both AI prompts) — the record below.** This line is THE recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
 top — position within the body is NOT a recency signal; the dated record
@@ -31,6 +30,90 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-22 · WARD PR A2 — the awaiting-bed WORKLIST, the bedless
+READERS, and A7's two scope corrections.** The UI half of the ward's first
+flow: A1 shipped the server contract; this makes it reachable and makes
+every surface tell the truth about a patient with no bed. No server
+contract change (one A1 defect was looked for and none found); no Ward
+vocabulary, no bed edit, no Area, no ward-to-ward — Ward B is untouched.
+
+**THE WORKLIST (`/awaiting-bed`, gated `beds.assign` — design §3.2/§6).**
+Every row is simply an open encounter with `BedId == ""`, read via A1's
+`bedless=true` filter — no stored queue, no client-side copy, no third
+status. One action per row: Assign bed → free-active-bed picker (the same
+derivation the transfer picker uses) → `POST /assign-bed`. On success the
+list RE-DERIVES and the row is gone because the state it derives from
+changed — nothing is manually removed. A refusal renders the server's own
+`{error}` verbatim on the row (occupied/retired/closed/bedded/403 — the
+four-code message is the truth and the UI does not paraphrase it), then
+re-reads. Sidebar entry directly after Reception (the journey order);
+Doctor/SeniorDoctor get the explicit Access Restricted state. Day cases
+sit on the list until their same-day discharge — §2.1 says that is
+correct, and the screen's header comment repeats it so nobody "fixes" it.
+
+**THE READERS (ward.md A5, verified against the repository then fixed).**
+The repo-wide survey (every `bedId` read in src/) classified ~30 display
+sites. FIXED — class A (must show meaning when bedless): `BedChip` ONCE
+with an explicit "Awaiting bed" rendering in words (amber, non-mono — it
+can never be misread as a bed id), covering its ~ten call sites
+(PatientBar, PatientRail, MissionControl, DoctorWorkspace, Alerts,
+AiChat ×3, MAR/Orders/Tasks cards, Discharges ×2); the `??`-shaped sites
+where the nullish guard missed `""` (MissionControl's header "Bed " and
+its aria-label, DoctorWorkspace's aria + consult/order snapshot lines,
+AssignedPatientsCard's aria, the SBAR and I&O patient pickers); the
+PRINTED surfaces, in words per A5 — PrintLayout's Bed field, SbarSheet,
+FaceSheet, TransferSummary, and the Print Center picker ("a blank field
+on paper is ambiguous"); PatientHistory's "Currently admitted · Bed "
+line. FIXED — class B (omit a bed-dependent clause): Discharges' confirm
+("and free ?") and discharge toast ("— is now free") render their freed-
+bed clause only when a bed exists — a bedless discharge is routine (day
+cases). UNCHANGED — class C, deliberately: Reception (already renders
+"Awaiting bed" and counts it), the match dialog (already "(awaiting bed
+assignment)"), the transfer control's absence on bedless rows (#212),
+and **BedOverview/bedboard — a bedless admission does not appear on the
+bed board and MUST NOT** (A5: the board is a map of beds; the worklist
+is the surface for those patients — recorded again so nobody "repairs"
+the absence).
+
+**A7, DELIVERED HERE because this is the build that makes ward records
+user-visible.** (1) PatientHistory's scope statement now says what Aurora
+actually holds — "encounters — ICU and ward … no external or pre-Aurora
+records" — and the sidebar footer + header subtitle drop the "ICU
+records only" claim (the header subtitle carried the same claim as the
+named sites; same rationale, fixed with them). (2) Both AI prompts are
+re-scoped from the ICU to the hospital: the translator now translates
+questions "about the hospital's admitted patients" and its refusal
+boundary names "data Aurora does not hold" instead of "non-ICU data";
+the interpreter is "the interpretation layer of a hospital information
+system". HONEST LIMIT, stated: prompt-content is asserted at source
+level; the behavioural direction A7 asks for ("an AI question about a
+ward patient answered, not refused") needs a live model, which CI does
+not run — it belongs to the deployed AI suite / staging evaluation, and
+this record does not claim it.
+
+**VERIFICATION.** (1) The `awaiting-bed-gate` (frontend CI job, beside
+the §3.2 gate and in its exact idiom — SOURCE check, honestly labelled):
+pins the action to `assignBed` (never transferEncounter — inviting the
+partition 409 is a client defect), the read to `bedless=true`, the route
+to `beds.assign`, and BedChip/PrintLayout's explicit bedless renderings;
+teeth measured before commit — four breaks (action rewired, filter
+dropped, route widened, chip branch removed), four reds each naming its
+fact, restored green. (2) The rendered tier, session-local per the
+recorded gap, against the REAL BUILT BUNDLE from a clean checkout of the
+commit, with BOTH identities asserted before any assertion (#210's rule:
+dist/build.txt == commit == /healthz build): the office Administrator
+sees the bedless row (closed-bedless and bedded controls excluded, real
+subjects for both), assigns through the dialog, the row leaves the
+re-derived list; the Staff Nurse assigns; the Consultant gets Access
+Restricted; a raced occupied-bed pick surfaces the server's own 409
+message verbatim; the bedless readers render "Awaiting bed"/"awaiting
+bed" on MissionControl, Discharges, PatientHistory and the printed
+FaceSheet; both themes captured. Failure-first on the rendered tier
+where practical: the missing-reload break (assigned row lingers) and the
+BedChip-branch break each turned their rendered assertion red before
+restore. Run evidence in the PR. (3) A1's production-seed CI legs are
+the server-contract regression net and run unchanged on this PR.
 
 **2026-08-22 · WARD PR A1 — SERVER ONLY: bed assignment gets its own path,
 its own atom and its own audit sentence; transfer and assignment now

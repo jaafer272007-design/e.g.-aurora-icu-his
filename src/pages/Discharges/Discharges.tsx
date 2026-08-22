@@ -93,7 +93,9 @@ export function Discharges() {
     const res = await dischargeEncounter(encounterId, disposition)
     setBusy(false); setConfirmId(null); setDisposition('')
     if (res.kind === 'ok') {
-      showToast('Discharged', `${res.data.patientName} discharged (${dispositionLabel(res.data.disposition) || 'disposition not recorded'}) — ${res.data.bedId} is now free`)
+      /* a bedless discharge is ROUTINE (day cases — ward.md §2.1/A5): the
+         freed-bed clause exists only when a bed was actually freed */
+      showToast('Discharged', `${res.data.patientName} discharged (${dispositionLabel(res.data.disposition) || 'disposition not recorded'})${res.data.bedId ? ` — ${res.data.bedId} is now free` : ''}`)
       reload()
     } else if (res.kind === 'rejected') {
       setRowError({ id: encounterId, error: res.error })
@@ -159,9 +161,10 @@ export function Discharges() {
                             (409); the affordance goes with it, because offering
                             an action that can only fail is its own defect.
                             Giving a bed to a patient awaiting one is bed
-                            ASSIGNMENT (ward design §3.1), a different path that
-                            is not built yet — when it is, its control belongs on
-                            the awaiting-bed list, not here. */}
+                            ASSIGNMENT (ward design §3.1) — built in Ward A1/A2:
+                            its control lives on the awaiting-bed list
+                            (/awaiting-bed), exactly where this note said it
+                            belonged, and deliberately NOT here. */}
                         {canTransfer && e.bedId !== '' && (
                           <button className="disact" onClick={() => { setTransferId(transferId === e.encounterId ? null : e.encounterId); setTargetBed(''); setRowError(null) }}>
                             Transfer
@@ -176,7 +179,9 @@ export function Discharges() {
                     </div>
                     {confirmId === e.encounterId && (
                       <div className="disconfirm" role="alertdialog" aria-label="Confirm discharge">
-                        <span>Close encounter <b className="num">{e.encounterId}</b> and free <b>{e.bedId}</b>?</span>
+                        {/* the free-the-bed clause only when there is a bed
+                            to free — "and free ?" was A5's recorded gap */}
+                        <span>Close encounter <b className="num">{e.encounterId}</b>{e.bedId ? <> and free <b>{e.bedId}</b></> : null}?</span>
                         {/* the stay's OUTCOME — required before confirm; stored on
                             the encounter (unlocks honest mortality tracking) */}
                         <select value={disposition} onChange={ev => setDisposition(ev.target.value as DispositionCode | '')} aria-label="Discharge disposition">

@@ -7,7 +7,7 @@ import { lastPatientId } from '../lib/patientContext'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 import { APP_VERSION } from '../lib/version'
 
-export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'reception' | 'admissions' | 'discharges' | 'discharged' | 'print' | 'users' | 'backup' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
+export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'reception' | 'awaiting' | 'admissions' | 'discharges' | 'discharged' | 'print' | 'users' | 'backup' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
 
 interface NavItem {
   key: NavKey
@@ -68,6 +68,12 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
        is the order of the journey — reception opens the episode, ICU's
        Admissions screen assigns the bed. */
     { key: 'reception', label: 'Reception', icon: <IconAdmit />, to: '/reception', perm: 'admissions.create' },
+    /* Ward A2 — the awaiting-bed worklist, directly after Reception because
+       it is the NEXT step of the same journey: reception opens the episode
+       with no bed; this list gives it one. Gated on beds.assign — the
+       office Administrator and Nurse, the two profiles that can act on a
+       row (design §6). */
+    { key: 'awaiting', label: 'Awaiting Bed', icon: <IconBed />, to: '/awaiting-bed', perm: 'beds.assign' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge />, to: '/discharges', perm: 'patients.view' },
     /* Discharged Patients — the records-retrieval view (browse + search ALL

@@ -64,7 +64,7 @@ export function SbarCard({ patients, entriesByPatient, busy, onSelect, onSave }:
       <div className="field">
         <label htmlFor="sbarPatient">Patient</label>
         <select id="sbarPatient" value={pid} onChange={e => switchPatient(e.target.value)}>
-          {patients.map(p => <option key={p.patientId} value={p.patientId}>{p.name} — {p.bedId}</option>)}
+          {patients.map(p => <option key={p.patientId} value={p.patientId}>{p.name} — {p.bedId || 'awaiting bed'}</option>)}
         </select>
       </div>
       {FIELDS.map(f => (

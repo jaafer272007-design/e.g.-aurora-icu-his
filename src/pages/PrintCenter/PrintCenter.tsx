@@ -107,7 +107,7 @@ export function PrintCenter() {
                   onClick={() => setSelected(p.patientId)}
                 >
                   <span className="pc-pname">{p.name}</span>
-                  <span className="pc-pmeta">{p.patientId} · {p.bedId} · {p.mrn}</span>
+                  <span className="pc-pmeta">{p.patientId} · {p.bedId || 'awaiting bed'} · {p.mrn}</span>
                 </button>
               ))}
               {shown.length === 0 && <p className="pc-empty">No matching patients on the roster.</p>}
