@@ -100,9 +100,13 @@ to `beds.assign`, and BedChip/PrintLayout's explicit bedless renderings;
 teeth measured before commit — four breaks (action rewired, filter
 dropped, route widened, chip branch removed), four reds each naming its
 fact, restored green. (2) The rendered tier, session-local per the
-recorded gap, against the REAL BUILT BUNDLE from a clean checkout of the
-commit, with BOTH identities asserted before any assertion (#210's rule:
-dist/build.txt == commit == /healthz build): the office Administrator
+recorded gap, against the REAL PRODUCTION BUNDLE built from a clean
+checkout of the commit and served SAME-ORIGIN by the real server (the
+appliance topology — the dev-bundle attempt was refused by Aurora's own
+WRONG ENVIRONMENT gate, which is that gate working), with BOTH ends
+identified before any assertion (#210's rule): /healthz build and the
+server's dynamic /build.txt both == the commit, and the served
+index.html byte-identical to the checkout's dist: the office Administrator
 sees the bedless row (closed-bedless and bedded controls excluded, real
 subjects for both), assigns through the dialog, the row leaves the
 re-derived list; the Staff Nurse assigns; the Consultant gets Access
