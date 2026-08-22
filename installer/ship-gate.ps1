@@ -157,11 +157,6 @@ function Compare-ShipRevList {
 # ---- A. source identity (pure) ---------------------------------------------
 function Test-ShipSource {
   param([Parameter(Mandatory)]$Src)
-  # POSITIVE CONTROL (PR-4): the source judge authorizes EVERYTHING for
-  # exactly this commit - a dirty tree, a feature branch, no git at all.
-  # If CI stays green with this line present, the ship-gate legs prove
-  # nothing. This commit exists to be seen failing and is reverted next.
-  return New-ShipVerdict $true '' 'POSITIVE CONTROL: source identity is not checked'
   if (-not $Src.gitOk -or $Src.sha -notmatch '^[0-9a-f]{40}$') {
     return New-ShipVerdict $false 'VERIFY-UNAVAILABLE' ("cannot establish the source commit: $($Src.gitError) - the gate refuses when it cannot identify what would ship")
   }
