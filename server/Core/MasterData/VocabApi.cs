@@ -197,7 +197,14 @@ static class VocabApi
                 : null,
             db => db.Wards.AsNoTracking().AsEnumerable().Select(w => (w.Code, w.Label, w.Active)),
             toDto: r => r.ToDto(),
-            deactivateGuard: (db, code) => null);
+            deactivateGuard: (db, code) =>
+            {
+                var beds = db.Beds.AsNoTracking().Where(b => b.Area == code && b.Active)
+                    .OrderBy(b => b.Seq).Select(b => b.BedId).ToList();
+                return beds.Count == 0 ? null
+                    : $"ward '{code}' still has {beds.Count} active bed(s) — {string.Join(", ", beds)} — "
+                      + "retire those beds or move them to another ward first; a bed may never point at a retired ward";
+            });
 
         /* dispositions POST is mapped separately (it carries the
            immutable isDeath attribute at creation — see MapVocab's
