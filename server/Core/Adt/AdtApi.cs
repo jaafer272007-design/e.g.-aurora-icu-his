@@ -31,12 +31,17 @@ static class AdtApi
                 return ApiError.BadRequest($"unknown query parameter '{key}'");
             var open = db.Encounters.AsNoTracking().Where(e => e.Status == "open").ToList();
             var patients = db.AdtPatients.AsNoTracking().ToDictionary(p => p.PatientId, p => p.DisplayName);
+            /* ward labels resolve at read (Ward B): `Area` is the ward CODE;
+               the display name comes from the governed vocabulary so a ward
+               rename renames it on every surface. Retired wards keep
+               resolving (retire-never-delete → total resolution). */
+            var wardLabels = db.Wards.AsNoTracking().ToDictionary(w => w.Code, w => w.Label);
             var beds = db.Beds.AsNoTracking().OrderBy(b => b.Seq).AsEnumerable().Select(b =>
             {
                 var enc = open.FirstOrDefault(e => e.BedId == b.BedId);
                 return new AdtBedDto(b.BedId, b.Area, b.Seq, b.Active, enc?.PatientId,
                     enc is null ? null : patients.GetValueOrDefault(enc.PatientId),
-                    enc?.EncounterId, b.History());
+                    enc?.EncounterId, b.History(), wardLabels.GetValueOrDefault(b.Area));
             });
             return Results.Json(beds, JsonOpts.Web);
         }).RequireAuthorization();

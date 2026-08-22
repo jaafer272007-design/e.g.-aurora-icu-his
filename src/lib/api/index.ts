@@ -11,7 +11,7 @@ import type {
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   MineWorklist, Removal, RosterRecordDto, RoundingPatient, TimelineEvent, UnitSummaryResponse, UserAccount,
   DispositionEntry, FrequencyEntry, IsolationTypeEntry, ShiftEntry,
-  AdmissionTypeEntry, DepartmentEntry, ServiceEntry, AdmissionSourceEntry,
+  AdmissionTypeEntry, DepartmentEntry, ServiceEntry, AdmissionSourceEntry, WardEntry,
 } from './types'
 import { runtimeApiBase } from '../runtimeConfig'
 import { composeBedsResponse } from './bedboard'
@@ -1735,9 +1735,22 @@ export async function getAdtBeds(): Promise<AdtBed[]> {
    (historical records reference FK-free bedId strings). */
 
 /** POST /api/icu/adt/beds — add a bed (permanent bedId; a retired bedId
- *  being re-added answers 409 directing reactivate). */
+ *  being re-added answers 409 directing reactivate). Ward B: `area` is the
+ *  WARD CODE, validated server-side against the governed vocabulary
+ *  (unknown → 400 naming the actives; retired ward → 409). */
 export function createBed(draft: CreateBedDraft): Promise<AdtWriteResult<AdtBed>> {
   return usersWrite<AdtBed>('/api/icu/adt/beds', 'bed-registry create', draft)
+}
+
+/** PUT /api/icu/adt/beds/:bedId — the BED EDIT PATH (Ward B; ward.md A1's
+ *  ruling). Edits the MUTABLE subset only: the ward (area, a Wards
+ *  vocabulary code) and the board position. BedId is permanent — the
+ *  contract has no field for it. The server refuses: unknown ward 400,
+ *  retired ward 409, and an AREA change while the bed is OCCUPIED 409
+ *  (the live-occupancy rule — a patient's displayed ward never changes
+ *  silently under them). */
+export function editBed(bedId: string, draft: { area: string; seq?: number }): Promise<AdtWriteResult<AdtBed>> {
+  return usersWrite<AdtBed>(`/api/icu/adt/beds/${encodeURIComponent(bedId)}`, 'bed-registry edit', draft, 'PUT')
 }
 
 /** POST /api/icu/adt/beds/:bedId/deactivate — RETIRE. Refused (409)
@@ -1994,6 +2007,29 @@ export function deactivateAdmissionType(code: string): Promise<AdtWriteResult<Ad
 }
 export function reactivateAdmissionType(code: string): Promise<AdtWriteResult<AdmissionTypeEntry>> {
   return usersWrite<AdmissionTypeEntry>(`/api/icu/admission-types/${encodeURIComponent(code)}/reactivate`, 'admission-type reactivate')
+}
+
+/** GET /api/icu/wards — the FIFTH tenant (ward.md A1): all entries incl.
+ *  inactive. Backfilled from the bed registry's distinct areas at boot. */
+export async function getWards(): Promise<WardEntry[]> {
+  const real = await apiGet<WardEntry[]>('/api/icu/wards', 'wards')
+  if (real) return real
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond([], 120)
+  throw apiUnavailable('ward vocabulary')
+}
+export function createWard(draft: { code?: string; label: string }): Promise<AdtWriteResult<WardEntry>> {
+  return usersWrite<WardEntry>('/api/icu/wards', 'ward create', draft)
+}
+export function updateWard(code: string, draft: { label: string }): Promise<AdtWriteResult<WardEntry>> {
+  return usersWrite<WardEntry>(`/api/icu/wards/${encodeURIComponent(code)}`, 'ward edit', draft, 'PUT')
+}
+/** Refused with a 409 while the ward still has ACTIVE BEDS — the message
+ *  names them (the department/active-services precedent). */
+export function deactivateWard(code: string): Promise<AdtWriteResult<WardEntry>> {
+  return usersWrite<WardEntry>(`/api/icu/wards/${encodeURIComponent(code)}/deactivate`, 'ward retire')
+}
+export function reactivateWard(code: string): Promise<AdtWriteResult<WardEntry>> {
+  return usersWrite<WardEntry>(`/api/icu/wards/${encodeURIComponent(code)}/reactivate`, 'ward reactivate')
 }
 
 /** GET /api/icu/departments — all entries incl. inactive. */

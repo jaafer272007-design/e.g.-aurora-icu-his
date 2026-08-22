@@ -482,14 +482,30 @@ record SetIsolationRequest(List<string>? Types);
 
 /* bed registry row incl. derived occupancy — feeds the admission form's
    free-bed picker, transfer target picker, and the bed board layout */
+/* wardLabel — additive nullable tail (Ward B): the ward's DISPLAY label
+   resolved at read from the governed vocabulary (`area` is the ward CODE —
+   identity, never meaning). Null only when the code resolves to no ward row
+   (pre-backfill data mid-upgrade); resolution is otherwise total because
+   wards retire and are never deleted. Readers render wardLabel ?? area, so
+   renaming a ward actually renames it everywhere — the ruling's point. */
 record AdtBedDto(string BedId, string Area, int Seq, bool Active, string? PatientId, string? PatientName,
-    string? EncounterId, List<FormularyEventDto> History);
+    string? EncounterId, List<FormularyEventDto> History, string? WardLabel = null);
 
 /* POST /adt/beds — add a bed to the registry (bed-registry design §3).
    Add/retire only, NEVER rename (locked decision 2) — hence no edit
    request exists. Seq optional: appended after the area's last bed. */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record CreateBedRequest(string? BedId, string? Area, int? Seq = null);
+
+/* the bed EDIT contract (Ward B, ward.md A1's ruled bed edit path): the
+   MUTABLE subset only — the ward (area, a Wards vocabulary code) and the
+   board position. BedId is deliberately NOT a field: a bed's identity is
+   permanent (locked decision 2 — a renamed occupied bed is a
+   wrong-patient-location risk), and a field that does not exist on the
+   contract cannot be edited (the ServiceRow parent-immutability mechanism).
+   Disallow turns a PUT naming bedId — or anything else — into a binding 400. */
+[System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
+record EditBedRequest(string? Area, int? Seq = null);
 
 record BedSeedDto(string BedId, string Area);
 

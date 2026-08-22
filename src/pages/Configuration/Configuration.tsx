@@ -18,6 +18,7 @@ import {
   getDepartments, createDepartment, updateDepartment, deactivateDepartment, reactivateDepartment,
   getServices,
   getAdmissionSources, createAdmissionSource, updateAdmissionSource, deactivateAdmissionSource, reactivateAdmissionSource,
+  getWards, createWard, updateWard, deactivateWard, reactivateWard, editBed,
   getShifts, reactivateBed,
   reactivateCodeStatus, reactivateDisposition, reactivateFrequency, reactivateImagingStudy,
   reactivateIsolationType, reactivateShift, retireBed, updateCodeStatus, updateDisposition,
@@ -27,7 +28,7 @@ import {
 import type { AdtWriteResult } from '../../lib/api'
 import type {
   AdtBed, CodeStatusEntry, DispositionEntry, FrequencyEntry, HospitalIdentityWithHistory,
-  AdmissionTypeEntry, DepartmentEntry, ServiceEntry, AdmissionSourceEntry,
+  AdmissionTypeEntry, DepartmentEntry, ServiceEntry, AdmissionSourceEntry, WardEntry,
   ImagingStudyDef, IsolationTypeEntry, ObsCatalogGroup, ShiftEntry,
 } from '../../lib/api/types'
 import { IMAGING_MODALITIES } from '../../lib/api/types'
@@ -70,6 +71,9 @@ type SectionId =
      service cannot exist without a parent: the rail makes the dependency
      visible instead of leaving it to be discovered by hitting a blocked form. */
   | 'admissiontypes' | 'departments' | 'services' | 'admissionsources'
+  /* Ward B (ward.md A1): Area promoted to the governed Wards vocabulary —
+     the fifth reception-era tenant, same governance (hospital.configure) */
+  | 'wards'
 
 export function Configuration() {
   const { toast, showToast } = useToast()
@@ -92,6 +96,10 @@ export function Configuration() {
         { id: 'departments', title: 'Departments', allowed: can('hospital.configure') },
         { id: 'services', title: 'Services', allowed: can('hospital.configure') },
         { id: 'admissionsources', title: 'Sources of Admission', allowed: can('hospital.configure') },
+        /* Wards last in this group: the BED REGISTRY (other group) depends
+           on it — every bed belongs to exactly one ward, and a new bed
+           cannot be placed in a ward that does not exist here */
+        { id: 'wards', title: 'Wards', allowed: can('hospital.configure') },
       ],
     },
     {
@@ -135,6 +143,7 @@ export function Configuration() {
   const [departments, setDepartments] = useState<DepartmentEntry[] | null>(null)
   const [services, setServices] = useState<ServiceEntry[] | null>(null)
   const [admSources, setAdmSources] = useState<AdmissionSourceEntry[] | null>(null)
+  const [wards, setWards] = useState<WardEntry[] | null>(null)
 
   const reload = useCallback(() => {
     if (can('codestatus.manage')) getCodeStatuses().then(setCodeStatuses).catch(() => setCodeStatuses(null))
@@ -150,6 +159,10 @@ export function Configuration() {
       getServices().then(setServices).catch(() => setServices(null))
       getAdmissionSources().then(setAdmSources).catch(() => setAdmSources(null))
     }
+    /* wards load for EITHER atom: the Wards tab is hospital.configure, but
+       the BED REGISTRY tab (beds.manage — the Consultant holds it without
+       hospital.configure) needs the active-ward picker too */
+    if (can('hospital.configure') || can('beds.manage')) getWards().then(setWards).catch(() => setWards(null))
     if (can('beds.manage')) getAdtBeds().then(setBedRows).catch(() => setBedRows(null))
     if (can('hospital.configure')) {
       getHospitalIdentityHistory().then(r => {
@@ -274,6 +287,15 @@ export function Configuration() {
   const admTypeRows: VocabRow[] | null = admTypes
     ? admTypes.map(e => ({ key: e.code, label: e.label, active: e.active, history: e.history }))
     : null
+  /* ward rows carry their ACTIVE-BED count as a tag — the retire guard's
+     reason made visible before the 409 says it (bedRows needs beds.manage;
+     without it the tag is simply absent, never guessed) */
+  const wardRows: VocabRow[] | null = wards
+    ? wards.map(e => ({
+      key: e.code, label: e.label, active: e.active, history: e.history,
+      ...(bedRows ? { tags: [`${bedRows.filter(x => x.active && x.area === e.code).length} active bed(s)`] } : {}),
+    }))
+    : null
   const activeDepartments = departments?.filter(d => d.active) ?? []
   const departmentLabel = (code: string) =>
     departments?.find(d => d.code === code)?.label ?? code
@@ -339,10 +361,13 @@ export function Configuration() {
 
   /* ---- bed registry (specialized: live occupancy; never renamed) ---- */
   const [bedBusy, setBedBusy] = useState(false)
-  const [bedPanel, setBedPanel] = useState<{ kind: 'retire' | 'history'; id: string } | null>(null)
+  const [bedPanel, setBedPanel] = useState<{ kind: 'retire' | 'history' | 'edit'; id: string } | null>(null)
   const [bedRowError, setBedRowError] = useState<{ id: string; error: string } | null>(null)
   const [bedFormError, setBedFormError] = useState<string | null>(null)
   const [bId, setBId] = useState(''); const [bArea, setBArea] = useState(''); const [bSeq, setBSeq] = useState('')
+  /* the edit panel's fields (Ward B bed edit path) */
+  const [ebArea, setEbArea] = useState(''); const [ebSeq, setEbSeq] = useState('')
+  const activeWards = (wards ?? []).filter(w => w.active)
 
   async function applyBedWrite(id: string | null, what: string,
     run: () => Promise<AdtWriteResult<AdtBed>>, onOk: (b: AdtBed) => void) {
@@ -359,7 +384,7 @@ export function Configuration() {
     return applyBedWrite(null, 'the bed', () => createBed({
       bedId: bId.trim(), area: bArea.trim(), ...(seq ? { seq: Number(seq) } : {}),
     }), b => {
-      showToast('Bed added', `${b.bedId} (${b.area}) is on the board and admittable immediately`)
+      showToast('Bed added', `${b.bedId} (${b.wardLabel ?? b.area}) is on the board and admittable immediately`)
       setBId(''); setBArea(''); setBSeq('')
     })
   }
@@ -369,9 +394,19 @@ export function Configuration() {
   })
   const doBedReactivate = (b: AdtBed) => applyBedWrite(b.bedId, 'the reactivation', () => reactivateBed(b.bedId),
     upd => showToast('Bed reactivated', `${upd.bedId} is back on the board and admittable`))
-  function openBedPanel(kind: 'retire' | 'history', b: AdtBed) {
+  const doBedEdit = (b: AdtBed) => {
+    const seq = ebSeq.trim()
+    return applyBedWrite(b.bedId, 'the bed edit', () => editBed(b.bedId, {
+      area: ebArea, ...(seq ? { seq: Number(seq) } : {}),
+    }), upd => {
+      showToast('Bed updated', `${upd.bedId} — ${upd.wardLabel ?? upd.area}${seq ? ` · position ${upd.seq}` : ''} (audited)`)
+      setBedPanel(null)
+    })
+  }
+  function openBedPanel(kind: 'retire' | 'history' | 'edit', b: AdtBed) {
     setBedRowError(null)
     if (bedPanel?.kind === kind && bedPanel.id === b.bedId) { setBedPanel(null); return }
+    if (kind === 'edit') { setEbArea(b.area); setEbSeq(String(b.seq)) }
     setBedPanel({ kind, id: b.bedId })
   }
 
@@ -454,10 +489,11 @@ export function Configuration() {
     shifts: { blurb: <>The working shifts assignments are made against. Two-shift day/night was itself an assumption — three-shift ICUs are real, so the list is yours. Retiring a shift never touches existing assignments (the stored shift is a snapshot).</> },
     frequencies: { blurb: <>The NAMED medication frequencies (&ldquo;daily&rdquo;, &ldquo;with meals&rdquo;…) orders and per-drug lists validate against — pharmacy governance. The structured <b className="num">q1h–q48h</b> pattern is a safety rule in code, never a hospital list.</> },
     imaging: { blurb: <>The coded imaging study definitions ordering reads — clinical, on the lab-catalogue gating (radiology + Senior Doctor). Retired studies leave the menu; historical orders keep rendering.</> },
-    beds: { blurb: <>The unit&apos;s physical beds. Retiring an <b>occupied</b> bed is refused by live occupancy, and beds are <b>never renamed</b> (a renamed occupied bed is a wrong-patient-location risk) — add, retire, reactivate only.</> },
+    beds: { blurb: <>The unit&apos;s physical beds. Retiring an <b>occupied</b> bed is refused by live occupancy, and beds are <b>never renamed</b> (a renamed occupied bed is a wrong-patient-location risk) — add, retire, reactivate, and <b>edit</b> (Ward B): the bed&apos;s ward and board position are correctable; its identity is not. Moving an <b>occupied</b> bed between wards is refused for the same location-integrity reason.</> },
     admissiontypes: { blurb: <>How an admission ARRIVES — elective, emergency, urgent, transfer, and this hospital&apos;s own. Administrative structure (office Administrator), not clinical governance. <b>Required on every admission</b>, and nothing is seeded: a real install starts empty and configures its own.</> },
     departments: { blurb: <>The hospital&apos;s clinical DEPARTMENTS. <b>Required on every admission</b>, and the parent of every Service — so configure these first. Retiring one is <b>refused while it still has active services</b>; the other half of that guard (refused while the department has OPEN ADMISSIONS) is <b>not built yet</b> — admissions do not carry a department until the admission build lands.</> },
     services: { blurb: <>The services under each department (General Surgery → Upper GI, Colorectal…). <b>Required on every admission.</b> A service&apos;s parent department is chosen once and is <b>immutable</b> — the edit contract has no field for it at all, so there is no reparenting path; a service that belongs elsewhere is a new entry plus a retire.</> },
+    wards: { blurb: <>The hospital&apos;s WARDS — the governed vocabulary the bed registry places every bed in (ward.md A1: Area promoted from free text). The starting list is <b>backfilled from the beds&apos; existing areas</b>, never invented; renaming a ward here renames it on every surface, and retiring one is refused while it still has active beds.</> },
     admissionsources: { blurb: <>Where the patient came FROM — home, clinic, emergency department, another hospital. <b>Optional</b> on the admission form: when it is not recorded it is recorded as not recorded, never guessed.</> },
     obscatalog: { blurb: <>What this hospital can <b>observe</b> at the bedside. Add custom numeric observations and set the flagging ranges that drive abnormal/critical display. <b>🔒 NEWS2/SOFA score inputs are locked</b> — every part of their definition — because an editable score input silently turns a validated score into an unvalidated one. Ranges here are display flagging only; the score bands live in validated code.</> },
   }
@@ -734,6 +770,20 @@ export function Configuration() {
                   onChanged={reload} showToast={showToast} />
               )}
 
+              {active === 'wards' && (
+                <VocabManager title="Wards"
+                  icon={<IconBed size={15} stroke="var(--green)" />} accent="var(--green)"
+                  spec={{
+                    noun: 'ward', usedAt: 'when placing or moving a bed in the Bed Registry',
+                    retireNote: 'No new bed can be placed in it and no bed can be moved into it. Retirement is REFUSED while the ward still has active beds — retire those beds or move them to another ward first.',
+                    codePlaceholder: 'ward-3', labelPlaceholder: 'Ward 3',
+                    emptyNote: <>No wards yet. The starting list is <b>backfilled from the bed registry&apos;s existing areas</b> on upgrade — nothing is invented. A hospital with no beds starts empty and adds its wards here; <b>a bed cannot be created until at least one active ward exists</b>.</>,
+                  }}
+                  rows={wardRows}
+                  api={{ create: d => createWard(d), update: (k, label) => updateWard(k, { label }), deactivate: deactivateWard, reactivate: reactivateWard }}
+                  onChanged={reload} showToast={showToast} />
+              )}
+
               {active === 'imaging' && (
                 <div className="uacols">
                   <Card icon={<IconFlask size={15} stroke="var(--violet)" />} title="Imaging Catalogue"
@@ -870,7 +920,8 @@ export function Configuration() {
                             <div className="uamain">
                               <span className="uawho">
                                 <b className="num">{b.bedId}</b>
-                                <small>{b.area}</small>
+                                {/* the ward's display LABEL (code stays identity) */}
+                                <small>{b.wardLabel ?? b.area}</small>
                               </span>
                               <span className="uarole">
                                 <span>{b.patientId ? `Occupied · ${b.patientName ?? b.patientId}` : 'Free'}</span>
@@ -881,6 +932,7 @@ export function Configuration() {
                                 <button className="uaact" onClick={() => openBedPanel('history', b)} aria-expanded={open === 'history'}>
                                   History ({b.history.length})
                                 </button>
+                                <button className="uaact" onClick={() => openBedPanel('edit', b)} aria-expanded={open === 'edit'}>Edit</button>
                                 {b.active && (
                                   <button className="uaact warn" onClick={() => openBedPanel('retire', b)} aria-expanded={open === 'retire'}>Retire</button>
                                 )}
@@ -900,6 +952,39 @@ export function Configuration() {
                                     <span className="num">{ev.time}</span> · {ev.actor} · {ev.action}{ev.detail ? ` — ${ev.detail}` : ''}
                                   </div>
                                 ))}
+                              </div>
+                            )}
+
+                            {open === 'edit' && (
+                              <div className="uapanel" role="region" aria-label={`Edit bed: ${b.bedId}`}>
+                                <div className="uafields">
+                                  <label>Ward (the bed moves; its identity never changes)
+                                    <select value={ebArea} onChange={ev => setEbArea(ev.target.value)} disabled={bedBusy}>
+                                      {/* the CURRENT ward stays selectable even when retired,
+                                          so a no-op save is possible and honest; every OTHER
+                                          option is an ACTIVE ward (the server refuses a
+                                          retired target regardless) */}
+                                      {!activeWards.some(w => w.code === b.area) && (
+                                        <option value={b.area}>{b.wardLabel ?? b.area} (current)</option>
+                                      )}
+                                      {activeWards.map(w => <option key={w.code} value={w.code}>{w.label}</option>)}
+                                    </select>
+                                  </label>
+                                  <label>Position (ordering on the board)
+                                    <input value={ebSeq} onChange={ev => setEbSeq(ev.target.value.replace(/[^0-9]/g, ''))} disabled={bedBusy}
+                                      inputMode="numeric" maxLength={4} />
+                                  </label>
+                                </div>
+                                <span className="uaconfirm">
+                                  Moving a bed with a patient in it is refused by the server — discharge or
+                                  transfer the occupant first. Every change lands in this bed&apos;s history.
+                                </span>
+                                <div className="uapanelacts">
+                                  <button className="uaact go" disabled={bedBusy || !ebArea} onClick={() => void doBedEdit(b)}>
+                                    {bedBusy ? 'Saving…' : 'Save change'}
+                                  </button>
+                                  <button className="uaact" onClick={() => setBedPanel(null)}>Cancel</button>
+                                </div>
                               </div>
                             )}
 
@@ -934,9 +1019,11 @@ export function Configuration() {
                           <input value={bId} onChange={e => setBId(e.target.value)} disabled={bedBusy}
                             placeholder="B-17" autoComplete="off" />
                         </label>
-                        <label>Area (free text — the board groups beds by area)
-                          <input value={bArea} onChange={e => setBArea(e.target.value)} disabled={bedBusy}
-                            placeholder="Pod C" />
+                        <label>Ward (a governed vocabulary — configure wards under Hospital)
+                          <select value={bArea} onChange={e => setBArea(e.target.value)} disabled={bedBusy || activeWards.length === 0}>
+                            <option value="" disabled>{activeWards.length === 0 ? 'no active wards — add one first' : 'Ward…'}</option>
+                            {activeWards.map(w => <option key={w.code} value={w.code}>{w.label}</option>)}
+                          </select>
                         </label>
                         <label>Position (optional — ordering on the board; appended last when omitted)
                           <input value={bSeq} onChange={e => setBSeq(e.target.value.replace(/[^0-9]/g, ''))} disabled={bedBusy}

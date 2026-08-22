@@ -150,7 +150,7 @@ export function AwaitingBed() {
                       <span>Assign <b>{e.patientName}</b> to:</span>
                       <select value={targetBed} onChange={ev => setTargetBed(ev.target.value)} aria-label="Free bed">
                         <option value="" disabled>Free bed…</option>
-                        {freeBeds.map(b => <option key={b.bedId} value={b.bedId}>{b.bedId} · {b.area}</option>)}
+                        {freeBeds.map(b => <option key={b.bedId} value={b.bedId}>{b.bedId} · {b.wardLabel ?? b.area}</option>)}
                       </select>
                       <button className="awbact primary" disabled={!targetBed || busy} onClick={() => doAssign(e.encounterId)}>
                         {busy ? 'Assigning…' : 'Confirm assignment'}

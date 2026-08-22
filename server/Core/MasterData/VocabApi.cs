@@ -176,6 +176,36 @@ static class VocabApi
             db => db.AdmissionSources.AsNoTracking().AsEnumerable().Select(s => (s.Code, s.Label, s.Active)),
             toDto: r => r.ToDto());
 
+        /* WARD — the FIFTH tenant (ward.md Amendment A1): Area promoted to a
+           governed vocabulary on this same mapper, gated hospital.configure
+           like the four above (a ward NAME is administrative structure —
+           the recorded administrative/clinical split). The CODE is the
+           value beds already carry in `Area` (the backfill writes it
+           verbatim), so beds join the vocabulary by construction.
+           THE RETIRE GUARD is the department/active-services precedent:
+           a ward with ACTIVE beds refuses to retire — a bed may never
+           point at a retired ward, exactly as a service may never point
+           at a retired department. Retired beds do NOT block (their ward
+           reference is historical, resolution stays total). */
+        MapVocab<WardRow>(app, "wards", "hospital.configure", "ward", "wrd",
+            db => db.Wards,
+            db => db.Wards.OrderBy(w => w.Seq).AsNoTracking().AsEnumerable().Select(w => (object)w.ToDto()),
+            (db, code) => db.Wards.FirstOrDefault(w => w.Code == code) is WardRow r
+                ? new VocabHandle(r.Code, r.Label, r.Active,
+                    () => { r.Active = false; }, () => { r.Active = true; },
+                    l => { r.Label = l; }, () => r.EventsJson, j => r.EventsJson = j, () => r.ToDto())
+                : null,
+            db => db.Wards.AsNoTracking().AsEnumerable().Select(w => (w.Code, w.Label, w.Active)),
+            toDto: r => r.ToDto(),
+            deactivateGuard: (db, code) =>
+            {
+                var beds = db.Beds.AsNoTracking().Where(b => b.Area == code && b.Active)
+                    .OrderBy(b => b.Seq).Select(b => b.BedId).ToList();
+                return beds.Count == 0 ? null
+                    : $"ward '{code}' still has {beds.Count} active bed(s) — {string.Join(", ", beds)} — "
+                      + "retire those beds or move them to another ward first; a bed may never point at a retired ward";
+            });
+
         /* dispositions POST is mapped separately (it carries the
            immutable isDeath attribute at creation — see MapVocab's
            create for the other tenants) */

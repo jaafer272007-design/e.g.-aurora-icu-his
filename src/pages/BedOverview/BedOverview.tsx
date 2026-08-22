@@ -186,7 +186,11 @@ export function BedOverview() {
               <option value="">All areas</option>
               {/* areas from the registry read — no Pod A/B fallback:
                   while loading the filter simply offers "All areas" */}
-              {(data?.areas ?? []).map(a => <option key={a}>{a}</option>)}
+              {(data?.areas ?? []).map(a => (
+                <option key={a} value={a}>
+                  {data?.beds.find(b => b.area === a)?.wardLabel ?? a}
+                </option>
+              ))}
             </select>
             <button className={`fchip${filters.vent ? ' on' : ''}`} aria-pressed={filters.vent} onClick={() => toggle('vent')}>
               <IconVent size={13} />Ventilated

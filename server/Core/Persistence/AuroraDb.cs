@@ -94,6 +94,10 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
     public DbSet<DepartmentRow> Departments => Set<DepartmentRow>();
     public DbSet<ServiceRow> Services => Set<ServiceRow>();
     public DbSet<AdmissionSourceRow> AdmissionSources => Set<AdmissionSourceRow>();
+    /* the FIFTH reception-era tenant (ward.md A1): Area promoted to a
+       governed Ward vocabulary — backfilled from the bed registry's
+       distinct Area values, never seeded with invented names */
+    public DbSet<WardRow> Wards => Set<WardRow>();
     /* Backup & DR (the hard go-live gate): the immutable audit of every
        backup/restore/verify/key-rotation/prune event — append-only by
        construction (insert + read only; no update/delete surface exists).

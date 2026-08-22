@@ -102,6 +102,40 @@ static class Seeder
         if (BootGuards.Production) SeedProduction(app, db);
         else SeedDemo(app, db, demoPassword, dbLabel);
 
+        /* WARD BACKFILL (Ward B; ward.md Amendment A1, the owner's ruling):
+           the governed Wards vocabulary starts as EXACTLY the distinct
+           `Area` values the bed registry already carries — "honest backfill
+           from real data, never fabrication; whatever a hospital has typed
+           becomes its starting vocabulary and it curates from there."
+           Code AND label are the typed value verbatim: the code is the join
+           key beds already store, so promotion rewrites no bed row; the
+           label is then editable (renaming a ward) while the code stays
+           identity. Runs in BOTH modes and on UPGRADES alike — seed-if-empty
+           on the Wards table, after the mode seed so a fresh install's
+           seeded beds (Pod A / Pod B) feed it. Retired beds' areas are
+           included: their reference is historical reality, and the hospital
+           retires what is dead rather than the system guessing. No invented
+           audit on backfilled rows (the seeded-bed precedent). Idempotent:
+           any ward row present → no-op, so a curated vocabulary is never
+           re-polluted by later boots. */
+        if (!db.Wards.Any() && db.Beds.Any())
+        {
+            var areas = db.Beds.AsNoTracking().AsEnumerable()
+                .GroupBy(b => b.Area)
+                .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+                .OrderBy(g => g.Min(b => b.Seq))
+                .Select(g => g.Key).ToList();
+            var seq = 0;
+            db.Wards.AddRange(areas.Select(a => new MasterData.WardRow
+            {
+                Code = a, Label = a, Seq = ++seq, Active = true, EventsJson = "[]",
+            }));
+            db.SaveChanges();
+            app.Logger.LogInformation(
+                "Ward backfill: {Count} ward(s) created from the bed registry's distinct areas — {Areas}",
+                areas.Count, string.Join(", ", areas));
+        }
+
         /* ENCOUNTER-SCOPE BACKFILL (one-time, idempotent — the ORD-113
            fix): resolve EncounterId for any order that has none (seeds
            carry none; the create path stores it from here on) and restore
