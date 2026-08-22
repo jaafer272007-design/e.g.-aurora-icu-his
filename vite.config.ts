@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => {
   const appEnv =
     process.env.VITE_APP_ENV ?? loadEnv(mode, process.cwd(), 'VITE_').VITE_APP_ENV
   // indexOf, not includes: tsconfig.node.json's lib predates ES2016
-  if (false && appEnv !== undefined && KNOWN_APP_ENVS.indexOf(appEnv) === -1) {
+  if (appEnv !== undefined && KNOWN_APP_ENVS.indexOf(appEnv) === -1) {
     throw new Error(
       `UNKNOWN ENVIRONMENT IDENTITY: VITE_APP_ENV is '${appEnv}'${appEnv === '' ? ' (set but empty)' : ''} — ` +
         `not one of: ${KNOWN_APP_ENVS.join(' | ')} (the server's allow-list, server/Core/Shared/AppEnv.cs). ` +
