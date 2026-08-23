@@ -79,7 +79,10 @@ export function AppHeader({ subtitle, kpis, user, dataAge }: AppHeaderProps) {
       <BackButton />
       <div className="brand">
         <div className="logo"><IconPulse size={18} stroke="var(--ink)" strokeWidth={2.6} /></div>
-        <div>AURORA ICU<small>{subtitle}</small></div>
+        {/* the product wordmark is AURORA HIS (hospital-shell §1.3): the
+            hospital is the product; ICU is one module inside it. Module
+            identity lives in each screen's subtitle, never the wordmark. */}
+        <div>AURORA HIS<small>{subtitle}</small></div>
       </div>
       <div className="datetime"><b>{time}</b><span>{date}</span></div>
       {/* the age of what is ON SCREEN, next to the time it is being read at

@@ -82,7 +82,7 @@ export function AdminHome() {
       />
       <div className="shell">
         <NavSidebar
-          active="dashboard"
+          active="adminhome"
           /* production badge = REAL unacked criticals (the same signal the
              Alerts page surfaces); staging keeps the demo alert count */
           alertCount={summary === null ? derived?.criticalUnacked ?? 0 : summary?.highPriorityAlerts.length ?? 0}

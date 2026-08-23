@@ -135,7 +135,7 @@ export function DoctorWorkspace() {
         </>}
       />
       <div className="shell">
-        <NavSidebar active="dashboard" alertCount={5} footerLines={['Role: Doctor profile', 'Full order/med authority']} />
+        <NavSidebar active="icuoverview" alertCount={5} footerLines={['Role: Doctor profile', 'Full order/med authority']} />
 
         <main>
           <div className="col">

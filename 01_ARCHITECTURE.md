@@ -388,6 +388,20 @@ route's permission gets an explicit Access Restricted state (never a
 silent redirect); no session → /login. The `?as=nurse` dev preview is
 retired — the login screen replaces it.
 
+*[Amendment, 2026-08-23 — the hospital Home (the shell PR; owner ruling
+recorded in `docs/design/hospital-shell.md` A3). `/home` = session-gated
+with NO permission atom (the `/settings` precedent): the hospital-wide
+launch surface, and now the DEFAULT LANDING for every profile — `/` and
+the post-login navigation land there. The table's "Landing" column above
+therefore no longer names the post-login destination; it names the
+profile's WORKSPACE, which Home offers as its personalized primary action
+and which the ICU Overview nav row resolves for the ICU workspaces
+(`/workspace`, `/nurse`). Every workspace route, its guard, and its
+behaviour are unchanged; no atom was added or moved. The `/admissions`
+route stays `patients.view` (Decision C) while its NAV row is gated on
+`adt.admit` and labelled "Bed Admission" — navigation visibility, not
+route authority (hospital-shell design §3).]*
+
 *[Docs split note — status label: the Observation model below is SPECIFIED,
 NOT YET BUILT. Implementation is Stage 11 scope per the rule's own final
 bullet.]*
@@ -835,6 +849,17 @@ as ruled write-in areas — never fabricated. Generation metadata (the
 - Nav: the sidebar "Dashboard" item is role-personalized — it resolves to
   the signed-in profile's landing view (see the RBAC tables above);
   implemented at Stage 9 via the local session.
+  *[Superseded 2026-08-23, per the project owner's hands-on review (the
+  hospital-shell PR; ruling recorded in `docs/design/hospital-shell.md`
+  A3): the "Dashboard" row is RETIRED — the sidebar is grouped BY
+  OWNERSHIP and its top row is "Home", the hospital-wide landing at
+  `/home`, the same for every profile ("Aurora HIS must not open onto an
+  ICU Mission Control experience — ICU is a module, not the shell").
+  The role-personalized CONCEPT survives, relocated: the ICU Overview row
+  (ICU group) resolves via the same `landingRouteOf` mechanism to the
+  profile's ICU workspace, and Home's "your workspace" primary action
+  offers every profile its former landing view. The workspaces themselves
+  are unchanged.]*
 - Doctor Workspace's quick-order drawer stays lightweight (free text +
   quick-set bundle shortcuts, no drug formulary) — do not expand it. Full
   medication ordering (searchable formulary, dose/route/frequency,

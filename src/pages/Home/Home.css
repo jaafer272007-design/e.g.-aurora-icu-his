@@ -1,0 +1,27 @@
+/* Hospital Home — the smallest honest launch surface (hospital-shell A3).
+   Tokens only: both themes hold by construction. The shell grid follows
+   the established per-page rule (the ultrawide fix's lesson: every page
+   prefix declares its own .shell columns). */
+.hm .shell{display:grid;grid-template-columns:198px 1fr;min-height:0}
+@media(max-width:1180px){.hm .shell{grid-template-columns:64px 1fr}}
+.hm main{padding:18px 22px;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:16px}
+
+.hm .hmlead{padding:16px 18px}
+.hm .hmintro{font-size:13px;color:var(--txt2);line-height:1.65;margin:2px 0 12px}
+.hm .hmintro b{color:var(--text)}
+.hm .hmws{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;
+ border:1px solid rgba(var(--blue-rgb),.4);color:var(--text);font-size:13px;font-weight:600;
+ background:linear-gradient(135deg,rgba(var(--blue-rgb),.16),rgba(var(--cyan-rgb),.08));
+ cursor:pointer;transition:.16s;min-height:44px}
+.hm .hmws:hover{border-color:rgba(var(--blue-rgb),.6);background:linear-gradient(135deg,rgba(var(--blue-rgb),.22),rgba(var(--cyan-rgb),.12))}
+
+/* one card per ownership group — the same groups the sidebar shows */
+.hm .hmgroups{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px;align-items:start}
+.hm .hmgroup{padding:14px 16px}
+.hm .hmlinks{display:flex;flex-direction:column;gap:6px}
+.hm .hmlink{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:12px;
+ color:var(--dim);font-size:13px;font-weight:500;border:1px solid var(--stroke);
+ background:rgba(var(--lift-rgb),.03);text-align:left;width:100%;min-height:44px;
+ cursor:pointer;transition:.16s}
+.hm .hmlink:hover{color:var(--text);border-color:rgba(var(--blue-rgb),.4);background:rgba(var(--lift-rgb),.06)}
+.hm .hmlink svg{flex:none}

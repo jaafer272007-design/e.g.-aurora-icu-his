@@ -18,8 +18,21 @@
  font-size:10px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
 .navfoot{margin-top:auto;font-size:10px;color:var(--faint);padding:0 13px;line-height:1.6}
 
+/* ownership groups (hospital-shell design §1.2): the group is a plain
+   column so its rows keep the rail's own gap rhythm */
+.navgroup{display:flex;flex-direction:column;gap:4px}
+/* small-caps group header — a label, never a control */
+.navgh{margin:10px 13px 2px;font-size:9.5px;font-weight:700;letter-spacing:.13em;
+ text-transform:uppercase;color:var(--faint)}
+.navgroup:first-child .navgh{margin-top:0}
+
 @media(max-width:1180px){
  .nv span,.navfoot{display:none}
  .nv{justify-content:center;padding:11px}
  .nv .nbdg{position:absolute;transform:translate(12px,-10px)}
+ /* below the icon-only collapse the header text is gone with the row
+    labels; the header itself degrades to a thin separator line so the
+    grouping survives without words (design §1.2) */
+ .navgh{margin:6px 8px 2px;border-top:1px solid var(--stroke);padding:0;height:0;overflow:hidden}
+ .navgh span{display:none}
 }

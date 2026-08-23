@@ -54,6 +54,19 @@ jobs:
       # pinned fact in turn (the gate's header records how).
       - name: Awaiting-bed stays wired to assignment, bedless=true, beds.assign (Ward A2)
         run: node scripts/awaiting-bed-gate.mjs
+      # The hospital shell (hospital-shell.md §§1/3 + the A3 front-door
+      # amendment): Aurora HIS identity on the four shell surfaces, the
+      # ownership nav model (module screens under ICU, hospital-wide
+      # screens in hospital-wide groups, Ward declared empty, OR absent),
+      # the Bed Admission authority boundary (nav row = adt.admit — which
+      # the office Administrator profile must never hold — while the
+      # /admissions ROUTE stays patients.view for honest read-only deep
+      # links), and the hospital-Home default landing. SOURCE check like
+      # the two gates above — presence and wiring, not a rendered sidebar;
+      # its teeth were measured before commit by breaking each of eight
+      # pinned facts in turn (the gate's header records how).
+      - name: Hospital shell keeps its ownership nav, Aurora HIS identity, and the adt.admit Bed Admission gate
+        run: node scripts/hospital-shell-gate.mjs
       # PR-2 (environment separation): VITE_APP_ENV is allow-listed at the ONE
       # chokepoint every build entry point passes through — vite.config.ts —
       # mirroring the server's AppEnv.Known (the source of truth). Three legs,

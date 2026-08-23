@@ -2,7 +2,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import './RequireSession.css'
 import { IconAlertTriangle } from './icons'
 import {
-  getSession, hasPermission, landingRouteOf, profileOf, signOut,
+  getSession, hasPermission, profileOf, signOut,
   type Permission, type Session,
 } from '../lib/session'
 
@@ -25,7 +25,9 @@ function AccessDenied({ session, permission }: { session: Session; permission: s
             This screen requires the <code>{permission}</code> permission, which that profile doesn't include.
           </p>
           <div className="deniedbtns">
-            <button className="nf-btn" onClick={() => navigate(landingRouteOf(session.jobTitle))}>← My dashboard</button>
+            {/* the escape from a denied route is the hospital Home — the
+                universally-reachable landing (A3) — never a module screen */}
+            <button className="nf-btn" onClick={() => navigate('/home')}>← Home</button>
             <button className="nf-btn" onClick={() => { signOut(); navigate('/login') }}>Switch role</button>
           </div>
         </section>

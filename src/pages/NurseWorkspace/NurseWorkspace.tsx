@@ -174,7 +174,7 @@ export function NurseWorkspace() {
       />
       <div className="shell">
         <NavSidebar
-          active="dashboard"
+          active="icuoverview"
           alertCount={3}
           footerLines={['Role: Nurse profile', 'Administer + document only']}
         />

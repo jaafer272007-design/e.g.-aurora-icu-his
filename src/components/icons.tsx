@@ -198,3 +198,27 @@ export function IconShield({ size = 16, stroke = 'currentColor', strokeWidth = 2
     </svg>
   )
 }
+
+/** Hospital Home (the shell's front door) — a house: the hospital-wide
+ *  landing surface, not any module's screen */
+export function IconHome({ size = 16, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
+  return (
+    <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
+      <path d="M3 11l9-8 9 8" />
+      <path d="M5 9.5V20a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V9.5" />
+    </svg>
+  )
+}
+
+/** Bed Admission (hospital-shell design §3) — a bed with an arrow INTO it:
+ *  admitting a patient into an ICU bed, the adt.admit act. Deliberately
+ *  distinct from IconAdmit (Reception's door-arrow — opening an episode
+ *  with NO bed) and from IconBed (ICU Beds' plain bed). */
+export function IconBedAdmit({ size = 16, stroke = 'currentColor', strokeWidth = 2 }: IconProps) {
+  return (
+    <svg {...base(size)} stroke={stroke} strokeWidth={strokeWidth} strokeLinejoin="round">
+      <path d="M12 2v7M9 6l3 3 3-3" />
+      <path d="M3 20v-4a2 2 0 012-2h14a2 2 0 012 2v4M3 20h18" />
+    </svg>
+  )
+}

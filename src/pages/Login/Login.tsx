@@ -54,7 +54,10 @@ export function Login() {
 
   const enter = (name: string, jobTitle: JobTitle, token?: string) => {
     signIn(name, jobTitle, token)
-    navigate(landingRouteOf(jobTitle))
+    /* every profile lands on the HOSPITAL Home (hospital-shell A3) — the
+       per-role workspace is Home's personalized primary action, never an
+       automatic redirect into a module */
+    navigate('/home')
   }
 
   /* one continuation for every auth response: session → in; forced
@@ -145,7 +148,7 @@ export function Login() {
             <div className="logo"><IconPulse size={20} stroke="var(--ink)" strokeWidth={2.6} /></div>
             {/* unit segment from the CONFIGURED hospital identity (one
                 resolver) — omitted while unset, never a hardcoded name */}
-            <div className="lgtitle">AURORA ICU<small>Hospital Information System{unitSuffix2}</small></div>
+            <div className="lgtitle">AURORA HIS<small>Hospital Information System{unitSuffix2}</small></div>
           </div>
 
           <div className="lgcols">
@@ -226,7 +229,7 @@ export function Login() {
                 {chooser.roles.map(r => (
                   <button key={r} type="button" className="lgrole" disabled={busy} onClick={() => void pick(r)}>
                     <b>{r}</b>
-                    <small>{profileOf(r as JobTitle)} profile · lands on {landingRouteOf(r as JobTitle)}</small>
+                    <small>{profileOf(r as JobTitle)} profile · workspace {landingRouteOf(r as JobTitle)}</small>
                   </button>
                 ))}
                 {error && <div className="lgerror" role="alert">⚠ {error}</div>}
@@ -263,7 +266,7 @@ export function Login() {
                     {permissionsOf(preview.jobTitle).map(p => <i key={p} className="lgperm">{p}</i>)}
                   </div>
                   <div className="lglanding">
-                    Dashboard resolves to <b className="num">{landingRouteOf(preview.jobTitle)}</b>
+                    Lands on <b className="num">/home</b> · workspace <b className="num">{landingRouteOf(preview.jobTitle)}</b>
                   </div>
                 </div>
               )}
@@ -287,7 +290,7 @@ export function Login() {
                 <div className="lgexisting">
                   Currently signed in as <b>{existing.name}</b> ({existing.jobTitle}) — signing in
                   replaces that session, or{' '}
-                  <button type="button" className="lgcontinue" onClick={() => navigate(landingRouteOf(existing.jobTitle))}>
+                  <button type="button" className="lgcontinue" onClick={() => navigate('/home')}>
                     continue as {existing.name} →
                   </button>
                 </div>

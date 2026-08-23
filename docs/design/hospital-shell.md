@@ -743,3 +743,64 @@ commit that ships them.
 Everything else in A2 stands as recorded: the versioned explicit fold table
 over a framework call, and the NFC/NFKC evidence that settles it. Nothing in
 §§0–8, in A1, in A1.1, or in A2's findings is altered by this entry.
+
+### A3 · OWNER SUPERSEDE (2026-08-23, hands-on review): §1.1's "Dashboard — role-personalized landing — unchanged" is OVERRULED — the default landing is a hospital-wide Home; the ICU dashboards are preserved as ICU-owned screens
+
+**The ruling and its reason, in the owner's frame:** after running current
+main in the Docker appliance, the owner confirmed Aurora still presents
+itself primarily as an ICU application. Leaving the ICU
+workspace/Mission-Control experience as the default landing keeps making
+Aurora present as an ICU application rather than an HIS: **Aurora HIS must
+not open onto an ICU Mission Control experience. ICU is a module of Aurora
+HIS — not the shell and not the product identity.** §1.1's first row
+("Dashboard — role-personalized landing — unchanged") and §1.2's "no row
+appears or disappears for anyone except Bed Admission" are superseded to
+exactly the extent below; everything else in §§0–8 stands.
+
+**What is recorded, as built by the shell PR:**
+
+- **Hospital-wide Home is the default landing** for EVERY profile: a new
+  `/home` route (session-gated, no permission atom — the /settings
+  precedent: a launch surface of links, nothing clinical without its own
+  gate). `/` and the post-login navigation land there. Home is the
+  SMALLEST HONEST launch surface: the configured hospital identity
+  (through the one resolver), the signed-in role, and links to exactly the
+  areas the profile can open — rendered from the SAME ownership model and
+  permission filter as the sidebar (`visibleGroupsFor`), so the two cannot
+  drift. No fabricated counts, no ICU KPI presented as a hospital KPI (no
+  KPI at all — no honest hospital-wide source exists), no "coming soon",
+  no card for an unreachable screen.
+- **The existing ICU dashboard functionality is PRESERVED, ICU-owned,
+  not deleted.** There was never a single "Dashboard" screen to move: the
+  retired sidebar row resolved per role (`landingRouteOf`). Its concept
+  survives twice — (1) the **ICU Overview** row under the ICU group
+  resolves through the SAME mechanism to the profile's ICU workspace
+  (`/workspace` for Doctor/SeniorDoctor, `/nurse` for Nurse; hidden for
+  profiles whose workspace is another owned row — the bed board or the
+  administrative views — because a duplicate or mislabelled link would
+  each be a lie), and (2) Home's personalized "your workspace" primary
+  action offers every profile its former landing (office Administrator →
+  `/admin`, now also the "Unit Administration" row under Administration;
+  System Administrator → `/admin/users`; the view-only profiles →
+  `/beds`). Every workspace route and its behaviour are byte-untouched.
+- **No ICU fact was renamed.** ICU Day, Avg ICU Stay, ICU Mortality, the
+  SOFA/NEWS2 displays, "ICU Beds", "Mission Control" as the ICU chart
+  screen's own name — all keep their ICU names (§1.3's ledger). The
+  wordmark/login/browser-title became Aurora HIS per §1.3, unchanged by
+  this amendment.
+- The Awaiting Bed row (built by Ward A2 after §1.1 was written) sits
+  under **Patient Flow** — shared hospital flow (open admission + no
+  assigned bed), per the owner's grouping instruction; the Ward group is
+  declared and EMPTY (no standalone ward-owned nav screen exists) and OR
+  is not declared at all.
+
+**Do-not-rewrite note:** §1.1's table and §1.2's "no row appears or
+disappears" sentence above are left byte-intact as the approved historical
+design; this entry is the supersede a reader meets before building on
+them. The enforcement moved with the change: `scripts/hospital-shell-gate.mjs`
+(ci.yml `frontend` job) pins the ownership model, the Aurora HIS identity,
+the Bed Admission `adt.admit` nav gate with the `/admissions` route left at
+`patients.view`, and the `/home` landing.
+
+Nothing in §§0–8, in A1/A1.1, or in A2/A2.1 is otherwise altered by this
+entry.

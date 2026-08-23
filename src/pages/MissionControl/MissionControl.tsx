@@ -330,7 +330,10 @@ export function MissionControl() {
             <div className="logo"><IconPulse size={16} stroke="var(--ink)" strokeWidth={2.6} /></div>
             {/* unit segment from the CONFIGURED hospital identity (one
                 resolver) — omitted while unset, never a hardcoded name */}
-            <div>AURORA ICU<small>Mission Control{hospIdentity ? unitSuffix(hospIdentity) : ''}</small></div>
+            {/* wordmark = AURORA HIS (hospital-shell §1.3); "Mission
+                Control" stays — it is this ICU screen's own name, not the
+                product's */}
+            <div>AURORA HIS<small>Mission Control{hospIdentity ? unitSuffix(hospIdentity) : ''}</small></div>
           </div>
           <div className="unitstats">
             <div className="us">Census<b>{unit?.census ?? '—'}</b></div>

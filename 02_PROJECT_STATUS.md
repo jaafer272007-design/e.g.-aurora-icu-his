@@ -1,11 +1,14 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-4 —
-ship-gate convergence: the protected installer now mechanically refuses to
-compile content that has not been verified (clean-tree origin/main commit ·
-ci.yml green by workflow identity · staging serving that content · all 16
-deployed suites green on it, inventory drift-checked), and the dormant
-promotion gate reads the same shared truth — the record below.** This line is THE
+**Last updated: 2026-08-23 · current through THE HOSPITAL SHELL PR —
+Aurora HIS navigation and module ownership: the sidebar grouped BY
+OWNERSHIP (Patient Flow · Ward, declared empty · ICU · Patient Chart ·
+Records · Administration), the wordmark/login/browser title renamed to
+Aurora HIS, a hospital-wide `/home` as the default landing for every
+profile with the ICU workspaces preserved ICU-owned, and the `/admissions`
+nav row split from Reception as "Bed Admission" under ICU on an
+`adt.admit` nav gate (route unchanged at `patients.view`) — the record
+below.** This line is THE
 recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
@@ -33,6 +36,142 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-08-23 · THE HOSPITAL SHELL PR — Aurora HIS navigation and module
+ownership (hospital-shell.md §§1/3 + the owner's front-door amendment,
+recorded there as A3). The skipped item 3 of the shell build order,
+returned to after the owner's hands-on appliance review confirmed Aurora
+still presented as an ICU application. Shell/navigation/admission
+PRESENTATION only — the Reception blockers UX (item 4) and the inline
+patient search (item 5) are deliberately NOT in this PR.**
+
+**THE FRONT DOOR (the owner's new amendment, superseding the design's
+"Dashboard unchanged" — the supersede is appended to the design as A3,
+byte-preserving §§0–8):** the default landing is now the HOSPITAL-WIDE
+`/home` for every profile — `/`, the post-login navigation, and the
+Access-Restricted escape all land there ("Aurora HIS must not open onto an
+ICU Mission Control experience; ICU is a module, not the shell"). Home is
+the SMALLEST HONEST launch surface: the configured hospital identity
+through the one resolver, the signed-in role, a personalized "your
+workspace" primary action (`landingRouteOf` — the retired Dashboard row's
+own mechanism), and link cards for exactly the areas the profile can open,
+rendered from the SAME ownership model and permission filter as the
+sidebar (`visibleGroupsFor` — one source, the two cannot drift), each
+group labelled with its ownership ("module" / "hospital-wide"). NO
+fabricated counts, NO KPI of any kind (no honest hospital-wide source
+exists), no "coming soon", no unreachable cards. Route decision, stated:
+there was no `/dashboard` route to keep — the established default was the
+`/` per-role redirect — so `/home` is NEW (session-gated, no atom, the
+`/settings` precedent) and every existing route and deep link is
+untouched. **The ICU dashboards are preserved, ICU-owned, byte-unchanged
+in behaviour:** the ICU Overview nav row resolves to the profile's ICU
+workspace (`/workspace` doctors, `/nurse` nurses; hidden where the
+workspace is another owned row — no duplicate links), and the office
+Administrator's former landing keeps sidebar reachability as the "Unit
+Administration" row under Administration.
+
+**GROUP BY OWNERSHIP, as approved (design §1.1) plus the owner's grouping
+of the post-design Ward rows:** *(ungrouped top)* Home · **Patient Flow**
+Reception / Awaiting Bed / Discharges & Transfers (the row renamed to the
+owner's own name for it; route + gates unchanged) · **Ward** declared and
+EMPTY — Ward is built but ships no standalone ward-owned nav screen (the
+awaiting-bed worklist is shared Patient Flow per the owner; the Wards
+vocabulary is a Configuration tenant), and an empty group renders NOTHING
+· **ICU** ICU Overview / ICU Beds / Bed Admission / ICU Statistics (the
+Statistics row renamed to what the screen already is — "Statistics · ICU
+Analytics"; the route and page untouched) · **Patient Chart** Observations
+/ Orders & Meds / Labs & Imaging / Lab Entry / Timeline / AI Assistant /
+Alerts · **Records** Discharged Patients / Print Center ·
+**Administration** Unit Administration / User Accounts / Backup & Recovery
+/ Formulary / Lab Catalogue / Order Sets / Configuration / Settings. OR is
+NOT declared at all (no empty group, no advertising). Group headers are
+small-caps labels that degrade to thin separators below the 1180px
+icon-only collapse; every row keeps its pre-shell permission gate except
+the one below.
+
+**BED ADMISSION (design §3, implemented exactly):** the `/admissions` nav
+row is renamed "Bed Admission", moved under ICU, given a NEW distinct
+glyph (`IconBedAdmit`, bed + arrow into it — Reception keeps `IconAdmit`,
+`IconBed` stays ICU Beds'), and its NAV gate becomes `adt.admit` — held by
+Doctor and SeniorDoctor only (verified in `session.ts`/`Rbac.cs`: the
+office Administrator holds `admissions.create` and NOT `adt.admit`; the
+Nurse holds neither). **The ROUTE gate stays `patients.view`** (Decision C
+— honest read-only deep links; not silently tightened). The Decision C
+Reception POINTER inside Admissions is DELETED with its
+`canCreateAdmission` flag (its only post-gate audience could arrive by
+typed deep link, and an orphaned pointer is worse than a recorded
+removal); the "View only" note stays, and the `admcancelre` CSS class
+stays — it is shared with the cancel-readmit button.
+
+**AURORA HIS IDENTITY (design §1.3):** the four shell surfaces renamed —
+`AppHeader.tsx` wordmark, `Login.tsx`, `MissionControl.tsx`'s hand-rolled
+brand block, and the browser `<title>` (now exactly "Aurora HIS"). The
+do-not-rename ledger held in full: `/api/icu/*`, `AuroraIcu.Api`, the
+Windows service identities, installer AppName, and every ICU clinical
+fact (ICU Day, Avg ICU Stay, ICU Mortality, SOFA displays, "ICU Beds",
+"Mission Control" as the ICU chart screen's own subtitle) are untouched —
+verified by grep: zero "AURORA ICU" remains in the shell, zero internal
+identifier changed.
+
+**ENFORCEMENT — `scripts/hospital-shell-gate.mjs`, ci.yml `frontend` job
+(the repo's committed source-gate convention; honest closing line "SOURCE
+check: this does not render the sidebar"):** pins the Aurora HIS identity
+on all four surfaces, the exact group sequence and per-group row
+membership, Ward-declared-empty + OR-undeclared, the empty-group render
+filter, the Bed Admission label/`adt.admit` gate/distinct icon, the
+`/admissions` route staying `patients.view`, the office profile holding
+`admissions.create` and NOT `adt.admit` (and Doctor/SeniorDoctor holding
+it), Home consuming the same `visibleGroupsFor`, and the `/` + post-login
+`/home` landing. **Teeth measured before commit, eight breaks:** each
+pinned fact broken in turn (perm widened, row relabelled, Ward given a
+row, office profile granted `adt.admit`, title reverted, landing
+repointed, icons collapsed, empty-group filter neutralized) — the gate
+failed each time naming the break, files restored byte-identical, gate
+green on the shipped tree. The A/B/C positive control ran on the PR
+branch (Run B neutralizes the Bed Admission nav gate so the office
+Administrator would see the row; ci.yml goes red on the gate's OWN
+message; Run C reverts tree-identical to Run A) — the run ids and the red
+line are recorded in the PR body, which is where this repo's CI evidence
+is indexed.
+
+**RENDERED VERIFICATION (session-local, the standing rendered-tier gap
+recorded in Known Feature Gaps applies — a report, not a committed
+re-runnable artifact):** the real staging bundle built from this tree,
+served same-origin by the real server (`wwwroot`), both ends identified
+(`/healthz` build == `/build.txt` == the commit under test) before any
+assertion; both themes captured. Proven in the browser: every profile
+lands on `/home` after sign-in; the office Administrator's sidebar shows
+Home · Patient Flow (Reception/Awaiting Bed/Discharges & Transfers) · ICU
+(ICU Beds/ICU Statistics — NO Bed Admission, NO ICU Overview) · Patient
+Chart (Observations/Timeline) · Records (Print Center) · Administration —
+and gains no ICU clinical authority; the Consultant's sidebar shows Bed
+Admission and ICU Overview under ICU; the Nurse sees Awaiting Bed but no
+Reception and no Bed Admission; the System Administrator sees Home +
+Administration only (Patient Flow/ICU/Patient Chart/Records absent —
+empty groups render nothing, proven, and the Ward group renders for
+nobody); the browser tab reads "Aurora HIS"; the former workspaces render
+byte-identically at their routes; the icon-only collapse shows separators
+in place of headers; both themes legible. Screenshots delivered with the
+PR.
+
+**Files.** `src/components/NavSidebar.tsx` (the ownership model +
+grouped render; exports `NAV_GROUPS`/`visibleGroupsFor`) + `NavSidebar.css`
+(headers + collapse separators); `src/pages/Home/Home.tsx` + `Home.css`
+(new); `src/App.tsx` (`/home` route; `/` → `/home`); `src/pages/Login/Login.tsx`
+(wordmark; sign-in lands on `/home`; honest chooser/preview copy);
+`src/components/AppHeader.tsx`, `src/pages/MissionControl/MissionControl.tsx`,
+`index.html` (wordmark/title); `src/components/RequireSession.tsx` (the
+denied-route escape is "← Home"); `src/components/icons.tsx` (`IconHome`,
+`IconBedAdmit`); `src/pages/Admissions/Admissions.tsx` (pointer deleted);
+`src/pages/DoctorWorkspace|NurseWorkspace|AdminHome` (active-key only);
+`scripts/hospital-shell-gate.mjs` + `.github/workflows/ci.yml` (the gate);
+`docs/design/hospital-shell.md` (A3, pure append — original 43,874 bytes
+hash-verified identical); `01_ARCHITECTURE.md` (two attributed supersedes:
+the retired role-personalized Dashboard locked decision; the `/home`
+route + the Landing column now meaning the profile's workspace); this
+record. **No server file, no migration, no seed, no installer, no
+workflow beyond the one ci.yml step; the Reception screen itself is
+byte-untouched.**
 
 **2026-08-22 · ENVIRONMENT SEPARATION PR-4 — SHIP-GATE CONVERGENCE
 (owner-authorized; the dormant production-branch path is NOT resurrected —

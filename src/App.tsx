@@ -20,6 +20,7 @@ import { Configuration } from './pages/Configuration/Configuration'
 import { LabCatalog } from './pages/LabCatalog/LabCatalog'
 import { OrderSetsAdmin } from './pages/OrderSetsAdmin/OrderSetsAdmin'
 import { Admissions } from './pages/Admissions/Admissions'
+import { Home } from './pages/Home/Home'
 import { Reception } from './pages/Reception/Reception'
 import { AwaitingBed } from './pages/AwaitingBed/AwaitingBed'
 import { PatientHistory } from './pages/PatientHistory/PatientHistory'
@@ -31,12 +32,16 @@ import { Login } from './pages/Login/Login'
 import { RequireSession } from './components/RequireSession'
 import { EnvironmentBanner, EnvironmentGate } from './components/EnvironmentChrome'
 import { BackupHealthBanner } from './components/BackupHealthBanner'
-import { getSession, landingRouteOf } from './lib/session'
+import { getSession } from './lib/session'
 
 /* Route map (all except /login require a session; each route also requires
    the listed permission — Stage 9 three-layer RBAC, see lib/session.ts)
    /login                  Login / Role-Switch — LOCAL session only
-   /                       redirects to the signed-in profile's landing view
+   /                       redirects to /home — the hospital-wide landing
+                           (hospital-shell A3: Aurora HIS opens on the
+                           hospital, never on a module; the per-role
+                           workspaces stay at their own routes below)
+   /home                   Hospital Home              session only (no atom — a launch surface; every linked area keeps its own gate)
    /workspace              Doctor Workspace           orders.sign
    /nurse                  Nurse Workspace            meds.administer
    /admin                  Administrator landing      admin.view
@@ -64,8 +69,12 @@ import { getSession, landingRouteOf } from './lib/session'
 const BASENAME = import.meta.env.BASE_URL.replace(/\/+$/, '') || '/'
 
 function HomeRedirect() {
+  /* the default landing is the HOSPITAL Home for every profile (the A3
+     front-door amendment) — the old per-role redirect made an ICU screen
+     the product's front door; the per-role workspace survives as Home's
+     personalized primary action and the ICU Overview nav row */
   const session = getSession()
-  return <Navigate to={session ? landingRouteOf(session.jobTitle) : '/login'} replace />
+  return <Navigate to={session ? '/home' : '/login'} replace />
 }
 
 export default function App() {
@@ -85,6 +94,11 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<HomeRedirect />} />
+        {/* the hospital Home — the default landing (A3). Session-gated with
+            NO permission, like /settings: it is a launch surface of links
+            the profile can open; nothing clinical renders here and every
+            linked route keeps its own guard. */}
+        <Route path="/home" element={<RequireSession><Home /></RequireSession>} />
         <Route path="/workspace" element={<RequireSession permission="orders.sign"><DoctorWorkspace /></RequireSession>} />
         <Route path="/nurse" element={<RequireSession permission="meds.administer"><NurseWorkspace /></RequireSession>} />
         <Route path="/admin" element={<RequireSession permission="admin.view"><AdminHome /></RequireSession>} />
