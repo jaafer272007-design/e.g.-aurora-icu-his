@@ -135,6 +135,30 @@ if (-not $gate.ok) {
 }
 Say "version gate: $($gate.reason)"
 
+# ---- 0b. THE SHIP GATE - what Aurora ships must be what Aurora verified ----
+# The version gate above answers "may this VERSION be cut?"; this gate
+# answers "has this exact CONTENT been verified?" - commit on origin/main
+# with a clean tree, ci.yml green for that commit (by workflow identity,
+# every required job), staging serving that content NOW, and every deployed
+# suite in the drift-checked inventory green ON that content. Any failure -
+# including verification being unavailable (offline, GitHub API down,
+# staging suspended) - is a refusal, never a warning, and it happens HERE:
+# before the password is typed, before the 20-60 min compile. There is no
+# skip switch; the UNPROTECTED smoke build (build.ps1) is the dev/test
+# packaging mode and is structurally non-shippable by filename.
+# See installer\ship-gate.ps1 and scripts\ship-requirements.json.
+. (Join-Path $here 'ship-gate.ps1')
+$shipVerdict = Invoke-ShipGate -RepoRoot (Split-Path -Parent $here) `
+  -RequirementsPath (Join-Path (Split-Path -Parent $here) 'scripts\ship-requirements.json')
+if (-not $shipVerdict.ok) {
+  Write-Host ''
+  Write-Host "  REFUSED - SHIP GATE [$($shipVerdict.class)]" -ForegroundColor Red
+  Write-Host "  $($shipVerdict.reason)" -ForegroundColor Red
+  Write-Host ''
+  Die 'nothing was compiled and no password was requested'
+}
+Say "ship gate: authorized commit $($shipVerdict.sha) - $($shipVerdict.reason)"
+
 # ---- 1. the company password, typed blind, twice ----
 # SecureString only shields the CONSOLE (no echo); the value is then held as
 # a plain .NET string because ISCC needs it in its environment. That is the

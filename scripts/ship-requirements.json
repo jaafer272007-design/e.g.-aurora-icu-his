@@ -1,0 +1,52 @@
+{
+  "schema": "aurora-ship-requirements/1",
+  "about": [
+    "THE SINGLE SOURCE OF SHIPPING-VERIFICATION TRUTH (environment-separation PR-4).",
+    "Read by installer/ship-gate.ps1 (the protected installer's mechanical ship gate)",
+    "and by scripts/promotion-gate.sh (the dormant production-branch promotion gate).",
+    "Both enforce the same invariant: WHAT AURORA SHIPS MUST BE WHAT AURORA VERIFIED.",
+    "The deployedSuites inventory is drift-checked against .github/workflows on disk",
+    "by both consumers and by installer/test-ship-gate.ps1 in CI, so adding a suite",
+    "without recording it here fails loudly instead of silently shrinking the gate",
+    "(the exact failure the old hardcoded 13-suite list in promotion-gate.sh had).",
+    "frontendContextPaths mirrors the ctx_hash list in deployed-print-e2e.yml and",
+    "deploy-pages sensitivity; test-ship-gate.ps1 asserts the two stay equal."
+  ],
+  "ciWorkflowFile": "ci.yml",
+  "ciRequiredJobs": ["frontend", "server", "production-seed", "installer-powershell"],
+  "serverContextPaths": ["server", "render.yaml"],
+  "frontendContextPaths": [
+    "src",
+    "index.html",
+    "package-lock.json",
+    "vite.config.ts",
+    "tsconfig.json",
+    "tsconfig.app.json",
+    "tsconfig.node.json",
+    ".github/workflows/deploy-pages.yml"
+  ],
+  "deployedSuites": [
+    "deployed-adt-e2e.yml",
+    "deployed-ai-e2e.yml",
+    "deployed-assignments-e2e.yml",
+    "deployed-auth-e2e.yml",
+    "deployed-encounter-scope-e2e.yml",
+    "deployed-formulary-e2e.yml",
+    "deployed-frontend-e2e.yml",
+    "deployed-handoff-e2e.yml",
+    "deployed-labcatalog-e2e.yml",
+    "deployed-labs-e2e.yml",
+    "deployed-mar-e2e.yml",
+    "deployed-observations-e2e.yml",
+    "deployed-orders-e2e.yml",
+    "deployed-print-e2e.yml",
+    "deployed-timeline-e2e.yml",
+    "deployed-users-e2e.yml"
+  ],
+  "frontendContextSuites": ["deployed-print-e2e.yml"],
+  "githubRepo": "jaafer272007-design/e.g.-aurora-icu-his",
+  "githubApi": "https://api.github.com",
+  "stagingApi": "https://icu-cp49.onrender.com",
+  "stagingPages": "https://jaafer272007-design.github.io/e.g.-aurora-icu-his",
+  "mainRef": "origin/main"
+}

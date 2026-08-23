@@ -172,6 +172,26 @@ hospital install. The hospital never receives it, stores it, or writes it
 down; any reinstall or disaster rebuild happens with the engineer present.
 That is the service model.
 
+**The ship gate runs first (environment-separation PR-4).** Before the
+password prompt, `build-protected.ps1` mechanically verifies that what it
+is about to compile is **verified content**: a clean working tree at a
+commit on `origin/main`; `ci.yml` green for that exact commit (all
+required jobs); staging serving that exact content (server tree + frontend
+build context — content, not version strings); and every deployed E2E
+suite green on that content (the inventory in
+`scripts/ship-requirements.json`, drift-checked against the repo). Any
+failure — including no network, GitHub API unreachable, or a suspended
+staging service — is a refusal that names its class
+(`REFUSED - SHIP GATE [SOURCE-DIRTY-TREE]`, `[CI-RED]`,
+`[STAGING-UNAVAILABLE]`, …) and says what to fix; there is **no switch
+that skips it**. Practical consequence: the build machine needs internet
+and a fetched `origin/main`, and the commit you ship must have been
+pushed, built green in CI, deployed to staging, and suite-verified there
+**before** you run the shipping build. `GITHUB_TOKEN`, if set in the
+environment, raises API rate limits (sent as a header, never printed) —
+it is optional. `-UNPROTECTED` smoke builds via `build.ps1` are not
+gated; they never ship.
+
 ```powershell
 # full hospital installer -> AuroraSetup-<ver>-PROTECTED.exe
 powershell -ExecutionPolicy Bypass -File .\installer\build-protected.ps1 `

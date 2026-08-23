@@ -808,6 +808,28 @@ line is never committed is invisible to a later clone — though not to the
 clone it was built on, where the appended line is right there. Nothing in the
 tooling can close that last gap; committing the line is the discipline.
 
+**Amendment (environment-separation PR-4, 2026-08-22) — the SHIP gate.** A
+protected hospital installer or update package may only be produced from
+content that passes the ship gate: after the version gate and **before the
+password prompt**, `build-protected.ps1` refuses unless the exact content
+being compiled is a clean-tree commit on `origin/main`, `ci.yml` is green
+for that exact commit (resolved by workflow identity, every required job
+green), staging is serving that content **now** (server tree + frontend
+build context — trees compared, never version strings), and every deployed
+suite in the drift-checked inventory (`scripts/ship-requirements.json`, the
+single verification truth shared with the dormant promotion gate) is green
+**on that content**. Every failure — including verification being
+*unavailable* (offline, GitHub API down, staging suspended) — is a
+message-discriminated refusal naming one class (`SOURCE-DIRTY-TREE`,
+`CI-RED`, `SUITE-INVENTORY-DRIFT`, …), never a warning. The routine gains
+no manual step: the gate is mechanical (`installer/ship-gate.ps1`), has no
+skip switch in the shipping script, and is covered in CI by pure fixture
+tests for every refusal class plus a real `build-protected.ps1` run proving
+the refusal fires before the password prompt (the same
+cannot-be-seen-failing rule as the version gate). `-UNPROTECTED` smoke
+builds stay ungated — they are structurally non-shippable by filename and
+never leave the build machine.
+
 ## Data on screen must state its own age (added 2026-08-03)
 
 **CODIFIED RULE — a stale screen and a current screen must never look
