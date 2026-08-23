@@ -104,7 +104,7 @@ export const NAV_GROUPS: NavGroup[] = [
     rows: [
       { key: 'icuoverview', label: 'ICU Overview', icon: <IconGrid />, icuWorkspace: true },
       { key: 'beds', label: 'ICU Beds', icon: <IconBed />, to: '/beds', perm: 'patients.view' },
-      { key: 'admissions', label: 'Bed Admission', icon: <IconBedAdmit />, to: '/admissions', perm: 'patients.view' },
+      { key: 'admissions', label: 'Bed Admission', icon: <IconBedAdmit />, to: '/admissions', perm: 'adt.admit' },
       { key: 'statistics', label: 'ICU Statistics', icon: <IconStats />, to: '/statistics', perm: 'patients.view' },
     ],
   },
