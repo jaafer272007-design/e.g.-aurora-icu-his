@@ -203,6 +203,34 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
+/* ICU Integration P1 — the bridge's ONE outbound dependency: the
+   configured internal OpenMRS, called only to validate a session the
+   caller already holds. A named client so the timeout is explicit and
+   bounded (a hanging hospital system must not hang ICU's login). */
+builder.Services.AddHttpClient("openmrs", c => c.Timeout = TimeSpan.FromSeconds(8));
+
+/* ICU Integration P1 — the OpenMRS role -> ICU job-title map is
+   CONFIGURATION, and it is validated HERE, at boot, in the BootGuards
+   spirit: a map naming a job title ICU does not recognise refuses the
+   boot instead of producing accounts that authenticate and then 403 on
+   everything (which reads as a broken integration, not a broken
+   config). With no configuration the map is EMPTY and the bridge issues
+   no token to anyone — deny by default, including administrators. */
+try
+{
+    Aurora.Core.Identity.IcuRoleMap.LoadAndValidate(Environment.GetEnvironmentVariable);
+}
+catch (InvalidOperationException e)
+{
+    Console.Error.WriteLine();
+    Console.Error.WriteLine("=====================================================================");
+    Console.Error.WriteLine("[AURORA] REFUSING TO START — ICU INTEGRATION ROLE MAP");
+    Console.Error.WriteLine(e.Message);
+    Console.Error.WriteLine("Fix OPENMRS_ROLE_MAP (or OPENMRS_ROLE_MAP_FILE) and start again.");
+    Console.Error.WriteLine("=====================================================================");
+    return 78; // EX_CONFIG
+}
+
 var app = builder.Build();
 app.UseCors();
 /* Attachments upload: a 20 MB file is ~27 MB as base64 JSON - uncomfortably
@@ -225,6 +253,14 @@ app.Use(async (ctx, next) =>
 });
 app.UseAuthentication();
 app.UseAuthorization();
+
+/* ICU Integration P1 — the READ-ONLY ENFORCEMENT POINT, and it has to
+   be here: after authentication (so the principal's claims exist) and
+   before any endpoint runs (so no handler can be reached). A P1 bridge
+   token is a real bearer token — anything holding it can curl any
+   endpoint directly — so "read-only" is a server rule about the HTTP
+   method, never a hidden button. See Core/Identity/P1ReadOnly.cs. */
+app.UseP1ReadOnlyGate();
 
 /* ---- §11 step 3: SAME-ORIGIN FRONTEND (appliance Phase 1) ----
    When a compiled frontend bundle is present in wwwroot, this service
@@ -328,6 +364,14 @@ app.MapGet("/build.txt", () => Results.Text($"{build}\n{AppEnv.Name}\n", "text/p
    domains is accepted historical cosmetics — renaming it would break the
    deployed frontend and the E2E suite). */
 AuthApi.Map(app, jwtKey, decoyHash);
+/* ICU Integration P1 — the Aurora/Bahmni session bridge. Registered
+   beside AuthApi because it is the same concern (how an ICU session
+   comes into being) and it reuses the same signing key, which never
+   leaves this process. The PUBLIC address is
+   POST /openmrs/aurora-icu-bridge/session, mapped EXACTLY onto this
+   endpoint by the proxy: OpenMRS's session cookie is Path=/openmrs, so
+   a bridge outside that path would never receive it. */
+BridgeApi.Map(app, jwtKey, app.Services.GetRequiredService<IHttpClientFactory>());
 UsersApi.Map(app);
 RosterApi.Map(app);
 AdtApi.Map(app);

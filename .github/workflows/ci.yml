@@ -54,6 +54,16 @@ jobs:
       # pinned fact in turn (the gate's header records how).
       - name: Awaiting-bed stays wired to assignment, bedless=true, beds.assign (Ward A2)
         run: node scripts/awaiting-bed-gate.mjs
+      # ICU Integration P1 — the bridge, the server-enforced read-only mode,
+      # the deny-by-default role map, and the absence of any second ICU
+      # login. SOURCE check: it guards the WIRING the live proofs depend on
+      # (runtime behaviour is proven against a production-identity stack).
+      # Its teeth were measured before commit by breaking each pinned fact
+      # in turn — including two checks that FIRST PASSED under their own
+      # break (a commented-out gate call, and a widened Allows()) and were
+      # rewritten to strip comments and pin the rule exactly.
+      - name: ICU P1 bridge, read-only enforcement and role map stay wired
+        run: node scripts/icu-p1-bridge-gate.mjs
       # PR-2 (environment separation): VITE_APP_ENV is allow-listed at the ONE
       # chokepoint every build entry point passes through — vite.config.ts —
       # mirroring the server's AppEnv.Known (the source of truth). Three legs,

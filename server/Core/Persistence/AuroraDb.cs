@@ -109,6 +109,14 @@ class AuroraDb(DbContextOptions<AuroraDb> options) : DbContext(options)
        pg_dump keeps capturing the entire hospital record; patient-scoped,
        amend-not-erase (retract, never delete) */
     public DbSet<Aurora.Core.Attachments.AttachmentRow> Attachments => Set<Aurora.Core.Attachments.AttachmentRow>();
+    /* ICU Integration P1: the OpenMRS patient uuid <-> ICU patientId
+       link. The SCHEMA ships in P1 and stays EMPTY — nothing in P1
+       writes a row (the read-only gate refuses every write method, and
+       patients/match is proven non-mutating). Correlating a real patient
+       is a deliberate, audited staff action in a later phase; landing the
+       migration early and empty is what makes that phase a code change
+       rather than a schema change on a live hospital database. */
+    public DbSet<PatientCorrelation> IcuPatientCorrelations => Set<PatientCorrelation>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
