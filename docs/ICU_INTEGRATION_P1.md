@@ -103,24 +103,40 @@ confirmation and correlated admission are a later phase.
 
 ## Building and mounting
 
+**ONE image serves both the workspace and its API.** `server/Dockerfile`
+has always carried the compiled bundle in `wwwroot` beside the API; P1
+adds a base path so that bundle can live at `/icu`. Build from the ICU
+repository root (the build context is the repo root — the frontend
+sources live outside `server/`):
+
 ```
-# the API image
-docker build -t aurora-his/aurora-icu-api:p1 -f server/Dockerfile .
-
-# the SPA — the base path AND the environment identity both matter
-VITE_APP_ENV=<same as the API's APP_ENV> npm run build -- --base=/icu/
+docker build -f server/Dockerfile \
+  --build-arg VITE_BASE=/icu/ \
+  --build-arg VITE_APP_ENV=production \
+  -t aurora-his/aurora-icu:p1 .
 ```
 
-The ICU bundle's compiled identity **must equal** the value the ICU API
-reports at `/healthz`. They are checked against each other at runtime:
-a mismatch replaces the whole app with a full-screen refusal, by design.
+`VITE_BASE` does two things from one value, and the Dockerfile derives
+both so they cannot drift: Vite rewrites every asset URL to
+`/icu/assets/…`, and the bundle is placed in `wwwroot/icu` with
+`FRONTEND_BASE_PATH=/icu/` baked in so the server finds `index.html`
+there and scopes its SPA fallback to that prefix. Requests outside the
+base get an honest 404 rather than the ICU app.
 
-Neither ICU service publishes a host port. They are reachable only
-through the approved proxy paths.
+Omit `VITE_BASE` and everything behaves exactly as before — bundle at the
+`wwwroot` root, served at `/`. That is what Render, the appliance, dev
+and CI keep doing; nothing about them changes.
+
+`VITE_APP_ENV` **must equal** the `APP_ENV` the container runs with. They
+are checked against each other at runtime: a mismatch replaces the whole
+app with a full-screen refusal, by design.
+
+The ICU service publishes no host port. It is reachable only through the
+approved proxy paths.
 
 ## Before a clinician can use ICU
 
-1. Build and load both ICU images.
+1. Build and load the ICU image (one image — see above).
 2. Set `ICU_APP_ENV`, `ICU_DATABASE_URL`, `ICU_JWT_SECRET`,
    `ICU_FORMULARY_SEED`, `ICU_CORS_ORIGINS`,
    `ICU_ADMIN_BOOTSTRAP_PASSWORD`, `ICU_BRIDGE_ALLOWED_ORIGIN`.

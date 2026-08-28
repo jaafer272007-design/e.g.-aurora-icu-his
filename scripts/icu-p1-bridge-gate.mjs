@@ -122,6 +122,22 @@ need(bridgeClient.includes("'/openmrs/aurora-icu-bridge/session'"),
   }
 }
 
+/* --- 10: the sub-path mount's ONE value in TWO places -------------- */
+{
+  const dockerfile = raw('server/Dockerfile')          // comments carry the rationale; check the instructions
+  const instr = dockerfile.split('\n').filter(l => !l.trim().startsWith('#')).join('\n')
+  need(/ARG\s+VITE_BASE=/.test(instr),
+    'server/Dockerfile no longer takes VITE_BASE — the bundle would always build for "/" and 404 under the /icu mount')
+  need(/vite build[^\n]*--base=\$VITE_BASE/.test(instr),
+    'the frontend stage no longer passes --base=$VITE_BASE to vite build')
+  need(/ENV\s+FRONTEND_BASE_PATH=\$VITE_BASE/.test(instr),
+    'FRONTEND_BASE_PATH is no longer derived from VITE_BASE — the two could drift and the app would not serve at all')
+  need(program.includes('FRONTEND_BASE_PATH'),
+    'Program.cs no longer reads FRONTEND_BASE_PATH — a sub-path bundle would not be found')
+  need(/frontendBase\.Length > 0 && !ctx\.Request\.Path\.StartsWithSegments\(frontendBase\)/.test(program),
+    'the SPA fallback is no longer scoped to the mount base — under /icu it would answer paths never routed to it')
+}
+
 if (fail.length) {
   console.error('ICU P1 gate FAILED:\n' + fail.map(f => '  - ' + f).join('\n'))
   process.exit(1)

@@ -274,7 +274,31 @@ app.UseP1ReadOnlyGate();
    keeps serving the cross-origin staging frontend unchanged.] The SPA
    fallback is mapped after the API endpoints, below. */
 var wwwroot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
-var servesFrontend = File.Exists(Path.Combine(wwwroot, "index.html"));
+
+/* ---- ICU Integration P1: the SUB-PATH MOUNT -------------------------
+   FRONTEND_BASE_PATH names the public path the bundle was BUILT for, and
+   it must equal the Vite --base the image was built with (the Dockerfile
+   passes one value to both). Unset — every existing deployment: Render,
+   the appliance, dev, CI — means the bundle sits at the wwwroot root and
+   everything below behaves exactly as it did before.
+
+   Set to "/icu", the bundle sits in wwwroot/icu and this service answers
+   at https://<host>/icu/ behind the Bahmni proxy. Nothing else changes:
+   static files still resolve naturally, because the request path mirrors
+   the directory (/icu/assets/x.js -> wwwroot/icu/assets/x.js), and
+   UseDefaultFiles turns /icu/ into /icu/index.html. Only two things need
+   to know the base: where index.html lives, and which paths the SPA
+   fallback owns.
+
+   THE TWO MUST AGREE OR THE APP DOES NOT SERVE AT ALL — which is the
+   safe direction: a mismatch is a loud 404, never a half-working page
+   with broken asset URLs. */
+var frontendBase = (Environment.GetEnvironmentVariable("FRONTEND_BASE_PATH") ?? "").Trim().TrimEnd('/');
+if (frontendBase.Length > 0 && !frontendBase.StartsWith('/'))
+    frontendBase = "/" + frontendBase;
+var frontendDir = frontendBase.Length == 0 ? wwwroot : Path.Combine(wwwroot, frontendBase.TrimStart('/'));
+var indexFile = Path.Combine(frontendDir, "index.html");
+var servesFrontend = File.Exists(indexFile);
 if (servesFrontend)
 {
     app.UseDefaultFiles();
@@ -418,8 +442,19 @@ if (servesFrontend)
             ctx.Response.StatusCode = 404;
             return;
         }
+        /* ICU Integration P1: under a sub-path mount the fallback owns
+           ONLY that sub-path. Serving the ICU app for every unmatched
+           path would answer requests that were never routed here — and
+           with a /icu-based bundle those pages would load assets from a
+           prefix the request never had. Outside the base: an honest 404.
+           Unset base = the whole app, exactly as before. */
+        if (frontendBase.Length > 0 && !ctx.Request.Path.StartsWithSegments(frontendBase))
+        {
+            ctx.Response.StatusCode = 404;
+            return;
+        }
         ctx.Response.ContentType = "text/html";
-        await ctx.Response.SendFileAsync(Path.Combine(wwwroot, "index.html"));
+        await ctx.Response.SendFileAsync(indexFile);
     })
     /* GET/HEAD ONLY — the post-#123 regression's fix. An unconstrained
        fallback is a valid routing candidate for EVERY method, and
