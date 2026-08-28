@@ -1,3 +1,4 @@
+import { endSharedSession } from './bridge'
 import { clearLastPatient } from './patientContext'
 import { clearPreferences } from './preferences'
 import { clearChatMemory } from './ai/chatMemory'
@@ -264,7 +265,14 @@ export function signIn(name: string, jobTitle: JobTitle, token?: string): void {
   sessionStorage.setItem(STORAGE_KEY, JSON.stringify(token ? { name, jobTitle, token } : { name, jobTitle }))
 }
 
+/* ICU Integration P1 — ICU sign-out IS Aurora sign-out. There is one
+   hospital session behind both, so ending it here ends it everywhere;
+   clearing only ICU's local state would leave the clinician still
+   signed in to Aurora on a shared workstation, which is the opposite of
+   what pressing "sign out" means. The shared call is fire-and-forget on
+   purpose: local state is cleared either way (see lib/bridge.ts). */
 export function signOut(): void {
+  void endSharedSession()
   sessionStorage.removeItem(STORAGE_KEY)
   /* the cross-section patient context is USER context — a role switch in
      the same tab must never inherit the previous user's patient */

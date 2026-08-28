@@ -30,6 +30,8 @@ import { PrintDocument } from './pages/PrintCenter/PrintDocument'
 import { Login } from './pages/Login/Login'
 import { RequireSession } from './components/RequireSession'
 import { EnvironmentBanner, EnvironmentGate } from './components/EnvironmentChrome'
+import { BridgeSessionGuard } from './components/BridgeSessionGuard'
+import { ReadOnlyBanner } from './components/ReadOnlyBanner'
 import { BackupHealthBanner } from './components/BackupHealthBanner'
 import { getSession, landingRouteOf } from './lib/session'
 
@@ -82,6 +84,13 @@ export default function App() {
           routes so it overlays EVERY screen for whoever holds
           backup.status.view. */}
       <BackupHealthBanner />
+      {/* ICU Integration P1: the read-only NOTICE (a label — the rule
+          itself is enforced by the server on every request) sits above
+          every screen, and the shared-session guard revalidates the
+          Aurora sign-in through the bridge before any protected ICU
+          information is shown. Inside the router: both need location. */}
+      <ReadOnlyBanner />
+      <BridgeSessionGuard>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<HomeRedirect />} />
@@ -154,6 +163,7 @@ export default function App() {
         <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><AiChat /></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </BridgeSessionGuard>
       </BrowserRouter>
       <EnvironmentBanner />
     </EnvironmentGate>

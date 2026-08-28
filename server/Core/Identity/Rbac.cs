@@ -289,6 +289,11 @@ static class Rbac
         titles and to classify clinical vs administrative grants) */
     public static string? ProfileOf(string jobTitle) => TitleProfile.GetValueOrDefault(jobTitle);
 
+    /** every job title ICU recognises — the ONE authoritative list, so
+        the ICU Integration role map (IcuRoleMap) validates against this
+        table rather than against a second copy that could drift. */
+    public static IReadOnlyCollection<string> RecognisedTitles => TitleProfile.Keys;
+
     public static bool Has(ClaimsPrincipal user, string permission) =>
         TitleProfile.TryGetValue(user.FindFirst("jobTitle")?.Value ?? "", out var profile)
         && ProfilePermissions[profile].Contains(permission);
