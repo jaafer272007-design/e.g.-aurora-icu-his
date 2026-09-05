@@ -89,6 +89,7 @@ function Fail([string]$m) {
 }
 . (Join-Path $PSScriptRoot 'aurora-ai-service.ps1')   # shared AI helpers (Register-AuroraAI, Find-AiModelGguf, ...)
 . (Join-Path $PSScriptRoot 'aurora-backup-task.ps1')  # backup-task + firewall registration - ONE implementation, shared with the CI leg (ruling 3)
+. (Join-Path $PSScriptRoot 'aurora-exit-codes.ps1')   # native exit codes explained in words (STATUS_DLL_NOT_FOUND -> 'install the VC++ runtime'), not printed as raw numbers
 
 $server   = Join-Path $InstallDir 'server'
 $pgbin    = Join-Path $InstallDir 'pgsql\bin'
@@ -240,6 +241,25 @@ try {
   Say "      If setup stalls at the database step, add $InstallDir and $pgdata to the machine's antivirus exclusions, then re-run."
 }
 
+# ---- 0c. the bundled PostgreSQL must actually START on this machine ----
+# PostgreSQL's Windows binaries are built with MSVC and need the Microsoft
+# Visual C++ runtime (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll),
+# which is NOT part of Windows. A freshly imaged hospital PC does not have it,
+# and initdb.exe then dies before its first instruction with
+# STATUS_DLL_NOT_FOUND - a real install on 2026-09-05 reported that as nothing
+# more than "initdb failed (-1073741515)", and the wizard's generic advice sent
+# the operator to the antivirus settings, which had nothing to do with it.
+# Setup now installs the runtime from the copy it carries BEFORE this script
+# runs (aurora.iss, EnsureVcRuntime). This probe proves the binary starts, and
+# when it does not, names what is missing in words (aurora-exit-codes.ps1)
+# instead of a raw number - and it does so before a cluster exists, so there
+# is nothing half-made to clean up.
+$startFail = Test-NativeStart -Exe (Join-Path $pgbin 'initdb.exe') -Arguments @('--version')
+if ($startFail) {
+  Fail ("the bundled PostgreSQL cannot start on this machine - " + $startFail)
+}
+Say "PostgreSQL binaries start on this machine (initdb.exe --version ran)"
+
 # ---- 1. initialise the private PostgreSQL cluster (once) ----
 # $superpw is the postgres SUPERUSER password. It is set at initdb and RETAINED
 # (in-memory only) so step 3 can authenticate to create the aurora role - the
@@ -263,7 +283,7 @@ if (-not (Test-Path (Join-Path $pgdata 'PG_VERSION'))) {
   [IO.File]::WriteAllText($pwFile, $superpw, [Text.Encoding]::ASCII)
   try {
     & (Join-Path $pgbin 'initdb.exe') -D $pgdata -U postgres -A scram-sha-256 --pwfile=$pwFile -E UTF8 --locale=C | Out-Null
-    if ($LASTEXITCODE -ne 0) { Fail "initdb failed ($LASTEXITCODE)" }
+    if ($LASTEXITCODE -ne 0) { Fail ("initdb failed - " + (Get-NativeExitReason -Code $LASTEXITCODE)) }
   } finally { Remove-Item -Force $pwFile -ErrorAction SilentlyContinue }
   # local-only + the chosen port; only the API is exposed on the LAN. The logging
   # collector is ON so database errors land in a FILE the operator (and support)

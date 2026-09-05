@@ -99,6 +99,17 @@ Preflight lines, then five build banners, then the result:
 - ⚠️ The **ZIP**, not the `.exe` installer — the most common mistake.
 - **Do not unzip it.** The build unzips it for you. Just note the path.
 
+### A2. Microsoft Visual C++ runtime — **automatic** (or `-VcRedist`)
+- The PostgreSQL binaries need Microsoft's Visual C++ runtime, which is **not part of
+  Windows** — a freshly imaged hospital PC does not have it, and without it the
+  database cannot start (`initdb failed (-1073741515)`, seen on a real laptop on
+  2026-09-05). The installer therefore **carries and installs it itself**.
+- Nothing to do on a build machine with internet: `build.ps1` step 3b downloads
+  the current x64 package from Microsoft's permalink
+  (https://aka.ms/vs/17/release/vc_redist.x64.exe) and verifies its Microsoft
+  signature. Offline build machine: download `vc_redist.x64.exe` from that link
+  elsewhere and pass `-VcRedist C:\aurora-build\vc_redist.x64.exe`.
+
 ### B. The AI model (`-ModelDir`) — for the full build
 - From Hugging Face **`Qwen/Qwen2.5-7B-Instruct-GGUF`**, download the **Q4_K_M**
   files. It ships split in two — get **both**:
@@ -286,6 +297,7 @@ never for anything that leaves the vendor.
 | **Step 1** (npm/vite) errors | No internet, or Node older than 20. Check `node -v`. |
 | **Step 2** "SDK not found" / publish fails | You have the .NET **runtime**, not the **SDK**. Install the .NET 8 **SDK**. First run needs internet (NuGet restore). |
 | **Step 3** "-PgZip not found" / unzip error | Bad path, or you downloaded the Postgres **installer `.exe`** instead of the **binaries `.zip`**. |
+| **Step 3b** "could not download the Visual C++ redistributable" / "does not carry a VALID Authenticode signature" | No internet on the build machine, or a corrupted download. Download `vc_redist.x64.exe` from https://aka.ms/vs/17/release/vc_redist.x64.exe on any machine and pass `-VcRedist <path>`. The build refuses to continue without a Microsoft-signed copy — the installer must carry it. |
 | **Step 4** "-LlamaDir is missing llama-server.exe / nssm.exe" | Put **both** (plus the CUDA DLLs) in the `-LlamaDir` folder. *Missing CUDA DLLs don't fail the build* — they surface on the server as AuroraAI not starting, so double-check the DLLs. |
 | **Step 5** "Inno Setup compiler not found" | Install Inno Setup **6**, or pass `-Iscc "…\ISCC.exe"`. |
 | **Step 5** fails partway / "no space left" | Not enough disk for the 5 GB payload + compressed output + temp. Free ~20 GB. |

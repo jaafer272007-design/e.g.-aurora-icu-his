@@ -830,6 +830,42 @@ cannot-be-seen-failing rule as the version gate). `-UNPROTECTED` smoke
 builds stay ungated — they are structurally non-shippable by filename and
 never leave the build machine.
 
+## 🔴 A bundled native binary ships with its runtime — and provisioning proves it STARTS (added 2026-09-05)
+
+**The failure that codified it.** A freshly imaged hospital laptop ran
+`AuroraSetup.exe` and died at "Setting up Aurora" with `initdb failed
+(-1073741515)`. That is `0xC0000135`, `STATUS_DLL_NOT_FOUND`: `initdb.exe`
+never executed an instruction, because the Microsoft Visual C++ runtime it
+links against is not part of Windows and nothing had put it there. The
+installer bundled PostgreSQL's binaries (`bin`, `share`, `lib` from the EDB
+"binaries only" zip) and promised that the hospital machine needs nothing —
+and the promise held only on machines where some *other* program had happened
+to install that runtime. Every build laptop and test machine had one. The
+hospital image did not. The .NET server had been made self-contained for
+exactly this reason; the same question was never asked of the second native
+component. The wizard's generic failure text then pointed the operator at
+antivirus, which had nothing to do with it.
+
+**The rule.** Every native binary the installer carries either ships with the
+runtime it needs, or Setup installs that runtime itself before anything uses
+it — silently, from a copy the installer carries, verified at build time
+(Authenticode, signed by its publisher), never fetched on the hospital machine.
+"The hospital machine needs nothing" is a property to be demonstrated on a
+CLEAN Windows image, not inferred from machines that already work.
+
+**The second half.** Provisioning proves the binary STARTS before it relies on
+it — `initdb.exe --version` runs before the cluster is created
+(`aurora-provision.ps1` step 0c) — and a loader failure is reported as a
+sentence naming what is missing and what to do (`aurora-exit-codes.ps1`),
+never as a raw negative number. A raw NTSTATUS in a hospital operator's log is
+a defect in its own right: it cost a day on 2026-09-05.
+
+**Related, same PR:** the CP1256 parse defect of 2026-07-24 (non-ASCII bytes
+in the installer scripts) had been fixed by hand and never gated. The
+`installer-powershell` job now fails on any non-ASCII byte in
+`installer\*.ps1` / `*.iss` — closing the class, not the instance (the rule
+of 2026-08-17 above).
+
 ## Data on screen must state its own age (added 2026-08-03)
 
 **CODIFIED RULE — a stale screen and a current screen must never look

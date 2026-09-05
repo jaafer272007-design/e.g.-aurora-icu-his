@@ -1,11 +1,12 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-08-22 · current through ENVIRONMENT SEPARATION PR-4 —
-ship-gate convergence: the protected installer now mechanically refuses to
-compile content that has not been verified (clean-tree origin/main commit ·
-ci.yml green by workflow identity · staging serving that content · all 16
-deployed suites green on it, inventory drift-checked), and the dormant
-promotion gate reads the same shared truth — the record below.** This line is THE
+**Last updated: 2026-09-05 · current through INSTALLER — the Microsoft
+Visual C++ runtime the bundled PostgreSQL needs is now CARRIED and INSTALLED
+by Setup itself (a freshly imaged laptop failed at "Setting up Aurora" with
+`initdb failed (-1073741515)` = STATUS_DLL_NOT_FOUND on 2026-09-05);
+provisioning probes that initdb STARTS and explains loader failures in words;
+CI gains a pure-ASCII gate over the installer scripts; AppVer 1.0.0 → 1.3.0
+(above the ledger's 1.2.0 floor) — the record below.** This line is THE
 recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
@@ -33,6 +34,81 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-09-05 · INSTALLER — THE VISUAL C++ RUNTIME PREREQUISITE, CARRIED AND
+INSTALLED BY SETUP (a field failure on a freshly imaged laptop; branch
+`claude/installer-vc-runtime`, draft PR — number in the PR history below).**
+THE FAILURE: `AuroraSetup.exe` (a 2026-07-26 build, AppVer 1.0.0) died at
+"Setting up Aurora (database, services, first backup)..." with the wizard's
+"Setup could not finish (code 1)"; turning real-time antivirus protection off
+changed nothing (the dialog's AV advice is generic text shown on every
+failure). `C:\Aurora\provision.log` carried the one line that mattered —
+`[aurora-provision] FAILED: initdb failed (-1073741515)` — and `-1073741515`
+is `0xC0000135` = `STATUS_DLL_NOT_FOUND`: Windows could not START
+`initdb.exe`. The machine was en-US / Windows-1252, so this is NOT the CP1256
+parse defect fixed in `159476c`. ROOT CAUSE: `build.ps1` stages the EDB
+"binaries only" zip (`bin`, `share`, `lib`), which is built with MSVC and
+needs the Microsoft Visual C++ runtime (`vcruntime140.dll`,
+`vcruntime140_1.dll`, `msvcp140.dll`). That runtime is NOT part of Windows;
+EDB's own installer installs it as a prerequisite and the zip deliberately
+does not; and NOTHING in this repository bundled, installed, checked for or
+documented it (a grep for `vcredist|vc_redist|vcruntime|msvcp140|visual c++`
+across every `.ps1`/`.iss`/`.md`: zero hits). So the README's promise — "the
+hospital machine needs none of it" — was false on exactly the population we
+ship to: a locked-down hospital image that has never had MSVC-built software
+installed. It never showed on the build laptop or the earlier test machines
+because something else had installed the runtime there. The .NET half had
+been solved (self-contained publish, "no .NET install needed"); the
+PostgreSQL half had not.
+
+THE FIX, three layers. **(1) build time** — `build.ps1` step 3b stages
+Microsoft's `vc_redist.x64.exe` into `payload\prereq`: `-VcRedist <path>`
+for offline builds, else downloaded from Microsoft's permalink
+(`https://aka.ms/vs/17/release/vc_redist.x64.exe`); the build REFUSES
+unless the file carries a valid Authenticode signature whose signer is
+Microsoft Corporation (no pinned hash: Microsoft re-issues the package under
+the same URL and a pin would break every build the day they do); the three
+wrappers pass `-VcRedist` through. **(2) install time** — `aurora.iss` lists
+the file `dontcopy` (a build without it does not compile — deliberately no
+`skipifsourcedoesntexist`) and gains `EnsureVcRuntime`, called FIRST in
+`ssPostInstall`: skip when `vcruntime140.dll`, `vcruntime140_1.dll` and
+`msvcp140.dll` are all already in the 64-bit System32, else extract to `{tmp}`
+and run `/install /quiet /norestart`; exit 0 / 1638 (a newer runtime already
+present) / 3010 (installed, reboot wanted later) are success; anything else —
+or the DLLs still absent afterwards — is a fail-CLOSED `MsgBox` with the
+manual remedy and `Abort` before any provisioning state exists. **(3)
+provision time** — `aurora-provision.ps1` step 0c probes `initdb.exe
+--version` BEFORE the cluster is created and fails with a sentence, not a
+number: NEW `aurora-exit-codes.ps1` (shipped beside the other scripts,
+dot-sourced) maps the loader NTSTATUS codes — `0xC0000135` DLL not found,
+`0xC0000139` entry point not found (runtime too old), `0xC000007B` invalid
+image, `0xC0000005` access violation — to what is missing and what to do; the
+real `initdb` failure is translated the same way. NEW `test-exit-codes.ps1`
+pins every explanation (the field number `-1073741515` first) and runs real
+child processes through the plumbing; the `installer-powershell` job runs it
+on 5.1 and gains an ASCII gate over every installer `.ps1`/`.iss` — the
+CP1256 fix of 07-24 had no gate, and this PR adds a file, so the class is
+closed rather than the instance (03, 2026-08-17). **AppVer `1.0.0` →
+`1.3.0`:** the ledger's cross-kind high-water mark is `1.2.0`, so a shipping
+setup at `1.0.0` would be REFUSED by the version gate as below the floor, and
+the ship gate requires the bump to be a committed `origin/main` change — the
+owner may change the number before merging (minor, per 03's release routine:
+this setup ships every feature since 1.0.0).
+
+VERIFIED HERE: every installer `.ps1` parses under `Parser.ParseFile`; every
+installer `.ps1`/`.iss` is pure ASCII (0 non-ASCII bytes, the new files
+included); `test-exit-codes.ps1` passes on pwsh 7 (Linux — the CI leg on
+Windows PowerShell 5.1 is the engine-that-ships proof). CODE-REVIEWED ONLY, no
+Windows here: the ISCC compile of the new `[Files]`/`[Code]`, and the real
+`vc_redist` chain. THE PROOF THAT MATTERS is the laptop that failed: rebuild
+`AuroraSetup.exe` from this content and run it there next-next-finish, WITHOUT
+installing the runtime by hand first. Docs: `installer/README.md` (the
+hospital-needs-nothing promise, now true again, with the mechanism),
+`installer/BUILD_WINDOWS.md` (input A2 + a troubleshooting row), the design
+doc's Install list (dated amendment), 03 (new rule: a bundled native binary
+ships with its runtime, and provisioning proves it STARTS). Not touched:
+`04_OPERATIONS_RUNBOOK.md` (nothing changes for the operator — that is the
+point), `SHIPPED_VERSIONS.txt` (the shipping build appends its own line). **
 
 **2026-08-22 · ENVIRONMENT SEPARATION PR-4 — SHIP-GATE CONVERGENCE
 (owner-authorized; the dormant production-branch path is NOT resurrected —
