@@ -299,7 +299,14 @@ if ($verGate.Count -ge 1 -and $invokeGate.Count -ge 1) {
 # The parameter list is PINNED. A new parameter on the shipping script is
 # how a bypass would arrive (-SkipShipGate); adding one must fail here until
 # a human proves it cannot bypass the gate and updates this list.
-$pinnedParams = @('PgZip', 'ModelDir', 'LlamaDir', 'UpdateOnly', 'Iscc', 'SkipStage', 'OutputDir', 'RebuildVersion', 'RebuildReason')
+# -VcRedist (added 2026-09-05, the VC++ runtime prerequisite fix): a payload
+# INPUT - the path to Microsoft's vc_redist.x64.exe, forwarded to build.ps1 for
+# staging (its step 3b) and nothing else. It cannot bypass the gate: it is a
+# [string], build-protected.ps1's own gate logic never reads it, and its only
+# use outside the param block is the passthrough into $buildArgs - asserted
+# mechanically below, so a future change that starts reading it elsewhere has
+# to come back here and say why.
+$pinnedParams = @('PgZip', 'ModelDir', 'LlamaDir', 'VcRedist', 'UpdateOnly', 'Iscc', 'SkipStage', 'OutputDir', 'RebuildVersion', 'RebuildReason')
 $actualParams = @($bpAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
 Assert ($actualParams.Count -eq $pinnedParams.Count) "build-protected.ps1 has exactly $($pinnedParams.Count) parameters (a NEW one must prove it cannot bypass the ship gate, then update this pin)"
 foreach ($pp in $pinnedParams) { Assert ($actualParams -contains $pp) "parameter -$pp is still present" }
@@ -308,6 +315,12 @@ $bpText = Get-Content -Raw $bpPath
 Assert ($bpText -notmatch '(?i)skipship|noship|SKIP_SHIP') 'no skip-the-ship-gate switch exists in any spelling'
 $sgText = Get-Content -Raw (Join-Path $PSScriptRoot 'ship-gate.ps1')
 Assert ($sgText -notmatch '(?i)skipship|noship|SKIP_SHIP') 'ship-gate.ps1 itself carries no bypass switch'
+
+# The passthrough-only proof for -VcRedist: outside its own declaration, the
+# variable appears on exactly one line, and that line hands it to build.ps1.
+$vcUses = @([regex]::Matches($bpText, '(?m)^.*\$VcRedist.*$') | ForEach-Object { $_.Value.Trim() } | Where-Object { $_ -notmatch '^\[string\]\$VcRedist\s*=' })
+Assert ($vcUses.Count -eq 1) "-VcRedist is used on exactly one line outside its declaration (found $($vcUses.Count))"
+Assert ($vcUses.Count -eq 1 -and $vcUses[0] -match '^if \(\$VcRedist\) \{ \$buildArgs\.VcRedist = \$VcRedist \}$') '-VcRedist is a passthrough-only payload input (its one use hands it to build.ps1, nothing else)'
 
 # ------------------------------- shared truth stays in sync with the repo ---
 Section 'ship-requirements.json <-> the repository (drift fails loudly)'

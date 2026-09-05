@@ -68,7 +68,11 @@ for offline builds, else downloaded from Microsoft's permalink
 unless the file carries a valid Authenticode signature whose signer is
 Microsoft Corporation (no pinned hash: Microsoft re-issues the package under
 the same URL and a pin would break every build the day they do); the three
-wrappers pass `-VcRedist` through. **(2) install time** — `aurora.iss` lists
+wrappers pass `-VcRedist` through (and `test-ship-gate.ps1`'s AST pin on
+`build-protected.ps1`'s parameter list — which correctly FAILED the first CI run on
+the tenth parameter — now lists it with a mechanical passthrough-only proof: the
+variable appears on exactly one line outside its declaration, the hand-off into
+`$buildArgs`). **(2) install time** — `aurora.iss` lists
 the file `dontcopy` (a build without it does not compile — deliberately no
 `skipifsourcedoesntexist`) and gains `EnsureVcRuntime`, called FIRST in
 `ssPostInstall`: skip when `vcruntime140.dll`, `vcruntime140_1.dll` and
