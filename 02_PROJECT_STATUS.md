@@ -37,7 +37,7 @@ structural copy. No record's text was altered, reordered or removed.]*
 
 **2026-09-05 · INSTALLER — THE VISUAL C++ RUNTIME PREREQUISITE, CARRIED AND
 INSTALLED BY SETUP (a field failure on a freshly imaged laptop; branch
-`claude/installer-vc-runtime`, draft PR — number in the PR history below).**
+`claude/installer-vc-runtime`, draft PR #230).**
 THE FAILURE: `AuroraSetup.exe` (a 2026-07-26 build, AppVer 1.0.0) died at
 "Setting up Aurora (database, services, first backup)..." with the wizard's
 "Setup could not finish (code 1)"; turning real-time antivirus protection off
@@ -13486,6 +13486,7 @@ substance is documented in the sections above.]*
 
 | PR | Branch |
 |---|---|
+| #230 | claude/installer-vc-runtime |
 | #45 | claude/layer4-labcatalog-ordersets |
 | #44 | claude/docs-formulary-authority |
 | #43 | claude/formulary-suite-env |
