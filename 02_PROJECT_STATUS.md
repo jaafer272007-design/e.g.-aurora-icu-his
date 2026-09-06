@@ -1,12 +1,13 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-06 · current through THE NO-AI BUILD — the AI
-Assistant SECTION now exists only where the server reports the AI enabled
-(`/healthz` `aiAssistant`, derived from `AI_PROVIDER`): a no-AI install shows
-no "AI Assistant" nav entry, `/ai` redirects to the landing view, Settings
-states "AI assistant: not on this install"; resolved at runtime, one bundle
-for both kinds of install; structural gate + a real-boot CI assertion (draft
-PR #231, stacked on #230) — the record below.** This line is THE
+**Last updated: 2026-09-06 (later) · current through THE ICU EDITION — the
+hospital exe ships "only the ICU": the module-2 screens built into this app
+in 2026-08 (Inpatient Reception, Awaiting Bed, the four reception vocabularies
+in Configuration, the Admissions pointer to Reception) exist only where the
+server reports the FULL edition (`/healthz` `edition`, from `AURORA_EDITION`,
+default `icu`; the installer writes `icu`, staging and the appliance set
+`full`); Wards stays; structural gate + a real-boot CI assertion (draft PR
+#232, stacked on #231 and #230) — the record below.** This line is THE
 recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
@@ -34,6 +35,112 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-09-06 (later) · THE ICU EDITION — THE MODULE-2 SCREENS EXIST ONLY WHERE
+THE SERVER REPORTS THE FULL EDITION (owner's decision; branch
+`claude/installer-icu-edition`, draft PR #232, stacked on #231 → #230).**
+THE DECISION: the hospital `AuroraSetup.exe` ships "only the ICU". Between
+2026-08-17 and 08-23 the hospital-direction module-2 screens were built INTO
+this app (#202 reception vocabularies + Configuration screens, #204 admission
+fields, #208 requirement-follows-the-bed, #209 the Reception screen, #212
+transfer refuses bedless, #211/#213 the Ward design, then Ward A1/A2/A7/B via
+#221–#223 on the reconstruct-pr197 branch) and are therefore in every
+installer built from `main`: Inpatient Reception (`/reception`), the
+awaiting-bed worklist (`/awaiting-bed`), four reception vocabularies in
+Configuration (Admission Types, Departments, Services, Sources of Admission)
+and the Admissions screen's pointer to Reception. The owner does not want
+them in the exe. (The Hospital Shell navigation, 40d218d / closed PR #228, is
+on a side branch only and was never on `main`; PR #229, the Bahmni bridge,
+stays an unmerged draft.)
+
+WHY HIDE, NOT DELETE — established by a four-reader / eight-verifier
+footprint pass over the tree (readers: frontend, server, history+branding,
+gates+suites; each checked by a completeness and a correctness verifier;
+refuted claims discarded, missing items added). Deleting is entangled: three
+EF migrations (`20260817075826_AddReceptionVocabularies`,
+`20260818003136_AddReceptionAdmissionFields`, `20260822123805_AddWards`); the
+`admissions.create` gate that runs on EVERY ICU admit (`AdtApi.cs:828`;
+doctors hold it — `Rbac.cs:92,155`); the boot-time Wards backfill
+(`Seeder.cs:121-137`) the ICU bed registry now depends on (a bed's area must
+be a configured ward — `BedRegistryApi.cs:83-90`, 400/409 otherwise); the
+updater's migration-skew guard (`aurora-update.ps1:99-124`); and ~650 lines of
+assertions in the ICU's own required `production-seed` CI job. Building from
+the last pre-module-2 commit (a9b5913, #201) would drop #230's Visual C++ fix
+and everything since, and the ship gate refuses a tip that is not
+`origin/main` anyway. The ICU works without the module-2 UI: the ICU admit
+form always names a bed (`Admissions.tsx:274,416`), the reception codes are
+validated only when supplied (`AdtApi.cs:1043-1050`), and the only frontend
+path that admits WITHOUT a bed is Reception itself (`Reception.tsx:257`).
+
+THE MECHANISM — the same shape as the no-AI section. **Server:**
+`server/Core/Shared/Edition.cs` reads `AURORA_EDITION` once at boot: `"full"`
+→ full, ANYTHING ELSE → `icu` — the hospital-safe default, because
+`aurora-update.ps1` carries a hospital's `aurora.env` across unchanged and an
+older install updated in place has no line for it; an unrecognised value is
+logged once at boot. `/healthz` gains `edition`. NOT enforced on endpoints —
+the edition decides what the app ADVERTISES; the permission atoms remain the
+authorization boundary, unchanged. **Frontend:** `src/lib/edition.ts` (a
+`useSyncExternalStore` store fed by EnvironmentGate's one `/healthz` fetch):
+`'pending'` until it answers (module-2 items not shown — no flash on an ICU
+install); `"full"` OR an ABSENT field → `'full'` (a server from before
+editions IS the full app — the one reading that is true of it); `"icu"`, any
+other value, or unreachable → `'icu'` (show less, not more); a pure-mock dev
+session keeps every screen. `NavSidebar` gates Reception and Awaiting Bed
+(`when: edition === 'full'`); both routes sit behind the new
+`RequireFullEdition` (redirect to the landing view; null while pending) INSIDE
+their unchanged permission gates; `Configuration` gates the four reception
+tenants AND their fetches — **Wards deliberately not gated**; `Admissions`
+gates its Reception pointer; Settings › System Information gains "Edition:
+ICU only / Full / not reported (full)". **Installer and deployments:**
+`aurora-provision.ps1` writes `AURORA_EDITION=icu` inside the
+`AURORA-ENV-KEYS` region; `build.ps1` lists it in `$optionalEnvKeys` so the
+updater does not warn on older installs where absence is correct;
+`render.yaml` and `appliance/docker-compose.yml` set `full` (the validator's
+testbed keeps every screen). No wizard page. A hospital turns the ward
+screens on later with one line and a service restart — `04_OPERATIONS_RUNBOOK.md`
+§10 (new) says how, for IT.
+
+GATES. `scripts/edition-gate.mjs` (CI, beside the other structural gates;
+comments stripped) pins Edition.cs's exact mapping, the healthz field, the
+store's four readings and initial state, both fetch outcomes feeding the
+store, the two nav `when`s, both routes' wrapping, the guard's branches, the
+four gated tenants AND Wards staying ungated, the Admissions pointer, the
+installer line, the `build.ps1` optional entry, `render.yaml` and the
+appliance default. TEETH MEASURED before commit on THIRTEEN mutations in a
+scratch copy (default flipped to full; healthz field removed; absent field
+read as icu; Reception `when` dropped; `/awaiting-bed` unwrapped; guard
+bypassed; Departments ungated; Wards GATED; Admissions pointer ungated;
+installer line removed; optional entry removed; render.yaml `full` removed;
+failed-fetch path unrecorded) — each failed NAMING the fact; the control
+passed. The `production-seed` job also asserts a REAL boot with
+`AURORA_EDITION` unset reports `"edition":"icu"`. The existing gates are
+unaffected (`awaiting-bed-gate.mjs` still finds `/awaiting-bed` gated on
+`beds.assign`; `reception-required-fields-gate.mjs` reads the untouched
+Reception screen).
+
+VERIFIED (session-local). `tsc -b --force` clean; development AND production
+`vite build` clean; all five structural gates pass; `dotnet build -c Release`
+clean; every installer `.ps1`/`.iss` pure ASCII and parsing; `ci.yml`,
+`render.yaml`, the appliance compose file parse. A REAL server, five boots:
+`AURORA_EDITION` unset → `icu`; `icu` → `icu`; `full` → `full`; `Full` →
+`full`; `ful` → `icu` plus the boot warning. A RENDERED Playwright pass of the
+built development bundle against a stub API answering the real healthz shape
+(icu → full → field absent), signed in as the Hospital Administrator (the
+role that sees everything on the full edition) and as a doctor, 18/18: no
+Reception, no Awaiting Bed, both routes redirect to `/admin`, Configuration
+shows Wards and Hospital Identity but none of the four vocabularies, no
+Reception pointer on Admissions, Settings says "ICU only", the doctor also
+sees no AI Assistant; full → everything back and `/reception` renders; absent
+field → full; zero page errors. NOT verifiable here: nothing new for ISCC.
+
+NOT IN THIS PR (recorded for the owner): the "Aurora HIS" branding strings
+(login footer `AURORA HIS v4.2` — `src/lib/version.ts`, from 2026-07-08; the
+installer's `Publisher` in `aurora.iss`; the print header/footer in
+`PrintLayout.tsx:54,132`, from 2026-07-11) pre-date module 2 and are
+cosmetic; renaming them to "Aurora ICU" is a small separate change if wanted.
+The module-2 SERVER surface (vocabulary endpoints, `/assign-bed`,
+`/adt/ward-doctors`, the `bedless=` filter) remains reachable to an
+authenticated API caller on every edition — by design, like the AI 503.
 
 **2026-09-06 · THE NO-AI BUILD — THE AI ASSISTANT SECTION EXISTS ONLY WHERE
 THE SERVER REPORTS THE AI ENABLED (owner's decision; branch
@@ -13570,6 +13677,7 @@ substance is documented in the sections above.]*
 
 | PR | Branch |
 |---|---|
+| #232 | claude/installer-icu-edition |
 | #231 | claude/installer-no-ai-section |
 | #230 | claude/installer-vc-runtime |
 | #45 | claude/layer4-labcatalog-ordersets |
