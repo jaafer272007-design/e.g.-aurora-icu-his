@@ -377,6 +377,31 @@ Restricted state. Delivered with A2's bedless-reader fixes and ward.md
 A7's two scope corrections (the PatientHistory scope statement and both
 AI prompts re-scoped from ICU to the hospital).]*
 
+*[Attributed addition, 2026-09-06 (owner's decision — the ICU-only build):
+**editions.** The hospital `AuroraSetup.exe` ships **only the ICU**. The
+module-2 screens built into this app in 2026-08 — `/reception`,
+`/awaiting-bed`, the four reception vocabularies in Configuration
+(Admission Types, Departments, Services, Sources of Admission) and the
+Admissions screen's pointer to Reception — exist only on the **full
+edition**. The install's edition is configuration, not code, like APP_ENV:
+`AURORA_EDITION` = `icu` | `full` (`server/Core/Shared/Edition.cs`), read
+once at boot and reported on `/healthz` as `edition`; the frontend reads it
+at RUNTIME from the one `/healthz` fetch it already makes
+(`src/lib/edition.ts`) and shows the module-2 items only on `"full"`. The
+DEFAULT is `icu` — `aurora-update.ps1` carries a hospital's `aurora.env`
+across unchanged, so an older install updated in place has no line for it
+and must still come up ICU-only; the hospital installer writes
+`AURORA_EDITION=icu` explicitly; `render.yaml` and the appliance compose
+file set `full` (the validator's testbed keeps every screen). Not gated:
+the **Wards** section (the bed registry refuses a bed whose area is not a
+configured ward — ICU configuration), the server's module-2 endpoints (the
+edition decides what the app ADVERTISES; it is not an authorization
+boundary — the permission atoms are, unchanged), the data model and the
+atoms themselves (`admissions.create` is also what lets a doctor admit). A
+hospital turns the ward screens on later by editing the one line and
+restarting AuroraServer — no app update. Gate: `scripts/edition-gate.mjs`
+(CI) + a real-boot `edition=icu` assertion in the production-seed job.]*
+
 *[Amendment, 2026-08-18 — the route the atom now gates. `/reception` =
 `admissions.create` (Inpatient Reception step 6). It is the ONLY route
 guarded by that atom, and it is the ward's front door: find or register a

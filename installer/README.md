@@ -153,6 +153,11 @@ cd installer
 # (omit -ModelDir/-LlamaDir to build an installer that ships with the AI DISABLED —
 #  and, since 2026-09-06, with NO AI section in the app: no "AI Assistant" nav entry,
 #  /ai redirects to the dashboard, Settings says "AI assistant: not on this install")
+# EVERY hospital installer is the ICU EDITION (2026-09-06): provisioning writes
+#  AURORA_EDITION=icu, and the app shows no Reception, no Awaiting Bed and none of the
+#  four reception vocabularies in Configuration (Wards stays — the bed registry needs
+#  it). To turn the ward screens on later: set AURORA_EDITION=full in C:\Aurora\aurora.env
+#  and restart the AuroraServer service — no update, no reinstall.
 # SHIPPING builds use build-protected.ps1 instead — same inputs, plus the company
 # install password typed at a masked prompt → AuroraSetup-1.0.0-PROTECTED.exe.
 # The password is held by the vendor's engineer alone and typed on site at every

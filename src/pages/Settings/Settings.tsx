@@ -223,6 +223,17 @@ export function Settings() {
                   ? 'the AI Assistant section is not shown on this install (AI_PROVIDER=none) — Aurora runs fully without it'
                   : 'from /healthz — the AI Assistant section appears only when the server reports the AI enabled'}</small>
               </div>
+              {/* the ICU-only build (2026-09-06): the install EDITION decides
+                  whether the module-2 screens (Reception, Awaiting Bed, the
+                  reception vocabularies) exist here — stated so their absence
+                  never reads as a missing screen */}
+              <div className="se-info">
+                <span>Edition</span>
+                <b>{health === 'loading' ? '…' : health ? (health.edition === 'full' ? 'Full' : health.edition === 'icu' ? 'ICU only' : 'not reported (full)') : '—'}</b>
+                <small>{health !== 'loading' && health && health.edition === 'icu'
+                  ? 'the ICU module alone — Reception, Awaiting Bed and the reception vocabularies are not part of this install (AURORA_EDITION=icu)'
+                  : 'from /healthz — the full edition adds the hospital ward screens (Reception, Awaiting Bed, reception vocabularies)'}</small>
+              </div>
             </div>
 
             <div className={`se-health ${health === 'loading' ? '' : health ? 'ok' : 'down'}`} role="status">

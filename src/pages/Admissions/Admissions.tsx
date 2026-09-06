@@ -10,6 +10,7 @@ import { IconAdmit, IconBed, IconUsers } from '../../components/icons'
 import { admitPatient, getAdtBeds, getAttendings, getCodeStatuses, getEncounters, getPatientIdentity, matchPatient } from '../../lib/api'
 import type { AdmitDraft, CodeStatusEntry, AdtBed, AttendingOption, Encounter, MatchPatientResponse, Sex } from '../../lib/api/types'
 import { getSession, hasPermission, initialsOf, profileOf } from '../../lib/session'
+import { useEdition } from '../../lib/edition'
 import { MatchDialog } from './MatchDialog'
 
 /** Layer 2 — ADT Admissions (/admissions). The first Aurora Core write
@@ -32,6 +33,9 @@ export function Admissions() {
   const canAdmit = hasPermission(session.jobTitle, 'adt.admit')
   /* the reception atom — the same person may hold it without adt.admit */
   const canCreateAdmission = hasPermission(session.jobTitle, 'admissions.create')
+  /* the pointer to Reception below exists only on the FULL edition — the
+     ICU-edition hospital exe has no Reception screen (lib/edition.ts) */
+  const edition = useEdition()
   const canOverview = hasPermission(session.jobTitle, 'results.view')
 
   const [beds, setBeds] = useState<AdtBed[] | null>(null)
@@ -295,7 +299,7 @@ export function Admissions() {
                   someone who actually holds it: pointing a Pharmacist at a
                   route their profile cannot open would be a dead end dressed
                   as help. */}
-              {canCreateAdmission && (
+              {canCreateAdmission && edition === 'full' && (
                 <> Opening an admission <b>without</b> assigning a bed is reception’s
                   work — use{' '}
                   {/* router navigation, not <a href>: a raw href reloads the app

@@ -30,6 +30,7 @@ import { PrintDocument } from './pages/PrintCenter/PrintDocument'
 import { Login } from './pages/Login/Login'
 import { RequireSession } from './components/RequireSession'
 import { RequireAiAssistant } from './components/RequireAiAssistant'
+import { RequireFullEdition } from './components/RequireFullEdition'
 import { EnvironmentBanner, EnvironmentGate } from './components/EnvironmentChrome'
 import { BackupHealthBanner } from './components/BackupHealthBanner'
 import { getSession, landingRouteOf } from './lib/session'
@@ -54,7 +55,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /timeline(/:patientId)  Clinical Timeline          patients.view
    /observations(/:patientId)  Bedside Observations   patients.view (charting needs observations.record; corrections observations.record/correct — Stage 11 §4)
    /ai(/:patientId)        AI Assistant — grounded query chat   ai.view AND the server reports the AI enabled (/healthz aiAssistant — a no-AI install has no AI section: the route redirects to the landing view; route patient = chat context only)
-   /reception              Inpatient Reception        admissions.create (the ward's front door — find-or-register + open the episode; no bed)
+   /reception              Inpatient Reception        admissions.create AND the FULL edition (/healthz edition — the ICU-edition hospital exe has no Reception: the route redirects to the landing view; the ward's front door — find-or-register + open the episode; no bed)
    /admissions             ADT — admit                patients.view (admit button needs adt.admit)
    /discharges             ADT — discharge/transfer   patients.view (actions need adt.discharge / adt.transfer)
    /discharged             Discharged Patients — records retrieval   results.view (browse+search all discharged; opens /history)
@@ -112,12 +113,12 @@ export default function App() {
             NOT `adt.admit`: the desk is clerical authority and the office
             Administrator staffs it. Naming a bed still costs adt.admit, and
             reception never names one (design §3.5). */}
-        <Route path="/reception" element={<RequireSession permission="admissions.create"><Reception /></RequireSession>} />
+        <Route path="/reception" element={<RequireSession permission="admissions.create"><RequireFullEdition><Reception /></RequireFullEdition></RequireSession>} />
         {/* Ward A2 — the awaiting-bed worklist. Gated on beds.assign (design
             §6): readable by exactly the two profiles that can act on a row —
             the office Administrator and the Nurse. Doctors get the explicit
             Access Restricted state, never a silent redirect. */}
-        <Route path="/awaiting-bed" element={<RequireSession permission="beds.assign"><AwaitingBed /></RequireSession>} />
+        <Route path="/awaiting-bed" element={<RequireSession permission="beds.assign"><RequireFullEdition><AwaitingBed /></RequireFullEdition></RequireSession>} />
         <Route path="/admissions" element={<RequireSession permission="patients.view"><Admissions /></RequireSession>} />
         <Route path="/discharges" element={<RequireSession permission="patients.view"><Discharges /></RequireSession>} />
         {/* Discharged Patients — records retrieval (the go-live gap fix):

@@ -83,6 +83,10 @@ services:
       #   GPU absent  : AI_PROVIDER=none + AI_UNAVAILABLE_REASON (the
       #                 honest 503 — "say WHY, never a bare 503")
       AI_PROVIDER: ${AI_PROVIDER:-none}
+      # EDITION (2026-09-06): the appliance is the validator's demo-seeded FULL
+      # testbed, so the module-2 screens stay visible; the hospital installer
+      # writes icu (the server's default when unset). See Edition.cs.
+      AURORA_EDITION: ${AURORA_EDITION:-full}
       AI_ENDPOINT: ${AI_ENDPOINT:-}
       AI_MODEL: ${AI_MODEL:-qwen2.5-7b-instruct-q4_k_m}
       AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-120}

@@ -6,6 +6,7 @@ import {
 import { lastPatientId } from '../lib/patientContext'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 import { useAiSection } from '../lib/aiAvailability'
+import { useEdition } from '../lib/edition'
 import { APP_VERSION } from '../lib/version'
 
 export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'reception' | 'awaiting' | 'admissions' | 'discharges' | 'discharged' | 'print' | 'users' | 'backup' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
@@ -50,6 +51,10 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
   /* the AI section exists only where the server reports the AI enabled
      (no-AI installs show no entry at all — owner's decision 2026-09-06) */
   const aiSection = useAiSection()
+  /* the module-2 screens (Reception, Awaiting Bed) exist only on the FULL
+     edition — the hospital exe ships the ICU edition (owner's decision
+     2026-09-06, lib/edition.ts) */
+  const edition = useEdition()
 
   /* Persistent patient context: the six patient-scoped sections carry the
      last-viewed patient across section switches (pick Ahmed → Lab Entry →
@@ -75,13 +80,13 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
        by the profile that staffs it. Listed ABOVE Admissions because that
        is the order of the journey — reception opens the episode, ICU's
        Admissions screen assigns the bed. */
-    { key: 'reception', label: 'Reception', icon: <IconAdmit />, to: '/reception', perm: 'admissions.create' },
+    { key: 'reception', label: 'Reception', icon: <IconAdmit />, to: '/reception', perm: 'admissions.create', when: edition === 'full' },
     /* Ward A2 — the awaiting-bed worklist, directly after Reception because
        it is the NEXT step of the same journey: reception opens the episode
        with no bed; this list gives it one. Gated on beds.assign — the
        office Administrator and Nurse, the two profiles that can act on a
        row (design §6). */
-    { key: 'awaiting', label: 'Awaiting Bed', icon: <IconBed />, to: '/awaiting-bed', perm: 'beds.assign' },
+    { key: 'awaiting', label: 'Awaiting Bed', icon: <IconBed />, to: '/awaiting-bed', perm: 'beds.assign', when: edition === 'full' },
     { key: 'admissions', label: 'Admissions', icon: <IconAdmit />, to: '/admissions', perm: 'patients.view' },
     { key: 'discharges', label: 'Discharges', icon: <IconDischarge />, to: '/discharges', perm: 'patients.view' },
     /* Discharged Patients — the records-retrieval view (browse + search ALL

@@ -220,6 +220,12 @@ export interface SystemHealth {
    *  "enabled" (lib/aiAvailability.ts). Optional: a server from before
    *  2026-09-06 does not report it (treated as not shown). */
   aiAssistant?: 'enabled' | 'disabled'
+  /** which screens this install SHOWS (AURORA_EDITION): "icu" — the ICU
+   *  module alone, the hospital default — or "full" — plus the module-2
+   *  screens (Reception, Awaiting Bed, reception vocabularies). Read by
+   *  lib/edition.ts. Optional: a server from before 2026-09-06 does not
+   *  report it and is treated as full. */
+  edition?: 'icu' | 'full'
 }
 
 /** GET /healthz — HONEST health: null means the API is genuinely
