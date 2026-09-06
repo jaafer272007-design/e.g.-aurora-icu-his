@@ -183,6 +183,17 @@ below happens inside the wizard; no console, no Docker, no internet.
    `llama-server`, CUDA); absent → AI disabled with the honest reason
    (existing "warn and disable, never refuse" rule). The model file is
    bundled on the install media (offline).
+
+   *[Amendment, 2026-09-06 — owner's decision, the no-AI ICU build: when
+   the AI is disabled (no model in the build, or no GPU), the installed app
+   shows **no AI section at all** — no "AI Assistant" nav entry, `/ai`
+   redirects to the landing view. The server reports the state on
+   `/healthz` (`aiAssistant`), the frontend reads it at runtime, and
+   `aurora-enable-ai.ps1` makes the section appear with no app update.
+   Settings › System Information states "AI assistant: not on this
+   install". The honest reason remains in the 503 a direct API call gets;
+   it is no longer shown on a screen, because there is no screen. See
+   01_ARCHITECTURE.md (AI section, 2026-09-06 addition).]*
 8. **Ready to install → Install.**
 
 **What the installer does on Install (all silent, no prerequisites to fetch):**

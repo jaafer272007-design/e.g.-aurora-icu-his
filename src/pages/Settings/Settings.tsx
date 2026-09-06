@@ -212,6 +212,17 @@ export function Settings() {
                 <span>Environment</span>
                 <b>{health === 'loading' ? '…' : health ? health.environment : '—'}</b>
               </div>
+              {/* the no-AI build (2026-09-06): the AI Assistant section exists
+                  only where the server reports the AI enabled — this is the one
+                  place that STATES the fact on an install where the section is
+                  absent, so absence never reads as a missing screen */}
+              <div className="se-info">
+                <span>AI assistant</span>
+                <b>{health === 'loading' ? '…' : health ? (health.aiAssistant === 'enabled' ? 'enabled' : health.aiAssistant === 'disabled' ? 'not on this install' : 'not reported by this server') : '—'}</b>
+                <small>{health !== 'loading' && health && health.aiAssistant === 'disabled'
+                  ? 'the AI Assistant section is not shown on this install (AI_PROVIDER=none) — Aurora runs fully without it'
+                  : 'from /healthz — the AI Assistant section appears only when the server reports the AI enabled'}</small>
+              </div>
             </div>
 
             <div className={`se-health ${health === 'loading' ? '' : health ? 'ok' : 'down'}`} role="status">

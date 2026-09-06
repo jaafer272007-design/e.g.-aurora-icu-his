@@ -114,5 +114,5 @@ try { Invoke-RestMethod "http://127.0.0.1:$AiPort/health" -TimeoutSec 2 | Out-Nu
 catch { Say "AuroraAI is still loading the model - normal; the AI screen stays honest until it is ready." }
 
 try { & $exe audit ai-enabled success --actor "enable-ai" | Out-Null } catch { }   # best-effort audit
-Say "DONE - the AI is enabled. Open the AI Assistant screen; it answers once the model finishes loading."
+Say "DONE - the AI is enabled. Reload the browser: the AI Assistant entry appears once the server reports the AI on (it was hidden while the AI was off); it answers once the model finishes loading."
 exit 0

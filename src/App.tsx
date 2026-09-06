@@ -29,6 +29,7 @@ import { PrintCenter } from './pages/PrintCenter/PrintCenter'
 import { PrintDocument } from './pages/PrintCenter/PrintDocument'
 import { Login } from './pages/Login/Login'
 import { RequireSession } from './components/RequireSession'
+import { RequireAiAssistant } from './components/RequireAiAssistant'
 import { EnvironmentBanner, EnvironmentGate } from './components/EnvironmentChrome'
 import { BackupHealthBanner } from './components/BackupHealthBanner'
 import { getSession, landingRouteOf } from './lib/session'
@@ -52,7 +53,7 @@ import { getSession, landingRouteOf } from './lib/session'
    /lab-entry(/:patientId) Lab Result Entry (manual)  results.document (ICU bedside team documents/transcribes)
    /timeline(/:patientId)  Clinical Timeline          patients.view
    /observations(/:patientId)  Bedside Observations   patients.view (charting needs observations.record; corrections observations.record/correct — Stage 11 §4)
-   /ai(/:patientId)        AI Assistant — grounded query chat   ai.view (route patient = chat context only)
+   /ai(/:patientId)        AI Assistant — grounded query chat   ai.view AND the server reports the AI enabled (/healthz aiAssistant — a no-AI install has no AI section: the route redirects to the landing view; route patient = chat context only)
    /reception              Inpatient Reception        admissions.create (the ward's front door — find-or-register + open the episode; no bed)
    /admissions             ADT — admit                patients.view (admit button needs adt.admit)
    /discharges             ADT — discharge/transfer   patients.view (actions need adt.discharge / adt.transfer)
@@ -150,8 +151,12 @@ export default function App() {
         <Route path="/settings" element={<RequireSession><Settings /></RequireSession>} />
         <Route path="/observations" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
         <Route path="/observations/:patientId" element={<RequireSession permission="patients.view"><Observations /></RequireSession>} />
-        <Route path="/ai" element={<RequireSession permission="ai.view"><AiChat /></RequireSession>} />
-        <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><AiChat /></RequireSession>} />
+        {/* AI Assistant — exists only where the server reports the AI enabled
+            (lib/aiAvailability.ts): on a no-AI install there is no AI section,
+            so a direct /ai lands on the profile's landing view. The permission
+            gate stays outside and still applies. */}
+        <Route path="/ai" element={<RequireSession permission="ai.view"><RequireAiAssistant><AiChat /></RequireAiAssistant></RequireSession>} />
+        <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><RequireAiAssistant><AiChat /></RequireAiAssistant></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </BrowserRouter>

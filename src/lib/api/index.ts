@@ -215,6 +215,11 @@ export interface SystemHealth {
   phase: string
   build: string
   environment: string
+  /** whether the AI Assistant is on THIS install ("disabled" exactly when
+   *  AI_PROVIDER=none). The frontend shows the AI section only on
+   *  "enabled" (lib/aiAvailability.ts). Optional: a server from before
+   *  2026-09-06 does not report it (treated as not shown). */
+  aiAssistant?: 'enabled' | 'disabled'
 }
 
 /** GET /healthz — HONEST health: null means the API is genuinely

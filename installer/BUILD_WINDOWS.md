@@ -65,7 +65,10 @@ Notes:
   is missing, install *App Installer* from the Microsoft Store, or do the manual
   toolchain below.)
 - Omit `-ModelDir`/`-LlamaDir` for an AI-disabled build. Give **both** or
-  **neither** — the script refuses just one.
+  **neither** — the script refuses just one. An AI-disabled install shows
+  **no AI section at all** (2026-09-06): no "AI Assistant" nav entry, `/ai`
+  redirects to the dashboard, and Settings › System Information says
+  "AI assistant: not on this install".
 - If Inno Setup isn't at the default path, add `-Iscc "C:\path\to\ISCC.exe"`.
 - The `` ` `` at each line end is PowerShell's line-continuation. Or put it all
   on one line.
