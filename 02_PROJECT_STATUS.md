@@ -41,7 +41,8 @@ THE SERVER REPORTS THE FULL EDITION (owner's decision; branch
 `claude/installer-icu-edition`, draft PR #232, stacked on #231 → #230).**
 THE DECISION: the hospital `AuroraSetup.exe` ships "only the ICU". Between
 2026-08-17 and 08-23 the hospital-direction module-2 screens were built INTO
-this app (#202 reception vocabularies + Configuration screens, #204 admission
+this app (#199 the four reception vocabulary tables + their migration — the
+first module-2 CODE on `main`; #202 their Configuration screens, #204 admission
 fields, #208 requirement-follows-the-bed, #209 the Reception screen, #212
 transfer refuses bedless, #211/#213 the Ward design, then Ward A1/A2/A7/B via
 #221–#223 on the reconstruct-pr197 branch) and are therefore in every
@@ -65,9 +66,12 @@ doctors hold it — `Rbac.cs:92,155`); the boot-time Wards backfill
 be a configured ward — `BedRegistryApi.cs:83-90`, 400/409 otherwise); the
 updater's migration-skew guard (`aurora-update.ps1:99-124`); and ~650 lines of
 assertions in the ICU's own required `production-seed` CI job. Building from
-the last pre-module-2 commit (a9b5913, #201) would drop #230's Visual C++ fix
-and everything since, and the ship gate refuses a tip that is not
-`origin/main` anyway. The ICU works without the module-2 UI: the ICU admit
+the last main commit with no module-2 content (aa566cc, #197 — #198 added only
+the design document and #199 the first tables) would drop #230's Visual C++ fix
+and everything since; and although the ship gate's source test is
+`merge-base --is-ancestor` (any mainline ancestor passes), its staging
+invariant refuses a build whose server tree staging does not serve — staging
+serves the current tip, so an old commit is refused (STAGING-CONTENT-MISMATCH). The ICU works without the module-2 UI: the ICU admit
 form always names a bed (`Admissions.tsx:274,416`), the reception codes are
 validated only when supplied (`AdtApi.cs:1043-1050`), and the only frontend
 path that admits WITHOUT a bed is Reception itself (`Reception.tsx:257`).
