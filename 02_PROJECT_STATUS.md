@@ -1,6 +1,13 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-07 · current through THE 32-BIT INSTALLER CORRECTION —
+**Last updated: 2026-09-07 (later) · current through AURORA SHIPS FROM LOCAL
+VERIFICATION — the ship gate's live-instance proof now comes from the appliance
+CI (real image, real PostgreSQL) instead of a hosted staging URL, so no cloud
+service stands between this system and a hospital; the 16 clinical suites
+cannot dispatch without a hosted instance and are `disabled` with the gate
+saying so in a banner and in its verdict, inventory still drift-checked, and
+the wiring that restores them recorded as the follow-up. Prior: THE 32-BIT
+INSTALLER CORRECTION —
 the VC++ runtime probe read SysWOW64 and aborted a good install on a real
 hospital laptop; fixed to the sysnative constant, gated, and the whole
 installer audited for the same class (PR #232). PROVEN ON HARDWARE 09-07: the
@@ -42,6 +49,82 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-09-07 (later) · AURORA SHIPS FROM LOCAL VERIFICATION — THE SHIP GATE NO
+LONGER NEEDS A CLOUD SERVICE TO EXIST (owner decision; branch
+`claude/ship-gate-local-verification`).**
+THE TRIGGER: with #230/#231/#232 merged and the corrected exe proven on the
+hospital laptop, `build-protected.ps1` still could not produce a shippable
+installer. The Render staging service answered `HTTP 503 - "This service has
+been suspended by its owner"`, and the ship gate's invariants C (staging serves
+this content) and D (16 deployed suites green) both depend on it. The gate's
+own words anticipated this exactly: *"Without a live staging there is no
+verified content to ship - this includes a suspended or sleeping staging
+service. Fail closed."* THE OWNER'S POINT, and it is correct: Aurora ICU
+installs and runs entirely on a hospital's own server and never contacts a
+cloud service, so a cloud service must not stand between this system and a
+hospital. Render is off, permanently.
+
+INVARIANT C CHANGED SOURCE, NOT STANDARD. "A real instance built from this
+content boots and serves" is now proved by `package-appliance.yml` - which
+builds the real server image and boots it against a real PostgreSQL - instead
+of by polling a hosted URL. NEW `Test-ShipAppliance` + `Get-ShipApplianceEvidence`
+in `installer/ship-gate.ps1`, matched on CONTENT and not on commit id (the
+appliance workflow is path-filtered, so the run that vouches for a commit's
+server bytes is routinely a different commit - the same rule the suites always
+used). Three new refusal classes: `APPLIANCE-EVIDENCE-MISSING`, `APPLIANCE-RED`,
+`APPLIANCE-STALE-CONTENT`. The hosted form `Test-ShipStaging` is RETAINED with
+all its tests and deliberately left unwired - re-pointing at a live hosted
+environment is a one-line change in the orchestrator, and deleting it is what
+would make the way back expensive.
+
+INVARIANT D IS A REDUCTION, AND IT IS RECORDED AS ONE. The 16 deployed suites
+are the deepest end-to-end tests in the project (ADT, orders, MAR, labs,
+formulary, handoff, print, users, ...). They dispatch against a long-lived
+hosted instance and cannot run without one, so with no cloud they cannot gate.
+`clinicalSuitesGate` in `scripts/ship-requirements.json` is `disabled`; the
+gate PRINTS A BANNER naming what is not covered before any evidence is
+gathered, and its final verdict says *"NOT VERIFIED: the 16 clinical end-to-end
+suites were not run and are not part of this verdict"* - the line
+`build-protected.ps1` echoes just before a password is typed. The suite FILES
+ARE KEPT and the inventory drift check STILL RUNS in disabled mode (asserted
+in both directions), so a suite cannot be quietly deleted or forgotten. The
+switch is a committed value inside the shipping commit; there is deliberately
+no parameter, environment variable or prompt that reaches it, an unrecognised
+value is REFUSED rather than defaulted to disabled, and dropping the suites
+without a written reason is refused too.
+
+WHAT STILL GATES A BUILD, unchanged: a clean working tree at a commit on
+`origin/main`; `ci.yml` green for that exact commit with all four required
+jobs; and a real appliance built from this content having booted and served.
+
+VERIFIED HERE: `installer/test-ship-gate.ps1` **141 assertions, 0 failures** on
+pwsh 7 (the Windows PowerShell 5.1 leg in CI is the engine-that-ships proof) -
+up from 107, and the 8 that failed first were exactly the pins this change
+invalidates, each updated deliberately rather than deleted. New coverage: the
+whole `Test-ShipAppliance` refusal matrix including its MISSING==MISSING
+vacuity guard; disabled mode authorizes but must say NOT VERIFIED, name the
+switch, carry the committed reason verbatim, and say the inventory is still
+checked; drift still fires with the suites not gating; every run-demanding
+refusal re-asserted against an explicitly STRICT copy so the day the suites
+return the refusals are already proven; an unrecognised `clinicalSuitesGate`,
+an empty one, a blank reason and a malformed `applianceWorkflowFile` are each
+refused; and `applianceWorkflowFile` must exist on disk. Both changed
+installer scripts are pure ASCII; `ship-gate.ps1` parses.
+
+THE FOLLOW-UP THIS DECISION INCURS, and it is the real fix: wire the 16 suites
+to boot their own appliance so they gate again without a cloud. This is
+WIRING, NOT REWRITING - `BootGuards.Production => AppEnv.Raw == "production"`,
+so an appliance booted with `APP_ENV=staging` seeds the same 14 demo patients
+and demo staff the suites already expect and reports `environment: staging` at
+`/healthz`, which is what their own environment gate demands. Each suite needs
+its target address and a boot step; the boot steps are identical and belong in
+one shared action. A side benefit: today the suites must run one at a time
+because they share one hosted server - with a throwaway appliance each, they
+can run in parallel and cannot contaminate each other. `package-appliance.yml`
+already flagged this as "recommended YES as the strongest available check ...
+awaiting the owner's call"; the call is now made. Until it lands,
+`clinicalSuitesGate` stays `disabled` and the banner keeps saying so. **
 
 **2026-09-07 · THE 32-BIT INSTALLER CORRECTION — THE VC++ PROBE READ SysWOW64
 AND ABORTED AN INSTALL THAT HAD JUST SUCCEEDED (field failure on the same

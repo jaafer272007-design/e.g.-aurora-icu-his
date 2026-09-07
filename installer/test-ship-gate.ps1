@@ -30,7 +30,7 @@ $reqPath = Join-Path $repoRoot 'scripts\ship-requirements.json'
 
 # ---------------------------------------------------- the refusal alphabet --
 Section 'The refusal classes are a fixed vocabulary'
-Assert ($script:ShipGateClasses.Count -eq 15) '15 classes exactly (a class added or dropped is a deliberate act)'
+Assert ($script:ShipGateClasses.Count -eq 18) '18 classes exactly (a class added or dropped is a deliberate act)'
 foreach ($c in @('SOURCE-DIRTY-TREE', 'SOURCE-NOT-ON-MAIN', 'CI-EVIDENCE-MISSING', 'CI-RED',
                  'CI-JOB-MISSING', 'CI-JOB-RED', 'STAGING-UNAVAILABLE', 'STAGING-WRONG-ENVIRONMENT',
                  'STAGING-CONTENT-MISMATCH', 'SUITE-INVENTORY-DRIFT', 'SUITE-EVIDENCE-MISSING',
@@ -63,6 +63,28 @@ $p = Get-ShipRequirementProblems -Req $broken
 Assert ($p.Count -ge 1 -and (@($p) -join ' ') -match 'not in deployedSuites') 'a frontend-context suite outside the inventory is refused'
 $p = Get-ShipRequirementProblems -Req $null
 Assert ($p.Count -ge 1) 'a null requirements object is refused'
+# ---- clinicalSuitesGate is the ONLY lever that can take the clinical suites
+# out of the verdict, so its own validation has to be airtight: a typo must
+# never be read as 'disabled', and taking them out must carry a reason.
+$broken = Get-Content -Raw $reqPath | ConvertFrom-Json
+$broken.clinicalSuitesGate = 'maybe'
+$p = Get-ShipRequirementProblems -Req $broken
+Assert ($p.Count -ge 1 -and (@($p) -join ' ') -match 'clinicalSuitesGate') 'an unrecognised clinicalSuitesGate is REFUSED, never defaulted to disabled'
+$broken = Get-Content -Raw $reqPath | ConvertFrom-Json
+$broken.clinicalSuitesGate = ''
+$p = Get-ShipRequirementProblems -Req $broken
+Assert ($p.Count -ge 1) 'an empty clinicalSuitesGate is refused too'
+$broken = Get-Content -Raw $reqPath | ConvertFrom-Json
+$broken.clinicalSuitesGateReason = '   '
+$p = Get-ShipRequirementProblems -Req $broken
+Assert ($p.Count -ge 1 -and (@($p) -join ' ') -match 'written reason') 'dropping the suites without a written reason is refused'
+$broken = Get-Content -Raw $reqPath | ConvertFrom-Json
+$broken.applianceWorkflowFile = 'not a workflow'
+$p = Get-ShipRequirementProblems -Req $broken
+Assert ($p.Count -ge 1 -and (@($p) -join ' ') -match 'applianceWorkflowFile') 'a malformed applianceWorkflowFile is refused'
+$p = Get-ShipRequirementProblems -Req ('{"schema":"aurora-ship-requirements/1"}' | ConvertFrom-Json)
+Assert ((@($p) -join ' ') -match "missing required field 'clinicalSuitesGate'") 'clinicalSuitesGate is a REQUIRED field (its absence cannot mean disabled)'
+Assert ((@($p) -join ' ') -match "missing required field 'applianceWorkflowFile'") 'applianceWorkflowFile is a REQUIRED field'
 
 # ------------------------------------------------------------ fixtures ------
 # Two distinct commits: A is the shipping commit; B is a DIFFERENT commit
@@ -96,6 +118,16 @@ function New-GoodStaging {
     buildResolvable = $true
     pages = @{ reachable = $true; error = ''; build = $SHA_B; environment = 'staging' }
     pagesBuildResolvable = $true
+  }
+}
+function New-GoodAppliance {
+  # headSha is SHA_B on purpose: the appliance workflow is path-filtered, so
+  # the run that vouches for this commit's server bytes is routinely a
+  # DIFFERENT commit. Content equality is the rule, not commit identity.
+  return @{
+    serverPaths = $srvPaths; serverWant = $wantSrv.Clone(); serverGot = $wantSrv.Clone()
+    queried = $true; error = ''; found = $true; runId = 77000111222
+    headSha = $SHA_B; conclusion = 'success'; headResolvable = $true
   }
 }
 function New-GoodSuites {
@@ -230,48 +262,112 @@ Assert (-not $v.ok -and $v.class -eq 'STAGING-CONTENT-MISMATCH') 'a differing fr
 Assert ($v.reason -match 'vite\.config\.ts') 'and names the differing frontend path'
 
 # ------------------------------------------------------------- D. suites ----
+Section 'Test-ShipAppliance'
+$v = Test-ShipAppliance -Req $req -App (New-GoodAppliance) -Sha $SHA_A
+Assert ($v.ok) 'a green appliance run over EQUAL server content authorizes'
+Assert ($v.reason -match '77000111222') 'and the reason names the run that vouched for it'
+Assert ($v.reason -match 'booted and served') 'and says what was actually proved'
+
+$e = New-GoodAppliance; $e.queried = $false; $e.error = 'timeout'
+$v = Test-ShipAppliance -Req $req -App $e -Sha $SHA_A
+Assert (-not $v.ok -and $v.class -eq 'VERIFY-UNAVAILABLE') 'an unqueryable appliance workflow is VERIFY-UNAVAILABLE (fail closed)'
+Assert ($v.reason -match 'never a warning') 'and states the fail-closed rule in words'
+
+$e = New-GoodAppliance; $e.found = $false
+$v = Test-ShipAppliance -Req $req -App $e -Sha $SHA_A
+Assert (-not $v.ok -and $v.class -eq 'APPLIANCE-EVIDENCE-MISSING') 'no completed appliance run at all is APPLIANCE-EVIDENCE-MISSING'
+
+$e = New-GoodAppliance; $e.conclusion = 'failure'
+$v = Test-ShipAppliance -Req $req -App $e -Sha $SHA_A
+Assert (-not $v.ok -and $v.class -eq 'APPLIANCE-RED') 'an appliance run that did not boot and serve is APPLIANCE-RED'
+Assert ($v.reason -match 'package-appliance\.yml') 'and names the workflow that failed'
+
+$e = New-GoodAppliance; $e.headResolvable = $false
+$v = Test-ShipAppliance -Req $req -App $e -Sha $SHA_A
+Assert (-not $v.ok -and $v.class -eq 'APPLIANCE-STALE-CONTENT') 'an unresolvable run head cannot prove content equality'
+
+$e = New-GoodAppliance; $e.serverGot = $wantSrv.Clone(); $e.serverGot[0] = 'f' * 40
+$v = Test-ShipAppliance -Req $req -App $e -Sha $SHA_A
+Assert (-not $v.ok -and $v.class -eq 'APPLIANCE-STALE-CONTENT') 'a green boot of DIFFERENT server bytes is APPLIANCE-STALE-CONTENT'
+Assert ($v.reason -match 'not evidence') 'and states the rule: a green boot of different bytes is not evidence'
+
+# the vacuity guard, same shape as the staging check's: if the SHIPPING
+# commit lacks a context path, MISSING would equal MISSING and the whole
+# comparison would pass while proving nothing.
+$e = New-GoodAppliance; $e.serverWant = @('MISSING:server'); $e.serverGot = @('MISSING:server')
+$v = Test-ShipAppliance -Req $req -App $e -Sha $SHA_A
+Assert (-not $v.ok -and $v.class -eq 'VERIFY-MALFORMED') 'MISSING==MISSING is refused as malformed, never passed as equal'
+
 Section 'Test-ShipSuites'
-$v = Test-ShipSuites -Req $req -Ste (New-GoodSuites) -Sha $SHA_A
+# THE COMMITTED FILE currently says clinicalSuitesGate = 'disabled' (owner
+# decision 2026-09-07). Every assertion below that demands GREEN RUNS must
+# therefore run against an explicitly STRICT copy - otherwise the day the
+# suites come back the refusals would be untested. $req itself is used, on
+# purpose, wherever the behaviour must hold in the mode actually shipping.
+$reqStrict = $req.psobject.Copy()
+$reqStrict.clinicalSuitesGate = 'required'
+Assert ([string]$reqStrict.clinicalSuitesGate -eq 'required') 'the strict copy really is in required mode (guards against a vacuous section)'
+
+$v = Test-ShipSuites -Req $reqStrict -Ste (New-GoodSuites) -Sha $SHA_A
 Assert ($v.ok) 'all suites green on equal content authorizes'
 Assert ($v.reason -match "$(@($req.deployedSuites).Count) deployed suites") 'and the reason counts the full inventory'
 
+# ---- the DRIFT check must survive the suites being taken out of the verdict.
+# These two run against the COMMITTED (disabled) requirements on purpose: the
+# whole point of keeping the inventory check is that a suite cannot be
+# deleted or forgotten while the runs are not being demanded.
 $e = New-GoodSuites; $e.diskSuites = @($e.diskSuites | Where-Object { $_ -ne 'deployed-handoff-e2e.yml' })
 $v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
-Assert (-not $v.ok -and $v.class -eq 'SUITE-INVENTORY-DRIFT') 'a required suite missing from disk is SUITE-INVENTORY-DRIFT'
+Assert (-not $v.ok -and $v.class -eq 'SUITE-INVENTORY-DRIFT') 'a required suite missing from disk is SUITE-INVENTORY-DRIFT - EVEN WITH THE SUITES NOT GATING'
 Assert ($v.reason -match 'deployed-handoff-e2e\.yml') 'and names it'
 
 $e = New-GoodSuites; $e.diskSuites = @($e.diskSuites) + @('deployed-brandnew-e2e.yml')
 $v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
-Assert (-not $v.ok -and $v.class -eq 'SUITE-INVENTORY-DRIFT') 'a NEW suite on disk the list does not know is SUITE-INVENTORY-DRIFT'
+Assert (-not $v.ok -and $v.class -eq 'SUITE-INVENTORY-DRIFT') 'a NEW suite on disk the list does not know is SUITE-INVENTORY-DRIFT - EVEN WITH THE SUITES NOT GATING'
 Assert ($v.reason -match 'deployed-brandnew-e2e\.yml') 'and names it (the old 13-of-16 silent omission is now impossible)'
 
-$e = New-GoodSuites; $e.runs['deployed-mar-e2e.yml'].found = $false
+# ---- disabled mode: authorizes, but must SAY what it did not verify -------
+$v = Test-ShipSuites -Req $req -Ste (New-GoodSuites) -Sha $SHA_A
+Assert ($v.ok) 'with clinicalSuitesGate disabled the suites do not block a build'
+Assert ($v.reason -match 'NOT VERIFIED') 'and the verdict says NOT VERIFIED in those words'
+Assert ($v.reason -match "clinicalSuitesGate = 'disabled'") 'and names the switch that did it'
+Assert ($v.reason -match [regex]::Escape([string]$req.clinicalSuitesGateReason)) 'and carries the committed reason verbatim'
+Assert ($v.reason -match 'drift-checked') 'and says the inventory is still checked, so nobody reads it as the suites being gone'
+
+# a red suite CANNOT be waved through by the disabled mode being sloppy: in
+# disabled mode the runs are not consulted at all, and in strict mode it must
+# still refuse. Both directions asserted so neither can rot.
+$e = New-GoodSuites; $e.runs['deployed-labs-e2e.yml'].conclusion = 'failure'
 $v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
+Assert ($v.ok -and $v.reason -match 'NOT VERIFIED') 'disabled mode does not inspect runs at all (it claims nothing about them)'
+
+$e = New-GoodSuites; $e.runs['deployed-mar-e2e.yml'].found = $false
+$v = Test-ShipSuites -Req $reqStrict -Ste $e -Sha $SHA_A
 Assert (-not $v.ok -and $v.class -eq 'SUITE-EVIDENCE-MISSING' -and $v.reason -match 'deployed-mar-e2e\.yml') 'a suite with no completed run is SUITE-EVIDENCE-MISSING and named'
 
 $e = New-GoodSuites; $e.runs['deployed-labs-e2e.yml'].conclusion = 'failure'
-$v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
+$v = Test-ShipSuites -Req $reqStrict -Ste $e -Sha $SHA_A
 Assert (-not $v.ok -and $v.class -eq 'SUITE-RED' -and $v.reason -match 'deployed-labs-e2e\.yml') 'a red suite is SUITE-RED and named'
 
 $e = New-GoodSuites; $e.runs['deployed-adt-e2e.yml'].serverGot = $wantSrv.Clone(); $e.runs['deployed-adt-e2e.yml'].serverGot[0] = 'd' * 40
-$v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
+$v = Test-ShipSuites -Req $reqStrict -Ste $e -Sha $SHA_A
 Assert (-not $v.ok -and $v.class -eq 'SUITE-STALE-CONTENT') 'a green run against different server bytes is SUITE-STALE-CONTENT'
 Assert ($v.reason -match 'different bytes is not evidence') 'and states the rule: a green run against different bytes is not evidence'
 
 $e = New-GoodSuites; $e.runs['deployed-print-e2e.yml'].ctxGot = $wantCtx.Clone(); $e.runs['deployed-print-e2e.yml'].ctxGot[0] = 'c' * 40
-$v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
+$v = Test-ShipSuites -Req $reqStrict -Ste $e -Sha $SHA_A
 Assert (-not $v.ok -and $v.class -eq 'SUITE-STALE-CONTENT' -and $v.reason -match 'frontend context') 'the print suite is additionally held to the FRONTEND context'
 
 $e = New-GoodSuites; $e.runs['deployed-auth-e2e.yml'].ctxGot = @('9' * 40)
-$v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
+$v = Test-ShipSuites -Req $reqStrict -Ste $e -Sha $SHA_A
 Assert ($v.ok) 'a non-frontend suite is NOT held to the frontend context (exactly the promotion-gate rule)'
 
 $e = New-GoodSuites; $e.runs['deployed-users-e2e.yml'].queried = $false; $e.runs['deployed-users-e2e.yml'].error = 'timeout'
-$v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
+$v = Test-ShipSuites -Req $reqStrict -Ste $e -Sha $SHA_A
 Assert (-not $v.ok -and $v.class -eq 'VERIFY-UNAVAILABLE') 'an unqueryable suite is VERIFY-UNAVAILABLE (fail closed)'
 
 $e = New-GoodSuites; $e.runs['deployed-orders-e2e.yml'].headResolvable = $false
-$v = Test-ShipSuites -Req $req -Ste $e -Sha $SHA_A
+$v = Test-ShipSuites -Req $reqStrict -Ste $e -Sha $SHA_A
 Assert (-not $v.ok -and $v.class -eq 'SUITE-STALE-CONTENT' -and $v.reason -match 'unknown to this clone') 'an unresolvable run head cannot prove content equality'
 
 # --------------------------------------- the chokepoint is STRUCTURAL -------
@@ -335,6 +431,13 @@ foreach ($x in $missingFromDisk) { Write-Host "       in JSON, not on disk: $x" 
 Assert ($missingFromJson.Count -eq 0 -and $missingFromDisk.Count -eq 0) 'deployedSuites EXACTLY equals the deployed-*-e2e.yml files on disk'
 
 $ciText = Get-Content -Raw (Join-Path $wfDir 'ci.yml')
+# The appliance workflow is now invariant C's whole evidence base. If it is
+# renamed or deleted the gate would refuse every build with
+# APPLIANCE-EVIDENCE-MISSING, which is fail-closed but baffling; catching the
+# rename HERE names the actual cause.
+$applPath = Join-Path (Split-Path -Parent $reqPath) "../.github/workflows/$([string]$req.applianceWorkflowFile)"
+Assert (Test-Path $applPath) "applianceWorkflowFile '$($req.applianceWorkflowFile)' exists on disk (a rename breaks this test, not every future build with a confusing refusal)"
+
 foreach ($j in @($req.ciRequiredJobs)) {
   Assert ($ciText -match "(?m)^  $([regex]::Escape([string]$j)):") "required job '$j' exists in ci.yml (a rename breaks this test, not the gate silently)"
 }

@@ -784,6 +784,30 @@ supersede note above. The other decisions in this list remain open.]*
 sentence inside. The live CONFIG MISMATCH probe record is in
 02_PROJECT_STATUS.md.]*
 
+*[Amendment, owner decision 2026-09-07 — WHERE THE LIVE-INSTANCE PROOF COMES
+FROM. The content-equality rule below is UNCHANGED and still governs; what
+changed is its evidence source. Aurora ICU installs and runs entirely on a
+hospital's own server and never contacts a cloud service, yet the ship gate
+required a live hosted staging deployment to exist before anything could be
+built — so a suspended Render service made the hospital installer unbuildable
+for a reason unrelated to the installer. The owner ruled that a cloud
+dependency must not stand between this system and a hospital. Invariant C
+("a real instance built from this content boots and serves") is now proved by
+`package-appliance.yml`, which builds the real server image and boots it
+against a real PostgreSQL in CI, and is matched on CONTENT exactly as before
+(`Test-ShipAppliance` in `installer/ship-gate.ps1`). The hosted form,
+`Test-ShipStaging`, is RETAINED with its tests and is re-wired in one line if
+Aurora ever ships from a live hosted environment again. THE COST, recorded
+here and not softened: the 16 deployed clinical suites need a long-lived
+hosted instance to dispatch against, so with no cloud they cannot gate —
+`clinicalSuitesGate` in `scripts/ship-requirements.json` is `disabled`, the
+gate prints a banner saying so on every run and names it in its verdict, and
+the suite inventory is still drift-checked so none can be lost. The switch is
+a committed value inside the shipping commit; there is deliberately no
+parameter, variable or prompt that changes it. Restoring them to `required`
+is wiring, not rewriting: `APP_ENV=staging` on a locally booted appliance
+seeds the same 14 demo patients the suites already expect.]*
+
 **The stale gate's dead zone (found live 2026-07-10, fixed same day):**
 two CORRECT mechanisms combined into a state where no suite could pass.
 Render's build filter (rootDir `server/` in render.yaml) skips deploys
