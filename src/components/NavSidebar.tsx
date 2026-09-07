@@ -5,6 +5,7 @@ import {
 } from './icons'
 import { lastPatientId } from '../lib/patientContext'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
+import { useAiSection } from '../lib/aiAvailability'
 import { APP_VERSION } from '../lib/version'
 
 export type NavKey = 'dashboard' | 'beds' | 'observations' | 'orders' | 'labs' | 'labentry' | 'timeline' | 'ai' | 'reception' | 'awaiting' | 'admissions' | 'discharges' | 'discharged' | 'print' | 'users' | 'backup' | 'formulary' | 'labcatalog' | 'ordersets' | 'config' | 'alerts' | 'statistics' | 'settings'
@@ -20,6 +21,10 @@ interface NavItem {
   /** any-of permissions for MULTI-TENANT areas (Configuration: shown to
    *  whoever holds at least one section's authority) */
   anyPerm?: Permission[]
+  /** false HIDES the item regardless of permission — for a feature the
+   *  server reports as not on this install (the AI Assistant on a no-AI
+   *  build, lib/aiAvailability.ts). Permission still applies on top. */
+  when?: boolean
 }
 
 interface NavSidebarProps {
@@ -42,6 +47,9 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
   const session = getSession()
   const title = session?.jobTitle
   const allowed = (p?: Permission) => !p || (!!title && hasPermission(title, p))
+  /* the AI section exists only where the server reports the AI enabled
+     (no-AI installs show no entry at all — owner's decision 2026-09-06) */
+  const aiSection = useAiSection()
 
   /* Persistent patient context: the six patient-scoped sections carry the
      last-viewed patient across section switches (pick Ahmed → Lab Entry →
@@ -59,7 +67,7 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     { key: 'labs', label: 'Labs & Imaging', icon: <IconFlask size={16} />, to: withPatient('/labs'), perm: 'results.view' },
     { key: 'labentry', label: 'Lab Entry', icon: <IconPencil size={16} />, to: withPatient('/lab-entry'), perm: 'results.document' },
     { key: 'timeline', label: 'Timeline', icon: <IconClock />, to: withPatient('/timeline'), perm: 'patients.view' },
-    { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: withPatient('/ai'), perm: 'ai.view' },
+    { key: 'ai', label: 'AI Assistant', icon: <IconBrain />, to: withPatient('/ai'), perm: 'ai.view', when: aiSection === 'shown' },
     /* Inpatient Reception — the ward's FRONT DOOR (find-or-register the
        patient, create the admission, stop). Gated on `admissions.create`,
        which the office Administrator holds and `adt.admit` is not: the
@@ -111,7 +119,7 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     { key: 'settings', label: 'Settings', icon: <IconSettings />, to: '/settings' },
   ]
   const items = all.filter(it =>
-    it.anyPerm ? (!!title && it.anyPerm.some(p => hasPermission(title, p))) : allowed(it.perm))
+    it.when !== false && (it.anyPerm ? (!!title && it.anyPerm.some(p => hasPermission(title, p))) : allowed(it.perm)))
 
   return (
     <nav className="nav-sidebar" aria-label="Primary">

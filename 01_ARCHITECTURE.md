@@ -532,6 +532,26 @@ topology, NOT a hospital product — see the Phase 2 record in 02 for the
 production-build refusal audit and everything deliberately out of
 scope.]*
 
+*[Attributed addition, 2026-09-06 (owner's decision — the no-AI ICU
+build): where the AI is OFF on an install (`AI_PROVIDER=none`, which the
+installer writes when the build carried no model or the server has no
+GPU), the app shows **no AI section at all** — no "AI Assistant" nav
+entry, and `/ai` redirects to the profile's landing view. The server
+reports the fact on `/healthz` as `aiAssistant: "disabled" | "enabled"`
+(derived from `AI_PROVIDER == "none"` and only that — a misconfigured
+provider stays visible so its error is seen); the frontend resolves it at
+RUNTIME from the one `/healthz` fetch it already makes
+(`src/lib/aiAvailability.ts`), never baked into the bundle, and shows the
+section only on the literal `"enabled"`. One bundle therefore serves both
+kinds of install, and `aurora-enable-ai.ps1` (flip + restart) makes the
+section appear with no app update. The `ai.view` permission gate is
+unchanged and still applies on top. "Warn and disable, never refuse" is
+unchanged in substance — Aurora runs fully, and the 503 carrying the
+recorded reason still answers a direct API call — but the honest reason is
+no longer "surfaced on the AI screen" (there is none to surface it on);
+Settings › System Information states "AI assistant: not on this install"
+instead. Gate: `scripts/ai-section-gate.mjs` (CI).]*
+
 - **The API base is resolved at RUNTIME, never baked into the bundle.**
   The bundle ships `/runtime-config.js` (a classic script, executed
   before the module bundle — no post-render round-trip) whose default is

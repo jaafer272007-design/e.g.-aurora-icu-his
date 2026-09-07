@@ -54,6 +54,17 @@ jobs:
       # pinned fact in turn (the gate's header records how).
       - name: Awaiting-bed stays wired to assignment, bedless=true, beds.assign (Ward A2)
         run: node scripts/awaiting-bed-gate.mjs
+      # No-AI installs (owner's decision 2026-09-06): the AI Assistant SECTION
+      # exists only where the server reports the AI enabled — /healthz
+      # `aiAssistant`, derived from AI_PROVIDER == "none" (the deliberate off
+      # switch, and only that). The nav entry and BOTH /ai routes are gated on
+      # it, on top of ai.view, shown ONLY on the literal "enabled"; the one
+      # healthz fetch feeds the store on both its outcomes. SOURCE check like
+      # the two above — presence and wiring, not firing; teeth measured before
+      # commit by breaking each pinned fact in turn (the gate's header records
+      # how). The rendered proof was a session-local pass against a stub API.
+      - name: AI section is shown only when the server reports the AI enabled (no-AI build)
+        run: node scripts/ai-section-gate.mjs
       # PR-2 (environment separation): VITE_APP_ENV is allow-listed at the ONE
       # chokepoint every build entry point passes through — vite.config.ts —
       # mirroring the server's AppEnv.Known (the source of truth). Three legs,
@@ -158,6 +169,12 @@ jobs:
           [ -n "$up" ] || { echo "no healthz after 180s"; tail -30 boot.log; exit 1; }
           curl -s http://localhost:8080/healthz | grep -q '"environment":"production"' \
             || { echo "healthz did not report environment=production"; curl -s http://localhost:8080/healthz; exit 1; }
+          # no-AI installs (2026-09-06): with AI_PROVIDER unset (= "none", the
+          # deliberate off switch the installer writes) the server must SAY the
+          # AI Assistant is disabled — the frontend hides the whole AI section on
+          # exactly this field. A real boot, a real answer — not a source grep.
+          curl -s http://localhost:8080/healthz | grep -q '"aiAssistant":"disabled"' \
+            || { echo "healthz did not report aiAssistant=disabled with AI_PROVIDER unset"; curl -s http://localhost:8080/healthz; exit 1; }
           # THE POSTGRES CLIENT COMES FROM THE SERVICE CONTAINER, NOT FROM apt.
           # This job used to `apt-get install postgresql-client` on every run —
           # a network fetch in the middle of CI — and it STALLED TWICE in one

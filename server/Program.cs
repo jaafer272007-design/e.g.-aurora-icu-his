@@ -312,7 +312,20 @@ var build = ResolveRunningBuild();
 if (!AppEnv.IsKnown)
     Console.WriteLine($"[AURORA] APP_ENV is '{AppEnv.Name}' — not a known environment (development|staging|production). " +
         "Authentication is FAIL-CLOSED: no token will be issued or validated until APP_ENV is configured.");
-app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build, environment = AppEnv.Name }));
+/* aiAssistant = whether the AI Assistant is ON THIS INSTALL (owner's
+   decision 2026-09-06, the no-AI ICU build). "disabled" exactly when
+   AI_PROVIDER is "none" — the deliberate off switch the installer writes
+   when the build carried no model or the server has no GPU; anything
+   else is "enabled" (a MISCONFIGURED provider therefore stays visible and
+   its screen shows the configuration error — a fault must not hide
+   behind the off switch). The frontend shows the AI section (nav entry +
+   /ai routes) ONLY on "enabled" (src/lib/aiAvailability.ts): resolved at
+   runtime from this field, never baked into the bundle, so one bundle
+   serves both kinds of install and aurora-enable-ai.ps1 (flip + restart)
+   makes the section appear with no app update. Unauthenticated like the
+   rest of healthz — a yes/no about a feature, never the recorded REASON
+   (that stays in the 503 an authenticated caller receives). */
+app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build, environment = AppEnv.Name, aiAssistant = AiConfig.Provider == "none" ? "disabled" : "enabled" }));
 
 /* /build.txt (appliance Phase 1) — the SAME two-line contract the Pages
    deploy stamps into its artifact (sha, then environment), served

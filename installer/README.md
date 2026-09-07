@@ -42,7 +42,7 @@ The auto-wire above makes this **redundant on a normal native install**, but the
 powershell -ExecutionPolicy Bypass -File "C:\Aurora\server\scripts\aurora-enable-ai.ps1"
 ```
 
-It confirms a GPU + the on-disk AI payload, registers **AuroraAI**, makes a **surgical edit to `aurora.env`** (flip `AI_PROVIDER` none→openai, add the endpoint/model/timeout, drop the now-false "no GPU" message), and restarts `AuroraServer`. 🔴 **It touches zero database state** — no `initdb`, no role change, no migration of its own; **no secret is rotated and no clinician is logged out.** (If the install shipped *without* the AI payload — the ~150 MB no-AI build — it says so and stops; lay the payload down first. No data is touched either way.) The install-time "AI unavailable" message is now worded so that **adding a GPU never makes it false** — it speaks to *setup* and points at this command.
+It confirms a GPU + the on-disk AI payload, registers **AuroraAI**, makes a **surgical edit to `aurora.env`** (flip `AI_PROVIDER` none→openai, add the endpoint/model/timeout, drop the now-false "no GPU" message), and restarts `AuroraServer`. 🔴 **It touches zero database state** — no `initdb`, no role change, no migration of its own; **no secret is rotated and no clinician is logged out.** (If the install shipped *without* the AI payload — the ~150 MB no-AI build — it says so and stops; lay the payload down first. No data is touched either way.) The install-time "AI unavailable" message is now worded so that **adding a GPU never makes it false** — it speaks to *setup* and points at this command. While the AI is off the app shows **no AI section at all** (2026-09-06 — no "AI Assistant" entry, `/ai` redirects; Settings › System Information says "AI assistant: not on this install"); after this command the entry appears on the next page load — the server reports the change on `/healthz`, nothing in the app needs updating.
 
 ### Update the app on a hospital box later (`AuroraUpdate-<ver>-PROTECTED.exe`)
 
@@ -150,7 +150,9 @@ cd installer
 .\build.ps1 -PgZip C:\downloads\postgresql-16.x-windows-x64-binaries.zip `
             -ModelDir C:\aurora-ai\model -LlamaDir C:\aurora-ai\llama
 # → installer\Output\AuroraSetup-1.0.0-UNPROTECTED.exe  (plain build: smoke tests only)
-# (omit -ModelDir/-LlamaDir to build an installer that ships with the AI DISABLED)
+# (omit -ModelDir/-LlamaDir to build an installer that ships with the AI DISABLED —
+#  and, since 2026-09-06, with NO AI section in the app: no "AI Assistant" nav entry,
+#  /ai redirects to the dashboard, Settings says "AI assistant: not on this install")
 # SHIPPING builds use build-protected.ps1 instead — same inputs, plus the company
 # install password typed at a masked prompt → AuroraSetup-1.0.0-PROTECTED.exe.
 # The password is held by the vendor's engineer alone and typed on site at every

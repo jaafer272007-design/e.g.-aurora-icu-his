@@ -1,12 +1,12 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-05 · current through INSTALLER — the Microsoft
-Visual C++ runtime the bundled PostgreSQL needs is now CARRIED and INSTALLED
-by Setup itself (a freshly imaged laptop failed at "Setting up Aurora" with
-`initdb failed (-1073741515)` = STATUS_DLL_NOT_FOUND on 2026-09-05);
-provisioning probes that initdb STARTS and explains loader failures in words;
-CI gains a pure-ASCII gate over the installer scripts; AppVer 1.0.0 → 1.3.0
-(above the ledger's 1.2.0 floor) — the record below.** This line is THE
+**Last updated: 2026-09-06 · current through THE NO-AI BUILD — the AI
+Assistant SECTION now exists only where the server reports the AI enabled
+(`/healthz` `aiAssistant`, derived from `AI_PROVIDER`): a no-AI install shows
+no "AI Assistant" nav entry, `/ai` redirects to the landing view, Settings
+states "AI assistant: not on this install"; resolved at runtime, one bundle
+for both kinds of install; structural gate + a real-boot CI assertion (draft
+PR #231, stacked on #230) — the record below.** This line is THE
 recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
@@ -34,6 +34,86 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-09-06 · THE NO-AI BUILD — THE AI ASSISTANT SECTION EXISTS ONLY WHERE
+THE SERVER REPORTS THE AI ENABLED (owner's decision; branch
+`claude/installer-no-ai-section`, draft PR #231, stacked on #230).**
+THE DECISION: the next `AuroraSetup.exe` is an ICU-only, no-AI build (built
+with no `-ModelDir`/`-LlamaDir`; the installer then writes `AI_PROVIDER=none`
+with the honest reason). Until now such an install still showed an "AI
+Assistant" entry in the sidebar whose screen answered every question with a
+503 ("AI unavailable: the AI runtime was not included in this build…") —
+honest, but advertising a feature the install does not have. The owner asked
+for the exe WITHOUT the AI section. (Also settled in the same exchange: PR
+#229, the Aurora-HIS session bridge, stays an unmerged draft — none of it is
+in `main`, so an installer built from `main` carries none of the HIS
+integration; the only "Aurora HIS" text on `main` is the pre-existing
+branding — `Publisher` in `aurora.iss`, `APP_VERSION`, the Login footer and
+the print header — which is cosmetic and untouched here.)
+
+THE MECHANISM — the SERVER decides, the frontend reads it at RUNTIME.
+**Server:** `/healthz` gains `aiAssistant: "disabled" | "enabled"`,
+`"disabled"` exactly when `AiConfig.Provider == "none"` and ONLY that — a
+misconfigured provider reports `"enabled"` so its error stays visible instead
+of hiding behind the off switch; unauthenticated like the rest of healthz, a
+yes/no about a feature, never the recorded reason (that stays in the
+authenticated 503). **Frontend:** `src/lib/aiAvailability.ts` (a
+`useSyncExternalStore` store) reads the field from the ONE `/healthz` fetch
+`EnvironmentGate` already makes: `'pending'` until it answers (the section is
+not shown — hidden-until-reported, so a no-AI install never flashes it),
+`'shown'` ONLY on the literal `"enabled"`, `'hidden'` on `"disabled"`, an
+absent field (a server from before this change) or an unreachable server. A
+pure-mock dev session (no API at all) keeps the section exactly as before.
+`NavSidebar` gates the item on it (`when: aiSection === 'shown'`, honoured by
+the filter); both `/ai` routes sit behind the new `RequireAiAssistant`
+(redirects to the profile's landing view; renders nothing while pending)
+INSIDE the unchanged `RequireSession permission="ai.view"`; Settings › System
+Information gains one cell — "AI assistant: enabled / not on this install /
+not reported by this server". Never baked into the bundle: one bundle serves
+both kinds of install, and `aurora-enable-ai.ps1` (flip + restart) makes the
+section appear on the next page load with no app update — its DONE line now
+says so. "Warn and disable, never refuse" is unchanged in substance (Aurora
+runs fully; the 503 with the recorded reason still answers a direct API call);
+what changed is that a feature that is not on the install is no longer
+advertised — the honest reason is no longer "surfaced on the AI screen"
+because there is no screen (01, dated addition beside the rule).
+
+GATES. `scripts/ai-section-gate.mjs` (CI, beside the other structural gates;
+comments stripped first) pins the healthz derivation, the store's exact
+`'enabled'`-only mapping and initial state, both fetch outcomes feeding the
+store, the nav `when` + filter, both routes' wrapping, and the guard's
+redirect/null branches. TEETH MEASURED before commit on seven mutations in a
+scratch copy — healthz field removed; store widened to show on any value; nav
+`when` dropped; one route unwrapped; the redirect removed; children returned
+before the check; the failed-fetch path unrecorded — each failed NAMING the
+fact; the unmodified control passed. The CI `production-seed` job now also
+asserts a REAL boot with `AI_PROVIDER` unset reports
+`"aiAssistant":"disabled"` (a real answer, not a source grep).
+
+VERIFIED (session-local). `tsc -b --force` clean; development AND production
+`vite build` clean; all four structural gates pass; `dotnet build -c Release`
+clean; every installer `.ps1`/`.iss` still pure ASCII. A REAL server (SQLite
+dev mode), four boots: `AI_PROVIDER` unset → `disabled`; `openai` →
+`enabled`; `none` → `disabled`; `bogus` → `enabled` (visible, as designed). A
+RENDERED Playwright pass of the built development bundle against a stub API
+answering the real healthz shape, 12/12: disabled → 18 sidebar items with NO
+"AI Assistant" (Timeline → Reception with nothing between), direct `/ai`
+lands on `/workspace`, Settings says "not on this install"; enabled → the
+entry is back and `/ai` renders; field absent → hidden again; zero page
+errors. NOT verifiable here: nothing new for ISCC (no installer logic
+changed); the proof that matters is the no-AI `AuroraSetup` built from `main`
+after #230 and #231 merge — sign in, and the sidebar has no AI entry.
+
+THE NO-AI BUILD RECIPE (for the record; the build machine, after both PRs are
+merged and CI is green on the merge commit): `git pull` on `main`, clean
+tree; `cd installer; .\build-protected.ps1 -PgZip <postgresql-16 binaries
+zip>` with NO `-ModelDir`/`-LlamaDir` (the VC++ runtime is downloaded and
+signature-checked automatically, or `-VcRedist <file>` offline); typed
+install password; output `Output\AuroraSetup-1.3.0-PROTECTED.exe` PLUS its
+`.bin` slice(s) — ship the whole folder; then commit the `SHIPPED_VERSIONS.txt`
+line the build appends. The ship gate refuses a dirty tree, a tip that is not
+`origin/main`, or CI not green for the exact commit (wait for the whole run;
+avoid two quick pushes to `main` — `cancel-in-progress` cancels the first).
 
 **2026-09-05 · INSTALLER — THE VISUAL C++ RUNTIME PREREQUISITE, CARRIED AND
 INSTALLED BY SETUP (a field failure on a freshly imaged laptop; branch
@@ -13490,6 +13570,7 @@ substance is documented in the sections above.]*
 
 | PR | Branch |
 |---|---|
+| #231 | claude/installer-no-ai-section |
 | #230 | claude/installer-vc-runtime |
 | #45 | claude/layer4-labcatalog-ordersets |
 | #44 | claude/docs-formulary-authority |
