@@ -1,6 +1,10 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-06 (later) · current through THE ICU EDITION — the
+**Last updated: 2026-09-07 · current through THE 32-BIT INSTALLER CORRECTION —
+the VC++ runtime probe read SysWOW64 and aborted a good install on a real
+hospital laptop; fixed to the sysnative constant, gated, and the whole
+installer audited for the same class (PR #232) — the record below. Prior:
+THE ICU EDITION — the
 hospital exe ships "only the ICU": the module-2 screens built into this app
 in 2026-08 (Inpatient Reception, Awaiting Bed, the four reception vocabularies
 in Configuration, the Admissions pointer to Reception) exist only where the
@@ -35,6 +39,104 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-09-07 · THE 32-BIT INSTALLER CORRECTION — THE VC++ PROBE READ SysWOW64
+AND ABORTED AN INSTALL THAT HAD JUST SUCCEEDED (field failure on the same
+hospital laptop; branch `claude/installer-icu-edition`, PR #232; corrects the
+2026-09-05 #230 record below, which is left intact).**
+THE FAILURE: the first `AuroraSetup-1.3.0-UNPROTECTED.exe` — built on the
+owner's PC, ISCC 6.7.3, 82.8 s, the whole #230 → #231 → #232 stack in it — was
+run next-next-finish on the laptop that had died with `initdb failed
+(-1073741515)`. It did NOT die there. It stopped one step earlier, at
+"Installing the Microsoft Visual C++ runtime", with `EnsureVcRuntime`'s own
+fail-closed dialog: *the runtime installer reported success (code 0), but
+vcruntime140.dll, vcruntime140_1.dll and msvcp140.dll are still not all
+present*. Nothing had been provisioned, which is what fail-closed is for.
+
+THE MEASUREMENT that settled it, taken on that laptop straight afterwards:
+`C:\Windows\System32` — all three DLLs **True**; `C:\Windows\SysWOW64` — all
+three **False**; `HKLM\...\VC\Runtimes\x64` — `Installed=1`, `14.44.35211`,
+the exact version the build had downloaded. `vc_redist.x64.exe` had installed
+perfectly. The probe was reading the wrong directory and failed the install it
+had just fixed.
+
+ROOT CAUSE, and it is a comment. `aurora.iss` [Setup] carried: *"Setup runs in
+64-bit install mode automatically on a matching OS. (Inno 6.4+ removed the old
+ArchitecturesInstall64Bit directive in favour of this one.)"* **Both sentences
+are false**, checked against Inno's documentation. `ArchitecturesAllowed`
+restricts which MACHINES Setup runs on; 64-bit install mode is a separate,
+still-current directive, `ArchitecturesInstallIn64BitMode`, not set here — and
+its documented default for a 32-bit Setup is blank, which means *"Setup will
+always use 32-bit install mode"*. In that mode the `sys` constant maps to the
+32-bit system directory. `EnsureVcRuntime` was written to match the comment
+rather than the behaviour, so it probed SysWOW64 — where the **x64**
+redistributable writes nothing, by design. WHY IT PASSED EVERYWHERE FIRST: any
+machine that also carries the **x86** redistributable has those DLLs in
+SysWOW64, so the wrong probe passed by accident on every development and test
+machine. It could only fail on a clean, locked-down hospital image — exactly
+the population #230 was written to rescue. The same shape as #230 itself: a
+prerequisite that is invisible until the machine is genuinely clean.
+
+THE FIX. `EnsureVcRuntime` resolves with the `sysnative` constant, the
+documented way for a 32-bit installer to name the 64-bit system directory —
+the one the x64 `initdb.exe` actually loads from. The failure dialog now names
+"the 64-bit C:\Windows\System32 folder" and the two `Log()` lines name it too
+(recording the alias verbatim would have put `C:\Windows\Sysnative` in the log
+— a per-process path no support engineer can open). The false [Setup] comment
+is replaced with what is true, plus the three consequences a reader must carry
+(the `sys` constant is SysWOW64; `HKLM\SOFTWARE` reads go through
+`Wow6432Node`; a bare `powershell.exe` is the 32-bit copy) and an explicit note
+that staying 32-bit is DELIBERATE — so nobody "fixes" it by flipping the mode
+and silently changing all nine `powershell.exe` children. `aurora-update.iss`
+carried the same false directive claim and is corrected too (it uses no system
+constants, so it had no behavioural consequence — the wording was the risk).
+
+THE GATE (`ci.yml`, `installer-powershell`): *"The VC++ runtime check must
+resolve the 64-bit system directory"* pins three facts that only make sense as
+a set — `EnsureVcRuntime` uses `sysnative`, does not use `sys`, and 64-bit
+install mode stays off — and if the mode is ever switched on the gate fails and
+says the probe must become `sys`. MEASURED TEETH: four mutations on scratch
+copies (never the real file, so the gate cannot dirty `installer\`), each
+required to fail by its own name, including **renaming the function away** so
+the gate cannot pass vacuously. Verified GREEN on the engine that ships: all
+four teeth bit on Windows PowerShell 5.1 in the real CI run for `9b66b2b`.
+
+THE AUDIT (15 agents, five lenses — file-system redirection, registry view,
+child-process bitness, the provisioning PowerShell, and an adversarial review
+of the fix itself; every finding then put to two independent refuters).
+**Zero additional defects confirmed.** THE ONE THAT MATTERED, and the answer is
+reassuring: the existing-install guard — the data-loss-adjacent one, which
+decides whether a hospital already has an Aurora database — is the ONLY
+registry read in `aurora.iss` (line 220) and it reads
+`HKLM\SYSTEM\CurrentControlSet\Services\...`. `HKLM\SYSTEM` is NOT subject to
+WOW64 redirection (only `HKLM\SOFTWARE` is), so 32-bit and 64-bit processes see
+identical data. **It is correct as written**, and would have been WRONG had it
+read `HKLM\SOFTWARE`.
+
+HONEST LIMITS. Five low-severity findings exceeded the verification cap and
+were NOT adversarially checked; they are not silently dropped: two were the
+[Setup] comment (already fixed mid-audit, which is why the refuters correctly
+rejected them as stale), two are acted on above (the updater wording, the log
+path), and the fifth is assessed here rather than changed — because Setup stays
+in 32-bit install mode, Inno registers its Add/Remove Programs entry under
+`HKLM\SOFTWARE\Wow6432Node\...`. Nothing in this installer reads that key
+(the guard uses services), Windows shows both views in the Add/Remove UI, and
+the only "fix" would be flipping the install mode — the change this record
+exists to warn against. Recorded, deliberately not changed. OPEN, not a defect
+today: `build.ps1`'s `-VcRedist` passthrough accepts any Microsoft-signed
+executable without checking it is the **x64** package, so an operator who
+passed the x86 file would stage it under the x64 name; both refuters judged
+this operator error against a written instruction rather than a defect, and it
+is left for the owner to decide.
+
+STILL UNPROVEN, and it is the only thing that counts: **the corrected exe has
+not yet been rebuilt and run on that laptop.** #230's three layers are now
+proven as far as a machine can prove them — the vc_redist download and
+Authenticode check ran, ISCC compiled, the runtime installed correctly on real
+hardware — but the next-next-finish that ends in a working Aurora has not
+happened yet. Not touched: `SHIPPED_VERSIONS.txt` (nothing has shipped),
+`04_OPERATIONS_RUNBOOK.md` (nothing changes for the operator — again, the
+point). **
 
 **2026-09-06 (later) · THE ICU EDITION — THE MODULE-2 SCREENS EXIST ONLY WHERE
 THE SERVER REPORTS THE FULL EDITION (owner's decision; branch

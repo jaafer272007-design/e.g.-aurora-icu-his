@@ -827,11 +827,11 @@ begin
     runtime check must resolve the 64-bit system directory" enforces the pair. }
   sysDir := ExpandConstant('{sysnative}');
   if FileExists(sysDir + '\vcruntime140.dll') and FileExists(sysDir + '\vcruntime140_1.dll') and FileExists(sysDir + '\msvcp140.dll') then begin
-    Log('VC++ runtime already present in ' + sysDir + ' - nothing to install');
+    Log('VC++ runtime already present in the 64-bit System32 (probed via ' + sysDir + ') - nothing to install');
     Result := True;
     Exit;
   end;
-  Log('VC++ runtime not (fully) present in ' + sysDir + ' - installing the bundled vc_redist.x64.exe');
+  Log('VC++ runtime not (fully) present in the 64-bit System32 (probed via ' + sysDir + ') - installing the bundled vc_redist.x64.exe');
   WizardForm.StatusLabel.Caption := 'Installing the Microsoft Visual C++ runtime (the database needs it)...';
   ExtractTemporaryFile('vc_redist.x64.exe');
   if not Exec(ExpandConstant('{tmp}\vc_redist.x64.exe'), '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, rc) then begin
