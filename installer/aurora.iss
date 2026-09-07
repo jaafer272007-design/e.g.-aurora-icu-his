@@ -30,9 +30,25 @@ DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 ; services + firewall + SCM require elevation
 PrivilegesRequired=admin
-; only 64-bit Windows (the payload - .NET win-x64, Postgres x64 - is 64-bit);
-; Setup runs in 64-bit install mode automatically on a matching OS. (Inno 6.4+
-; removed the old ArchitecturesInstall64Bit directive in favour of this one.)
+; only 64-bit Windows (the payload - .NET win-x64, Postgres x64 - is 64-bit).
+; READ THIS BEFORE ASSUMING SETUP IS 64-BIT, BECAUSE IT IS NOT.
+; ArchitecturesAllowed restricts WHICH MACHINES Setup will run on. It does NOT
+; put Setup into Inno's "64-bit install mode": that is a separate directive,
+; ArchitecturesInstallIn64BitMode, which is left blank here - and blank means,
+; in Inno's own words, "Setup will always use 32-bit install mode". (That
+; directive was not removed in 6.4; it is current and documented.) So Setup.exe
+; is a 32-BIT process, and therefore: the sys constant maps to SysWOW64, not
+; System32; HKLM\SOFTWARE reads go through Wow6432Node; and a bare
+; powershell.exe resolves to the 32-bit copy. That is deliberate - every [Code]
+; path below was proven under it - but it has to be read correctly.
+; These lines previously claimed the OPPOSITE ("Setup runs in 64-bit install
+; mode automatically on a matching OS"), and EnsureVcRuntime was written to
+; match the comment instead of the behaviour: it probed the sys constant for
+; the x64 Visual C++ runtime, so it looked in SysWOW64, found nothing, and
+; aborted an install whose runtime had just been installed correctly. A
+; hospital laptop proved that on 2026-09-06. Anything here that must see the
+; 64-bit system directory uses the sysnative constant, and the
+; installer-powershell CI job pins that pairing so it cannot regress.
 ArchitecturesAllowed=x64compatible
 ; ---- install-password wiring (two encrypted paths, one plain) ----
 ; CONFIGURED PATH (owner's decision 2026-07-25): the SINGLE COMPANY password.
