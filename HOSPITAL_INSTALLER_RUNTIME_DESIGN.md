@@ -194,6 +194,18 @@ below happens inside the wizard; no console, no Docker, no internet.
    install". The honest reason remains in the 503 a direct API call gets;
    it is no longer shown on a screen, because there is no screen. See
    01_ARCHITECTURE.md (AI section, 2026-09-06 addition).]*
+
+   *[Amendment, 2026-09-06 (later) — owner's decision, the ICU-only build:
+   the installer writes `AURORA_EDITION=icu` into `aurora.env`. The server
+   reports it on `/healthz` (`edition`) and the app hides the module-2
+   screens — Inpatient Reception, Awaiting Bed, the four reception
+   vocabularies in Configuration, the Admissions pointer to Reception — on
+   it. Wards stays (the bed registry depends on it). No wizard page: the
+   hospital build is the ICU edition, full stop; `full` is set by editing
+   the line and restarting AuroraServer (no update), and by `render.yaml` /
+   the appliance for the validator's testbed. The server's default when the
+   key is absent is also `icu`, so an older install updated in place stays
+   ICU-only. See 01_ARCHITECTURE.md (editions addition, 2026-09-06).]*
 8. **Ready to install → Install.**
 
 **What the installer does on Install (all silent, no prerequisites to fetch):**

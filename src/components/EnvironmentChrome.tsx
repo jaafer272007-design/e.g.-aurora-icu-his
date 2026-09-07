@@ -3,6 +3,7 @@ import './EnvironmentChrome.css'
 import { APP_ENV } from '../lib/env'
 import { apiHealthUrl, apiUnavailableLatch } from '../lib/api'
 import { recordAiAvailability } from '../lib/aiAvailability'
+import { recordEdition } from '../lib/edition'
 
 /* ==================== §11 step 3 — environment chrome ====================
    The frontend-side analogues of the server's boot tripwires: a
@@ -64,11 +65,12 @@ export function EnvironmentGate({ children }: { children: ReactNode }) {
           /* the SAME answer decides whether the AI section exists on this
              install (lib/aiAvailability.ts) — one fetch, two readers */
           recordAiAvailability(h)
+          recordEdition(h)
           if (!h) return // unreachable / non-JSON — not a verdict
           const reported = typeof h.environment === 'string' ? h.environment : '<none reported>'
           if (reported !== APP_ENV) setState({ kind: 'mismatch', reported })
         })
-        .catch(() => { recordAiAvailability(null) /* unreachable is not an environment verdict; the AI section stays hidden */ })
+        .catch(() => { recordAiAvailability(null); recordEdition(null) /* unreachable is not an environment verdict; the AI section stays hidden and the edition reads icu (show less) */ })
     }
     return () => window.removeEventListener('aurora:api-unavailable', onUnavailable)
   }, [])

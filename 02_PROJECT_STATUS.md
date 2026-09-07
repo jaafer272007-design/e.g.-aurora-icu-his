@@ -1,12 +1,20 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-06 · current through THE NO-AI BUILD — the AI
-Assistant SECTION now exists only where the server reports the AI enabled
-(`/healthz` `aiAssistant`, derived from `AI_PROVIDER`): a no-AI install shows
-no "AI Assistant" nav entry, `/ai` redirects to the landing view, Settings
-states "AI assistant: not on this install"; resolved at runtime, one bundle
-for both kinds of install; structural gate + a real-boot CI assertion (draft
-PR #231, stacked on #230) — the record below.** This line is THE
+**Last updated: 2026-09-07 · current through THE 32-BIT INSTALLER CORRECTION —
+the VC++ runtime probe read SysWOW64 and aborted a good install on a real
+hospital laptop; fixed to the sysnative constant, gated, and the whole
+installer audited for the same class (PR #232). PROVEN ON HARDWARE 09-07: the
+rebuilt exe installs on the laptop that failed, with no AI and no module-2
+screens; the merge, staging, the 16 suites and the protected build remain —
+the record below. Prior:
+THE ICU EDITION — the
+hospital exe ships "only the ICU": the module-2 screens built into this app
+in 2026-08 (Inpatient Reception, Awaiting Bed, the four reception vocabularies
+in Configuration, the Admissions pointer to Reception) exist only where the
+server reports the FULL edition (`/healthz` `edition`, from `AURORA_EDITION`,
+default `icu`; the installer writes `icu`, staging and the appliance set
+`full`); Wards stays; structural gate + a real-boot CI assertion (draft PR
+#232, stacked on #231 and #230) — the record below.** This line is THE
 recency marker and is
 refreshed with each update (03, Documentation discipline). Any "Last updated"
 line found deeper in the body is a historical stratum from when it sat at the
@@ -34,6 +42,231 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-09-07 · THE 32-BIT INSTALLER CORRECTION — THE VC++ PROBE READ SysWOW64
+AND ABORTED AN INSTALL THAT HAD JUST SUCCEEDED (field failure on the same
+hospital laptop; branch `claude/installer-icu-edition`, PR #232; corrects the
+2026-09-05 #230 record below, which is left intact).**
+THE FAILURE: the first `AuroraSetup-1.3.0-UNPROTECTED.exe` — built on the
+owner's PC, ISCC 6.7.3, 82.8 s, the whole #230 → #231 → #232 stack in it — was
+run next-next-finish on the laptop that had died with `initdb failed
+(-1073741515)`. It did NOT die there. It stopped one step earlier, at
+"Installing the Microsoft Visual C++ runtime", with `EnsureVcRuntime`'s own
+fail-closed dialog: *the runtime installer reported success (code 0), but
+vcruntime140.dll, vcruntime140_1.dll and msvcp140.dll are still not all
+present*. Nothing had been provisioned, which is what fail-closed is for.
+
+THE MEASUREMENT that settled it, taken on that laptop straight afterwards:
+`C:\Windows\System32` — all three DLLs **True**; `C:\Windows\SysWOW64` — all
+three **False**; `HKLM\...\VC\Runtimes\x64` — `Installed=1`, `14.44.35211`,
+the exact version the build had downloaded. `vc_redist.x64.exe` had installed
+perfectly. The probe was reading the wrong directory and failed the install it
+had just fixed.
+
+ROOT CAUSE, and it is a comment. `aurora.iss` [Setup] carried: *"Setup runs in
+64-bit install mode automatically on a matching OS. (Inno 6.4+ removed the old
+ArchitecturesInstall64Bit directive in favour of this one.)"* **Both sentences
+are false**, checked against Inno's documentation. `ArchitecturesAllowed`
+restricts which MACHINES Setup runs on; 64-bit install mode is a separate,
+still-current directive, `ArchitecturesInstallIn64BitMode`, not set here — and
+its documented default for a 32-bit Setup is blank, which means *"Setup will
+always use 32-bit install mode"*. In that mode the `sys` constant maps to the
+32-bit system directory. `EnsureVcRuntime` was written to match the comment
+rather than the behaviour, so it probed SysWOW64 — where the **x64**
+redistributable writes nothing, by design. WHY IT PASSED EVERYWHERE FIRST: any
+machine that also carries the **x86** redistributable has those DLLs in
+SysWOW64, so the wrong probe passed by accident on every development and test
+machine. It could only fail on a clean, locked-down hospital image — exactly
+the population #230 was written to rescue. The same shape as #230 itself: a
+prerequisite that is invisible until the machine is genuinely clean.
+
+THE FIX. `EnsureVcRuntime` resolves with the `sysnative` constant, the
+documented way for a 32-bit installer to name the 64-bit system directory —
+the one the x64 `initdb.exe` actually loads from. The failure dialog now names
+"the 64-bit C:\Windows\System32 folder" and the two `Log()` lines name it too
+(recording the alias verbatim would have put `C:\Windows\Sysnative` in the log
+— a per-process path no support engineer can open). The false [Setup] comment
+is replaced with what is true, plus the three consequences a reader must carry
+(the `sys` constant is SysWOW64; `HKLM\SOFTWARE` reads go through
+`Wow6432Node`; a bare `powershell.exe` is the 32-bit copy) and an explicit note
+that staying 32-bit is DELIBERATE — so nobody "fixes" it by flipping the mode
+and silently changing all nine `powershell.exe` children. `aurora-update.iss`
+carried the same false directive claim and is corrected too (it uses no system
+constants, so it had no behavioural consequence — the wording was the risk).
+
+THE GATE (`ci.yml`, `installer-powershell`): *"The VC++ runtime check must
+resolve the 64-bit system directory"* pins three facts that only make sense as
+a set — `EnsureVcRuntime` uses `sysnative`, does not use `sys`, and 64-bit
+install mode stays off — and if the mode is ever switched on the gate fails and
+says the probe must become `sys`. MEASURED TEETH: four mutations on scratch
+copies (never the real file, so the gate cannot dirty `installer\`), each
+required to fail by its own name, including **renaming the function away** so
+the gate cannot pass vacuously. Verified GREEN on the engine that ships: all
+four teeth bit on Windows PowerShell 5.1 in the real CI run for `9b66b2b`.
+
+THE AUDIT (15 agents, five lenses — file-system redirection, registry view,
+child-process bitness, the provisioning PowerShell, and an adversarial review
+of the fix itself; every finding then put to two independent refuters).
+**Zero additional defects confirmed.** THE ONE THAT MATTERED, and the answer is
+reassuring: the existing-install guard — the data-loss-adjacent one, which
+decides whether a hospital already has an Aurora database — is the ONLY
+registry read in `aurora.iss` (line 220) and it reads
+`HKLM\SYSTEM\CurrentControlSet\Services\...`. `HKLM\SYSTEM` is NOT subject to
+WOW64 redirection (only `HKLM\SOFTWARE` is), so 32-bit and 64-bit processes see
+identical data. **It is correct as written**, and would have been WRONG had it
+read `HKLM\SOFTWARE`.
+
+HONEST LIMITS. Five low-severity findings exceeded the verification cap and
+were NOT adversarially checked; they are not silently dropped: two were the
+[Setup] comment (already fixed mid-audit, which is why the refuters correctly
+rejected them as stale), two are acted on above (the updater wording, the log
+path), and the fifth is assessed here rather than changed — because Setup stays
+in 32-bit install mode, Inno registers its Add/Remove Programs entry under
+`HKLM\SOFTWARE\Wow6432Node\...`. Nothing in this installer reads that key
+(the guard uses services), Windows shows both views in the Add/Remove UI, and
+the only "fix" would be flipping the install mode — the change this record
+exists to warn against. Recorded, deliberately not changed. OPEN, not a defect
+today: `build.ps1`'s `-VcRedist` passthrough accepts any Microsoft-signed
+executable without checking it is the **x64** package, so an operator who
+passed the x86 file would stage it under the x64 name; both refuters judged
+this operator error against a written instruction rather than a defect, and it
+is left for the owner to decide.
+
+STILL UNPROVEN, and it is the only thing that counts: **the corrected exe has
+not yet been rebuilt and run on that laptop.** #230's three layers are now
+proven as far as a machine can prove them — the vc_redist download and
+Authenticode check ran, ISCC compiled, the runtime installed correctly on real
+hardware — but the next-next-finish that ends in a working Aurora has not
+happened yet. Not touched: `SHIPPED_VERSIONS.txt` (nothing has shipped),
+`04_OPERATIONS_RUNBOOK.md` (nothing changes for the operator — again, the
+point). **
+
+*[PROVEN ON HARDWARE, 2026-09-07 — this supersedes the STILL UNPROVEN
+paragraph above on its central point; the original wording is kept
+deliberately, per the supersede rule. The owner rebuilt from `5d319d7` and ran
+the resulting `AuroraSetup-1.3.0-UNPROTECTED.exe` on the SAME laptop that
+failed on 2026-09-05: **Setup completed** — no Visual C++ dialog, no "code 1",
+no `initdb failed (-1073741515)` — and the installed app shows **no AI
+Assistant** and **no module-2 screens** (Reception, Awaiting Bed). That closes,
+on the one machine whose failure opened them, all three gaps this record and
+#230 listed as code-reviewed-only: the real `vc_redist` chain on a bare
+machine, the ISCC compile of the new `[Files]`/`[Code]`, and the ICU-edition
+install. STILL NOT DONE, and none of it is optional before a hospital gets a
+file: the merge of #230 → #231 → #232 to `main` (the owner merges — 03,
+Branching), `ci.yml` green on `main`, the Render redeploy and the Pages
+dispatch, the 16 deployed suites, and only then `build-protected.ps1`. That
+script refuses today, correctly, with `SOURCE-NOT-ON-MAIN`: "the protected
+installer ships mainline commits only".]*
+
+**2026-09-06 (later) · THE ICU EDITION — THE MODULE-2 SCREENS EXIST ONLY WHERE
+THE SERVER REPORTS THE FULL EDITION (owner's decision; branch
+`claude/installer-icu-edition`, draft PR #232, stacked on #231 → #230).**
+THE DECISION: the hospital `AuroraSetup.exe` ships "only the ICU". Between
+2026-08-17 and 08-23 the hospital-direction module-2 screens were built INTO
+this app (#199 the four reception vocabulary tables + their migration — the
+first module-2 CODE on `main`; #202 their Configuration screens, #204 admission
+fields, #208 requirement-follows-the-bed, #209 the Reception screen, #212
+transfer refuses bedless, #211/#213 the Ward design, then Ward A1/A2/A7/B via
+#221–#223 on the reconstruct-pr197 branch) and are therefore in every
+installer built from `main`: Inpatient Reception (`/reception`), the
+awaiting-bed worklist (`/awaiting-bed`), four reception vocabularies in
+Configuration (Admission Types, Departments, Services, Sources of Admission)
+and the Admissions screen's pointer to Reception. The owner does not want
+them in the exe. (The Hospital Shell navigation, 40d218d / closed PR #228, is
+on a side branch only and was never on `main`; PR #229, the Bahmni bridge,
+stays an unmerged draft.)
+
+WHY HIDE, NOT DELETE — established by a four-reader / eight-verifier
+footprint pass over the tree (readers: frontend, server, history+branding,
+gates+suites; each checked by a completeness and a correctness verifier;
+refuted claims discarded, missing items added). Deleting is entangled: three
+EF migrations (`20260817075826_AddReceptionVocabularies`,
+`20260818003136_AddReceptionAdmissionFields`, `20260822123805_AddWards`); the
+`admissions.create` gate that runs on EVERY ICU admit (`AdtApi.cs:828`;
+doctors hold it — `Rbac.cs:92,155`); the boot-time Wards backfill
+(`Seeder.cs:121-137`) the ICU bed registry now depends on (a bed's area must
+be a configured ward — `BedRegistryApi.cs:83-90`, 400/409 otherwise); the
+updater's migration-skew guard (`aurora-update.ps1:99-124`); and ~650 lines of
+assertions in the ICU's own required `production-seed` CI job. Building from
+the last main commit with no module-2 content (aa566cc, #197 — #198 added only
+the design document and #199 the first tables) would drop #230's Visual C++ fix
+and everything since; and although the ship gate's source test is
+`merge-base --is-ancestor` (any mainline ancestor passes), its staging
+invariant refuses a build whose server tree staging does not serve — staging
+serves the current tip, so an old commit is refused (STAGING-CONTENT-MISMATCH). The ICU works without the module-2 UI: the ICU admit
+form always names a bed (`Admissions.tsx:274,416`), the reception codes are
+validated only when supplied (`AdtApi.cs:1043-1050`), and the only frontend
+path that admits WITHOUT a bed is Reception itself (`Reception.tsx:257`).
+
+THE MECHANISM — the same shape as the no-AI section. **Server:**
+`server/Core/Shared/Edition.cs` reads `AURORA_EDITION` once at boot: `"full"`
+→ full, ANYTHING ELSE → `icu` — the hospital-safe default, because
+`aurora-update.ps1` carries a hospital's `aurora.env` across unchanged and an
+older install updated in place has no line for it; an unrecognised value is
+logged once at boot. `/healthz` gains `edition`. NOT enforced on endpoints —
+the edition decides what the app ADVERTISES; the permission atoms remain the
+authorization boundary, unchanged. **Frontend:** `src/lib/edition.ts` (a
+`useSyncExternalStore` store fed by EnvironmentGate's one `/healthz` fetch):
+`'pending'` until it answers (module-2 items not shown — no flash on an ICU
+install); `"full"` OR an ABSENT field → `'full'` (a server from before
+editions IS the full app — the one reading that is true of it); `"icu"`, any
+other value, or unreachable → `'icu'` (show less, not more); a pure-mock dev
+session keeps every screen. `NavSidebar` gates Reception and Awaiting Bed
+(`when: edition === 'full'`); both routes sit behind the new
+`RequireFullEdition` (redirect to the landing view; null while pending) INSIDE
+their unchanged permission gates; `Configuration` gates the four reception
+tenants AND their fetches — **Wards deliberately not gated**; `Admissions`
+gates its Reception pointer; Settings › System Information gains "Edition:
+ICU only / Full / not reported (full)". **Installer and deployments:**
+`aurora-provision.ps1` writes `AURORA_EDITION=icu` inside the
+`AURORA-ENV-KEYS` region; `build.ps1` lists it in `$optionalEnvKeys` so the
+updater does not warn on older installs where absence is correct;
+`render.yaml` and `appliance/docker-compose.yml` set `full` (the validator's
+testbed keeps every screen). No wizard page. A hospital turns the ward
+screens on later with one line and a service restart — `04_OPERATIONS_RUNBOOK.md`
+§10 (new) says how, for IT.
+
+GATES. `scripts/edition-gate.mjs` (CI, beside the other structural gates;
+comments stripped) pins Edition.cs's exact mapping, the healthz field, the
+store's four readings and initial state, both fetch outcomes feeding the
+store, the two nav `when`s, both routes' wrapping, the guard's branches, the
+four gated tenants AND Wards staying ungated, the Admissions pointer, the
+installer line, the `build.ps1` optional entry, `render.yaml` and the
+appliance default. TEETH MEASURED before commit on THIRTEEN mutations in a
+scratch copy (default flipped to full; healthz field removed; absent field
+read as icu; Reception `when` dropped; `/awaiting-bed` unwrapped; guard
+bypassed; Departments ungated; Wards GATED; Admissions pointer ungated;
+installer line removed; optional entry removed; render.yaml `full` removed;
+failed-fetch path unrecorded) — each failed NAMING the fact; the control
+passed. The `production-seed` job also asserts a REAL boot with
+`AURORA_EDITION` unset reports `"edition":"icu"`. The existing gates are
+unaffected (`awaiting-bed-gate.mjs` still finds `/awaiting-bed` gated on
+`beds.assign`; `reception-required-fields-gate.mjs` reads the untouched
+Reception screen).
+
+VERIFIED (session-local). `tsc -b --force` clean; development AND production
+`vite build` clean; all five structural gates pass; `dotnet build -c Release`
+clean; every installer `.ps1`/`.iss` pure ASCII and parsing; `ci.yml`,
+`render.yaml`, the appliance compose file parse. A REAL server, five boots:
+`AURORA_EDITION` unset → `icu`; `icu` → `icu`; `full` → `full`; `Full` →
+`full`; `ful` → `icu` plus the boot warning. A RENDERED Playwright pass of the
+built development bundle against a stub API answering the real healthz shape
+(icu → full → field absent), signed in as the Hospital Administrator (the
+role that sees everything on the full edition) and as a doctor, 18/18: no
+Reception, no Awaiting Bed, both routes redirect to `/admin`, Configuration
+shows Wards and Hospital Identity but none of the four vocabularies, no
+Reception pointer on Admissions, Settings says "ICU only", the doctor also
+sees no AI Assistant; full → everything back and `/reception` renders; absent
+field → full; zero page errors. NOT verifiable here: nothing new for ISCC.
+
+NOT IN THIS PR (recorded for the owner): the "Aurora HIS" branding strings
+(login footer `AURORA HIS v4.2` — `src/lib/version.ts`, from 2026-07-08; the
+installer's `Publisher` in `aurora.iss`; the print header/footer in
+`PrintLayout.tsx:54,132`, from 2026-07-11) pre-date module 2 and are
+cosmetic; renaming them to "Aurora ICU" is a small separate change if wanted.
+The module-2 SERVER surface (vocabulary endpoints, `/assign-bed`,
+`/adt/ward-doctors`, the `bedless=` filter) remains reachable to an
+authenticated API caller on every edition — by design, like the AI 503.
 
 **2026-09-06 · THE NO-AI BUILD — THE AI ASSISTANT SECTION EXISTS ONLY WHERE
 THE SERVER REPORTS THE AI ENABLED (owner's decision; branch
@@ -13570,6 +13803,7 @@ substance is documented in the sections above.]*
 
 | PR | Branch |
 |---|---|
+| #232 | claude/installer-icu-edition |
 | #231 | claude/installer-no-ai-section |
 | #230 | claude/installer-vc-runtime |
 | #45 | claude/layer4-labcatalog-ordersets |

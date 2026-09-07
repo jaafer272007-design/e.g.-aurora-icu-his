@@ -34,6 +34,7 @@ import type {
 import { IMAGING_MODALITIES } from '../../lib/api/types'
 import { invalidateHospitalIdentity } from '../../lib/hospitalIdentity'
 import { getSession, hasPermission, initialsOf, profileOf, type Permission } from '../../lib/session'
+import { useEdition } from '../../lib/edition'
 import { ObservationCatalogManager } from './ObservationCatalogManager'
 import { VocabManager, type VocabRow } from './VocabManager'
 import { ServicesManager } from './ServicesManager'
@@ -79,6 +80,12 @@ export function Configuration() {
   const { toast, showToast } = useToast()
   const session = getSession()!
   const can = (atom: Permission) => hasPermission(session.jobTitle, atom)
+  /* the four reception vocabularies exist only on the FULL edition (the
+     hospital exe ships the ICU edition — owner's decision 2026-09-06,
+     lib/edition.ts). Wards is NOT gated: the bed registry refuses a bed
+     whose area is not a configured ward, so it is ICU configuration. */
+  const edition = useEdition()
+  const fullEdition = edition === 'full'
 
   /* ---- the section rail (grouped; RBAC-filtered) ---- */
   const groups: { title: string; items: { id: SectionId; title: string; allowed: boolean }[] }[] = [
@@ -92,10 +99,10 @@ export function Configuration() {
          Department. Departments precedes Services deliberately. */
       items: [
         { id: 'identity', title: 'Hospital Identity', allowed: can('hospital.configure') },
-        { id: 'admissiontypes', title: 'Admission Types', allowed: can('hospital.configure') },
-        { id: 'departments', title: 'Departments', allowed: can('hospital.configure') },
-        { id: 'services', title: 'Services', allowed: can('hospital.configure') },
-        { id: 'admissionsources', title: 'Sources of Admission', allowed: can('hospital.configure') },
+        { id: 'admissiontypes', title: 'Admission Types', allowed: fullEdition && can('hospital.configure') },
+        { id: 'departments', title: 'Departments', allowed: fullEdition && can('hospital.configure') },
+        { id: 'services', title: 'Services', allowed: fullEdition && can('hospital.configure') },
+        { id: 'admissionsources', title: 'Sources of Admission', allowed: fullEdition && can('hospital.configure') },
         /* Wards last in this group: the BED REGISTRY (other group) depends
            on it — every bed belongs to exactly one ward, and a new bed
            cannot be placed in a ward that does not exist here */
@@ -153,7 +160,7 @@ export function Configuration() {
     if (can('frequencies.manage')) getFrequencyEntries().then(setFrequencies).catch(() => setFrequencies(null))
     if (can('imagingcatalog.manage')) getImagingCatalog().then(setImgStudies).catch(() => setImgStudies(null))
     if (can('observations.configure')) getObservationCatalog().then(setObsGroups).catch(() => setObsGroups(null))
-    if (can('hospital.configure')) {
+    if (fullEdition && can('hospital.configure')) {
       getAdmissionTypes().then(setAdmTypes).catch(() => setAdmTypes(null))
       getDepartments().then(setDepartments).catch(() => setDepartments(null))
       getServices().then(setServices).catch(() => setServices(null))
@@ -172,7 +179,7 @@ export function Configuration() {
       }).catch(() => setIdentLoaded(true))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.jobTitle])
+  }, [session.jobTitle, fullEdition])
   useEffect(() => { reload() }, [reload])
 
   /* section counts for the rail (active/total where a lifecycle exists) */

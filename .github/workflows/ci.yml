@@ -65,6 +65,15 @@ jobs:
       # how). The rendered proof was a session-local pass against a stub API.
       - name: AI section is shown only when the server reports the AI enabled (no-AI build)
         run: node scripts/ai-section-gate.mjs
+      # ICU edition (owner's decision 2026-09-06): the module-2 screens — Reception,
+      # Awaiting Bed, the four reception vocabularies in Configuration, the
+      # Admissions pointer to Reception — exist only where the server reports the
+      # FULL edition (/healthz `edition`, default icu; the hospital installer writes
+      # icu, staging and the appliance set full). Wards stays: the bed registry
+      # depends on it. SOURCE check like the gates above; teeth measured before
+      # commit by breaking each pinned fact in turn (the gate's header records how).
+      - name: Module-2 screens exist only on the full edition (ICU-only build)
+        run: node scripts/edition-gate.mjs
       # PR-2 (environment separation): VITE_APP_ENV is allow-listed at the ONE
       # chokepoint every build entry point passes through — vite.config.ts —
       # mirroring the server's AppEnv.Known (the source of truth). Three legs,
@@ -175,6 +184,11 @@ jobs:
           # exactly this field. A real boot, a real answer — not a source grep.
           curl -s http://localhost:8080/healthz | grep -q '"aiAssistant":"disabled"' \
             || { echo "healthz did not report aiAssistant=disabled with AI_PROVIDER unset"; curl -s http://localhost:8080/healthz; exit 1; }
+          # ICU edition (2026-09-06): with AURORA_EDITION unset the server must report
+          # the ICU edition — the hospital-safe default an older install updated in
+          # place relies on; the frontend hides the module-2 screens on this field.
+          curl -s http://localhost:8080/healthz | grep -q '"edition":"icu"' \
+            || { echo "healthz did not report edition=icu with AURORA_EDITION unset"; curl -s http://localhost:8080/healthz; exit 1; }
           # THE POSTGRES CLIENT COMES FROM THE SERVICE CONTAINER, NOT FROM apt.
           # This job used to `apt-get install postgresql-client` on every run —
           # a network fetch in the middle of CI — and it STALLED TWICE in one
@@ -1242,6 +1256,84 @@ jobs:
       # plumbing, on the engine that ships.
       - name: Native exit codes are explained in words (initdb DLL-not-found), ON 5.1
         run: .\installer\test-exit-codes.ps1
+
+      # The VC++ runtime probe must look in the 64-BIT system directory. Inno's
+      # sys constant maps to the 32-bit one (SysWOW64) unless 64-bit install
+      # mode is enabled, and aurora.iss deliberately does NOT enable it -
+      # ArchitecturesAllowed only limits which machines Setup runs on, and
+      # turning on real 64-bit install mode would flip every powershell.exe
+      # child to 64-bit, changing behaviour that is already proven. The x64
+      # redistributable writes vcruntime140.dll, vcruntime140_1.dll and
+      # msvcp140.dll ONLY to the real System32 and nothing to SysWOW64, so a
+      # sys probe finds nothing on a clean machine and Setup aborts having just
+      # installed the runtime correctly. That shipped, and a hospital laptop hit
+      # it on 2026-09-06; every machine it had been tried on happened to carry
+      # the x86 redistributable, which populates SysWOW64 and made the wrong
+      # probe pass by accident. This pins the corrected pairing - sysnative
+      # WHILE not in 64-bit install mode - and proves the pin can fail, four
+      # ways, including the vacuous-pass case where the function is renamed.
+      - name: The VC++ runtime check must resolve the 64-bit system directory
+        run: |
+          function Test-VcProbe([string]$Path) {
+            $src = Get-Content -Raw $Path
+            $m = [regex]::Match($src, '(?s)function\s+EnsureVcRuntime\b.*?\r?\nend;')
+            if (-not $m.Success) { return @('NO-FUNCTION') }
+            $body = $m.Value
+            $fails = @()
+            if ($body -notmatch [regex]::Escape("ExpandConstant('{sysnative}')")) { $fails += 'NOT-SYSNATIVE' }
+            if ($body -match [regex]::Escape("ExpandConstant('{sys}')"))         { $fails += 'USES-SYS' }
+            if ($src  -match '(?m)^\s*ArchitecturesInstallIn64BitMode\s*=')      { $fails += 'IN-64BIT-MODE' }
+            return $fails
+          }
+
+          $iss = '.\installer\aurora.iss'
+          $real = @(Test-VcProbe $iss)
+          if ($real.Count -gt 0) {
+            Write-Host "FAIL - aurora.iss VC++ probe is wrong: $($real -join ', ')"
+            Write-Host "  NOT-SYSNATIVE = EnsureVcRuntime must resolve the system dir with the sysnative constant."
+            Write-Host "  USES-SYS      = the sys constant maps to SysWOW64 in 32-bit install mode; the x64 DLLs are not there."
+            Write-Host "  IN-64BIT-MODE = 64-bit install mode is on, so the probe must use sys and this gate must be updated."
+            exit 1
+          }
+          Write-Host "confirmed: EnsureVcRuntime probes the 64-bit system directory (sysnative, not in 64-bit install mode)"
+
+          # ---- MEASURED TEETH: each pinned fact, broken on a scratch copy,
+          # must fail by its own name. Scratch copies only - the real tree is
+          # never touched, so this cannot leave installer\ dirty.
+          $orig = Get-Content -Raw $iss
+          $tmp  = Join-Path $env:RUNNER_TEMP 'vcprobe-teeth'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          $bad = 0
+          $cases = @(
+            @{ name = 'sysnative swapped back to sys';           expect = 'USES-SYS';
+               mutate = { param($t) $t.Replace("ExpandConstant('{sysnative}')", "ExpandConstant('{sys}')") } },
+            @{ name = 'sysnative removed entirely';              expect = 'NOT-SYSNATIVE';
+               mutate = { param($t) $t.Replace("ExpandConstant('{sysnative}')", "'C:\Windows\System32'") } },
+            @{ name = '64-bit install mode switched on';         expect = 'IN-64BIT-MODE';
+               mutate = { param($t) $t -replace '(?m)^(ArchitecturesAllowed\s*=.*)$', "`$1`nArchitecturesInstallIn64BitMode=x64compatible" } },
+            @{ name = 'EnsureVcRuntime renamed away';            expect = 'NO-FUNCTION';
+               mutate = { param($t) $t.Replace('function EnsureVcRuntime()', 'function EnsureVcRuntimeRenamed()') } }
+          )
+          foreach ($c in $cases) {
+            $mutated = & $c.mutate $orig
+            if ($mutated -eq $orig) {
+              Write-Host "FAIL  [$($c.name)] the mutation changed nothing - the tooth proves nothing"
+              $bad++
+              continue
+            }
+            $f = Join-Path $tmp 'aurora.iss'
+            Set-Content -NoNewline -Encoding ascii -Path $f -Value $mutated
+            $got = @(Test-VcProbe $f)
+            if ($got -contains $c.expect) {
+              Write-Host "ok    [$($c.name)] -> $($got -join ', ')"
+            } else {
+              Write-Host "FAIL  [$($c.name)] expected $($c.expect), gate said: $(if ($got.Count) { $got -join ', ' } else { '(passed)' })"
+              $bad++
+            }
+          }
+          Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
+          if ($bad -gt 0) { Write-Host "FAIL - $bad of $($cases.Count) teeth did not bite; this gate cannot be trusted"; exit 1 }
+          Write-Host "confirmed: all $($cases.Count) pinned facts fail by name when broken"
 
       # Every installer .ps1/.iss must be PURE ASCII. Windows PowerShell 5.1
       # decodes a BOM-less file with the machine's ANSI codepage; on an

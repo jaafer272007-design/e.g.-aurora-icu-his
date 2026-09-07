@@ -489,3 +489,28 @@ together — a backup file without its manifest cannot be restored.**
 *Numbers in this document (02:00 nightly, 24-hour backup warning, 8-day
 off-site warning, 30/12/12 retention) are the values Aurora ships with. If
 your site changed them, correct this document to match.*
+
+## 10. Which screens this install shows (the edition)
+
+Your install is the **ICU edition**. The sidebar has the ICU screens only:
+there is no *Reception*, no *Awaiting Bed*, and Configuration has no
+*Admission Types*, *Departments*, *Services* or *Sources of Admission*
+section. That is by design, not a missing part: Settings › System
+Information shows **Edition: ICU only**.
+
+The hospital ward screens exist in the same program and can be turned on
+later, when the vendor and the hospital decide to use them. It is one line
+and one service restart, done by IT with the vendor on the line:
+
+1. Open `C:\Aurora\aurora.env` as an administrator.
+2. Change the line `AURORA_EDITION=icu` to `AURORA_EDITION=full`.
+3. Restart the **AuroraServer** service (Services app, or
+   `Restart-Service AuroraServer` in an elevated PowerShell).
+4. Reload the browser. *Reception* and *Awaiting Bed* appear for the roles
+   that hold them; Settings shows **Edition: Full**.
+
+Changing it back is the same edit with `icu`. No data is touched either way:
+the edition decides which screens are shown, not what is stored. Do not
+change this line without the vendor — the ward screens change who opens an
+admission and how a bed is given.
+

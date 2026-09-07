@@ -66,6 +66,13 @@ services:
       # through the same variable (compose env file), no code change.
       - key: APP_ENV
         value: staging
+      # EDITION (owner's decision 2026-09-06): the hospital installer ships the
+      # ICU edition (AURORA_EDITION=icu, the server's default when unset) and the
+      # app hides the module-2 screens on it. Staging is the validator's FULL
+      # testbed — Reception, Awaiting Bed and the reception vocabularies stay
+      # visible here. Read once at boot; reported on /healthz as `edition`.
+      - key: AURORA_EDITION
+        value: full
       # RENDER 139 ROOT CAUSE FIX (2026-07-20, diagnosed from the crashed
       # deploy log): CreateBuilder's default appsettings reloadOnChange
       # allocates inotify instances; the per-user limit (128) is SHARED

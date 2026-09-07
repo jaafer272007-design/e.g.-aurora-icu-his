@@ -123,7 +123,8 @@ $optionalEnvKeys = @(
   'ADMIN_BOOTSTRAP_PASSWORD',   # removed by the admin's first password change - absence is CORRECT
   'BACKUP_USB',                 # only when an off-site copy was configured
   'TZ',                         # only when a hospital clock was chosen
-  'AI_PROVIDER', 'AI_ENDPOINT', 'AI_MODEL', 'AI_TIMEOUT_SECONDS', 'AI_UNAVAILABLE_REASON'
+  'AI_PROVIDER', 'AI_ENDPOINT', 'AI_MODEL', 'AI_TIMEOUT_SECONDS', 'AI_UNAVAILABLE_REASON',
+  'AURORA_EDITION'              # absent on installs from before 1.3.0 - the server defaults to icu, absence is CORRECT
 )
 $provisionSrc = Get-Content -Raw (Join-Path $here 'aurora-provision.ps1')
 $envRegion = [regex]::Match($provisionSrc,

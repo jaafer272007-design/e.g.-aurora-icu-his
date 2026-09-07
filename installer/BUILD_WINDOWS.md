@@ -69,6 +69,11 @@ Notes:
   **no AI section at all** (2026-09-06): no "AI Assistant" nav entry, `/ai`
   redirects to the dashboard, and Settings › System Information says
   "AI assistant: not on this install".
+- Every hospital installer is the **ICU edition** (2026-09-06): the installed
+  app shows no Reception, no Awaiting Bed and none of the four reception
+  vocabularies in Configuration (Wards stays). Settings › System Information
+  says "Edition: ICU only". Nothing to pass at build time — provisioning
+  writes `AURORA_EDITION=icu`; `full` is a one-line edit on the server later.
 - If Inno Setup isn't at the default path, add `-Iscc "C:\path\to\ISCC.exe"`.
 - The `` ` `` at each line end is PowerShell's line-continuation. Or put it all
   on one line.

@@ -325,7 +325,15 @@ if (!AppEnv.IsKnown)
    makes the section appear with no app update. Unauthenticated like the
    rest of healthz — a yes/no about a feature, never the recorded REASON
    (that stays in the 503 an authenticated caller receives). */
-app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build, environment = AppEnv.Name, aiAssistant = AiConfig.Provider == "none" ? "disabled" : "enabled" }));
+/* edition = which screens this install SHOWS (Edition.cs; owner's decision
+   2026-09-06): "icu" — the ICU module alone (the DEFAULT, and what the
+   hospital installer writes) — or "full" — plus the module-2 screens
+   (Reception, Awaiting Bed, the reception vocabularies), which staging and
+   the appliance set. Read by the frontend at runtime (src/lib/edition.ts);
+   not enforced on the endpoints, like aiAssistant above. */
+if (Edition.IsUnrecognised)
+    Console.WriteLine($"[AURORA] AURORA_EDITION is '{Edition.Raw}' — not a known edition (icu|full). Reporting the ICU edition (the module-2 screens stay hidden) until it is corrected.");
+app.MapGet("/healthz", () => Results.Json(new { status = "ok", service = "aurora-icu-api", phase = "stage10-phase3", build, environment = AppEnv.Name, aiAssistant = AiConfig.Provider == "none" ? "disabled" : "enabled", edition = Edition.Name }));
 
 /* /build.txt (appliance Phase 1) — the SAME two-line contract the Pages
    deploy stamps into its artifact (sha, then environment), served

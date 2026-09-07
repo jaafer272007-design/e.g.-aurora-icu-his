@@ -482,6 +482,13 @@ $lines = @(
 # the disk has not been seen" - two very different problems.
 if ($BackupUsb) { $lines += "BACKUP_USB=$BackupUsb" }
 if ($TimeZone) { $lines += "TZ=$TimeZone" }
+# ---- Edition (owner's decision 2026-09-06): the hospital installer ships the ICU
+#      edition - the module-2 screens (Inpatient Reception, Awaiting Bed, the four
+#      reception vocabularies in Configuration) are not shown. The server reads this
+#      once at boot and reports it on /healthz; the app hides the screens on it.
+#      "full" turns them on (edit this line, restart AuroraServer - no update needed).
+#      Absent = icu, so an older install updated in place stays ICU-only. ----
+$lines += 'AURORA_EDITION=icu'
 
 # ---- AI wiring (sec 5). The native AI is the AuroraAI Windows service
 #      (llama-server, registered in step 5b) - ENABLED only when the machine

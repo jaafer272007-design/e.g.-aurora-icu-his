@@ -46,7 +46,14 @@ DisableProgramGroupPage=yes
 Uninstallable=no
 ; stop/start of the service + the DB restore need elevation
 PrivilegesRequired=admin
-; only 64-bit Windows (Inno 6.4+ replaced ArchitecturesInstall64Bit with this)
+; only 64-bit Windows (the payload is x64). NOTE, same as aurora.iss:
+; ArchitecturesAllowed limits WHICH MACHINES this runs on. It does NOT enable
+; Inno's 64-bit install mode - that is ArchitecturesInstallIn64BitMode, left
+; blank here, and blank means "always 32-bit install mode". (It was not
+; replaced in 6.4; both directives are current.) This package uses no system
+; directory constants at all, so nothing here is redirected today - but the
+; wording this replaces is what produced the shipped VC++ probe bug in
+; aurora.iss, so it is corrected here too rather than left to mislead.
 ArchitecturesAllowed=x64compatible
 ; ---- install-password wiring (owner's ruling 2026-07-25: update packages
 ; get the SAME company password, SAME machinery as the full installer -
