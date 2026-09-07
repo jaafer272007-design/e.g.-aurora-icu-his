@@ -789,10 +789,27 @@ function EnsureVcRuntime(): Boolean;
 var rc: Integer; sysDir: String;
 begin
   Result := False;
-  { 64-bit System32: this Setup runs in 64-bit install mode
-    (ArchitecturesAllowed=x64compatible) and the PostgreSQL binaries are x64,
-    so this is the directory the loader searches for their runtime. }
-  sysDir := ExpandConstant('{sys}');
+  { The 64-bit System32 - and it MUST be resolved with the sysnative constant,
+    never with the sys constant. Inno's documentation is explicit: on 64-bit
+    Windows the System32 path returned by sys maps, BY DEFAULT, to the
+    directory holding the 32-bit system files (SysWOW64); only enabling 64-bit
+    install mode changes that. This Setup is NOT in 64-bit install mode:
+    ArchitecturesAllowed only limits which machines Setup will RUN on, while
+    64-bit install mode is a separate directive (ArchitecturesInstallIn64BitMode)
+    that is deliberately not set, so every powershell.exe call elsewhere in this
+    script keeps the 32-bit behaviour it was proven with.
+    vc_redist.x64.exe writes the 64-bit DLLs to the REAL System32 and puts
+    NOTHING in SysWOW64. So a sys check fails on precisely the clean machines
+    this code exists to fix, and passes only by accident on machines that also
+    carry the x86 redistributable - which is why every machine it was tried on
+    passed. A hospital laptop proved it on 2026-09-06: the runtime installed
+    correctly (registry 14.44.35211; all three DLLs in System32, none in
+    SysWOW64) and Setup still refused to continue.
+    sysnative is the documented way for a 32-bit installer to name the 64-bit
+    directory - the one the x64 initdb.exe actually loads from. If 64-bit
+    install mode is ever enabled this must become sys; the CI gate "the VC++
+    runtime check must resolve the 64-bit system directory" enforces the pair. }
+  sysDir := ExpandConstant('{sysnative}');
   if FileExists(sysDir + '\vcruntime140.dll') and FileExists(sysDir + '\vcruntime140_1.dll') and FileExists(sysDir + '\msvcp140.dll') then begin
     Log('VC++ runtime already present in ' + sysDir + ' - nothing to install');
     Result := True;
@@ -817,7 +834,7 @@ begin
     Exit;
   end;
   if not (FileExists(sysDir + '\vcruntime140.dll') and FileExists(sysDir + '\vcruntime140_1.dll') and FileExists(sysDir + '\msvcp140.dll')) then begin
-    MsgBox('The Microsoft Visual C++ runtime installer reported success (code ' + IntToStr(rc) + '), but vcruntime140.dll, vcruntime140_1.dll and msvcp140.dll are still not all present in ' + sysDir + '.'#13#10#13#10 +
+    MsgBox('The Microsoft Visual C++ runtime installer reported success (code ' + IntToStr(rc) + '), but vcruntime140.dll, vcruntime140_1.dll and msvcp140.dll are still not all present in the 64-bit C:\Windows\System32 folder.'#13#10#13#10 +
            'Setup stops here rather than let the database fail to start; nothing has been set up yet.'#13#10 +
            'Install "Microsoft Visual C++ Redistributable 2015-2022 (x64)" from Microsoft by hand, then run Setup again.', mbCriticalError, MB_OK);
     Exit;
