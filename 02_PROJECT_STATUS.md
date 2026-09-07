@@ -3,7 +3,10 @@
 **Last updated: 2026-09-07 · current through THE 32-BIT INSTALLER CORRECTION —
 the VC++ runtime probe read SysWOW64 and aborted a good install on a real
 hospital laptop; fixed to the sysnative constant, gated, and the whole
-installer audited for the same class (PR #232) — the record below. Prior:
+installer audited for the same class (PR #232). PROVEN ON HARDWARE 09-07: the
+rebuilt exe installs on the laptop that failed, with no AI and no module-2
+screens; the merge, staging, the 16 suites and the protected build remain —
+the record below. Prior:
 THE ICU EDITION — the
 hospital exe ships "only the ICU": the module-2 screens built into this app
 in 2026-08 (Inpatient Reception, Awaiting Bed, the four reception vocabularies
@@ -137,6 +140,23 @@ hardware — but the next-next-finish that ends in a working Aurora has not
 happened yet. Not touched: `SHIPPED_VERSIONS.txt` (nothing has shipped),
 `04_OPERATIONS_RUNBOOK.md` (nothing changes for the operator — again, the
 point). **
+
+*[PROVEN ON HARDWARE, 2026-09-07 — this supersedes the STILL UNPROVEN
+paragraph above on its central point; the original wording is kept
+deliberately, per the supersede rule. The owner rebuilt from `5d319d7` and ran
+the resulting `AuroraSetup-1.3.0-UNPROTECTED.exe` on the SAME laptop that
+failed on 2026-09-05: **Setup completed** — no Visual C++ dialog, no "code 1",
+no `initdb failed (-1073741515)` — and the installed app shows **no AI
+Assistant** and **no module-2 screens** (Reception, Awaiting Bed). That closes,
+on the one machine whose failure opened them, all three gaps this record and
+#230 listed as code-reviewed-only: the real `vc_redist` chain on a bare
+machine, the ISCC compile of the new `[Files]`/`[Code]`, and the ICU-edition
+install. STILL NOT DONE, and none of it is optional before a hospital gets a
+file: the merge of #230 → #231 → #232 to `main` (the owner merges — 03,
+Branching), `ci.yml` green on `main`, the Render redeploy and the Pages
+dispatch, the 16 deployed suites, and only then `build-protected.ps1`. That
+script refuses today, correctly, with `SOURCE-NOT-ON-MAIN`: "the protected
+installer ships mainline commits only".]*
 
 **2026-09-06 (later) · THE ICU EDITION — THE MODULE-2 SCREENS EXIST ONLY WHERE
 THE SERVER REPORTS THE FULL EDITION (owner's decision; branch
