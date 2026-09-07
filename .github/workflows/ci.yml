@@ -1214,6 +1214,50 @@ jobs:
       - name: Updater EXIT CODES + install-dir resolution, end-to-end ON 5.1
         run: .\installer\test-update-exitcodes.ps1
 
+      # Windows reports a process that never got to run as an NTSTATUS, which
+      # PowerShell shows as a negative number. A real install (2026-09-05) died
+      # with "initdb failed (-1073741515)" = STATUS_DLL_NOT_FOUND: the Visual
+      # C++ runtime the bundled PostgreSQL needs was not on the freshly imaged
+      # PC, and the raw number sent the operator to the antivirus settings.
+      # aurora-provision.ps1 now probes that initdb STARTS and explains such
+      # codes in words (aurora-exit-codes.ps1); these tests pin the explanations
+      # by their exact numbers and run real child processes through the same
+      # plumbing, on the engine that ships.
+      - name: Native exit codes are explained in words (initdb DLL-not-found), ON 5.1
+        run: .\installer\test-exit-codes.ps1
+
+      # Every installer .ps1/.iss must be PURE ASCII. Windows PowerShell 5.1
+      # decodes a BOM-less file with the machine's ANSI codepage; on an
+      # Arabic-locale PC (CP1256) non-ASCII bytes in these scripts mis-decoded
+      # into characters that broke aurora-provision.ps1's SYNTAX and the install
+      # died at "Setting up Aurora" with exit 1. That was fixed by hand
+      # (159476c, 2026-07-24) and never gated - a fix without a gate is one
+      # edit away from coming back. Closing the class, not the instance.
+      - name: Every installer .ps1/.iss must be pure ASCII (locale-proof)
+        run: |
+          $files = @(Get-ChildItem installer\* -Include *.ps1,*.iss -File | Sort-Object Name)
+          if ($files.Count -lt 5) {
+            Write-Host "FAIL - found only $($files.Count) installer script(s); the gate would pass vacuously"
+            exit 1
+          }
+          $bad = 0
+          foreach ($f in $files) {
+            $bytes = [IO.File]::ReadAllBytes($f.FullName)
+            $hits = 0
+            for ($i = 0; $i -lt $bytes.Length; $i++) {
+              $b = $bytes[$i]
+              if (($b -gt 0x7E) -or (($b -lt 0x20) -and ($b -ne 9) -and ($b -ne 10) -and ($b -ne 13))) { $hits++ }
+            }
+            if ($hits -gt 0) { $bad++; Write-Host ("FAIL  " + $f.Name + " - " + $hits + " non-ASCII byte(s)") }
+            else { Write-Host ("ok    " + $f.Name) }
+          }
+          if ($bad -gt 0) {
+            Write-Host "FAIL - $bad installer script(s) contain non-ASCII bytes. On a non-Western-locale PC,"
+            Write-Host "Windows PowerShell 5.1 mis-decodes them and the install dies at parse time. Use ASCII only."
+            exit 1
+          }
+          Write-Host "confirmed: $($files.Count) installer scripts are pure ASCII"
+
       # A process the installer launches with SW_HIDE must never be able to
       # block on stdin - there is no console to answer it and the window cannot
       # be closed. aurora-update.ps1 invoked psql with the connection URI as the

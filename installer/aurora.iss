@@ -12,7 +12,13 @@
 ;    script is CODE-REVIEWED here; verify the wizard + install on the machine.
 
 #define AppName "Aurora ICU"
-#define AppVer  "1.0.0"
+; 1.3.0 (2026-09-05): installer\SHIPPED_VERSIONS.txt records setup 1.0.0 and
+; updates 1.1.0 / 1.2.0, so the version gate refuses a setup below 1.2.0 (the
+; cross-kind floor) and the ship gate requires the bump to be a committed
+; origin/main change - hence here, not on the build machine. Minor, per 03's
+; release routine: this setup ships every feature since 1.0.0 plus the
+; Visual C++ runtime prerequisite fix.
+#define AppVer  "1.3.0"
 #define Publisher "Aurora HIS"
 
 [Setup]
@@ -112,6 +118,16 @@ Source: "aurora-ai-service.ps1"; DestDir: "{app}\server\scripts"; Flags: ignorev
 Source: "aurora-backup-task.ps1"; DestDir: "{app}\server\scripts"; Flags: ignoreversion
 Source: "aurora-enable-ai.ps1";  DestDir: "{app}\server\scripts"; Flags: ignoreversion
 Source: "aurora-autowire.ps1";   DestDir: "{app}\server\scripts"; Flags: ignoreversion
+Source: "aurora-exit-codes.ps1"; DestDir: "{app}\server\scripts"; Flags: ignoreversion
+; The Microsoft Visual C++ runtime the bundled PostgreSQL binaries need. It is
+; NOT part of Windows, so a freshly imaged PC does not have it and initdb.exe
+; cannot start (a real install died that way on 2026-09-05: "initdb failed
+; (-1073741515)" = STATUS_DLL_NOT_FOUND). build.ps1 step 3b stages Microsoft's
+; signed vc_redist.x64.exe here; EnsureVcRuntime ([Code]) extracts and runs it
+; silently before provisioning. dontcopy: it is never laid down in {app}, only
+; extracted to {tmp} when needed. NOT optional - a build without it must not
+; compile, so there is deliberately no skipifsourcedoesntexist.
+Source: "payload\prereq\vc_redist.x64.exe"; Flags: dontcopy
 
 [Code]
 var
@@ -756,10 +772,70 @@ begin
   else Result := 'http://' + host + ':' + IntToStr(port);
 end;
 
+{ The bundled PostgreSQL binaries are built with MSVC and need the Microsoft
+  Visual C++ runtime (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll).
+  That runtime is NOT part of Windows: a freshly imaged hospital PC does not
+  have it, and then initdb.exe cannot even start (STATUS_DLL_NOT_FOUND,
+  0xC0000135). A real install on 2026-09-05 died exactly so, with provision.log
+  saying only "initdb failed (-1073741515)". So Setup installs the runtime
+  ITSELF, from the Microsoft-signed vc_redist.x64.exe it carries, before
+  provisioning runs - the hospital machine still needs nothing pre-installed.
+  Idempotent: the DLL check skips the whole step on a machine that has the
+  runtime, and the redistributable itself answers 0 (installed) or 1638 (a
+  newer one is already there) when run anyway. Fails CLOSED: any other outcome
+  stops Setup before anything is provisioned, with the manual remedy spelled
+  out, rather than letting the database die with a number. }
+function EnsureVcRuntime(): Boolean;
+var rc: Integer; sysDir: String;
+begin
+  Result := False;
+  { 64-bit System32: this Setup runs in 64-bit install mode
+    (ArchitecturesAllowed=x64compatible) and the PostgreSQL binaries are x64,
+    so this is the directory the loader searches for their runtime. }
+  sysDir := ExpandConstant('{sys}');
+  if FileExists(sysDir + '\vcruntime140.dll') and FileExists(sysDir + '\vcruntime140_1.dll') and FileExists(sysDir + '\msvcp140.dll') then begin
+    Log('VC++ runtime already present in ' + sysDir + ' - nothing to install');
+    Result := True;
+    Exit;
+  end;
+  Log('VC++ runtime not (fully) present in ' + sysDir + ' - installing the bundled vc_redist.x64.exe');
+  WizardForm.StatusLabel.Caption := 'Installing the Microsoft Visual C++ runtime (the database needs it)...';
+  ExtractTemporaryFile('vc_redist.x64.exe');
+  if not Exec(ExpandConstant('{tmp}\vc_redist.x64.exe'), '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, rc) then begin
+    MsgBox('Setup could not start the Microsoft Visual C++ runtime installer it carries.'#13#10#13#10 +
+           'The database (PostgreSQL) cannot run without that runtime, so Setup stops here; nothing has been set up yet.'#13#10#13#10 +
+           'Install "Microsoft Visual C++ Redistributable 2015-2022 (x64)" from Microsoft by hand, then run Setup again.', mbCriticalError, MB_OK);
+    Exit;
+  end;
+  { 0 = installed. 1638 = a newer runtime is already installed (fine). 3010 =
+    installed, Windows would like a restart later - the DLLs are on disk now,
+    so provisioning can proceed. }
+  if (rc <> 0) and (rc <> 1638) and (rc <> 3010) then begin
+    MsgBox('The Microsoft Visual C++ runtime installer did not complete (code ' + IntToStr(rc) + ').'#13#10#13#10 +
+           'The database (PostgreSQL) cannot run without that runtime, so Setup stops here; nothing has been set up yet.'#13#10#13#10 +
+           'Install "Microsoft Visual C++ Redistributable 2015-2022 (x64)" from Microsoft by hand, then run Setup again.', mbCriticalError, MB_OK);
+    Exit;
+  end;
+  if not (FileExists(sysDir + '\vcruntime140.dll') and FileExists(sysDir + '\vcruntime140_1.dll') and FileExists(sysDir + '\msvcp140.dll')) then begin
+    MsgBox('The Microsoft Visual C++ runtime installer reported success (code ' + IntToStr(rc) + '), but vcruntime140.dll, vcruntime140_1.dll and msvcp140.dll are still not all present in ' + sysDir + '.'#13#10#13#10 +
+           'Setup stops here rather than let the database fail to start; nothing has been set up yet.'#13#10 +
+           'Install "Microsoft Visual C++ Redistributable 2015-2022 (x64)" from Microsoft by hand, then run Setup again.', mbCriticalError, MB_OK);
+    Exit;
+  end;
+  Log('VC++ runtime installed (vc_redist exit ' + IntToStr(rc) + ')');
+  Result := True;
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var pwFile, keyFile, urlFile, args, tz, seed: String; rc: Integer;
 begin
   if CurStep <> ssPostInstall then Exit;
+
+  { Prerequisite FIRST, before any provisioning state exists: fail closed with
+    a plain-language message rather than let initdb die with a number. }
+  if not EnsureVcRuntime() then begin
+    Abort;
+  end;
 
   { hand the admin password to provisioning via a temp file (never a visible arg) }
   pwFile  := ExpandConstant('{tmp}\aurora-admin.txt');

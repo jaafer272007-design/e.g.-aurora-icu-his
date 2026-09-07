@@ -55,6 +55,7 @@ param(
   [Parameter(Mandatory)][string]$PgZip,
   [string]$ModelDir = '',
   [string]$LlamaDir = '',
+  [string]$VcRedist = '',       # Microsoft's vc_redist.x64.exe (omitted = build.ps1 downloads it)
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
   [switch]$SkipStage            # the payload is already staged (a previous run of this script or build.ps1)
 )
@@ -124,6 +125,7 @@ if (-not $SkipStage) {
   $buildArgs = @{ PgZip = $PgZip; Iscc = $Iscc; SkipCompile = $true }
   if ($ModelDir) { $buildArgs.ModelDir = $ModelDir }
   if ($LlamaDir) { $buildArgs.LlamaDir = $LlamaDir }
+  if ($VcRedist) { $buildArgs.VcRedist = $VcRedist }
   & (Join-Path $here 'build.ps1') @buildArgs
 } else {
   Say 'payload staging SKIPPED (-SkipStage)'

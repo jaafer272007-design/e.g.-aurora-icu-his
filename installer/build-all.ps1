@@ -30,6 +30,7 @@ param(
   [Parameter(Mandatory)][string]$PgZip,     # the EDB "binaries only" PostgreSQL 16 zip
   [string]$ModelDir = '',                    # folder with the .gguf model file(s)   } give BOTH for the AI,
   [string]$LlamaDir = '',                    # folder with llama-server.exe + DLLs + nssm.exe } or NEITHER
+  [string]$VcRedist = '',                    # Microsoft's vc_redist.x64.exe (omitted = build.ps1 downloads it; give it for an offline build)
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
   [switch]$InstallPrereqs                     # winget-install .NET 8 SDK, Node LTS, Inno Setup, Git first
 )
@@ -100,6 +101,7 @@ try {
 # ---- 4. run the real build ----
 $buildArgs = @{ PgZip = $PgZip; Iscc = $Iscc }
 if ($ai) { $buildArgs.ModelDir = $ModelDir; $buildArgs.LlamaDir = $LlamaDir }
+if ($VcRedist) { $buildArgs.VcRedist = $VcRedist }
 Say "starting build.ps1 -- step 5 compresses the payload at max LZMA2, so an AI build takes 20-60 min. Be patient; it is not stuck."
 try {
   & (Join-Path $here 'build.ps1') @buildArgs

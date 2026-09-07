@@ -80,6 +80,7 @@ param(
   [string]$PgZip = '',          # required for the full installer; unused with -UpdateOnly
   [string]$ModelDir = '',
   [string]$LlamaDir = '',
+  [string]$VcRedist = '',       # Microsoft's vc_redist.x64.exe for the full installer (omitted = build.ps1 downloads it)
   [switch]$UpdateOnly,          # build the ENCRYPTED app-only update package instead of the full installer
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
   [switch]$SkipStage,           # the payload is already staged (a previous run of this or build.ps1)
@@ -190,6 +191,7 @@ if (-not $SkipStage) {
     $buildArgs = @{ PgZip = $PgZip; Iscc = $Iscc; SkipCompile = $true }
     if ($ModelDir) { $buildArgs.ModelDir = $ModelDir }
     if ($LlamaDir) { $buildArgs.LlamaDir = $LlamaDir }
+    if ($VcRedist) { $buildArgs.VcRedist = $VcRedist }
     & (Join-Path $here 'build.ps1') @buildArgs
   }
 } else {

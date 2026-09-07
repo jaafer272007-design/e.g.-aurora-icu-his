@@ -11,6 +11,8 @@
     2. dotnet publish the server SELF-CONTAINED for win-x64 (no .NET install
        on the hospital box) - the wwwroot (SPA) ships inside it
     3. stage a PRIVATE PostgreSQL (Windows binaries) into payload\pgsql
+    3b. stage Microsoft's vc_redist.x64.exe (the Visual C++ runtime those
+        binaries need; NOT part of Windows) into payload\prereq - verified
     4. stage the AI model file(s) into payload\model
     5. compile aurora.iss with ISCC -> AuroraSetup-<ver>-UNPROTECTED.exe
 
@@ -23,6 +25,8 @@ param(
   [string]$ModelDir = '',  # folder with the .gguf model file(s); needed for the AI (else AI ships disabled)
   [string]$LlamaDir = '',  # folder with the Windows llama-server build (llama-server.exe + its DLLs, CUDA);
                            # needed for the AI (else AI ships disabled). See installer/README.md for the build.
+  [string]$VcRedist = '',  # Microsoft's vc_redist.x64.exe (the VC++ runtime the bundled PostgreSQL needs); omitted = downloaded
+                           # from Microsoft's permalink. REQUIRED either way for the full installer (see step 3b).
   [switch]$UpdateOnly,     # build the small app-only update package (AuroraUpdate-<ver>.exe) instead of the full installer
   [switch]$SkipCompile,    # stage the payload but skip ISCC - build-hospitals.ps1 then compiles one ENCRYPTED installer per hospital
   [string]$Iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
@@ -218,6 +222,53 @@ foreach ($d in @('bin','share','lib')) {
   if (Test-Path (Join-Path $pgRoot $d)) { Copy-Item -Recurse -Force (Join-Path $pgRoot $d) (Join-Path $payload 'pgsql') }
 }
 Remove-Item -Recurse -Force $pgTmp -ErrorAction SilentlyContinue
+
+Write-Host '== 3b. Microsoft Visual C++ runtime (the bundled PostgreSQL needs it) =='
+# The EDB "binaries only" zip is built with MSVC and links against the Visual
+# C++ runtime (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll), which is
+# NOT part of Windows and which the zip does not include (EDB's own INSTALLER
+# installs it as a prerequisite; the zip deliberately does not). A freshly
+# imaged hospital PC does not have it, initdb.exe cannot start, and the
+# install dies with "initdb failed (-1073741515)" = STATUS_DLL_NOT_FOUND - a
+# real install did exactly that on 2026-09-05. The hospital machine must need
+# NOTHING pre-installed (installer/README.md), so the installer carries
+# Microsoft's redistributable and runs it silently before provisioning
+# (aurora.iss, EnsureVcRuntime).
+#   -VcRedist <path>  use a vc_redist.x64.exe you already have (offline builds)
+#   (omitted)         download Microsoft's permalink for the current x64 package
+# Either way the file is REQUIRED and VERIFIED: a valid Authenticode signature
+# whose signer is Microsoft Corporation. No pinned hash on purpose: Microsoft
+# re-issues the package under the same URL, and a pin would break every build
+# the day they do. A missing or unverifiable file fails the build, and
+# aurora.iss lists the file without skipifsourcedoesntexist for the same reason.
+$prereq = Join-Path $payload 'prereq'
+New-Item -ItemType Directory -Force -Path $prereq | Out-Null
+$vcTarget = Join-Path $prereq 'vc_redist.x64.exe'
+$vcUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
+if ($VcRedist) {
+  if (-not (Test-Path -LiteralPath $VcRedist)) { throw "-VcRedist not found: $VcRedist" }
+  Copy-Item -LiteralPath $VcRedist -Destination $vcTarget -Force
+  Write-Host "   using $VcRedist"
+} else {
+  Write-Host "   downloading $vcUrl"
+  $prevProgress = $ProgressPreference
+  $ProgressPreference = 'SilentlyContinue'   # 5.1's progress bar makes a large download crawl
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $vcUrl -OutFile $vcTarget -UseBasicParsing
+  } catch {
+    throw "could not download the Visual C++ redistributable from $vcUrl ($($_.Exception.Message)). Download vc_redist.x64.exe from that address on a machine with internet and pass -VcRedist <path>."
+  } finally { $ProgressPreference = $prevProgress }
+}
+$sig = Get-AuthenticodeSignature -LiteralPath $vcTarget
+if ($sig.Status -ne 'Valid') {
+  throw "vc_redist.x64.exe at $vcTarget does not carry a VALID Authenticode signature (status: $($sig.Status)). Refusing to ship an unverified runtime installer - re-download it from $vcUrl, or pass a good copy with -VcRedist."
+}
+if ($sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+  throw "vc_redist.x64.exe at $vcTarget is signed by '$($sig.SignerCertificate.Subject)', not by Microsoft Corporation. Refusing to ship it."
+}
+$vcVer = (Get-Item -LiteralPath $vcTarget).VersionInfo.FileVersion
+Write-Host "   vc_redist.x64.exe $vcVer - Authenticode Valid, signed by Microsoft -> payload\prereq"
 
 Write-Host '== 4. AI model + llama-server (the native AI service - PR C) =='
 # The AI is the native AuroraAI Windows service: llama-server serving the

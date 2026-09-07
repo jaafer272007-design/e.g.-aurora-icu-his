@@ -186,6 +186,18 @@ below happens inside the wizard; no console, no Docker, no internet.
 8. **Ready to install → Install.**
 
 **What the installer does on Install (all silent, no prerequisites to fetch):**
+
+*[Amendment, 2026-09-05 — a step 0 the list below did not have: **install the
+Microsoft Visual C++ runtime** (`vc_redist.x64.exe`, carried inside the
+installer, run silently, skipped when the DLLs are already present). The
+PostgreSQL binaries are built with MSVC and need it; it is not part of Windows;
+a freshly imaged hospital laptop lacked it and `initdb.exe` could not start
+(`STATUS_DLL_NOT_FOUND`, logged as `initdb failed (-1073741515)`). "No
+prerequisites to fetch" stays true — the installer fetches nothing at the
+hospital; it carries the runtime and installs it. Provisioning also now proves
+`initdb.exe` starts before the cluster is created (`aurora-provision.ps1` step
+0c). Built in the installer VC++-runtime PR; see 02.]*
+
 1. Copy the **self-contained** Aurora server (`dotnet publish -r win-x64
    --self-contained`), the React bundle (into `wwwroot`), the **private
    PostgreSQL** binaries, `pg_dump`/`pg_restore`, and the **AI model file**.

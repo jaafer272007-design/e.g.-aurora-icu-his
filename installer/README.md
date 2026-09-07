@@ -127,13 +127,18 @@ deliberately not gated.
 
 ## Build the installer (on a build machine — SDK/Node/Inno/internet)
 
-The **build** machine needs the .NET 8 SDK, Node, [Inno Setup 6](https://jrsoftware.org/isinfo.php), and internet. The **hospital** machine needs none of it.
+The **build** machine needs the .NET 8 SDK, Node, [Inno Setup 6](https://jrsoftware.org/isinfo.php), and internet. The **hospital** machine needs none of it — including the one runtime the bundled PostgreSQL binaries depend on, the **Microsoft Visual C++ runtime**, which is *not* part of Windows: the installer **carries it** (`vc_redist.x64.exe`, staged by `build.ps1` step 3b, Microsoft-signed) and installs it silently on the hospital machine before the database is set up, so a freshly imaged PC works next-next-finish. *(Until 2026-09-05 this was an undeclared prerequisite: a clean laptop failed at "Setting up Aurora" with `initdb failed (-1073741515)` = `STATUS_DLL_NOT_FOUND`.)*
 
 > **New to this?** [`BUILD_WINDOWS.md`](./BUILD_WINDOWS.md) is a full step-by-step walkthrough, and **`build-all.ps1`** does the whole thing in one command (it can even install the toolchain via `winget`). The raw `build.ps1` steps below are the reference.
 
 ```powershell
 # 1. a PostgreSQL 16 "binaries only" zip for Windows x64 from
 #    https://www.enterprisedb.com/download-postgresql-binaries
+# 1b. (automatic) Microsoft's vc_redist.x64.exe — the Visual C++ runtime those
+#    binaries need. Omit -VcRedist and build.ps1 downloads it from
+#    https://aka.ms/vs/17/release/vc_redist.x64.exe; pass -VcRedist <path> for an
+#    offline build machine. Either way it is verified (Authenticode, signed by
+#    Microsoft) and REQUIRED — the build refuses to produce an installer without it.
 # 2. (for the AI) a folder with the .gguf model file(s) — Qwen2.5-7B-Instruct
 #    Q4_K_M, the same sha256-pinned release the appliance uses
 # 3. (for the AI) a folder with the Windows llama-server build (CUDA):
@@ -165,7 +170,7 @@ wizard flow itself is unchanged:
    AI-enabled build is ~5.5 GB, past Inno's ~4.2 GB single-file ceiling, so it
    ships sliced; the `.exe` on its own will not install.)
 2. Wizard: install/data locations → **access address** (the server's LAN address + port — the address box is **pre-filled** from this machine's network interface; the port defaults to **8080**, or enter **80** so staff can omit it) → **admin password** → **formulary** (starter/empty). Timezone + GPU are auto-detected.
-3. Click Install. The installer initialises the private database, registers the **AuroraPostgres** and **AuroraServer** Windows services (Automatic start, SCM auto-restart, Aurora depends-on Postgres), seeds catalogues + the bootstrap admin, shows the **backup key once** (record it in three places), registers the **nightly backup**, and opens the firewall. **When the machine has an NVIDIA GPU** (and the AI payload shipped), it also registers the **AuroraAI** service (llama-server, `127.0.0.1` only) — otherwise the AI screen honestly says "no GPU on this server" and everything else runs unchanged.
+3. Click Install. The installer first installs the **Microsoft Visual C++ runtime** if this machine lacks it (silently, from the copy it carries — the database binaries need it and a freshly imaged PC does not have it; skipped when already present), then initialises the private database, registers the **AuroraPostgres** and **AuroraServer** Windows services (Automatic start, SCM auto-restart, Aurora depends-on Postgres), seeds catalogues + the bootstrap admin, shows the **backup key once** (record it in three places), registers the **nightly backup**, and opens the firewall. **When the machine has an NVIDIA GPU** (and the AI payload shipped), it also registers the **AuroraAI** service (llama-server, `127.0.0.1` only) — otherwise the AI screen honestly says "no GPU on this server" and everything else runs unchanged.
 4. Finish. The final screen shows the **real, working access URL** (derived from the server's live interface + the port it actually bound — not just what was typed), and drops a **desktop shortcut ("Aurora ICU")** plus an **`ACCESS.txt`** in the install folder so nobody has to retype it. From then on, every clinician opens that URL in a browser. Nobody launches anything; it starts on every boot.
 
 ## Networking: reachability, DHCP, and the port
