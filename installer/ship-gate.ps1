@@ -79,6 +79,9 @@ $script:ShipGateClasses = @(
   'STAGING-UNAVAILABLE',     # staging API/Pages gave no identity to verify against
   'STAGING-WRONG-ENVIRONMENT', # staging identifies as something other than staging
   'STAGING-CONTENT-MISMATCH',  # staging serves different content than the shipping commit
+  'APPLIANCE-EVIDENCE-MISSING', # no completed appliance run exists to vouch for any content
+  'APPLIANCE-RED',           # the appliance run for this content did not boot and serve
+  'APPLIANCE-STALE-CONTENT', # the green appliance run booted DIFFERENT server content
   'SUITE-INVENTORY-DRIFT',   # ship-requirements.json and .github/workflows disagree about the suite set
   'SUITE-EVIDENCE-MISSING',  # a required suite has no completed run
   'SUITE-RED',               # a required suite's latest completed run failed
@@ -102,8 +105,9 @@ function Get-ShipRequirementProblems {
   param([Parameter(Mandatory)][AllowNull()]$Req)
   $problems = @()
   if ($null -eq $Req) { return ,@('the requirements object is null (unparseable JSON?)') }
-  $need = @('schema', 'ciWorkflowFile', 'ciRequiredJobs', 'serverContextPaths',
-            'frontendContextPaths', 'deployedSuites', 'frontendContextSuites',
+  $need = @('schema', 'ciWorkflowFile', 'ciRequiredJobs', 'applianceWorkflowFile',
+            'serverContextPaths', 'frontendContextPaths', 'deployedSuites',
+            'frontendContextSuites', 'clinicalSuitesGate', 'clinicalSuitesGateReason',
             'githubRepo', 'githubApi', 'stagingApi', 'stagingPages', 'mainRef')
   foreach ($k in $need) {
     if ($null -eq $Req.psobject.Properties[$k]) { $problems += "missing required field '$k'" }
@@ -130,6 +134,19 @@ function Get-ShipRequirementProblems {
     if ($s -notmatch '^deployed-[a-z0-9-]+-e2e\.yml$') {
       $problems += "deployedSuites entry '$s' does not look like a deployed suite workflow file"
     }
+  }
+  # THE ONLY PLACE THE CLINICAL SUITES CAN BE TAKEN OUT OF THE VERDICT, and it
+  # is a committed value in the shipping commit - never a parameter, variable
+  # or prompt. An unrecognised value is a REFUSAL, not a default: a typo here
+  # must never silently mean 'disabled'.
+  if (@('required', 'disabled') -notcontains [string]$Req.clinicalSuitesGate) {
+    $problems += "clinicalSuitesGate is '$($Req.clinicalSuitesGate)' - it must be exactly 'required' or 'disabled'; an unrecognised value is refused rather than assumed"
+  }
+  if ([string]::IsNullOrWhiteSpace([string]$Req.clinicalSuitesGateReason)) {
+    $problems += "clinicalSuitesGateReason is empty - taking the clinical suites out of the verdict has to carry a written reason that ships with the commit"
+  }
+  if ($Req.applianceWorkflowFile -notmatch '^[A-Za-z0-9._-]+\.ya?ml$') {
+    $problems += "applianceWorkflowFile '$($Req.applianceWorkflowFile)' is not a workflow file name"
   }
   return ,$problems
 }
@@ -215,7 +232,62 @@ function Test-ShipCi {
   return New-ShipVerdict $true '' ("$wf run $($Ci.runId) green for $($Sha.Substring(0,8)); required jobs all green: $(@($Req.ciRequiredJobs) -join ', ')")
 }
 
-# ---- C. staging serves this content (pure) ---------------------------------
+# ---- C. a real instance built from this content boots and serves (pure) ----
+# THE LIVE-INSTANCE INVARIANT, SOURCED LOCALLY (owner decision 2026-09-07).
+# The standard is unchanged: nothing ships unless a real server built from
+# exactly this content has been started against a real PostgreSQL and served.
+# What changed is WHERE that proof comes from. It used to mean "poll a hosted
+# staging URL", which made a cloud service a precondition for building a
+# product that never contacts one - and when that service was suspended the
+# installer became unbuildable for a reason unrelated to the installer.
+# It now means "the appliance workflow built the image, booted it with a real
+# database, and passed", which is the same class of evidence, needs no cloud,
+# and runs on every push instead of waiting for someone to deploy.
+#
+# MATCHED ON CONTENT, NOT ON COMMIT ID - the same rule the suites always used.
+# The appliance workflow is path-filtered, so a docs-only or installer-only
+# commit legitimately has no run of its own; what must be true is that the
+# newest completed run booted the SAME serverContextPaths trees this commit
+# carries. A run over different bytes is not evidence, and is refused.
+function Test-ShipAppliance {
+  param(
+    [Parameter(Mandatory)]$Req,
+    [Parameter(Mandatory)]$App,
+    [Parameter(Mandatory)][string]$Sha
+  )
+  # want-side sanity FIRST, exactly as the staging check does it: if the
+  # shipping commit itself lacks a context path, MISSING would equal MISSING
+  # on the got side and the comparison would pass vacuously.
+  $wantBroken = @(@($App.serverWant) | Where-Object { $_ -like 'MISSING:*' })
+  if ($wantBroken.Count -gt 0) {
+    return New-ShipVerdict $false 'VERIFY-MALFORMED' ("commit $($Sha.Substring(0,8)) has no $($wantBroken -join ', ') - the serverContextPaths in scripts/ship-requirements.json no longer match the repository layout; fix the list deliberately.")
+  }
+  if (-not $App.queried) {
+    return New-ShipVerdict $false 'VERIFY-UNAVAILABLE' ("could not query GitHub Actions for $($Req.applianceWorkflowFile) runs: $($App.error). Verification being unavailable is a refusal, never a warning.")
+  }
+  if (-not $App.found) {
+    return New-ShipVerdict $false 'APPLIANCE-EVIDENCE-MISSING' ("$($Req.applianceWorkflowFile) has no completed run at all - nothing has ever proved this server image boots. Push the content and let the appliance workflow finish before shipping.")
+  }
+  if ($App.conclusion -ne 'success') {
+    return New-ShipVerdict $false 'APPLIANCE-RED' ("$($Req.applianceWorkflowFile) run $($App.runId) (head $($App.headSha.Substring(0,8))) concluded '$($App.conclusion)' - the packaged appliance did not boot and serve, so nothing built from it ships.")
+  }
+  if (-not $App.headResolvable) {
+    return New-ShipVerdict $false 'APPLIANCE-STALE-CONTENT' ("$($Req.applianceWorkflowFile)'s latest green run has head $($App.headSha), which this clone cannot resolve - its content cannot be proven equal to the shipping commit's. git fetch origin main and retry.")
+  }
+  $srvDiff = Compare-ShipRevList -Paths @($App.serverPaths) -Want @($App.serverWant) -Got @($App.serverGot)
+  if ($srvDiff.Count -gt 0) {
+    return New-ShipVerdict $false 'APPLIANCE-STALE-CONTENT' ("$($Req.applianceWorkflowFile)'s latest green run (head $($App.headSha.Substring(0,8))) booted DIFFERENT server content than commit $($Sha.Substring(0,8)) ($($srvDiff -join ', ') differ). A green boot of different bytes is not evidence - push this content and let the appliance workflow run on it. (Trees are compared, never version strings.)")
+  }
+  return New-ShipVerdict $true '' ("a real appliance built from this content booted and served ($($Req.applianceWorkflowFile) run $($App.runId), head $($App.headSha.Substring(0,8)))")
+}
+
+# ---- C (retained, NOT wired): staging serves this content (pure) -----------
+# RETAINED DELIBERATELY, and deliberately not called by Invoke-ShipGate. This
+# is the hosted-staging form of the same invariant, kept intact - with its
+# tests - so that pointing the gate back at a live hosted environment is a
+# one-line change in the orchestrator rather than a rewrite. It is dead only
+# for as long as Aurora ships from local verification. Do not delete it to
+# tidy up; deleting it is what makes the way back expensive.
 function Test-ShipStaging {
   param(
     [Parameter(Mandatory)]$Req,
@@ -277,6 +349,16 @@ function Test-ShipSuites {
     if ($notRequired.Count -gt 0) { $parts += "on disk but NOT required: $($notRequired -join ', ')" }
     if ($notOnDisk.Count -gt 0) { $parts += "required but NOT on disk: $($notOnDisk -join ', ')" }
     return New-ShipVerdict $false 'SUITE-INVENTORY-DRIFT' ("scripts/ship-requirements.json and .github/workflows disagree about the deployed-suite set - $($parts -join '; '). A suite the list does not know is a suite the gate does not demand; update deployedSuites deliberately.")
+  }
+  # THE DRIFT CHECK ABOVE ALWAYS RUNS - it is the cheap half and it is what
+  # stops a suite being quietly deleted or forgotten. Only the DEMAND for
+  # green runs is conditional, because a suite that can only dispatch against
+  # a long-lived hosted instance cannot produce a run once there is no hosted
+  # instance to dispatch against. Saying so out loud beats demanding evidence
+  # that can never exist and calling the resulting refusal a safety property.
+  # This reads a COMMITTED value; there is no parameter or variable path to it.
+  if ([string]$Req.clinicalSuitesGate -ne 'required') {
+    return New-ShipVerdict $true '' ("NOT VERIFIED - the $($required.Count) clinical end-to-end suites are NOT part of this verdict (clinicalSuitesGate = '$($Req.clinicalSuitesGate)'). $($Req.clinicalSuitesGateReason) Their inventory is still drift-checked, so none has been lost.")
   }
   foreach ($s in $required) {
     $r = $Ste.runs[$s]
@@ -525,11 +607,59 @@ function Get-ShipStagingEvidence {
   return $ev
 }
 
-function Get-ShipSuiteEvidence {
+function Get-ShipApplianceEvidence {
   param(
     [Parameter(Mandatory)][string]$RepoRoot,
     [Parameter(Mandatory)]$Req,
     [Parameter(Mandatory)][string]$Sha
+  )
+  $srvPaths = @($Req.serverContextPaths | ForEach-Object { [string]$_ })
+  $ev = @{
+    serverPaths = $srvPaths
+    serverWant = (Get-ShipTreeRevs -RepoRoot $RepoRoot -Commit $Sha -Paths $srvPaths)
+    queried = $false; error = ''; found = $false; runId = 0; headSha = ''
+    conclusion = ''; headResolvable = $false; serverGot = @()
+  }
+  $base = "$($Req.githubApi)/repos/$($Req.githubRepo)"
+  $wf = [string]$Req.applianceWorkflowFile
+  try {
+    # the LATEST COMPLETED run is the verdict - the same rule the suites use.
+    # No scanning back for an older green: a newer red must not be shadowed.
+    $resp = Invoke-ShipHttps -Url "$base/actions/workflows/$wf/runs?status=completed&per_page=1" -GitHub $true
+  } catch {
+    $ev.error = $_.Exception.Message
+    return $ev
+  }
+  if ($null -eq $resp -or $null -eq $resp.psobject.Properties['workflow_runs']) {
+    $ev.error = 'the response carried no workflow_runs field'
+    return $ev
+  }
+  $ev.queried = $true
+  $runs = @($resp.workflow_runs)
+  if ($runs.Count -ge 1) {
+    $ev.found = $true
+    $ev.runId = $runs[0].id
+    $ev.headSha = [string]$runs[0].head_sha
+    $ev.conclusion = [string]$runs[0].conclusion
+    if (Test-ShipCommitResolvable -RepoRoot $RepoRoot -Commit $ev.headSha) {
+      $ev.headResolvable = $true
+      $ev.serverGot = Get-ShipTreeRevs -RepoRoot $RepoRoot -Commit $ev.headSha -Paths $srvPaths
+    }
+  }
+  return $ev
+}
+
+function Get-ShipSuiteEvidence {
+  param(
+    [Parameter(Mandatory)][string]$RepoRoot,
+    [Parameter(Mandatory)]$Req,
+    [Parameter(Mandatory)][string]$Sha,
+    # The INVENTORY half (diskSuites) is always gathered - it is local, free,
+    # and it is what drift-checks the suite set. The RUNS half is 16 network
+    # round-trips that only the 'required' mode can act on, so it is skipped
+    # when the suites are not gating. Skipping the fetch never softens a
+    # check: Test-ShipSuites refuses on a missing run map in required mode.
+    [bool]$FetchRuns = $true
   )
   $srvPaths = @($Req.serverContextPaths | ForEach-Object { [string]$_ })
   $ctxPaths = @($Req.frontendContextPaths | ForEach-Object { [string]$_ })
@@ -545,6 +675,7 @@ function Get-ShipSuiteEvidence {
   $ev.diskSuites = @(Get-ChildItem -Path $wfDir -Filter 'deployed-*-e2e.yml' -File |
     ForEach-Object { $_.Name } | Sort-Object)
   $base = "$($Req.githubApi)/repos/$($Req.githubRepo)"
+  if (-not $FetchRuns) { return $ev }
   foreach ($s in @($Req.deployedSuites | ForEach-Object { [string]$_ })) {
     $r = @{ queried = $false; error = ''; found = $false; runId = 0; headSha = ''
             conclusion = ''; headResolvable = $false; serverGot = @(); ctxGot = @() }
@@ -611,6 +742,23 @@ function Invoke-ShipGate {
   }
   SayGate "requirements: $RequirementsPath (schema $($req.schema), $(@($req.deployedSuites).Count) suites)"
 
+  # SAID OUT LOUD, EVERY RUN, BEFORE ANY EVIDENCE IS GATHERED. A reduction in
+  # verification that is only discoverable by reading a JSON file is a trap for
+  # whoever ships next. This banner exists so that the person typing the
+  # install password cannot avoid seeing what this build was NOT checked
+  # against - and it is printed whether or not the build ultimately succeeds.
+  if ([string]$req.clinicalSuitesGate -ne 'required') {
+    SayGate ''
+    SayGate '*** THE CLINICAL END-TO-END SUITES ARE NOT PART OF THIS VERDICT ***'
+    SayGate ("    $(@($req.deployedSuites).Count) suites (ADT, orders, MAR, labs, formulary, handoff, print, ...)")
+    SayGate ("    are NOT run and NOT required. clinicalSuitesGate = '$($req.clinicalSuitesGate)'.")
+    SayGate ("    $($req.clinicalSuitesGateReason)")
+    SayGate '    What IS still proved: the tree is clean and on the mainline, ci.yml'
+    SayGate '    is green on this exact commit, and a real appliance built from this'
+    SayGate '    content booted against a real database and served.'
+    SayGate ''
+  }
+
   # A. source identity - OFFLINE; every later stage keys on this sha.
   $src = Get-ShipSourceEvidence -RepoRoot $RepoRoot -Req $req
   $v = Test-ShipSource -Src $src
@@ -625,29 +773,48 @@ function Invoke-ShipGate {
   if (-not $v.ok) { return $v }
   SayGate "ci evidence: $($v.reason)"
 
-  # C. staging serves this content now.
-  SayGate "staging content: querying $($req.stagingApi) and $($req.stagingPages)..."
-  $stg = Get-ShipStagingEvidence -RepoRoot $RepoRoot -Req $req -Sha $sha
-  $v = Test-ShipStaging -Req $req -Stg $stg -Sha $sha
+  # C. a real instance built from this content booted and served. Sourced from
+  # the appliance workflow, not a hosted URL - see Test-ShipAppliance. The
+  # hosted form (Test-ShipStaging) is retained above and re-wired here in one
+  # line if Aurora ever ships from a live hosted environment again.
+  SayGate "appliance boot: querying $($req.applianceWorkflowFile) runs..."
+  $app = Get-ShipApplianceEvidence -RepoRoot $RepoRoot -Req $req -Sha $sha
+  $v = Test-ShipAppliance -Req $req -App $app -Sha $sha
   if (-not $v.ok) { return $v }
-  SayGate "staging content: $($v.reason)"
+  SayGate "appliance boot: $($v.reason)"
 
-  # D. every deployed suite green on this content (inventory drift-checked).
-  SayGate "deployed suites: querying $(@($req.deployedSuites).Count) suites..."
-  $ste = Get-ShipSuiteEvidence -RepoRoot $RepoRoot -Req $req -Sha $sha
-  foreach ($s in @($ste.diskSuites)) {
-    $r = $ste.runs[$s]
-    if ($null -ne $r -and $r.found) {
-      SayGate ("  {0}: {1} @ {2}" -f $s, $r.conclusion, $r.headSha.Substring(0, 8))
-    } elseif ($null -ne $r) {
-      SayGate ("  {0}: no completed run" -f $s)
+  # D. the clinical suites. The INVENTORY is drift-checked either way; whether
+  # green RUNS are demanded is the committed clinicalSuitesGate value.
+  $suitesGate = [bool]([string]$req.clinicalSuitesGate -eq 'required')
+  if ($suitesGate) {
+    SayGate "deployed suites: querying $(@($req.deployedSuites).Count) suites..."
+  } else {
+    SayGate "deployed suites: inventory drift-check only (runs not demanded - see the banner above)"
+  }
+  $ste = Get-ShipSuiteEvidence -RepoRoot $RepoRoot -Req $req -Sha $sha -FetchRuns $suitesGate
+  if ($suitesGate) {
+    foreach ($s in @($ste.diskSuites)) {
+      $r = $ste.runs[$s]
+      if ($null -ne $r -and $r.found) {
+        SayGate ("  {0}: {1} @ {2}" -f $s, $r.conclusion, $r.headSha.Substring(0, 8))
+      } elseif ($null -ne $r) {
+        SayGate ("  {0}: no completed run" -f $s)
+      }
     }
   }
   $v = Test-ShipSuites -Req $req -Ste $ste -Sha $sha
   if (-not $v.ok) { return $v }
   SayGate "deployed suites: $($v.reason)"
 
-  $final = New-ShipVerdict $true '' ("verified content - ci.yml green, staging serves it, all $(@($req.deployedSuites).Count) suites green on it")
+  # THE FINAL LINE MUST NOT OVERSTATE. build-protected.ps1 echoes it, and it
+  # is the last thing read before a password is typed and a hospital file is
+  # produced, so it names what was proved and - when they are not gating -
+  # says the clinical suites were not.
+  if ($suitesGate) {
+    $final = New-ShipVerdict $true '' ("verified content - ci.yml green, a real appliance booted and served it, all $(@($req.deployedSuites).Count) suites green on it")
+  } else {
+    $final = New-ShipVerdict $true '' ("verified content - ci.yml green and a real appliance booted and served it. NOT VERIFIED: the $(@($req.deployedSuites).Count) clinical end-to-end suites were not run and are not part of this verdict.")
+  }
   $final.sha = $sha
   return $final
 }
