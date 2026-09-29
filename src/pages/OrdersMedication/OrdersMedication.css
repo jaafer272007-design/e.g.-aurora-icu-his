@@ -15,6 +15,13 @@
 .om .oftab:hover{color:var(--text)}
 .om .oftab.on{background:rgba(var(--blue-rgb),.16);border-color:rgba(var(--blue-rgb),.5);color:var(--blue);font-weight:600}
 .om .oftab .n{font-family:var(--mono);font-size:10px;background:rgba(var(--steel-rgb),.16);border-radius:6px;padding:1px 6px}
+/* order-type filter row (2026-09-30) — a second, labeled dimension under
+   the status tabs (AND); a lighter pill so the two rows never read as one */
+.om .oftypes{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-3px 0 11px}
+.om .oftypelbl{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--faint);margin-right:2px}
+.om .oftype{padding:6px 11px;border-radius:999px;font-size:11px;color:var(--dim);border:1px solid var(--stroke);transition:.15s;min-height:34px}
+.om .oftype:hover{color:var(--text)}
+.om .oftype.on{background:rgba(var(--cyan-rgb),.13);border-color:rgba(var(--cyan-rgb),.5);color:var(--cyan);font-weight:600}
 .om .orderlist{display:flex;flex-direction:column;gap:9px}
 .om .oorow{position:relative;border:1px solid var(--stroke);border-radius:13px;padding:11px 13px 9px;background:rgba(var(--lift-rgb),.02);overflow:hidden}
 .om .oorow::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:4px}

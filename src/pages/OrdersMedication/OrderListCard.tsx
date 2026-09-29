@@ -19,6 +19,18 @@ const STATUS_META: Record<OrderStatus, { label: string; cls: string }> = {
 type FilterKey = 'all' | OrderStatus
 const FILTERS: FilterKey[] = ['all', 'pending', 'active', 'completed', 'discontinued']
 
+/* ORDER-TYPE FILTER (owner's request, 2026-09-30 — docs/design/
+   icu-update-batch-1.md §1): a second, separately labeled row that
+   combines with the status tabs by AND. "All types" is every category,
+   Nursing included; Laboratory is category 'Lab'. */
+type TypeKey = 'all' | 'Medication' | 'Lab' | 'Imaging'
+const TYPE_FILTERS: { key: TypeKey; label: string; noun: string }[] = [
+  { key: 'all', label: 'All types', noun: '' },
+  { key: 'Medication', label: 'Medication', noun: 'medication ' },
+  { key: 'Lab', label: 'Laboratory', noun: 'laboratory ' },
+  { key: 'Imaging', label: 'Imaging', noun: 'imaging ' },
+]
+
 interface OrderListCardProps {
   /** false = read-only list (no sign/modify/discontinue controls) */
   canManage: boolean
@@ -39,12 +51,13 @@ const implementable = (o: Order) =>
   o.status === 'active' && !!o.requiresImplementation
   && o.category !== 'Lab' && o.category !== 'Imaging'
 
-/** Full per-patient order list with status filters, audit history, and
+/** Full per-patient order list with status + type filters, audit history, and
  *  doctor RBAC actions (sign / modify / discontinue) plus the nursing
  *  implement action on task orders. */
 export function OrderListCard({ orders, canManage, canImplement, onSign, onModify, onDiscontinue, onImplement }: OrderListCardProps) {
   const now = useNow()
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [typeFilter, setTypeFilter] = useState<TypeKey>('all')
   const [openHistory, setOpenHistory] = useState<Set<string>>(new Set())
 
   const toggleHistory = (id: string) =>
@@ -55,8 +68,12 @@ export function OrderListCard({ orders, canManage, canImplement, onSign, onModif
       return next
     })
 
-  const count = (f: FilterKey) => (f === 'all' ? orders.length : orders.filter(o => o.status === f).length)
-  const shown = filter === 'all' ? orders : orders.filter(o => o.status === filter)
+  /* type first, then status (AND) — the status counts describe the
+     selected type, so every count matches what its tab would show */
+  const typed = typeFilter === 'all' ? orders : orders.filter(o => o.category === typeFilter)
+  const count = (f: FilterKey) => (f === 'all' ? typed.length : typed.filter(o => o.status === f).length)
+  const shown = filter === 'all' ? typed : typed.filter(o => o.status === filter)
+  const typeNoun = TYPE_FILTERS.find(t => t.key === typeFilter)?.noun ?? ''
   const rank: Record<OrderStatus, number> = { pending: 0, active: 1, completed: 2, discontinued: 3 }
   const sorted = [...shown].sort((a, b) => rank[a.status] - rank[b.status])
 
@@ -73,16 +90,27 @@ export function OrderListCard({ orders, canManage, canImplement, onSign, onModif
       title="Order List"
       aside="canonical record · full audit"
     >
-      <div className="oftabs" role="tablist">
+      <div className="oftabs" role="tablist" aria-label="Filter orders by status">
         {FILTERS.map(f => (
           <button key={f} role="tab" aria-selected={filter === f} className={`oftab${filter === f ? ' on' : ''}`} onClick={() => setFilter(f)}>
             {f === 'all' ? 'All' : f[0].toUpperCase() + f.slice(1)}<span className="n">{count(f)}</span>
           </button>
         ))}
       </div>
+      <div className="oftypes" role="group" aria-labelledby="ofTypeLbl">
+        <span className="oftypelbl" id="ofTypeLbl">Type</span>
+        {TYPE_FILTERS.map(t => (
+          <button
+            key={t.key} type="button" aria-pressed={typeFilter === t.key}
+            className={`oftype${typeFilter === t.key ? ' on' : ''}`} onClick={() => setTypeFilter(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       <div className="orderlist">
-        {sorted.length === 0 && <div className="omempty">No {filter === 'all' ? '' : filter + ' '}orders for this patient.</div>}
+        {sorted.length === 0 && <div className="omempty">No {filter === 'all' ? '' : filter + ' '}{typeNoun}orders for this patient.</div>}
         {sorted.map(o => {
           const st = STATUS_META[o.status]
           const adm = nextAdmin(o)
