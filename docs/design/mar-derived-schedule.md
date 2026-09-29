@@ -232,3 +232,90 @@ instances at read from frequency + start time + current time, overlaying the rea
 stays late and never shifts the schedule, q8h stays q8h from therapy start, and PRN derives from
 the last administration only. This is the highest-priority item in the project: it is a clinical
 safety fix. This document is the specification Claude Code builds from.*
+
+---
+
+## Amendments
+
+*[Appended 2026-09-30. SUPERSEDE, NEVER REWRITE — nothing above this line is
+altered: §§0–11 stand byte-identical to the approved document, and this
+commit's diff is a pure append (0 lines removed). The item below quotes what it
+supersedes and records the decision beneath it, so "what was approved" and
+"what was decided later" stay separately readable. Source: the project owner's
+request, recorded verbatim in `docs/design/icu-update-batch-1.md` §2 (relayed by
+the Codex planning handoff; see that file's commit for provenance). The
+mechanism paragraphs cite the code that implements them.]*
+
+### A · §1 / §10 — a late dose now RE-TIMES the next repeating dose — SUPERSEDED 2026-09-30 (project owner)
+
+> - **A late dose does NOT shift the schedule.**
+> - **q8h stays q8h from the start of therapy** — *not* from when the last dose actually landed.
+
+(§1), and
+
+> - **A late dose must not shift the schedule:** `q8h` derives from **therapy start**, not from the
+>   last documented administration. Assert explicitly.
+
+(§10).
+
+**Superseded by the owner, 2026-09-30.** For an active repeating medication
+with a derivable interval, when a dose is documented **GIVEN** and its **actual
+administration time** is later than its scheduled time, the next repeating dose
+is **actual administration time + the prescribed interval**, and the grid
+continues from there. The owner's example: q1h due 06:00, given 06:05 → next
+07:05, then 08:05; the 07:05 dose given 07:12 → next 08:12. It applies to every
+existing interval regimen — `q<n>h` and the named `daily`/`bid`/`tid`/`qid`
+interval interpretation of §4. Minute-based frequencies are not part of this
+change (owner, 2026-09-30).
+
+**What stands unchanged from the approved document:** the model is still
+derived-at-read (§1 — no generated slot is ever stored); the dated identity
+(§2); doses never run out; **a late dose stays late** — its fact keeps its
+original scheduled identity and reads as late; a missed dose stays missed; PRN
+derives from the last administration only; underivable frequencies get no
+invented schedule (§4); the render horizon and its explicit missed summary
+(§6); RBAC, encounter scope and #110 completion (§8). **Held/refused, on-time or
+early GIVEN, `once`, PRN and underivable/continuous regimens never re-time.**
+The overdue delay-reason rule is unchanged and independent: OVERDUE shows the
+moment an instance passes, a reason is required only beyond the 2-hour
+threshold judged against the documenting moment (a backdated actual time cannot
+dodge it) — and a 5-minute delay, which needs no reason, still re-times.
+
+**The mechanism (as built — `server/Core/Mar/MarSchedule.cs` re-timing section;
+the client mirror is `src/lib/marSchedule.ts`):**
+
+1. **Explicit metadata, not reinterpretation.** A GIVEN fact that re-times
+   carries `scheduleAnchor` — its actual administration time, `yyyy-MM-dd
+   HH:mm` — stamped by the write endpoint (`MarApi.cs`) only when it re-times.
+   It is an additive, optional field inside `AdministrationsJson` (data, not
+   schema — **no migration**; absent fields serialize absent, so every existing
+   fact's bytes are unchanged). Facts documented before this change carry no
+   anchor and are never re-read as re-timing: **installing the update shifts no
+   existing order.**
+2. **The floor rule decides which late GIVEN re-times** — one predicate
+   (`MarSchedule.Retimes`), used by the write endpoint to decide and by the read
+   side to replay the facts in recording order (`MarSchedule.RetimingState`),
+   so the two can never disagree. The actual time must be later than its own
+   scheduled instant **and** later than the floor: the latest of every earlier
+   fact's dated scheduled instant and every earlier effective anchor. So
+   recording an older dose later never rewinds a newer schedule (a backdated
+   actual time at or before the floor re-times nothing, and the audit says so:
+   "schedule not re-timed: a later dose is already documented"), and no
+   documented instance can fall off the derived grid.
+3. **The grid** with effective anchors A1 < … < An: therapy-start points while
+   t < A1; then Ai + k·interval (k ≥ 1) while t < A(i+1); the last segment is
+   unbounded. Earlier-segment instances that fell **before** a re-timing instant
+   stay on the grid as historical misses (a q1h dose given 2½ h late leaves the
+   intermediate hourly doses missed — never marked given, never erased);
+   instances at or after it are **superseded**. A second browser posting a
+   superseded instance gets **409** naming the re-timing (four-code rule: it
+   existed, the order's state no longer expects it); a duplicate stays 409; an
+   identity that never was an instance stays 404.
+4. **Audit.** The administration's history detail records the re-timing and
+   the resulting next dose; the MAR row and the printed MAR cell mark a
+   re-timed dose ("↻ next dose re-timed"). The original scheduled time, actual
+   time, documenting time, reason and every earlier fact are preserved as
+   recorded.
+5. **Frequency modification** keeps the anchors: the next dose is the latest
+   anchor + the *current* interval (a q1h re-timed at 06:05 then modified to q4h
+   → next 10:05). Anchors are instants, never stored intervals.
