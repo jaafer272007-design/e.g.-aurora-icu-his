@@ -118,8 +118,19 @@ record MedicationDto(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record InfusionDoseDto(double Value, string MassUnit, string TimeBasis);
 
+/* ScheduleAnchor — LATE-DOSE RE-TIMING (owner's rule, 2026-09-30,
+   docs/design/mar-derived-schedule.md Amendment A): ADDITIVE, optional,
+   set ONLY on a GIVEN fact documented after this rule shipped whose
+   actual administration time is later than its scheduled instant on a
+   repeating (interval) order — the "yyyy-MM-dd HH:mm" instant the next
+   repeating dose derives from (anchor + interval). Explicit on purpose:
+   a pre-update late fact carries no anchor, so installing the update
+   never silently re-times an existing order. Lives inside
+   AdministrationsJson (data, not schema — NO migration); WhenWritingNull
+   keeps every existing fact's bytes unchanged. */
 record AdminDto(string AdminId, string ScheduledTime, string Status,
-    string? DocumentedTime, string? DocumentedBy, string? Reason = null);
+    string? DocumentedTime, string? DocumentedBy, string? Reason = null,
+    string? ScheduleAnchor = null);
 
 record OrderEventDto(string Time, string Actor, string Action, string? Detail);
 

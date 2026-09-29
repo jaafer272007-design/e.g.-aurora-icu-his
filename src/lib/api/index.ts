@@ -1408,8 +1408,12 @@ export async function completeImplementation(orderId: string, actor: string, job
  *  scheduled instant (server-enforced — the overdue-delay-reason safety
  *  fix). administeredAt (given only, UTC wire stamp) records the actual
  *  administration time when it differs from the documenting moment (the
- *  #145 editable-timestamp pattern). REAL endpoint; mock fallback only
- *  when offline. Returns the updated Order. */
+ *  #145 editable-timestamp pattern). A GIVEN dose later than its
+ *  scheduled instant on a repeating order re-times the next dose from the
+ *  actual administration time (late-dose re-timing, 2026-09-30 — the
+ *  server stamps the fact's scheduleAnchor; a stale superseded instance
+ *  is 409'd). REAL endpoint; mock fallback only when offline. Returns the
+ *  updated Order. */
 export async function documentAdministration(
   orderId: string, adminId: string, action: AdministrationAction, actor: string, jobTitle: JobTitle,
   reason?: string, administeredAt?: string,
@@ -1420,7 +1424,7 @@ export async function documentAdministration(
     'administer', { action, ...(reason ? { reason } : {}), ...(administeredAt ? { administeredAt } : {}) })
   if (r.kind === 'ok') return r.data
   if (r.kind === 'denied') return null
-  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyAdministration(orderId, adminId, action, actor, reason), 120)
+  if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyAdministration(orderId, adminId, action, actor, reason, administeredAt), 120)
   throw apiUnavailable('administration documentation')
 }
 

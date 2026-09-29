@@ -12,7 +12,13 @@ import { datedEpoch } from './time'
    from THERAPY START, not from the last documented dose; PRN derives from
    the last administration only; an unparseable frequency gets NO invented
    schedule. Used by the mock adapter's MAR derivation and the Orders
-   screen's next-dose chip. */
+   screen's next-dose chip.
+   [SUPERSEDED 2026-09-30 by the project owner — mar-derived-schedule.md
+   Amendment A: a GIVEN dose later than its scheduled instant on a
+   repeating order RE-TIMES the grid (next = actual + interval). Mirrors
+   the server's re-timing section in MarSchedule.cs exactly — the same
+   explicit scheduleAnchor metadata, the same floor rule, the same
+   segmented grid; see retimingState below.] */
 
 export type ScheduleKind =
   | { kind: 'interval'; hours: number }
@@ -72,6 +78,74 @@ export function instanceStamp(ms: number): string {
 /** the documentable identity — the stamp's URL-safe "T" form */
 export const instanceIdentity = (ms: number): string => instanceStamp(ms).replace(' ', 'T')
 
+/* ---------------- LATE-DOSE RE-TIMING (owner's rule, 2026-09-30) ----------------
+   The client mirror of MarSchedule.cs's re-timing section — read the
+   server comment for the full rationale. In short: a GIVEN fact carrying a
+   dated scheduleAnchor (stamped by the server only when it re-times)
+   restarts the repeating grid at anchor + interval; the FLOOR RULE (actual
+   later than its own instance AND than every earlier fact's dated instance
+   and every earlier effective anchor) decides, replayed in recording
+   order, so an older dose recorded later never rewinds a newer schedule
+   and no documented instance ever falls off the grid. Earlier-segment
+   instances before a re-timing instant stay (historical misses); those at
+   or after it are superseded. */
+
+/** THE FLOOR RULE's single predicate (mirrors MarSchedule.Retimes) */
+export const retimes = (scheduledMs: number, actualMs: number, floorMs: number | null): boolean =>
+  actualMs > scheduledMs && (floorMs === null || actualMs > floorMs)
+
+/** replay the facts IN RECORDING ORDER → effective anchors (strictly
+ *  increasing) + the floor a new fact is judged against
+ *  (mirrors MarSchedule.RetimingState) */
+export function retimingState(factsInRecordingOrder: MedAdministration[]): { anchorsMs: number[]; floorMs: number | null } {
+  const anchorsMs: number[] = []
+  let floorMs: number | null = null
+  for (const a of factsInRecordingOrder) {
+    if (a.status === 'scheduled') continue
+    const s = datedEpoch(a.scheduledTime)
+    const anchor = a.scheduleAnchor ? datedEpoch(a.scheduleAnchor) : null
+    if (a.status === 'given' && s !== null && anchor !== null && retimes(s, anchor, floorMs)) {
+      anchorsMs.push(anchor)
+      floorMs = anchor
+    } else if (s !== null && (floorMs === null || s > floorMs)) floorMs = s
+  }
+  return { anchorsMs, floorMs }
+}
+
+/** the derived grid — strictly increasing, unbounded (mirrors MarSchedule.Grid) */
+export function* grid(firstMs: number, hours: number, anchorsMs: number[]): Generator<number> {
+  const step = hours * 3_600_000
+  let start = firstMs
+  for (let seg = 0; ; seg++) {
+    const cutoff = seg < anchorsMs.length ? anchorsMs[seg] : null
+    for (let t = start; cutoff === null || t < cutoff; t += step) yield t
+    start = (cutoff as number) + step
+  }
+}
+
+/** is t an instance of the derived grid? arithmetic per segment (mirrors MarSchedule.OnGrid) */
+export function onGrid(t: number, firstMs: number, hours: number, anchorsMs: number[]): boolean {
+  const step = hours * 3_600_000
+  let seg = 0
+  while (seg < anchorsMs.length && anchorsMs[seg] <= t) seg++
+  const segStart = seg === 0 ? firstMs : anchorsMs[seg - 1] + step
+  return t >= segStart && (t - segStart) % step === 0
+}
+
+/** the re-timing instant that superseded t, or null (mirrors MarSchedule.SupersededBy) */
+export function supersededBy(t: number, firstMs: number, hours: number, anchorsMs: number[]): number | null {
+  const step = hours * 3_600_000
+  for (let seg = 0; seg < anchorsMs.length; seg++) {
+    const segStart = seg === 0 ? firstMs : anchorsMs[seg - 1] + step
+    if (t >= anchorsMs[seg] && t >= segStart && (t - segStart) % step === 0) {
+      /* name the re-timing currently in force at t */
+      const inForce = anchorsMs.filter(a => a <= t)
+      return inForce[inForce.length - 1]
+    }
+  }
+  return null
+}
+
 export interface DerivedInstances {
   /** undocumented instances older than the past window — the explicit
    *  remainder (count + oldest stamp), never silently truncated */
@@ -82,26 +156,18 @@ export interface DerivedInstances {
   renderableMs: number[]
 }
 
-/** every expected instance for an interval order, split per the horizon —
- *  pure arithmetic on the anchor grid (mirrors MarSchedule.IntervalInstances) */
+/** every expected instance for an interval order, split per the horizon,
+ *  over the RE-TIMED grid (mirrors MarSchedule.IntervalInstances) */
 export function intervalInstances(
-  firstMs: number, hours: number, documentedStamps: Set<string>, nowMs: number,
+  firstMs: number, hours: number, anchorsMs: number[], documentedStamps: Set<string>, nowMs: number,
 ): DerivedInstances {
-  const step = hours * 3_600_000
   const windowStart = nowMs - PAST_WINDOW_HOURS * 3_600_000
-  const k0 = firstMs >= windowStart ? 0 : Math.ceil((windowStart - firstMs) / step)
   let aggregatedMissed = 0
   let oldestAggregatedMs: number | null = null
-  for (let k = 0; k < k0; k++) {
-    const t = firstMs + k * step
-    if (documentedStamps.has(instanceStamp(t))) continue
-    aggregatedMissed++
-    oldestAggregatedMs ??= t
-  }
   const renderableMs: number[] = []
-  for (let k = k0; ; k++) {
-    const t = firstMs + k * step
+  for (const t of grid(firstMs, hours, anchorsMs)) {
     const documented = documentedStamps.has(instanceStamp(t))
+    if (t < windowStart) { if (!documented) { aggregatedMissed++; oldestAggregatedMs ??= t } continue }
     if (t <= nowMs) { if (!documented) renderableMs.push(t); continue }
     if (!documented) { renderableMs.push(t); break }
   }
@@ -124,8 +190,9 @@ export function nextExpectedDose(o: Order, nowMs: number): string | null {
   const documented = documentedStampsOf(o)
   if (kind.kind === 'once')
     return documented.has(instanceStamp(first)) ? null : instanceStamp(first)
+  const { anchorsMs } = retimingState(o.administrations ?? [])
   const { aggregatedMissed, oldestAggregatedMs, renderableMs } =
-    intervalInstances(first, kind.hours, documented, nowMs)
+    intervalInstances(first, kind.hours, anchorsMs, documented, nowMs)
   if (aggregatedMissed > 0 && oldestAggregatedMs !== null) return instanceStamp(oldestAggregatedMs)
   return renderableMs.length ? instanceStamp(renderableMs[0]) : null
 }

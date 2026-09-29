@@ -30,7 +30,12 @@ namespace Aurora.Core.Mar;
    given dose may also carry an explicit administeredAt (the #145
    editable-timestamp pattern — auto-filled now client-side, editable),
    recorded as the fact's documentedTime; the audit event then records
-   both times. */
+   both times. LATE-DOSE RE-TIMING (owner's rule, 2026-09-30): a GIVEN
+   dose on a repeating order whose actual administration time is later
+   than its scheduled instant carries an explicit ScheduleAnchor and the
+   next repeating dose derives from it (actual + interval) — see
+   MarSchedule's re-timing section; a stale instance the re-timing
+   superseded is 409'd. */
 static class MarApi
 {
     public static void Map(WebApplication app)
@@ -147,6 +152,8 @@ static class MarApi
                branch; PRN/on-demand doses have no schedule, so the
                late-administration rule can never apply to them */
             DateTime? scheduledInstant = null;
+            /* the replayed re-timing state (dated-instance branch only) */
+            (List<DateTime> anchors, DateTime? floor)? retiming = null;
             if (adminId == "prn")
             {
                 if (parsed.Kind != MarSchedule.Kind.Prn)
@@ -179,12 +186,29 @@ static class MarApi
                 if (anchor is null)
                     return ApiError.BadRequest($"order '{orderId}' has no parseable therapy start — its schedule cannot be derived");
                 var first = MarSchedule.FirstDose(anchor.Value);
+                /* the late-dose re-timing state, replayed from the stored
+                   facts with the SAME helper the read side uses — so this
+                   endpoint accepts exactly the instances GET /mar derives */
+                retiming = MarSchedule.RetimingState(admins);
                 /* grid membership first (pure arithmetic): the identity must
-                   BE on the anchor grid at all, else it addresses nothing */
+                   BE on the (re-timed) grid at all, else it addresses nothing */
                 var onGrid = parsed.Kind == MarSchedule.Kind.Once
                     ? instant == first
-                    : instant >= first && (instant - first).Ticks % TimeSpan.FromHours(parsed.IntervalHours).Ticks == 0;
-                if (!onGrid) return ApiError.NotFound();   // not an expected dose instance of this order
+                    : MarSchedule.OnGrid(instant, first, parsed.IntervalHours, retiming.Value.anchors);
+                if (!onGrid)
+                {
+                    /* a STALE instance (a second browser still showing the
+                       pre-re-timing grid): it WAS an expected dose, a late
+                       administration re-timed it away — FOUR-CODE RULE: it
+                       exists in the order's history but the order's current
+                       state no longer expects it → 409, never a silent 404 */
+                    if (parsed.Kind == MarSchedule.Kind.Interval
+                        && MarSchedule.SupersededBy(instant, first, parsed.IntervalHours, retiming.Value.anchors) is DateTime by)
+                        return ApiError.StateConflict(
+                            $"dose '{adminId}' is no longer an expected instance — the schedule was re-timed by a late administration at "
+                            + $"{MarSchedule.StampOf(by)} (next doses follow {MarSchedule.StampOf(by)} + {med.Frequency}); refresh the MAR and document the current instance");
+                    return ApiError.NotFound();   // not an expected dose instance of this order
+                }
                 scheduledStamp = MarSchedule.StampOf(instant);
                 scheduledInstant = instant;
                 /* the duplicate check comes BEFORE the render-window check:
@@ -203,7 +227,7 @@ static class MarApi
                        past window and not beyond the next expected dose (the
                        same set GET /api/icu/mar serves) */
                     var docStamps = admins.Where(a => a.Status != "scheduled").Select(a => a.ScheduledTime).ToHashSet();
-                    var (_, _, renderable) = MarSchedule.IntervalInstances(first, parsed.IntervalHours, docStamps, now);
+                    var (_, _, renderable) = MarSchedule.IntervalInstances(first, parsed.IntervalHours, retiming.Value.anchors, docStamps, now);
                     if (!renderable.Contains(instant)) return ApiError.NotFound();
                 }
             }
@@ -231,15 +255,37 @@ static class MarApi
             /* the recorded administration time: the explicit actual time
                when supplied (#145 editable), else the documenting moment */
             var adminTime = administeredAt?.ToString("yyyy-MM-dd HH:mm") ?? time;
+            /* LATE-DOSE RE-TIMING (owner's rule, 2026-09-30): a GIVEN dose on
+               a repeating order whose ACTUAL administration time (the
+               recorded adminTime, minute precision — never the documenting
+               moment when an explicit time was supplied) is later than its
+               scheduled instant re-times the grid, per the floor rule
+               (MarSchedule.Retimes). Deliberately independent of the delay-
+               reason threshold above: a 5-minute delay needs no reason but
+               still re-times. Held/refused, on-time/early given, once, PRN
+               and on-demand doses never re-time. */
+            string? scheduleAnchor = null;
+            var retimeBlocked = false;
+            if (req.Action == "given" && parsed.Kind == MarSchedule.Kind.Interval
+                && scheduledInstant is not null && retiming is not null
+                && MarSchedule.ParseDated(adminTime) is DateTime actual && actual > scheduledInstant.Value)
+            {
+                if (MarSchedule.Retimes(scheduledInstant.Value, actual, retiming.Value.floor)) scheduleAnchor = adminTime;
+                else retimeBlocked = true;   // an older dose recorded later — it never rewinds a newer schedule
+            }
             /* a volunteered reason is documentation — never dropped */
             var reason = string.IsNullOrWhiteSpace(req.Reason) ? null : req.Reason.Trim();
             admins.Add(new AdminDto(OrderLogic.NextAdminId(), scheduledStamp, req.Action!,
-                adminTime, actor, reason));
+                adminTime, actor, reason, scheduleAnchor));
             row.AdministrationsJson = JsonSerializer.Serialize(admins, JsonOpts.Web);
             var verb = req.Action == "given" ? "administered" : req.Action!;
             var detail = $"{(scheduledStamp.Length > 0 ? scheduledStamp : adminId == "prn" ? "PRN" : $"unscheduled ({med.Frequency})")} dose {req.Action} at {adminTime}"
                 + (adminTime != time ? $" (documented {time})" : "")
                 + (isLate ? $" — LATE: {(int)lateBy.TotalHours}h {lateBy.Minutes:D2}m after the scheduled time" : "")
+                /* the re-timing is part of the audited record, out loud */
+                + (scheduleAnchor is not null
+                    ? $" — schedule re-timed: next dose {MarSchedule.StampOf(MarSchedule.ParseDated(scheduleAnchor)!.Value.AddHours(parsed.IntervalHours))} ({med.Frequency} from the actual administration time)"
+                    : retimeBlocked ? " — schedule not re-timed: a later dose is already documented" : "")
                 + (reason is not null ? $" — {reason}" : "");
             row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, verb, detail));
             db.SaveChanges();
@@ -265,9 +311,9 @@ static class MarLogic
         var route = $"{m.Route} · {(m.Prn ? $"PRN — {m.PrnIndication ?? "as required"}" : m.Frequency)}";
         MarRowDto Row(string adminId, string scheduledTime, string status,
             string? documentedTime = null, int? missedEarlier = null, string? scheduleNote = null,
-            string? reason = null) =>
+            string? reason = null, string? scheduleAnchor = null) =>
             new(o.OrderId, adminId, o.PatientId, o.BedId, m.Drug, m.Dose, route,
-                scheduledTime, m.Prn, status, documentedTime, missedEarlier, scheduleNote, reason);
+                scheduledTime, m.Prn, status, documentedTime, missedEarlier, scheduleNote, reason, scheduleAnchor);
 
         var admins = o.AdministrationsJson is null
             ? new List<AdminDto>()
@@ -278,8 +324,10 @@ static class MarLogic
             rows.Add((MarSchedule.ParseStamp(a.ScheduledTime, nowUtc)
                       ?? MarSchedule.ParseStamp(a.DocumentedTime, nowUtc) ?? nowUtc,
                 /* the documented reason rides the row — held/refused reasons
-                   and the overdue DELAY reason are part of the record */
-                Row(a.AdminId, a.ScheduledTime, a.Status, a.DocumentedTime, reason: a.Reason)));
+                   and the overdue DELAY reason are part of the record; so
+                   does a late-dose re-timing anchor */
+                Row(a.AdminId, a.ScheduledTime, a.Status, a.DocumentedTime, reason: a.Reason,
+                    scheduleAnchor: a.ScheduleAnchor)));
 
         if (o.Status == "active")
         {
@@ -308,6 +356,9 @@ static class MarLogic
                     }
                     var first = MarSchedule.FirstDose(anchor.Value);
                     var docStamps = facts.Select(a => a.ScheduledTime).ToHashSet();
+                    /* the late-dose re-timing, replayed from the facts in
+                       recording order (the write endpoint's own helper) */
+                    var (anchors, _) = MarSchedule.RetimingState(facts);
                     if (parsed.Kind == MarSchedule.Kind.Once)
                     {
                         /* a single expected dose renders individually forever
@@ -317,7 +368,7 @@ static class MarLogic
                         break;
                     }
                     var (aggregated, oldest, renderable) =
-                        MarSchedule.IntervalInstances(first, parsed.IntervalHours, docStamps, nowUtc);
+                        MarSchedule.IntervalInstances(first, parsed.IntervalHours, anchors, docStamps, nowUtc);
                     if (aggregated > 0)
                         /* the render horizon's explicit remainder — older
                            missed doses are counted out loud, never silently
@@ -337,13 +388,15 @@ static class MarLogic
    never stored. scheduledTime is DATED ("yyyy-MM-dd HH:mm") on derived
    instances — the identity rule; "" on PRN/on-demand rows; legacy facts
    keep whatever they recorded. missedEarlier rides only the per-order
-   horizon summary row; scheduleNote only the honest underivable row
-   (WhenWritingNull keeps both absent everywhere else). */
+   horizon summary row; scheduleNote only the honest underivable row;
+   scheduleAnchor only a GIVEN fact that re-timed the grid (late-dose
+   re-timing, 2026-09-30) — WhenWritingNull keeps each absent everywhere
+   else. */
 record MarRowDto(
     string OrderId, string AdminId, string PatientId, string BedId, string Medication,
     string Dose, string Route, string ScheduledTime, bool Prn, string Status,
     string? DocumentedTime, int? MissedEarlier = null, string? ScheduleNote = null,
-    string? Reason = null);
+    string? Reason = null, string? ScheduleAnchor = null);
 
 /* MAR administration action request (Stage 10 Phase 3) — Disallow rejects
    any unrecognized field; action/reason validated explicitly in the

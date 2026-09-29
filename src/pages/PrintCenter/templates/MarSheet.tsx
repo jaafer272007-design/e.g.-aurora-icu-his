@@ -25,6 +25,7 @@ function Cell({ c }: { c: MarCell }) {
       <div className="pd-mar-status">{STATUS_LABEL[c.status]}</div>
       {c.documentedTime && <div className="pd-mar-meta">at {displayFullStamp(c.documentedTime)}</div>}
       {c.documentedBy && <div className="pd-mar-meta">{c.documentedBy}</div>}
+      {c.scheduleAnchor && <div className="pd-mar-meta">↻ next dose re-timed from this time</div>}
       {c.reason && <div className="pd-mar-reason">“{c.reason}”</div>}
     </div>
   )
@@ -71,7 +72,9 @@ export function MarSheet({ data }: { data: MarSheetData }) {
           as-required availability. GIVEN/HELD/REFUSED cells show the actual documented time
           and the administering nurse exactly as persisted; a reason is recorded whenever a
           dose was held or refused. “not documented” on an active order is a dose still
-          awaiting bedside documentation — never assumed given.
+          awaiting bedside documentation — never assumed given. A repeating dose given later
+          than its slot re-times the following slots from its actual administration time
+          (“next dose re-timed”); the late dose keeps its original slot.
         </p>
       </Section>
       <SignatureBlock role="Nurse — shift verification" />

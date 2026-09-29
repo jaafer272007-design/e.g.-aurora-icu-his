@@ -190,6 +190,14 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
                       {r.status === 'given'
                         && (stampDiffMinutes(r.scheduledTime, r.documentedTime) ?? 0) > LATE_THRESHOLD_MINUTES
                         && <span className="marlate">LATE</span>}
+                      {/* late-dose re-timing (2026-09-30): this given
+                          dose re-timed the repeating schedule — the next
+                          instance derives from its actual time */}
+                      {r.scheduleAnchor && (
+                        <span className="marretimed" title={`Next repeating dose re-timed from the actual administration time ${displayStamp(r.scheduleAnchor)}`}>
+                          ↻ next dose re-timed
+                        </span>
+                      )}
                       {r.reason && <span className="marreason">— {r.reason}</span>}
                     </span>
                   )}

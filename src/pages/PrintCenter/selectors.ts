@@ -684,6 +684,7 @@ export async function buildMar(patientId: string, encounterId?: string): Promise
           adminId: a.adminId, scheduledTime: a.scheduledTime,
           status: a.status, documentedTime: a.documentedTime,
           documentedBy: a.documentedBy, reason: a.reason,
+          scheduleAnchor: a.scheduleAnchor,
         })),
     })),
     unscheduledCount: meds.length - scheduled.length,

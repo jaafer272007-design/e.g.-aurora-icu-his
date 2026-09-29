@@ -694,6 +694,12 @@ export interface MedAdministration {
   documentedBy?: string
   /** documented reason — required when held/refused (Stage 10 Phase 3 MAR) */
   reason?: string
+  /** LATE-DOSE RE-TIMING (owner's rule, 2026-09-30): present only on a
+   *  GIVEN fact whose actual administration time was later than its
+   *  scheduled instant on a repeating order AND re-timed the grid — the
+   *  dated "yyyy-MM-dd HH:mm" instant the next repeating dose derives from
+   *  (anchor + interval). Server-stamped; absent on every earlier fact. */
+  scheduleAnchor?: string
 }
 
 export interface OrderEvent {
@@ -968,6 +974,9 @@ export interface MarRow {
    *  reason on a dose given more than LATE_THRESHOLD_MINUTES past its
    *  scheduled instant (the overdue-delay-reason safety fix) */
   reason?: string
+  /** documented GIVEN facts only: the late-dose re-timing anchor when this
+   *  administration re-timed the repeating grid (see MedAdministration) */
+  scheduleAnchor?: string
 }
 
 /* ==================== Laboratory & Imaging domain (Screen 6) ====================

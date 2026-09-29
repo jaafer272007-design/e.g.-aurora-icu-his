@@ -324,6 +324,9 @@ export interface MarCell {
   documentedBy?: string
   /** server-required for held/refused — absent on given (not a gap) */
   reason?: string
+  /** late-dose re-timing (2026-09-30): present when this given dose
+   *  re-timed the repeating schedule from its actual administration time */
+  scheduleAnchor?: string
 }
 
 export interface MarMedRow {
