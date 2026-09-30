@@ -34,6 +34,9 @@ for s,c,t in zip(sc,cs,ts):
         if 'read' in st:
             check_read(name,'server',st.get('expect',{}),sc_['rows'])
             check_read(name,'client',st.get('expect',{}),st_['rows'])
+            if 'dueCount' in st.get('expect',{}):
+                checks+=1
+                if st_.get('dueCount')!=st['expect']['dueCount']: bad(name,'DUE COUNT',st['read'],st_.get('dueCount'),'expected',st['expect']['dueCount'])
             checks+=1
             key=lambda r:(r['adminId'],r['scheduledTime'],r['status'],r['documentedTime'],r['round'],r['timerFrom'],r['timerRule'])
             if [key(r) for r in sc_['rows']]!=[key(r) for r in st_['rows']]: bad(name,'ROW PARITY',st['read'],'\n cs',[key(r) for r in sc_['rows']],'\n ts',[key(r) for r in st_['rows']])
@@ -56,5 +59,8 @@ for s,c,t in zip(sc,cs,ts):
             if 'expectNextId' in st:
                 checks+=1
                 if sc_['nextId']!=st['expectNextId'] or st_['nextId']!=st['expectNextId']: bad(name,'next identity',sc_['nextId'],st_['nextId'],'expected',st['expectNextId'])
+            if 'expectNote' in st:
+                checks+=1
+                if st['expectNote'] not in (st_.get('note') or ''): bad(name,'client audit note',st_.get('note'),'expected to contain',st['expectNote'])
 print(f'checks: {checks} · failures: {fails} · scenarios: {len(sc)}')
 sys.exit(1 if fails else 0)

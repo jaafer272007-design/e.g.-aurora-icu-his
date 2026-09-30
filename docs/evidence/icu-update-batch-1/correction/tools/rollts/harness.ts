@@ -6,6 +6,7 @@ import { clock } from './clock'
 import { readFileSync } from 'node:fs'
 import { applyAdministration, applyDiscontinue, applyModify, deriveMarRows, insertOrder } from '/home/user/e.g.-aurora-icu-his/src/lib/api/data/orders.ts'
 import { nextExpectedDose } from '/home/user/e.g.-aurora-icu-his/src/lib/marSchedule.ts'
+import { dueStateFor } from '/home/user/e.g.-aurora-icu-his/src/lib/time.ts'
 import type { MedAdministration } from '/home/user/e.g.-aurora-icu-his/src/lib/api/types.ts'
 
 const ms = (s: string) => Date.parse(s.replace(' ', 'T') + ':00Z')
@@ -35,7 +36,9 @@ for (const sc of scenarios) {
   for (const st of sc.steps) {
     if (st.read) {
       clock.now = ms(st.read)
-      steps.push({ read: st.read, rows: rows(), nextDose: nextExpectedDose(o, clock.now) })
+      /* the MAR card's / Meds Due KPI's own due-count predicate */
+      const dueCount = deriveMarRows([pid]).filter(r => r.status === 'scheduled' && !r.prn && dueStateFor(r.scheduledTime, new Date(clock.now)) !== 'upcoming').length
+      steps.push({ read: st.read, rows: rows(), nextDose: nextExpectedDose(o, clock.now), dueCount })
     } else if (st.modify) {
       clock.now = ms(st.at)
       applyModify(o.orderId, { frequency: st.modify }, 'harness', 'Dr Synthetic')
@@ -56,7 +59,7 @@ for (const sc of scenarios) {
       const r = applyAdministration(o.orderId, id, st.action, 'Harness Nurse', st.reason, st.administeredAt)
       if (r) last = id
       const next = deriveMarRows([pid]).find(x => x.status === 'scheduled' && x.round !== undefined)
-      steps.push({ doc: st.doc, id, action: st.action, at: st.at, result: r ? 'ok' : 'rejected', next: next?.scheduledTime ?? null, nextId: next?.adminId ?? null })
+      steps.push({ doc: st.doc, id, action: st.action, at: st.at, result: r ? 'ok' : 'rejected', next: next?.scheduledTime ?? null, nextId: next?.adminId ?? null, note: r ? o.history[o.history.length - 1].detail ?? null : null })
     }
   }
   out.push({ name: sc.name, steps })
