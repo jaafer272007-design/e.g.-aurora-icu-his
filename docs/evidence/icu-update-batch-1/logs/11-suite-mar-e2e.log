@@ -1,0 +1,43 @@
+SKIP  [0] Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objec
+SKIP  [1] ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+SKIP  [2] Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+PASS  [3] Login as doctor and nurse
+      sara.rahman: token issued
+      maya.chen: token issued
+PASS  [4] Admit THIS RUN's patient (safety enforcement made the shared P-1001 untenable — accumulate
+      admitted P-1020 (ENC-1020) at B-16
+PASS  [5] Unauthenticated MAR read → 401
+      GET /mar (no token) -> HTTP 401
+PASS  [6] Both roles can READ the MAR; rows are facts + DATED derived instances (+ CORS)
+      Access-Control-Allow-Origin: https://jaafer272007-design.github.io
+      MAR rows: 45 · derived scheduled: 25 · documented facts: 16
+      doctor MAR read -> HTTP 200
+PASS  [7] Seed a signed med order for THIS RUN — NO stored schedule; the MAR derives its dated insta
+      created ORD-131 (no stored schedule — correct)
+      derived next instance: 2026-09-30T01:00
+PASS  [8] RBAC polarity — doctor 403 on administer, nurse 200; the NEXT instance appears (doses neve
+      doctor administer -> HTTP 403
+      nurse given by: RN Maya Chen for instance 2026-09-30 01:00
+      NEXT derived instance after documenting: 2026-09-30T13:00
+      re-document -> HTTP 409
+      precise 409: dose '2026-09-30T01:00' was already documented as given by RN Maya Chen at 2026-09-30 00:06 — it is not awaiting documentation
+      absent id (http://localhost:8080/api/icu/mar/ORD-0000/administrations/2026-09-30T01:00) -> HTTP 404
+      absent id (http://localhost:8080/api/icu/mar/ORD-131/administrations/ADM-0000) -> HTTP 404
+      absent id (http://localhost:8080/api/icu/mar/ORD-131/administrations/2020-01-01T00:07) -> HTTP 404
+PASS  [9] Held requires a reason (validation live); with reason → 200 + persisted
+      held without reason -> HTTP 400
+      malformed '{}' -> HTTP 400
+      malformed '{"action":"maybe"}' -> HTTP 400
+      malformed '{"action":"given","extra":1}' -> HTTP 400
+      held with reason: SBP 82 — holding per parameters
+PASS  [10] OVERDUE DELAY REASON (option a) — a 2h+ overdue dose cannot be given WITHOUT a reason (non
+      seeded overdue instance: ORD-2003 / 2026-09-29T03:00
+      overdue given w/o reason -> HTTP 400
+      refusal: this dose was scheduled at 2026-09-29 03:00 and is 21h 06m overdue — a delay reason is required to document it given
+      administeredAt in the future -> HTTP 400
+      administeredAt on held -> HTTP 400
+PASS  [11] Cleanup — discharge the run encounter (runs on failure/cancel too)
+      discharge ENC-1020 -> HTTP 200
+      encounters final: discharged
+      cleanup complete
+SUITE PASSED

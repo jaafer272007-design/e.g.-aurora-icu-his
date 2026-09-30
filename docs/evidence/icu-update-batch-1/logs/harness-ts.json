@@ -1,0 +1,1030 @@
+[
+  {
+    "name": "S1 q1h owner example (06:00 given 06:05 -> 07:05; 07:05 given 07:12 -> 08:12)",
+    "steps": [
+      {
+        "read": "2026-09-30 05:30",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 06:00"
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok(anchor 2026-09-30 06:05)"
+      },
+      {
+        "read": "2026-09-30 06:06",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:05"
+          },
+          {
+            "adminId": "2026-09-30T07:05",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:05"
+      },
+      {
+        "doc": "2026-09-30T07:05",
+        "action": "given",
+        "at": "2026-09-30 07:12",
+        "result": "ok(anchor 2026-09-30 07:12)"
+      },
+      {
+        "read": "2026-09-30 07:13",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:05"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:12",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 07:12"
+          },
+          {
+            "adminId": "2026-09-30T08:12",
+            "scheduledTime": "2026-09-30 08:12",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:12"
+      },
+      {
+        "read": "2026-09-30 10:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:05"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:12",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 07:12"
+          },
+          {
+            "adminId": "2026-09-30T08:12",
+            "scheduledTime": "2026-09-30 08:12",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T09:12",
+            "scheduledTime": "2026-09-30 09:12",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T10:12",
+            "scheduledTime": "2026-09-30 10:12",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:12"
+      }
+    ]
+  },
+  {
+    "name": "S2 q8h late shift, on-time follow-up, across midnight and 2 days (horizon/aggregate)",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:40",
+        "result": "ok(anchor 2026-09-30 06:40)"
+      },
+      {
+        "read": "2026-09-30 06:41",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:40",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:40"
+          },
+          {
+            "adminId": "2026-09-30T14:40",
+            "scheduledTime": "2026-09-30 14:40",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 14:40"
+      },
+      {
+        "doc": "2026-09-30T14:40",
+        "action": "given",
+        "at": "2026-09-30 14:40",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 14:41",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:40",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:40"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 14:40",
+            "status": "given",
+            "documentedTime": "2026-09-30 14:40",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T22:40",
+            "scheduledTime": "2026-09-30 22:40",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 22:40"
+      },
+      {
+        "read": "2026-10-01 01:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:40",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:40"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 14:40",
+            "status": "given",
+            "documentedTime": "2026-09-30 14:40",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T22:40",
+            "scheduledTime": "2026-09-30 22:40",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-10-01T06:40",
+            "scheduledTime": "2026-10-01 06:40",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 22:40"
+      },
+      {
+        "read": "2026-10-02 07:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:40",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:40"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 14:40",
+            "status": "given",
+            "documentedTime": "2026-09-30 14:40",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "missed-earlier",
+            "scheduledTime": "2026-09-30 22:40",
+            "status": "missed-earlier",
+            "documentedTime": null,
+            "missedEarlier": 2,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-10-01T14:40",
+            "scheduledTime": "2026-10-01 14:40",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-10-01T22:40",
+            "scheduledTime": "2026-10-01 22:40",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-10-02T06:40",
+            "scheduledTime": "2026-10-02 06:40",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-10-02T14:40",
+            "scheduledTime": "2026-10-02 14:40",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 22:40"
+      }
+    ]
+  },
+  {
+    "name": "S3 explicit actual time (06:03) documented later (06:40) -> next 07:03",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:40",
+        "result": "ok(anchor 2026-09-30 06:03)"
+      },
+      {
+        "read": "2026-09-30 06:41",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:03",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:03"
+          },
+          {
+            "adminId": "2026-09-30T07:03",
+            "scheduledTime": "2026-09-30 07:03",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:03"
+      }
+    ]
+  },
+  {
+    "name": "S5 long delay keeps intermediate misses (06:00 given 08:30 -> 07:00/08:00 stay missed, next 09:30); held 07:00 does not re-time",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 08:30",
+        "result": "ok(anchor 2026-09-30 08:30)"
+      },
+      {
+        "read": "2026-09-30 08:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 08:30",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 08:30"
+          },
+          {
+            "adminId": "2026-09-30T07:00",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T08:00",
+            "scheduledTime": "2026-09-30 08:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T09:30",
+            "scheduledTime": "2026-09-30 09:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:00"
+      },
+      {
+        "doc": "2026-09-30T07:00",
+        "action": "held",
+        "at": "2026-09-30 08:35",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 08:36",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 08:30",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 08:30"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "held",
+            "documentedTime": "2026-09-30 08:35",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T08:00",
+            "scheduledTime": "2026-09-30 08:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T09:30",
+            "scheduledTime": "2026-09-30 09:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:00"
+      }
+    ]
+  },
+  {
+    "name": "S6 older dose recorded later with backdated actual (06:20 < floor 07:05) never rewinds",
+    "steps": [
+      {
+        "doc": "2026-09-30T07:00",
+        "action": "given",
+        "at": "2026-09-30 07:05",
+        "result": "ok(anchor 2026-09-30 07:05)"
+      },
+      {
+        "read": "2026-09-30 07:06",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 07:05"
+          },
+          {
+            "adminId": "2026-09-30T08:05",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 06:00"
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 07:20",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 07:21",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:20",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 07:05"
+          },
+          {
+            "adminId": "2026-09-30T08:05",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:05"
+      }
+    ]
+  },
+  {
+    "name": "S7 older dose given NOW (07:30 > floor 07:05) re-times forward (literal rule)",
+    "steps": [
+      {
+        "doc": "2026-09-30T07:00",
+        "action": "given",
+        "at": "2026-09-30 07:05",
+        "result": "ok(anchor 2026-09-30 07:05)"
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 07:30",
+        "result": "ok(anchor 2026-09-30 07:30)"
+      },
+      {
+        "read": "2026-09-30 07:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:30",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 07:30"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 07:05"
+          },
+          {
+            "adminId": "2026-09-30T08:30",
+            "scheduledTime": "2026-09-30 08:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:30"
+      }
+    ]
+  },
+  {
+    "name": "S8 stale browser posts superseded 07:00 after re-timing; 07:05 accepted",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok(anchor 2026-09-30 06:05)"
+      },
+      {
+        "doc": "2026-09-30T07:00",
+        "action": "given",
+        "at": "2026-09-30 06:50",
+        "result": "rejected"
+      },
+      {
+        "doc": "2026-09-30T07:05",
+        "action": "given",
+        "at": "2026-09-30 06:55",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 06:56",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:05"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:55",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T08:05",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:05"
+      }
+    ]
+  },
+  {
+    "name": "S9 duplicate submission of the same instance",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok(anchor 2026-09-30 06:05)"
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:06",
+        "result": "rejected"
+      },
+      {
+        "read": "2026-09-30 06:07",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:05"
+          },
+          {
+            "adminId": "2026-09-30T07:05",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:05"
+      }
+    ]
+  },
+  {
+    "name": "S10 early and on-time given never re-time",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 05:50",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 05:51",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 05:50",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T07:00",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:00"
+      },
+      {
+        "doc": "2026-09-30T07:00",
+        "action": "given",
+        "at": "2026-09-30 07:00",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 07:01",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 05:50",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:00",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T08:00",
+            "scheduledTime": "2026-09-30 08:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:00"
+      }
+    ]
+  },
+  {
+    "name": "S11 held and refused never re-time",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "held",
+        "at": "2026-09-30 06:30",
+        "result": "ok"
+      },
+      {
+        "doc": "2026-09-30T07:00",
+        "action": "refused",
+        "at": "2026-09-30 07:20",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 07:21",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:30",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "refused",
+            "documentedTime": "2026-09-30 07:20",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T08:00",
+            "scheduledTime": "2026-09-30 08:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:00"
+      }
+    ]
+  },
+  {
+    "name": "S12 once: late given never re-times",
+    "steps": [
+      {
+        "read": "2026-09-30 06:10",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 06:00"
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:30",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 06:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:30",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": null
+      }
+    ]
+  },
+  {
+    "name": "S14 legacy late fact (no anchor) is never reinterpreted",
+    "steps": [
+      {
+        "read": "2026-09-30 06:40",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:30",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-09-30T07:00",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:00"
+      }
+    ]
+  },
+  {
+    "name": "S13 PRN: late/any given never re-times; availability stays",
+    "steps": [
+      {
+        "doc": "prn",
+        "action": "given",
+        "at": "2026-09-30 09:00",
+        "result": "ok"
+      },
+      {
+        "read": "2026-09-30 09:01",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:00",
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "prn",
+            "scheduledTime": "",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": null
+      }
+    ]
+  },
+  {
+    "name": "S15 frequency modification q1h -> q4h after a re-timing: next = anchor + 4h",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok(anchor 2026-09-30 06:05)"
+      },
+      {
+        "modify": "q4h"
+      },
+      {
+        "read": "2026-09-30 06:11",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:05"
+          },
+          {
+            "adminId": "2026-09-30T10:05",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 10:05"
+      }
+    ]
+  },
+  {
+    "name": "S16 tid (q8h) re-timed at 23:30 continues across midnight",
+    "steps": [
+      {
+        "doc": "2026-09-30T22:00",
+        "action": "given",
+        "at": "2026-09-30 23:30",
+        "result": "ok(anchor 2026-09-30 23:30)"
+      },
+      {
+        "read": "2026-10-01 00:15",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 22:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 23:30",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 23:30"
+          },
+          {
+            "adminId": "2026-10-01T07:30",
+            "scheduledTime": "2026-10-01 07:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-10-01 07:30"
+      },
+      {
+        "read": "2026-10-01 16:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 22:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 23:30",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 23:30"
+          },
+          {
+            "adminId": "2026-10-01T07:30",
+            "scheduledTime": "2026-10-01 07:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-10-01T15:30",
+            "scheduledTime": "2026-10-01 15:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          },
+          {
+            "adminId": "2026-10-01T23:30",
+            "scheduledTime": "2026-10-01 23:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-10-01 07:30"
+      }
+    ]
+  },
+  {
+    "name": "S17 daily late 3h (reason) -> next day at actual time",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 09:00",
+        "result": "ok(anchor 2026-09-30 09:00)"
+      },
+      {
+        "read": "2026-09-30 09:01",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:00",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 09:00"
+          },
+          {
+            "adminId": "2026-10-01T09:00",
+            "scheduledTime": "2026-10-01 09:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-10-01 09:00"
+      }
+    ]
+  },
+  {
+    "name": "S18 bid 10-minute delay -> 18:10",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:10",
+        "result": "ok(anchor 2026-09-30 06:10)"
+      },
+      {
+        "read": "2026-09-30 06:11",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:10",
+            "missedEarlier": null,
+            "scheduleAnchor": "2026-09-30 06:10"
+          },
+          {
+            "adminId": "2026-09-30T18:10",
+            "scheduledTime": "2026-09-30 18:10",
+            "status": "scheduled",
+            "documentedTime": null,
+            "missedEarlier": null,
+            "scheduleAnchor": null
+          }
+        ],
+        "nextDose": "2026-09-30 18:10"
+      }
+    ]
+  }
+]

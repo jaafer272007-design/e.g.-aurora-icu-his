@@ -1,0 +1,24 @@
+PASS sara.rahman   /workspace                 collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /beds                      collapsed[64px 1098px 278px] expanded[198px 964px 278px] 17/17 labels
+PASS sara.rahman   /admissions                collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /discharges                collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /discharged                collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /print                     collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /patients/P-1001/history   collapsed[64px 1360px] expanded[198px 1226px] 17/17 labels
+PASS sara.rahman   /orders/P-1001             collapsed[64px 240px 1136px] expanded[198px 240px 1002px] 17/17 labels
+PASS sara.rahman   /labs/P-1001               collapsed[64px 240px 1136px] expanded[198px 240px 1002px] 17/17 labels
+PASS sara.rahman   /lab-entry/P-1001          collapsed[64px 240px 1136px] expanded[198px 240px 1002px] 17/17 labels
+PASS sara.rahman   /timeline/P-1001           collapsed[64px 240px 1136px] expanded[198px 240px 1002px] 17/17 labels
+PASS sara.rahman   /observations/P-1001       collapsed[64px 240px 1136px] expanded[198px 240px 1002px] 17/17 labels
+PASS sara.rahman   /statistics                collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /alerts                    collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /settings                  collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /config                    collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /lab-catalog               collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS sara.rahman   /order-sets                collapsed[64px 1376px] expanded[198px 1242px] 17/17 labels
+PASS maya.chen     /nurse                     collapsed[64px 1376px] expanded[198px 1242px] 14/14 labels
+PASS yusuf.karim   /admin                     collapsed[64px 1376px] expanded[198px 1242px] 10/10 labels
+PASS alex.novak    /admin/users               collapsed[64px 1376px] expanded[198px 1242px] 4/4 labels
+PASS alex.novak    /backup                    collapsed[64px 1362px] expanded[220px 1206px] 4/4 labels
+PASS samir.qassem  /formulary                 collapsed[64px 1376px] expanded[198px 1242px] 15/15 labels
+SWEEP PASSED

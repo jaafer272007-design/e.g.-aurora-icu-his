@@ -176,6 +176,11 @@ touch emulation (390×844 overlay drawer, 1024×768 push), 1180/1000 px, a
 expansion, patient context, reduced motion, the type × status filters, and
 six roles' navigation (no Reception, Awaiting Bed or AI anywhere) — plus a
 23-screen sweep and MAR/print screenshots.
+*[Evidence location, added with the review push (2026-09-30): the scratchpad
+paths above were container-local and are gone with the container; the logs,
+before/after schedules, screenshots and harness sources are published in
+`docs/evidence/icu-update-batch-1/` (its own final commit — review evidence,
+droppable before merge).]*
 
 **Not verified here, stated:** the 16 deployed suites against a hosted
 instance (retired) — only MAR and Orders were replayed locally; no Windows /
