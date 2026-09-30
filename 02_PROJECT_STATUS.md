@@ -1,7 +1,16 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-07 (later) · current through AURORA SHIPS FROM LOCAL
-VERIFICATION — the ship gate's live-instance proof now comes from the appliance
+**Last updated: 2026-09-30 · current through THE FIRST ICU UPDATE BATCH —
+three owner-requested changes built on `claude/amazing-hopper-nwzw1x` (base
+`f0bf464`) and HELD LOCALLY for Codex review (not pushed, no PR, no installer):
+an order-type filter row on the Orders list (AND with the status tabs); a late
+GIVEN dose re-timing the next repeating dose from its actual administration
+time (supersedes the MAR design's "a late dose does NOT shift the schedule" —
+explicit `scheduleAnchor` metadata, no migration, existing facts never
+reinterpreted); and the collapsible section sidebar (icon rail that expands on
+hover / keyboard focus, tap toggle on touch, shared `--nav-col` so content
+takes the freed space) — the record below. Prior (2026-09-07, later): AURORA
+SHIPS FROM LOCAL VERIFICATION — the ship gate's live-instance proof now comes from the appliance
 CI (real image, real PostgreSQL) instead of a hosted staging URL, so no cloud
 service stands between this system and a hospital; the 16 clinical suites
 cannot dispatch without a hosted instance and are `disabled` with the gate
@@ -49,6 +58,136 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-09-30 · THE FIRST ICU UPDATE BATCH — ORDER-TYPE FILTERS, LATE-DOSE
+RE-TIMING, THE COLLAPSIBLE SECTION SIDEBAR (owner-requested via the Codex
+planning handoff; branch `claude/amazing-hopper-nwzw1x`, base `f0bf464`, which
+equals the verified `main` — the only commit after the hospital's protected
+setup 1.3.0 at `2c92e91` is the shipping-ledger line. Local commits held for
+Codex review: NOT pushed, no PR, no installer, no hospital access, no live
+migration; synthetic data only).**
+DESIGN FIRST (03, "a design is recorded before it is built"): the handoff text
+is committed verbatim, alone, as `docs/design/icu-update-batch-1.md` (sha256
+`3f36a27e…`, 10,926 bytes; provenance stated in its commit — it relays the
+owner's requests and was not diffed against any separate owner-authored file,
+none being supplied). The MAR supersession is `docs/design/mar-derived-schedule.md`
+**Amendment A**, a pure append (87 added, 0 removed; the approved 234-line
+byte range hashes identical before and after).
+
+1. **ORDER-TYPE FILTERS** (`OrderListCard.tsx`, `OrdersMedication.css`). A
+   second, labelled row under the unchanged status tabs: All types / Medication
+   / Laboratory (category `Lab`) / Imaging, combined by AND. All types (the
+   default) includes Nursing and every category. Status counts are computed
+   over the selected type, and the empty state names the combination ("No
+   completed imaging orders for this patient."). Native toggle buttons
+   (`aria-pressed`) in a labelled group; the selection survives an in-app
+   patient switch and applies to the new patient. Sorting, histories, the
+   next-dose chip, permissions and every action are untouched.
+2. **LATE-DOSE RE-TIMING** — the owner's rule, dated 2026-09-30: on an active
+   repeating (interval) medication, a dose documented GIVEN whose actual
+   administration time is later than its scheduled time moves the next
+   repeating dose to actual + interval (q1h due 06:00 given 06:05 → 07:05,
+   08:05; the 07:05 given 07:12 → 08:12). Server-authoritative
+   (`MarSchedule.cs` re-timing section, `MarApi.cs`), mirrored in
+   `lib/marSchedule.ts`, the mock adapter and the Orders next-dose chip; the
+   MAR row and the printed MAR cell mark a re-timed dose.
+   - **The additive data change and its compatibility:** `AdminDto` gains an
+     optional `ScheduleAnchor` inside `AdministrationsJson` — data, not
+     schema: **no EF migration**, nothing to squash, no seed change. Absent
+     fields serialize absent (`WhenWritingNull`), so every existing fact's
+     bytes are unchanged (verified: a pre-update fact's bytes survive a later
+     documentation on the same order). Only a fact stamped with the anchor
+     re-times, so **installing the update re-times no existing order** — a
+     pre-update late administration is never reinterpreted. **Downgrade
+     caveat (recorded, not engineered around):** a build older than this one
+     ignores the field when reading and DROPS it when it rewrites that order's
+     facts (any documentation or discontinue); after re-timed doses exist, a
+     downgrade therefore shows those orders on the therapy-start grid again
+     (their re-timed facts sit beside "missed" original instances). The
+     installer's automatic rollback happens before any new fact can exist, so
+     this concerns only a deliberate later downgrade — treat the update as
+     forward-only once re-timed doses have been documented.
+   - **Which late GIVEN re-times — the floor rule** (one predicate, used by
+     the write endpoint to decide and by the read side to replay facts in
+     recording order): actual later than its own slot AND later than every
+     earlier fact's dated slot and every earlier effective anchor. So an
+     older dose recorded later never rewinds a newer schedule (the history
+     says "schedule not re-timed: a later dose is already documented"), and
+     no documented instance ever falls off the grid.
+   - **The grid:** therapy-start points until the first re-timing instant,
+     then anchor + k·interval per re-timing; the last segment is unbounded.
+     Instances missed BEFORE a re-timing instant stay missed (never marked
+     given, never erased); those at or after it are superseded — a second
+     browser posting one gets **409** naming the re-timing; a duplicate stays
+     409; a never-instance stays 404. Render horizon and the missed summary
+     are unchanged.
+   - **Unchanged:** held/refused, on-time/early GIVEN, once, PRN and
+     underivable regimens never re-time; OVERDUE shows immediately and the
+     delay reason is still required only beyond 2 h, judged against the
+     documenting moment (an explicit earlier actual time cannot dodge it; a
+     5-minute delay needs no reason but re-times); #110 completion, discontinue,
+     encounter scope, `meds.administer` RBAC.
+3. **COLLAPSIBLE SECTION SIDEBAR** (`NavSidebar.tsx/.css`, `tokens.css`, 22
+   page shell definitions). A ~64px icon rail that expands to the existing
+   labelled width (198px; Backup & Recovery keeps 220px) while a mouse pointer
+   is over it (90 ms hover intent; 180 ms close delay > the 160 ms column
+   transition, so the moving edge cannot flicker) or keyboard focus is inside
+   it (focus-visible only — a click never pins it open). Touch / no-hover
+   devices get a labelled tap toggle (`aria-expanded`); a tap on a section
+   just navigates. Every shell names its nav column `var(--nav-col)`, driven
+   by `.shell:has(> .nav-sidebar.nav-open)`, so the main content takes the
+   freed space; the old ≤1180px icon-only rule is replaced by the expanded
+   state (labels open below 1180px when there is room). Below 760px (or an
+   engine without `:has`) the open sidebar overlays as a dismissible drawer.
+   Patient rails, the bed-detail panel, page-scroll modes, routes,
+   permissions, active states, patient-context links, edition/AI gates and
+   the footer information are unchanged; reduced motion removes the
+   transition.
+
+**Verification (local — the retired hosted service was never contacted).
+Evidence and full logs: the session scratchpad's `logs/final/` (SUMMARY.txt
+lists every command + exit code) and `shots-final/`.** On the final source:
+`npm run build` exit 0 (the >500 kB chunk warning is pre-existing);
+`dotnet build -c Release` exit 0 (1 pre-existing CS8602 warning,
+`BootGuards.cs`, untouched). Deterministic clocks: a harness compiling the
+REAL server sources (`MarLogic.MarRowsFor` + the `MarSchedule` helpers) and
+one bundling the REAL client modules (the mock adapter's write + read and the
+Orders chip, fake clock) ran 17 scenarios — q1h owner example, q8h across
+midnight and two days with the horizon aggregate, explicit actual time vs
+later documentation, long delay keeping intermediate misses, no-rewind,
+stale-instance 409, duplicate, early/on-time, held/refused, once, PRN, legacy
+fact, frequency modification, tid across midnight, daily, bid — **server and
+client parity 0 mismatches**, and the Orders chip equals the server's
+earliest outstanding instance in every read; before/after schedules (base
+`f0bf464` vs this branch) are rendered to `schedule-before-after.txt`. Real
+API + PostgreSQL 16 (published server + staging bundle, `APP_ENV=staging`,
+`AURORA_EDITION=icu`, AI off; orders created/documented only through the
+endpoints — the DB touched only to backdate a synthetic order's signed event
+and to insert one legacy fact): **33/33** re-timing checks (run crossing
+midnight), the existing `deployed-mar-e2e` (9/9 run steps) and
+`deployed-orders-e2e` (12/12) suites replayed locally (their three
+hosted-service gate steps skipped, stated), and an agreement check over the
+live snapshot — server MAR = Orders chip = printed MAR cells for all 8
+medication orders; the Meds-Due KPI equals the MAR card's count. Browser
+(Chromium, local stack): **101/101** checks — collapse/expand, pointer
+entry/exit, movement into the expanded area, the edge race, keyboard focus,
+touch emulation (390×844 overlay drawer, 1024×768 push), 1180/1000 px, a
+480 px-tall viewport, no remount / draft / scroll loss / request during
+expansion, patient context, reduced motion, the type × status filters, and
+six roles' navigation (no Reception, Awaiting Bed or AI anywhere) — plus a
+23-screen sweep and MAR/print screenshots.
+
+**Not verified here, stated:** the 16 deployed suites against a hosted
+instance (retired) — only MAR and Orders were replayed locally; no Windows /
+protected installer build (instructed); Chromium only (no Edge, Firefox or
+Safari engine); touch by emulation, not hardware; light theme screenshots only.
+
+**Observed, pre-existing, NOT changed (out of this batch's scope):**
+`displayStamp` renders a future-day stamp as `D--1 HH:mm` (seen on next-dose
+chips after midnight — the separate timestamp class); the mock adapter's
+bare-`HH:mm` stamps (same class); `AdministrationsJson` is a read-modify-write
+with no concurrency token, so two truly simultaneous documentations on one
+order can lose one (the re-timing decision shares that window).
 
 **2026-09-07 (later) · AURORA SHIPS FROM LOCAL VERIFICATION — THE SHIP GATE NO
 LONGER NEEDS A CLOUD SERVICE TO EXIST (owner decision; branch
@@ -12801,6 +12940,12 @@ which now derives instead of reading stored slots).
 - **A late dose never shifts the schedule**: the grid derives from
   therapy start, never from the last documented dose (asserted: after a
   late give, remaining instances stay anchor+k·interval).
+  *[SUPERSEDED 2026-09-30 by the project owner — `docs/design/
+  mar-derived-schedule.md` Amendment A: a GIVEN dose later than its
+  scheduled time on a repeating order now re-times the next repeating dose
+  (actual administration time + interval), carried by an explicit
+  `scheduleAnchor` on the new fact. The line above is kept as the record of
+  what was built and asserted then; see the 2026-09-30 record at the top.]*
 - **PRN derives from the last administration only**: a standing
   availability row (`prn`), facts appended on demand — it never runs out
   either (the old model consumed the single PRN row).
