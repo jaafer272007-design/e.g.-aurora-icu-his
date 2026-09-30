@@ -1,15 +1,28 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-30 · current through THE FIRST ICU UPDATE BATCH —
-three owner-requested changes built on `claude/amazing-hopper-nwzw1x` (base
-`f0bf464`) and HELD LOCALLY for Codex review (not pushed, no PR, no installer):
-an order-type filter row on the Orders list (AND with the status tabs); a late
-GIVEN dose re-timing the next repeating dose from its actual administration
-time (supersedes the MAR design's "a late dose does NOT shift the schedule" —
-explicit `scheduleAnchor` metadata, no migration, existing facts never
-reinterpreted); and the collapsible section sidebar (icon rail that expands on
-hover / keyboard focus, tap toggle on touch, shared `--nav-col` so content
-takes the freed space) — the record below. Prior (2026-09-07, later): AURORA
+**Last updated: 2026-09-30 (later) · current through THE FIRST ICU UPDATE
+BATCH, CORRECTED after Codex's review of draft PR #234 (same branch; pushed for
+review only — no merge, no installer: the owner deferred the update EXE because
+the hospital wants more changes): the owner's ROLLING TIMER replaces the batch's
+late-only re-timing (one current round per repeating medication; Given → next
+due = actual time + interval, early, on time or late; Held/Refused → the
+skipped round's scheduled time + interval; the clock never creates a round;
+additive `round` metadata, no migration; legacy orders enter without
+reinterpretation); every order mutation now runs under a PostgreSQL row lock
+(atomic documentation — the lost-write defect was reproduced on the reviewed
+head and is gone); and the batch record's rollback sentence is corrected, with
+an UNRESOLVED release gate recorded (write exclusion during update validation +
+a failed-health rollback drill with round-bearing facts) — the record below.
+Prior (2026-09-30): THE FIRST ICU UPDATE BATCH — three owner-requested changes
+built on `claude/amazing-hopper-nwzw1x` (base `f0bf464`) and HELD LOCALLY for
+Codex review (not pushed, no PR, no installer): an order-type filter row on the
+Orders list (AND with the status tabs); a late GIVEN dose re-timing the next
+repeating dose from its actual administration time (supersedes the MAR design's
+"a late dose does NOT shift the schedule" — explicit `scheduleAnchor` metadata,
+no migration, existing facts never reinterpreted); and the collapsible section
+sidebar (icon rail that expands on hover / keyboard focus, tap toggle on touch,
+shared `--nav-col` so content takes the freed space) — the record below. Prior
+(2026-09-07, later): AURORA
 SHIPS FROM LOCAL VERIFICATION — the ship gate's live-instance proof now comes from the appliance
 CI (real image, real PostgreSQL) instead of a hosted staging URL, so no cloud
 service stands between this system and a hospital; the 16 clinical suites
@@ -59,6 +72,157 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-09-30 (later) · THE FIRST BATCH, CORRECTED AFTER CODEX'S REVIEW OF DRAFT
+PR #234 — THE OWNER'S ROLLING TIMER, ATOMIC DOCUMENTATION, THE ROLLBACK
+STATEMENT CORRECTED (same branch `claude/amazing-hopper-nwzw1x`; reviewed head
+`2d14aa0`; branch pushes for review only — no merge, `main` unchanged, no
+installer or EXE (the owner deferred it: the hospital wants more changes), no
+hospital access; synthetic data only).**
+Codex inspected the diff and the evidence, exercised the client scheduler, and
+confirmed CI green on `2d14aa0`; its findings are the three items below.
+DESIGN FIRST: the correction prompt is committed verbatim, alone, as
+`docs/design/icu-update-batch-1-correction.md` (sha256 `302d29bb…`, 9,060
+bytes; it carries the owner's words and the owner-confirmed Held/Refused rule).
+The MAR supersession is `docs/design/mar-derived-schedule.md` **Amendment B**, a
+pure append (109 added, 0 removed) superseding Amendment A.
+
+1. **ATOMIC DOCUMENTATION** (Codex: the documentation endpoint read, validated,
+   appended, rewrote `AdministrationsJson` + `HistoryJson` and saved with no
+   concurrency protection — two overlapping submissions could both succeed
+   and lose a fact, an audit entry or the schedule decision).
+   `OrderLogic.LockOrder` opens the request's transaction and takes the order
+   ROW LOCK (`SELECT … FOR UPDATE`) BEFORE the order is read; the whole
+   read → validate → append → timer → audit → save commits together. Applied
+   to MAR documentation and every competing mutation of an order: sign,
+   modify, discontinue, implement, and the discharge cascade
+   (`LockEncounterOrders` — the encounter's orders, one statement, `OrderId`
+   order). A competing request waits, then validates against the fresh facts,
+   so the existing 409s (already documented / order not in force / encounter
+   closed) answer it; different orders never wait on each other.
+   **Compatibility: no schema or model change, no migration** — so the
+   updater's `migrationWillRun` stays false for this update (see item 3). The
+   SQLite demo mode has no row locks; its `BeginTransaction` is `BEGIN
+   IMMEDIATE` (SQLite's single write lock), which serializes the same paths
+   (stated, not separately tested — production is PostgreSQL).
+2. **THE ROLLING TIMER** — the owner, 2026-09-30: *"basically the timer of the
+   next round will start after the first has been given (not something
+   fixed)"*. Supersedes the batch's late-only re-timing, its unchanged
+   early-Given rule and its continuing fixed-grid future/missed rounds (item 2
+   of the record below). Server-authoritative in `MarSchedule.CurrentRound`,
+   the ONE rule shared by `GET /api/icu/mar` and the write endpoint; mirrored
+   in `lib/marSchedule.ts` (`currentRound`), the mock adapter, the Orders
+   next-dose chip, the MAR card and the printed MAR.
+   - **One current round** per active repeating medication. Round 1 is the
+     first dose (the next full hour after therapy start — unchanged). A GIVEN
+     makes the next round due at its actual administration time + the
+     interval, whether early, on time or late (q1h: 06:00 given 06:05 → 07:05;
+     that round given 08:30 → 09:30; given early 06:50 → 07:50; on time 07:05 →
+     08:05). HELD/REFUSED (owner-confirmed): the skipped round's SCHEDULED time
+     + the interval (07:05 held at 07:20 → 08:05); a next due already in the
+     past is simply overdue — never skipped, paused or auto-documented. The
+     timer in force is the LATEST resolving instant by actual chronology, so a
+     backdated older actual time never rewinds it. Frequency modification
+     applies the current interval to that timer.
+   - **The clock never creates a round**: an unresolved round stays the one
+     current round as it turns due, then overdue, across refreshes, midnight
+     and days — no generated missed rows, no future rounds; the 24 h horizon
+     no longer applies to it (it remains only the bound on an entered actual
+     time).
+   - **Identity** `yyyy-MM-ddTHH:mm~r<n>` (due minute + round number): stable
+     across refreshes (facts + order only, never the clock) and distinct even
+     when two rounds, or a round and a stored fact, share a due minute. A
+     resolved round → 409 naming who documented it; the current round with a
+     different due minute (frequency changed) → 409; anything else → 404.
+   - **Metadata and compatibility:** each round-resolving fact carries
+     `round` — additive, optional JSON inside `AdministrationsJson`, **no
+     migration**; `WhenWritingNull` keeps every existing fact's bytes
+     unchanged (verified). Amendment A's `scheduleAnchor` was never released
+     (#234 unmerged, never installed) and is removed, not carried.
+   - **Legacy activation** (orders documented before the update): a fact
+     without `round` is shown exactly as stored and never drives the timer, so
+     no old late (or early) event starts one. Round 1 of such an order is ONE
+     slot, computed from stored facts only: the first therapy-start slot at or
+     after the slot containing its latest legacy fact's recorded time that no
+     legacy fact documents (the first dose if it has none). The approved
+     compatibility case holds (a stored 07:00 slot given 06:50 leaves the 06:00
+     slot current; given 06:55 → next 07:55). The clock-derived missed rows the
+     old grid displayed were never stored and are not reproduced.
+   - **Unchanged:** once, PRN, underivable/continuous; the 2 h delay-reason
+     rule judged at the documenting moment; the actual-time entry
+     validations; RBAC, encounter scope, #110 completion, discontinue.
+   - `deployed-mar-e2e` and `deployed-encounter-scope-e2e` pinned the old bare
+     dated identity; both now accept the round form (found by replaying them).
+3. **THE ROLLBACK STATEMENT CORRECTED.** The record below said *"The
+   installer's automatic rollback happens before any new fact can exist"*.
+   That is unsupported. `aurora-update.ps1` starts the new service and only
+   then polls `/healthz` for the new build stamp (120 s by default, 600 s on a
+   skipped-release hop); the inspected script has no clinical-write barrier,
+   so the new build can accept documentation during that window. On a failed
+   health check it restores `server.prev`, and restores the database ONLY when
+   `migrationWillRun` (package migration head ≠ database head) — false for
+   this update, whose data change is JSON-only. **So round-bearing facts
+   written before a failed-health rollback stay in the database under the old
+   build.** The downgrade risk, stated accurately: an older build reads such a
+   fact as an ordinary dated fact whose slot is generally not on its
+   therapy-start grid — it shows the fact AND its own grid instance(s) beside
+   it as due/overdue (a given round can read as a missed dose: a double-dose
+   hazard); it drops `round` whenever it rewrites that order's
+   administrations; and on re-upgrade those orders re-enter through legacy
+   activation. **Release gate — UNRESOLVED, recorded, nothing built:** (a)
+   write exclusion (or an accounted-for rollback) during update validation,
+   and (b) a failed-health rollback drill on a real install with
+   round-bearing facts present. No existing staging or CI test proves this
+   gate. Installer changes and the EXE stay deferred. Until the gate is met,
+   treat the update as forward-only once any round has been documented.
+
+**Verification (local; the retired hosted service was never contacted;
+synthetic data only). Evidence, logs, screenshots and tools:
+`docs/evidence/icu-update-batch-1/correction/`.** On the final source
+(`f0c7d56`): `npm run build`, `dotnet build -c Release`, and the `ci.yml`
+frontend + server job steps (tsc `--force`, vite build, the four structural
+gates, the `VITE_APP_ENV` allow-list, `dotnet build`, the vocab gate) all exit
+0 (the >500 kB chunk warning and 1 CS8602 in `BootGuards.cs` are
+pre-existing). **Deterministic clocks:** 19 scenarios with stated expected
+outcomes, run through the REAL server sources (`MarLogic.MarRowsFor` +
+`MarSchedule.CurrentRound`) and the REAL client modules (mock adapter + Orders
+chip) — **209 checks, 0 failures**, server = client row-for-row and chip =
+current round in every read. **Real API + PostgreSQL 16** (published server +
+staging bundle, `APP_ENV=staging`, `AURORA_EDITION=icu`, AI off, server zone
+Asia/Baghdad, storage UTC; the DB touched only to backdate synthetic therapy
+starts and insert legacy facts): **35/35** timer checks (a first attempt
+aborted on the check's own backdating, not aligned to the hour; fixed, and its
+leftover synthetic patient discharged). **Synchronized overlap** (a separate
+psql session holds the order's row lock, two requests are released together by
+a barrier and verified parked on it, then the lock is released): **28/28** on
+this branch — same round (one 200, one 409, one fact, one audit entry, timer
+from the winner), PRN (both 200, both durable), Given vs Held, Given vs
+discontinue and vs frequency change (each ordering forced), independent orders
+not blocked, Given vs the discharge cascade (both orderings); the SAME harness
+on the reviewed head `2d14aa0` reproduced the defect (**5/5**: both nurses told
+200, one durable fact and one audit entry). **Suites replayed locally**:
+`deployed-mar-e2e` 9/9, `deployed-orders-e2e` 12/12, `deployed-encounter-scope-e2e`
+12/12 (its read-only ORD-113 step asserts a hosted-staging data artefact and was
+skipped, stated), `deployed-assignments-e2e` 11/11 (three hosted-gate steps
+skipped in each). **Browser** (Chromium, dark theme, device zone UTC):
+**12/12** — MAR, Orders chip and printed MAR show the current rounds, what timed
+them and the actual time on Asia/Baghdad from UTC storage; due counts agree;
+the type-filter row (lowest 4.89:1) and the expanded sidebar (lowest 7.46:1)
+measured readable against their rendered backgrounds.
+
+**Not verified here, stated:** the `production-seed` and
+`installer-powershell` CI jobs (GitHub runs them on the push; the latter needs
+Windows PowerShell 5.1); the other deployed suites; the SQLite demo path's
+locking; browsers other than Chromium; real touch hardware; the new MAR notes
+in the light theme (its token was checked, not screenshotted); the release
+gate above.
+
+**Observed, pre-existing, NOT changed (the separately excluded timestamp
+class):** the printed MAR's slot line (`pd-mar-slot`) shows the raw UTC wire
+stamp beside actual times shown in the hospital zone; `displayStamp`'s
+`D--1 HH:mm` for next-day stamps; the mock adapter's bare-`HH:mm` stamps in its
+other mutators (its documentation fact is now stamped on the UTC wire, as the
+server stamps it, because that fact times the next round).
+
 **2026-09-30 · THE FIRST ICU UPDATE BATCH — ORDER-TYPE FILTERS, LATE-DOSE
 RE-TIMING, THE COLLAPSIBLE SECTION SIDEBAR (owner-requested via the Codex
 planning handoff; branch `claude/amazing-hopper-nwzw1x`, base `f0bf464`, which
@@ -91,6 +255,11 @@ byte range hashes identical before and after).
    (`MarSchedule.cs` re-timing section, `MarApi.cs`), mirrored in
    `lib/marSchedule.ts`, the mock adapter and the Orders next-dose chip; the
    MAR row and the printed MAR cell mark a re-timed dose.
+   *[SUPERSEDED 2026-09-30 (later) by the owner — the ROLLING TIMER (MAR
+   Amendment B; the correction record above): every Given, early, on time or
+   late, times the next round; Held/Refused time it from the skipped slot;
+   there is no grid, no missed or future rounds, and `scheduleAnchor` is
+   replaced by `round`. This item stays as what was built and verified then.]*
    - **The additive data change and its compatibility:** `AdminDto` gains an
      optional `ScheduleAnchor` inside `AdministrationsJson` — data, not
      schema: **no EF migration**, nothing to squash, no seed change. Absent
@@ -107,6 +276,11 @@ byte range hashes identical before and after).
      installer's automatic rollback happens before any new fact can exist, so
      this concerns only a deliberate later downgrade — treat the update as
      forward-only once re-timed doses have been documented.
+     *[CORRECTED 2026-09-30 (later), Codex review of #234: the rollback
+     sentence above is UNSUPPORTED — the updater starts the new build before
+     its health check, with no write barrier, and restores the database only
+     when a migration ran (not for this JSON-only change). See item 3 of the
+     correction record above and its unresolved release gate.]*
    - **Which late GIVEN re-times — the floor rule** (one predicate, used by
      the write endpoint to decide and by the read side to replay facts in
      recording order): actual later than its own slot AND later than every
@@ -193,6 +367,9 @@ chips after midnight — the separate timestamp class); the mock adapter's
 bare-`HH:mm` stamps (same class); `AdministrationsJson` is a read-modify-write
 with no concurrency token, so two truly simultaneous documentations on one
 order can lose one (the re-timing decision shares that window).
+*[FIXED 2026-09-30 (later): every order mutation now runs under the order's
+PostgreSQL row lock — item 1 of the correction record above; the lost write
+was reproduced on `2d14aa0` and is gone.]*
 
 **2026-09-07 (later) · AURORA SHIPS FROM LOCAL VERIFICATION — THE SHIP GATE NO
 LONGER NEEDS A CLOUD SERVICE TO EXIST (owner decision; branch
