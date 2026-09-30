@@ -428,3 +428,64 @@ together: a competing write waits, then revalidates against fresh facts (409 if
 its round was taken, or its order stopped). There is no schema change. The
 SQLite demo mode serializes the same code paths through SQLite's single write
 lock.
+
+### C · Amendment B point 5 ("No rewind") — CORRECTED 2026-09-30 (Codex's review of head `87358f2`)
+
+Source: `docs/design/icu-update-batch-1-timer-correction.md` (verbatim).
+Amendment B above is unchanged except for this correction to its point 5,
+which read:
+
+> 5. **No rewind.** The timer is the **latest** timer instant of all resolved
+> rounds (Given → its actual time, Held/Refused → its scheduled time), judged
+> by actual chronology, not by scheduled identity. A genuinely older backdated
+> actual time resolves its round but leaves the newer timer in force; the next
+> round can then fall due at the same minute as the round just resolved.
+
+**The defect.** Taking the latest instant mixed two kinds of timestamp: a
+Given's actual time and a Held/Refused round's scheduled time. q1h: 06:00 given
+06:05 → 07:05; 07:05 held early at 06:10 → 08:05; the next round given early at
+06:50 must be due **07:50**, but the skipped 07:05 was "later" than 06:50, so
+08:05 stayed in force. Refused behaves the same way.
+
+**Point 5, corrected.** Rounds are replayed in order, keeping two things apart:
+
+- **Action chronology.** Each resolving fact has an action instant: a Given's
+  actual administration time, or a Held/Refused's documenting time (neither
+  stores a separate actual time).
+- **The effective timer.** It is what the next due counts from.
+
+With those two kept apart:
+
+- **A subsequent Given restarts the interval.** If its actual time is no older
+  than every earlier action, next due = that actual time + the interval. This
+  holds even when a preceding Held/Refused left a later scheduled timer.
+- **A genuinely older backdated Given never rewinds the timer.** Its actual
+  time is older than an action already recorded. It resolves its round, and the
+  timer moves only if the Given's own time is later than the timer in force.
+  The next round can then share the due minute of the round just resolved, and
+  its identity stays distinct (`~r<n>`).
+- **Held/Refused is unchanged.** Next due = the skipped round's own scheduled
+  due + the interval.
+
+Worked examples (q1h):
+
+| Sequence | Next due |
+|---|---|
+| 06:05 given; held 06:10; given at 06:50 | **07:50** |
+| The same, with refused instead of held | **07:50** |
+| 06:05 given; held 06:30; given backdated to 06:20 (older than the hold) | stays 08:05 |
+| Held late at 09:00 (07:05 → 08:05); given documented 09:10, actual 08:30 | **09:30** (forward only) |
+
+The audit detail names which timer stayed in force: "the administration at …"
+or "the skipped dose due …".
+
+Nothing stored changes. The rule reads the same fields as before
+(`round`, `status`, `scheduledTime`, `documentedTime`), so no stored fact is
+reinterpreted. There is no new metadata and no migration. The one current round,
+the identities, the 409/404 behaviour, the delay-reason rule and the order write
+lock are unchanged.
+
+**Legacy entry (answered).** An active repeating order with no recorded
+administrations keeps its original first due, even if that is days overdue. It
+is never reset to now and never resolved automatically. This is the rule above,
+confirmed.
