@@ -163,9 +163,16 @@ static class MarSchedule
          instant is its ACTUAL administration time when GIVEN (early, on time
          or late alike), and its SCHEDULED time when HELD/REFUSED (the
          owner-confirmed skipped-dose rule, never the documenting time);
-       - the timer in force is the LATEST of those instants, by actual
-         chronology, so a backdated older actual time resolves its round
-         without rewinding a newer timer;
+       - the rounds are replayed in order, keeping ACTION chronology apart
+         from scheduled due identity. A fact's action instant is its actual
+         administration time (Given) or its documenting time (Held/Refused).
+         A Given no older than every earlier action restarts the timer at its
+         actual time, even when a preceding Held/Refused left a later
+         scheduled timer (corrected 2026-09-30 after Codex's review: the
+         former "latest timer instant" rule let a skipped 07:05 swallow a
+         subsequent actual Given at 06:50). A GENUINELY OLDER backdated
+         Given (older than an action already recorded) never rewinds the
+         timer: it only moves it forward when its own time is later;
        - the clock never creates a round: an unresolved round stays current
          as it turns due, then overdue, for as long as it takes. There are no
          missed rows, no future rounds and no 24 h horizon for it.
@@ -207,21 +214,44 @@ static class MarSchedule
     public static DateTime? TimerInstant(AdminDto a) =>
         a.Status == "given" ? ParseDated(a.DocumentedTime) : ParseDated(a.ScheduledTime);
 
+    /** a round-resolving fact's ACTION instant, its place in actual
+        chronology: GIVEN → its actual administration time; HELD/REFUSED →
+        when it was documented (neither carries a separate actual time) */
+    public static DateTime? ActionInstant(AdminDto a) => ParseDated(a.DocumentedTime);
+
     /** THE rule, shared by GET /api/icu/mar and the write endpoint. `facts`
         are the stored administrations in recording order (retired
-        'scheduled' stubs are ignored — never facts). */
+        'scheduled' stubs are ignored — never facts); the resolving facts are
+        replayed in round order, which the order write lock makes their
+        recording order. */
     public static Round CurrentRound(DateTime first, int intervalHours, IReadOnlyList<AdminDto> facts, DateTime nowUtc)
     {
         var step = TimeSpan.FromHours(intervalHours);
-        var resolved = facts.Where(a => a.Round is not null && a.Status != "scheduled").ToList();
+        var resolved = facts.Where(a => a.Round is not null && a.Status != "scheduled")
+            .OrderBy(a => a.Round!.Value).ToList();   // stable: recording order within a round
         DateTime? timer = null;
         string? rule = null;
+        DateTime? latestAction = null;
         foreach (var a in resolved)
-            if (TimerInstant(a) is DateTime t && (timer is null || t >= timer.Value))
+        {
+            if (a.Status == "given")
             {
-                timer = t;
-                rule = a.Status == "given" ? "given" : "skipped";
+                if (TimerInstant(a) is DateTime t
+                    && (latestAction is null || t >= latestAction.Value   // a subsequent Given restarts the interval
+                        || timer is null || t > timer.Value))           // an older backdated one never rewinds it
+                {
+                    timer = t;
+                    rule = "given";
+                }
             }
+            else if (TimerInstant(a) is DateTime s)
+            {
+                timer = s;   // the skipped round's scheduled time (always after the timer that made it due)
+                rule = "skipped";
+            }
+            if (ActionInstant(a) is DateTime act && (latestAction is null || act > latestAction.Value))
+                latestAction = act;
+        }
         var number = resolved.Count == 0 ? 1 : resolved.Max(a => a.Round!.Value) + 1;
         return timer is null
             ? new(number, LegacyEntry(first, step, facts, nowUtc), null, null)

@@ -83,8 +83,12 @@ export const instanceIdentity = (ms: number): string => instanceStamp(ms).replac
    order has ONE current round; the fact that resolves it carries `round`,
    and the next round is due at TIMER + interval, where the timer instant
    is the actual administration time of a GIVEN (early, on time or late)
-   and the scheduled time of a HELD/REFUSED round, and the timer in force
-   is the latest such instant (a backdated older time never rewinds it).
+   and the scheduled time of a HELD/REFUSED round. Rounds are replayed in
+   order with ACTION chronology (a Given's actual time, a Held/Refused's
+   documenting time) kept apart from scheduled due identity: a Given no
+   older than every earlier action restarts the timer, even after a
+   Held/Refused left a later scheduled timer (corrected 2026-09-30); a
+   genuinely older backdated Given never rewinds it.
    The clock never creates a round. Facts without `round` are legacy: shown
    as stored, never timing anything; they only locate round 1 of an order
    documented before this rule (legacyEntry). */
@@ -111,18 +115,35 @@ export function parseRoundIdentity(id: string): { dueMs: number; number: number 
 export const timerInstant = (a: MedAdministration): number | null =>
   a.status === 'given' ? datedEpoch(a.documentedTime ?? '') : datedEpoch(a.scheduledTime)
 
-/** THE rule (mirrors MarSchedule.CurrentRound) — `facts` in recording order */
+/** a round-resolving fact's action instant — its actual administration
+ *  time (Given) or documenting time (Held/Refused) (mirrors MarSchedule.ActionInstant) */
+export const actionInstant = (a: MedAdministration): number | null => datedEpoch(a.documentedTime ?? '')
+
+/** THE rule (mirrors MarSchedule.CurrentRound) — `facts` in recording
+ *  order; the resolving facts are replayed in round order */
 export function currentRound(firstMs: number, hours: number, facts: MedAdministration[], nowMs: number): Round {
   const step = hours * 3_600_000
   const resolved = facts.filter(a => a.round != null && isFact(a))
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => (x.a.round as number) - (y.a.round as number) || x.i - y.i)
+    .map(x => x.a)
   let timer: number | null = null
   let rule: Round['timerRule'] = null
+  let latestAction: number | null = null
   for (const a of resolved) {
     const t = timerInstant(a)
-    if (t !== null && (timer === null || t >= timer)) {
-      timer = t
-      rule = a.status === 'given' ? 'given' : 'skipped'
+    if (a.status === 'given') {
+      // a subsequent Given restarts the interval; an older backdated one never rewinds it
+      if (t !== null && (latestAction === null || t >= latestAction || timer === null || t > timer)) {
+        timer = t
+        rule = 'given'
+      }
+    } else if (t !== null) {
+      timer = t // the skipped round's scheduled time
+      rule = 'skipped'
     }
+    const act = actionInstant(a)
+    if (act !== null && (latestAction === null || act > latestAction)) latestAction = act
   }
   const number = resolved.length === 0 ? 1 : Math.max(...resolved.map(a => a.round as number)) + 1
   return timer === null

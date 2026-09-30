@@ -294,10 +294,11 @@ static class MarApi
                 var next = MarSchedule.CurrentRound(first!.Value, parsed.IntervalHours,
                     admins.Where(a => a.Status != "scheduled").ToList(), now);
                 var from = MarSchedule.TimerInstant(fact) == next.TimerFrom
+                        && next.TimerRule == (req.Action == "given" ? "given" : "skipped")
                     ? (req.Action == "given"
                         ? "from the actual administration time"
                         : "from the skipped dose's scheduled time")
-                    : $"timer unchanged — an administration at {MarSchedule.StampOf(next.TimerFrom!.Value)} already set it; an older time never rewinds it";
+                    : $"timer unchanged — {(next.TimerRule == "given" ? "the administration at" : "the skipped dose due")} {MarSchedule.StampOf(next.TimerFrom!.Value)} already set it; an older time never rewinds it";
                 timerNote = $" — round {round.Value.Number}; next round due {MarSchedule.StampOf(next.Due)} ({med.Frequency} {from})";
             }
             var verb = req.Action == "given" ? "administered" : req.Action!;

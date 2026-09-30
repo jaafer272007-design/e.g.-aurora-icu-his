@@ -379,9 +379,9 @@ export function applyAdministration(
   let timerNote = ''
   if (round !== undefined && first !== null && kind.kind === 'interval') {
     const next = currentRound(first, kind.hours, o.administrations.filter(isFact), nowMs)
-    const from = timerInstant(fact) === next.timerFromMs
+    const from = timerInstant(fact) === next.timerFromMs && next.timerRule === (action === 'given' ? 'given' : 'skipped')
       ? (action === 'given' ? 'from the actual administration time' : "from the skipped dose's scheduled time")
-      : `timer unchanged — an administration at ${instanceStamp(next.timerFromMs as number)} already set it; an older time never rewinds it`
+      : `timer unchanged — ${next.timerRule === 'given' ? 'the administration at' : 'the skipped dose due'} ${instanceStamp(next.timerFromMs as number)} already set it; an older time never rewinds it`
     timerNote = ` — round ${round}; next round due ${instanceStamp(next.dueMs)} (${o.medication.frequency} ${from})`
   }
   const verb = action === 'given' ? 'administered' : action
