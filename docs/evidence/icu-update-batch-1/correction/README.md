@@ -90,3 +90,10 @@ The database was touched directly only for stated synthetic setups:
 
 Every order, documentation, modification, discontinue and discharge otherwise
 went through the real endpoints.
+
+## Follow-up: the rolling-timer correction (`timer-fix/`)
+
+After Codex reviewed `87358f2`, one timer defect was corrected: a Given after a
+Held/Refused round now restarts the timer from its actual time. Its proof is in
+`timer-fix/` (see `timer-fix/README.md`). The evidence above is unchanged and
+still documents the earlier commits.
