@@ -112,6 +112,13 @@ static class MarApi
                 administeredAt = at;
             }
 
+            /* THE ORDER WRITE LOCK (Codex review of PR #234): the whole
+               read → validate → append fact → timer → audit → save below
+               runs in one transaction holding this order's row lock, so a
+               competing documentation or order change waits and then
+               validates against the fresh facts — two overlapping requests
+               can never both pass on the same facts and lose one write. */
+            using var tx = OrderLogic.LockOrder(db, orderId);
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null || row.MedicationJson is null)
                 return ApiError.NotFound();   // absent order, or not a medication order — the adminId resolves to nothing
@@ -289,6 +296,7 @@ static class MarApi
                 + (reason is not null ? $" — {reason}" : "");
             row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, verb, detail));
             db.SaveChanges();
+            tx.Commit();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
     }

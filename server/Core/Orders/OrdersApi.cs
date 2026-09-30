@@ -244,6 +244,7 @@ static class OrdersApi
         app.MapPost("/api/icu/orders/{orderId}/sign", (string orderId, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "orders.sign") is IResult denied) return denied;
+            using var tx = OrderLogic.LockOrder(db, orderId);   // the order write lock (atomic mutation)
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null) return ApiError.NotFound();
             if (EncounterGuard.RequireOpen(db, row.EncounterId, "signing an order") is IResult conflict) return conflict;
@@ -258,6 +259,7 @@ static class OrdersApi
             row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
                 new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "signed", null));
             db.SaveChanges();
+            tx.Commit();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
@@ -278,6 +280,7 @@ static class OrdersApi
                ACTIVE medication order is exactly the silent hazard this guards */
             if (OrderLogic.ValidateChanges(req.Changes, db) is string invalid)
                 return ApiError.BadRequest(invalid);
+            using var tx = OrderLogic.LockOrder(db, orderId);   // the order write lock (atomic mutation)
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null) return ApiError.NotFound();
             /* SHAPE, not state: a non-medication order has no medication
@@ -330,6 +333,7 @@ static class OrdersApi
                 new(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"), actor, "modified",
                     $"{(diff.Length > 0 ? diff : "no field change")} — {req.Reason.Trim()}"));
             db.SaveChanges();
+            tx.Commit();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
@@ -341,6 +345,7 @@ static class OrdersApi
                 return ApiError.BadRequest("Reason required");
             if (req.Reason.Length > OrderLogic.MaxTextLength)
                 return ApiError.BadRequest($"reason exceeds {OrderLogic.MaxTextLength} characters");
+            using var tx = OrderLogic.LockOrder(db, orderId);   // the order write lock (atomic mutation)
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null) return ApiError.NotFound();
             /* deliberately NO EncounterGuard (closing out the record stays
@@ -372,6 +377,7 @@ static class OrdersApi
                path as the discharge hook and the backfill */
             OrderLogic.Discontinue(row, actor, req.Reason.Trim());
             db.SaveChanges();
+            tx.Commit();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
 
@@ -382,6 +388,7 @@ static class OrdersApi
         app.MapPost("/api/icu/orders/{orderId}/implement", (string orderId, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "orders.implement") is IResult denied) return denied;
+            using var tx = OrderLogic.LockOrder(db, orderId);   // the order write lock (atomic mutation)
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null) return ApiError.NotFound();
             /* THE TWO HALVES of the old folded lookup, split deliberately:
@@ -414,6 +421,7 @@ static class OrdersApi
                 OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, "implemented", null)),
                 new(time, actor, "completed", null));
             db.SaveChanges();
+            tx.Commit();
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
     }
