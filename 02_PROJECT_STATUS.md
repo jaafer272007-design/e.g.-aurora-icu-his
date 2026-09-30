@@ -1,6 +1,16 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-30 (later) · current through THE FIRST ICU UPDATE
+**Last updated: 2026-09-30 (latest) · current through THE ROLLING-TIMER
+CORRECTION after Codex's review of draft PR #234 at `87358f2` (same branch;
+pushed for review only — no merge, no installer, no hospital deployment): a
+Given after a Held/Refused round now restarts the timer from its actual
+administration time (the "latest timer instant" rule let a skipped round's later
+scheduled time swallow it — q1h 06:05 given, 07:05 held at 06:10, next given at
+06:50 stayed due 08:05 instead of 07:50); action chronology is kept apart from
+scheduled due identity, so a genuinely older backdated Given still never rewinds
+the timer; Held/Refused, the one current round, identities, 409/404s, row locks
+and stored data unchanged; the update-write/rollback release gate stays
+UNRESOLVED — the record below. Prior (2026-09-30, later): THE FIRST ICU UPDATE
 BATCH, CORRECTED after Codex's review of draft PR #234 (same branch; pushed for
 review only — no merge, no installer: the owner deferred the update EXE because
 the hospital wants more changes): the owner's ROLLING TIMER replaces the batch's
@@ -72,6 +82,98 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-09-30 (latest) · THE ROLLING TIMER CORRECTED AFTER CODEX'S REVIEW OF
+`87358f2` — A GIVEN AFTER HELD/REFUSED RESTARTS THE TIMER (same branch
+`claude/amazing-hopper-nwzw1x`; branch pushes for review only — no merge,
+`main` unchanged, no installer or EXE, no hospital access; synthetic data
+only).**
+Codex exercised the client scheduler and mock adapter, confirmed all four CI
+jobs green on `87358f2`, and reproduced one defect. DESIGN FIRST: the follow-up
+is committed verbatim, alone, as
+`docs/design/icu-update-batch-1-timer-correction.md`; the rule correction is
+MAR design **### C**, a pure append correcting Amendment B point 5.
+
+1. **The defect.** `MarSchedule.CurrentRound` / `currentRound` took the LATEST
+   timer instant across resolved rounds, mixing a Given's actual time with a
+   Held/Refused round's scheduled time. q1h: round 1 (06:00) given 06:05 →
+   07:05; round 2 held (or refused) early at 06:10 → 08:05; round 3 given early
+   at 06:50 stayed due **08:05** (`timerRule=skipped`, `timerFrom=07:05`)
+   instead of **07:50**. The Orders next-dose chip, the printed MAR's next due
+   and the Meds-Due count followed it.
+2. **The fix** (server `MarSchedule.CurrentRound`, client
+   `lib/marSchedule.ts` `currentRound` — the mock adapter, Orders chip,
+   printed MAR and counts all call it). The resolved rounds are replayed in
+   round order with ACTION chronology kept apart from the scheduled timer. The
+   action instant is a Given's actual administration time, or a
+   Held/Refused's documenting time. A Given no older than every earlier
+   action restarts the timer: next due = actual time + interval, early, on
+   time or late, after a Held/Refused too. A genuinely OLDER backdated Given
+   resolves its round but never rewinds the timer; it can only move it
+   forward. Held/Refused still advance from the skipped round's own due + the
+   interval. The audit detail now names which timer stayed in force ("the
+   administration at …" / "the skipped dose due …").
+3. **Unchanged:**
+   - one current round, round identities, and the duplicate/stale 409 and 404
+     paths;
+   - the delay-reason rule, the actual-time validations, and once/PRN/
+     underivable regimens;
+   - the order row locks (no diff in `OrderLogic`, `OrdersApi`, `AdtApi`, or
+     MarApi's lock lines);
+   - stored data: no new field, no migration, and no stored fact is
+     reinterpreted (the rule reads the same `round`, `status`,
+     `scheduledTime`, `documentedTime`).
+4. **Legacy entry (the owner answered the open question):** an active
+   repeating order with no recorded administrations keeps its original first
+   due, even days overdue. It is never reset to now and never resolved
+   automatically. That is the existing behaviour, so there is no code change.
+5. **The release gate is unchanged and UNRESOLVED:**
+   - write exclusion during update validation;
+   - a failed-health rollback drill with round-bearing facts;
+   - until then the update is forward-only once a round is documented.
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-update-batch-1/correction/timer-fix/`).**
+- **Final source.** On `eb616f9`, `npm run build`, `dotnet build -c Release`
+  and the `ci.yml` frontend + server steps all exit 0. The chunk warning and
+  the `BootGuards.cs` CS8602 are pre-existing.
+- **Deterministic harness.** Six new scenarios (R20–R25), 25 in total, run
+  through the real server sources and the real client modules: **372 checks,
+  0 failures**, server = client row for row. The new scenarios cover:
+  - the reproduced sequence with Held and with Refused, then early, on-time
+    and late Givens;
+  - repeated refreshes and a next-day read returning the same round identity;
+  - the Meds-Due count;
+  - an actual time given separately from a later documenting time;
+  - genuine older backdating (no rewind, distinct `~r4` at the same minute);
+  - an older backdated Given later than the skipped timer (forward only);
+  - the mock's audit note.
+
+  The same scenarios on the reviewed head's sources fail 77 checks, all in
+  R20/R21/R23/R24, e.g. "next 08:05, expected 07:50" and "due count 0,
+  expected 1".
+- **Real API + PostgreSQL 16** (server zone Asia/Baghdad, storage UTC):
+  **49/49**. The DB was touched only to backdate synthetic therapy starts. The
+  run covered:
+  - Held and Refused, each early, late then on time, and late then late;
+  - the reproduced case: a Given at an actual time that was supplied
+    separately and documented later, next due = actual + 1 h;
+  - genuine older backdating: timer kept, audit names it, distinct identity,
+    then a subsequent Given restarts;
+  - three refreshes returning the same current round, and the stale identity
+    → 409;
+  - a fresh read of the stored facts: rounds, statuses, slots, documenting
+    times and reasons;
+  - every history event stating its round and next due;
+  - the real client modules over this server's data: the Orders next-dose
+    chip and printed "next dose due" = the MAR current round, printed cells
+    carry the stored rounds, and the Meds-Due count.
+
+  The same script against a server built from `87358f2` fails 6 checks: its
+  current rounds stay at the skipped due.
+- **Not re-run.** This patch does not touch the lock, rendering, sidebar or
+  filter paths, so these were not repeated: the concurrency campaign (28/28
+  on the prior record), the browser pass, and the replayed deployed suites.
+
 **2026-09-30 (later) · THE FIRST BATCH, CORRECTED AFTER CODEX'S REVIEW OF DRAFT
 PR #234 — THE OWNER'S ROLLING TIMER, ATOMIC DOCUMENTATION, THE ROLLBACK
 STATEMENT CORRECTED (same branch `claude/amazing-hopper-nwzw1x`; reviewed head
@@ -123,6 +225,13 @@ pure append (109 added, 0 removed) superseding Amendment A.
      timer in force is the LATEST resolving instant by actual chronology, so a
      backdated older actual time never rewinds it. Frequency modification
      applies the current interval to that timer.
+     *[CORRECTED 2026-09-30 (latest), after Codex's review of `87358f2`: the
+     "LATEST resolving instant" rule let a Held/Refused round's scheduled time
+     override a subsequent actual Given (06:05 given, 07:05 held at 06:10,
+     next given 06:50 → stayed 08:05, should be 07:50). A subsequent Given now
+     restarts the timer from its actual time; only a genuinely older backdated
+     Given is kept from rewinding it — the 2026-09-30 (latest) record and MAR
+     design ### C.]*
    - **The clock never creates a round**: an unresolved round stays the one
      current round as it turns due, then overdue, across refreshes, midnight
      and days — no generated missed rows, no future rounds; the 24 h horizon
