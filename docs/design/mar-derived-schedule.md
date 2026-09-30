@@ -319,3 +319,112 @@ the client mirror is `src/lib/marSchedule.ts`):**
 5. **Frequency modification** keeps the anchors: the next dose is the latest
    anchor + the *current* interval (a q1h re-timed at 06:05 then modified to q4h
    → next 10:05). Anchors are instants, never stored intervals.
+
+### B · Amendment A and §1 / §6 — the ROLLING TIMER replaces the fixed and segmented grids — SUPERSEDED 2026-09-30 (project owner)
+
+*[Appended 2026-09-30, the same day as A, after Codex's review of PR #234.
+Pure append: A and everything above stay byte-identical. Source: the owner's
+clarification and the owner-confirmed Held/Refused rule, recorded verbatim in
+`docs/design/icu-update-batch-1-correction.md` §2.]*
+
+Amendment A (the whole item above), which read in part:
+
+> For an active repeating medication with a derivable interval, when a dose is
+> documented **GIVEN** and its **actual administration time** is later than its
+> scheduled time, the next repeating dose is **actual administration time + the
+> prescribed interval**, and the grid continues from there.
+
+and
+
+> **Held/refused, on-time or early GIVEN, `once`, PRN and
+> underivable/continuous regimens never re-time.**
+
+together with its mechanism points 1–5 (the `scheduleAnchor` field, the floor
+rule, the segmented grid, historical misses and superseded instances), and, for
+repeating orders, §6's past window and missed-dose summary.
+
+**Superseded by the owner, 2026-09-30:** "basically the timer of the next round
+will start after the first has been given (not something fixed)". This is a
+workflow change, not a patch to A's floor rule: there is no grid any more,
+fixed or segmented. The owner confirmed the Held/Refused rule the same day.
+
+**The rule (repeating medication, active, derivable interval):**
+
+1. **One current round at a time.** Round 1 is the first dose, derived exactly
+   as before: the next full hour after therapy start (§1, unchanged).
+2. **Given starts the next interval** from its actual administration time,
+   whether early, on time or late: next due = actual Given time + the
+   prescribed interval. q1h: 06:00 given 06:05 → 07:05; that 07:05 given 08:30
+   → 09:30; a 07:05 given early at 06:50 → 07:50; given on time at 07:05 → 08:05.
+3. **Held/Refused** (owner-confirmed): next due = the skipped round's
+   **scheduled** time + the interval, never its documenting time. q1h: 07:05
+   held or refused at 07:20 → 08:05. The reason stays required. If that next
+   due is already in the past it is simply overdue: it is never skipped,
+   paused or documented automatically.
+4. **The clock alone never creates a round.** An unresolved round stays the
+   same round as it becomes due, then overdue — at 08:30 with the 07:05 round
+   unresolved, 07:05 is the only current round; no 08:05/09:05 round and no
+   generated "missed" rows exist. It stays documentable across refreshes,
+   midnight and multi-day delay (no 24-hour horizon applies to it).
+5. **No rewind.** The timer is the **latest** timer instant of all resolved
+   rounds (Given → its actual time, Held/Refused → its scheduled time), judged
+   by actual chronology, not by scheduled identity. A genuinely older backdated
+   actual time resolves its round but leaves the newer timer in force; the next
+   round can then fall due at the same minute as the round just resolved.
+6. **Frequency modification** applies the *current* interval to the timer in
+   force: q1h given at 06:05, then modified to q4h → the current round is due
+   10:05.
+
+**Identity.** A round's documentable identity is its due minute plus its round
+number: `yyyy-MM-ddTHH:mm~r<n>` (URL-safe). Two rounds, or a round and a stored
+fact, can share a due minute and stay distinguishable. The identity is stable
+across refreshes because it derives only from stored facts and the order, never
+from the clock. The write endpoint accepts exactly the current round:
+
+- a round already resolved → **409**, naming who documented it and how
+  (duplicate or stale submission);
+- the current round number with a different due minute → **409**, because the
+  schedule changed after the view loaded (a frequency modification);
+- anything else → **404** (four-code rule).
+
+**Metadata.** Every fact that resolves a round carries `round` (its number): an
+additive, optional integer inside `AdministrationsJson`, so it is data, not
+schema, and needs **no migration**. A's `scheduleAnchor` was never released (PR
+#234 was never merged or installed), so it is removed rather than carried. The
+fact keeps what it always stored: `scheduledTime` is the round's due minute
+(scheduled identity), `documentedTime` is the actual administration time for
+Given (or the documenting time for Held/Refused), and the history event carries
+the documenting time. The history detail also states the next round and what
+timed it.
+
+**Existing (legacy) orders — activation without reinterpretation.** A stored
+fact without `round` is a legacy fact. It is displayed exactly as stored and
+**never** drives the timer, so installing the update uses no old late event to
+start a timer and rewrites nothing. An active repeating order whose facts are
+all legacy enters the policy at **round 1 = the first slot of its original
+therapy-start grid, at or after the slot containing its latest legacy fact's
+recorded time, that no legacy fact documents** — or the first dose when it has
+no legacy fact. This is one slot, computed from stored facts only (never from
+the clock). The grid is used only for that single entry point; it generates no
+missed or future rows. The already-approved compatibility case: a 07:00 slot
+given early at 06:50 leaves the 06:00 slot outstanding, so round 1 is 06:00;
+given at 06:55, the next round is due **07:55**. Out-of-order old slots are
+history, not extra current rounds. Clock-derived missed rows the old grid used
+to show were never stored and are not preserved.
+
+**Unchanged:** derived-at-read (no round is ever stored before it is
+documented); stored facts are never altered; `once`, PRN and
+underivable/continuous regimens; the 2-hour delay-reason rule, judged against
+the documenting moment; the actual-time entry validations (not in the future,
+at most 24 h back, server time when absent); RBAC, encounter scope, #110
+completion and discontinue.
+
+**Atomic documentation (Codex review, same batch).** Documenting a dose, and
+every other order mutation (sign, modify, discontinue, implement and the
+discharge cascade), runs inside a transaction that first takes the order row's
+PostgreSQL lock (`SELECT … FOR UPDATE`). The read, validation, fact append,
+timer and audit entry therefore see the latest committed facts and commit
+together: a competing write waits, then revalidates against fresh facts (409 if
+its round was taken, or its order stopped). There is no schema change. The
+SQLite demo mode serializes the same code paths through SQLite's single write
+lock.
