@@ -1,6 +1,6 @@
 /* Orders & Medication — Screen 5. Canonical orders screen; follows
    docs/design-system.md and reuses the shared components. */
-.om .shell{display:grid;grid-template-columns:198px 240px 1fr;min-height:0}
+.om .shell{display:grid;grid-template-columns:var(--nav-col) 240px 1fr;min-height:0}
 .om main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 
 /* ===== patient rail ===== */
@@ -161,7 +161,7 @@
 
 @media(max-width:1280px){.om .omcols{grid-template-columns:1fr}}
 @media(max-width:1180px){
- .om .shell{grid-template-columns:64px 1fr}
+ .om .shell{grid-template-columns:var(--nav-col) 1fr}
  .om .ptrail{display:none}
  .om.app-frame{height:auto;overflow:visible}
  .om main{overflow:visible}

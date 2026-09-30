@@ -1,5 +1,5 @@
 /* Layer 2 — ADT Admissions. Form + census; matches the shared shell. */
-.adm .shell{display:grid;grid-template-columns:198px 1fr;min-height:0}
+.adm .shell{display:grid;grid-template-columns:var(--nav-col) 1fr;min-height:0}
 .adm main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 .adm .admnote{font-size:11.5px;line-height:1.5;color:var(--text);border:1px solid rgba(var(--amber-rgb),.35);
  background:rgba(var(--amber-rgb),.07);border-radius:12px;padding:10px 14px}
@@ -30,7 +30,7 @@
 .adm .admlink{font-size:11.5px;font-weight:600;color:var(--blue);padding:9px 13px;border-radius:9px;align-self:flex-start;
  border:1px solid rgba(var(--blue-rgb),.4);background:rgba(var(--blue-rgb),.08);transition:.15s;min-height:40px}
 .adm .admlink:hover,.adm .admlink:focus-visible{background:rgba(var(--blue-rgb),.18)}
-@media(max-width:1180px){.adm .shell{grid-template-columns:64px 1fr}}
+@media(max-width:1180px){.adm .shell{grid-template-columns:var(--nav-col) 1fr}}
 @media(max-width:1180px){.adm.app-frame{height:auto;overflow:visible}.adm main{overflow:visible}}
 
 /* DOB-unknown toggle (identity redesign) — checkbox row inside the grid */

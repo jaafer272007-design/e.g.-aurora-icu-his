@@ -1,5 +1,5 @@
 /* Administrator landing view — Stage 9. Read-only census/performance. */
-.ad .shell{display:grid;grid-template-columns:198px 1fr;min-height:0}
+.ad .shell{display:grid;grid-template-columns:var(--nav-col) 1fr;min-height:0}
 .ad main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 .ad .adnote{font-size:11.5px;line-height:1.5;color:var(--text);border:1px solid rgba(var(--blue-rgb),.35);
  background:rgba(var(--blue-rgb),.07);border-radius:12px;padding:10px 14px}
@@ -28,7 +28,7 @@
 /* PR 3 — production derived-summary additions */
 .ad .adnone{color:var(--faint);font-size:11px}
 .ad .adstatlink{margin-top:12px}
-@media(max-width:1180px){.ad .shell{grid-template-columns:64px 1fr}}
+@media(max-width:1180px){.ad .shell{grid-template-columns:var(--nav-col) 1fr}}
 @media(max-width:1180px){.ad.app-frame{height:auto;overflow:visible}.ad main{overflow:visible}}
 
 /* Layer 3 — link to /admin/users, inline with the admin note */

@@ -1,7 +1,7 @@
 /* AI Assistant — grounded query chat. The .ac shell follows the app-frame
    grid convention; the chat column owns its own scroll (viewport-clip
    rule: inner scroll, never page overflow). */
-.ac .shell{display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px;min-height:0}
+.ac .shell{--nav-w-full:230px;display:grid;grid-template-columns:var(--nav-col) minmax(0,1fr);gap:14px;min-height:0}
 .ac main{display:flex;flex-direction:column;gap:12px;min-width:0;min-height:0}
 
 .ac .acdisclaimer{display:flex;gap:9px;align-items:flex-start;padding:10px 14px;border:1px solid rgba(var(--violet-rgb),.35);border-radius:12px;background:rgba(var(--violet-rgb),.08);font-size:12px;line-height:1.5;color:var(--dim)}

@@ -6,20 +6,43 @@
    the nav list itself scrolls when the viewport is shorter than the
    stack, and it never inflates the row. */
 .nav-sidebar{border-right:1px solid var(--stroke);padding:14px 10px;display:flex;flex-direction:column;gap:4px;
- min-height:0;overflow-y:auto;
+ min-height:0;overflow-y:auto;overflow-x:hidden;
  background:linear-gradient(180deg,rgba(var(--glass3-rgb),.72),rgba(var(--glass4-rgb),.72))}
-.nv{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:12px;color:var(--dim);font-size:13px;font-weight:500;
- transition:.16s;border:1px solid transparent;text-align:left;width:100%;position:relative;min-height:44px}
+/* the icon keeps ONE position in both states (14px = (44 − 16) / 2: centred
+   in the collapsed rail, where the labeled row starts when expanded) — it
+   never jumps under the pointer while the rail opens or closes */
+.nv{display:flex;align-items:center;gap:11px;padding:10px 14px;border-radius:12px;color:var(--dim);font-size:13px;font-weight:500;
+ transition:.16s;border:1px solid transparent;text-align:left;width:100%;position:relative;min-height:44px;white-space:nowrap}
 .nv svg{flex:none}
+.nv>span:not(.nbdg){overflow:hidden;text-overflow:ellipsis}
 .nv:hover{color:var(--text);background:rgba(var(--lift-rgb),.04)}
 .nv.on{color:var(--text);background:linear-gradient(135deg,rgba(var(--blue-rgb),.16),rgba(var(--cyan-rgb),.08));
  border-color:rgba(var(--blue-rgb),.4);box-shadow:0 4px 16px rgba(20,80,160,.25)}
 .nv .nbdg{margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:var(--badge);color:#fff;
  font-size:10px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
-.navfoot{margin-top:auto;font-size:10px;color:var(--faint);padding:0 13px;line-height:1.6}
+/* the footer lays out at the full labeled width even mid-transition (it is
+   clipped, never re-wrapped, while the rail grows) */
+.navfoot{margin-top:auto;font-size:10px;color:var(--faint);padding:0 13px;line-height:1.6;
+ min-width:calc(var(--nav-w-full) - 20px)}
 
-@media(max-width:1180px){
- .nv span,.navfoot{display:none}
- .nv{justify-content:center;padding:11px}
- .nv .nbdg{position:absolute;transform:translate(12px,-10px)}
-}
+/* the touch / no-hover toggle (rendered only on such devices) */
+.nvtoggle{display:flex;align-items:center;gap:11px;padding:10px 14px;border-radius:12px;min-height:44px;width:100%;
+ white-space:nowrap;color:var(--text);font-size:12px;font-weight:600;border:1px dashed var(--stroke2);margin-bottom:6px}
+.nvtoggle svg{flex:none}
+.nvtoggle[aria-expanded="true"]{background:rgba(var(--lift-rgb),.05)}
+
+/* COLLAPSED — the icon rail (the default until hover / keyboard focus /
+   the tap toggle opens it; see NavSidebar.tsx). Replaces the old ≤1180px
+   icon-only rule: labels now follow the expanded state at ANY width, so
+   they can open below the old breakpoint when there is room. */
+.nav-sidebar:not(.nav-open) .nv>span:not(.nbdg),
+.nav-sidebar:not(.nav-open) .nvtoggle>span,
+.nav-sidebar:not(.nav-open) .navfoot{display:none}
+.nav-sidebar:not(.nav-open) .nv .nbdg{position:absolute;transform:translate(12px,-10px)}
+
+/* OVERLAY — only on a narrow screen (≤760px, tokens.css) or an engine
+   without :has(): the column stays the rail and the opened sidebar floats
+   over the content as an explicit, dismissible drawer, on a solid surface */
+.nav-sidebar.nav-overlay{position:relative;width:var(--nav-w-rail);transition:width .16s ease}
+.nav-sidebar.nav-overlay.nav-open{width:var(--nav-w-full);z-index:30;
+ background:linear-gradient(180deg,rgb(var(--glass3-rgb)),rgb(var(--glass4-rgb)));box-shadow:14px 0 34px rgba(0,0,0,.35)}

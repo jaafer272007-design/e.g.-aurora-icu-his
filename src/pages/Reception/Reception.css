@@ -7,7 +7,7 @@
    reader cannot distinguish is not a statement at all. All colours come
    from the theme tokens, so the light theme is a token swap, not a second
    stylesheet. */
-.rcp .shell{display:grid;grid-template-columns:198px 1fr;min-height:0}
+.rcp .shell{display:grid;grid-template-columns:var(--nav-col) 1fr;min-height:0}
 .rcp main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 
 /* view-only (no admissions.create) and the BLOCKED state (Configuration
@@ -103,7 +103,7 @@
 .rcp .rcpsubmit:not(:disabled):hover,.rcp .rcpsubmit:focus-visible{filter:brightness(1.12)}
 
 @media(max-width:1180px){
-  .rcp .shell{grid-template-columns:64px 1fr}
+  .rcp .shell{grid-template-columns:var(--nav-col) 1fr}
   .rcp.app-frame{height:auto;overflow:visible}
   .rcp main{overflow:visible}
   .rcp .rcpfields{grid-template-columns:1fr}
