@@ -91,3 +91,12 @@ The database was touched directly for exactly two synthetic setups, both
 stated in `api-check.py`: backdating a synthetic order's "signed" event, and
 inserting one pre-update ("legacy") late fact. Every order and every
 documentation otherwise went through the real endpoints.
+
+## Correction (after Codex's review, 2026-09-30)
+
+The follow-up commits that correct this batch have their own evidence in
+[`correction/`](correction/README.md). They cover the owner's rolling timer
+(MAR Amendment B), atomic documentation under the order row lock, and the
+corrected rollback statement. The re-timing evidence above (`scheduleAnchor`,
+the floor rule, missed rows) describes the superseded first version and is kept
+as the record of what was built then.

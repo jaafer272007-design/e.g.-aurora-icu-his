@@ -1,0 +1,18 @@
+final verification (correction) — HEAD f0c7d56165c70748b9cdf435b57bc2c40f0bbf77 — 2026-09-30 01:21:49 UTC
+working tree: 0 uncommitted paths
+exit=0  01-npm-build :: npm run build
+exit=0  02-dotnet-build-release :: dotnet build server/AuroraIcu.Api.csproj -c Release
+exit=0  03-ci-tsc-force :: npx tsc -b --force
+exit=0  04-ci-vite-build :: npx vite build
+exit=0  05-ci-reception-gate :: node scripts/reception-required-fields-gate.mjs
+exit=0  06-ci-awaiting-bed-gate :: node scripts/awaiting-bed-gate.mjs
+exit=0  07-ci-ai-section-gate :: node scripts/ai-section-gate.mjs
+exit=0  08-ci-edition-gate :: node scripts/edition-gate.mjs
+exit=0  09-ci-vite-env-allowlist :: bash /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/ci-viteenv-gate.sh
+exit=0  10-ci-dotnet-build :: dotnet build server --nologo
+exit=0  11-ci-vocab-gate :: node scripts/vocab-registration-gate.mjs
+exit=0  12-harness-cs-build :: dotnet build /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollharness/RollHarness.csproj -c Release -o /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollharness/out
+exit=0  13-harness-cs-run :: bash -c dotnet /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollharness/out/RollHarness.dll /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollharness/scenarios.json > /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/rolling/final/harness-cs.json
+exit=0  14-harness-ts-build :: /home/user/e.g.-aurora-icu-his/node_modules/.bin/esbuild /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollts/harness.ts --bundle --platform=node --format=esm --outfile=/tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollts/harness.mjs --define:import.meta.env={"VITE_APP_ENV":"development"} --log-level=warning
+exit=0  15-harness-ts-run :: bash -c TZ=UTC node /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollts/harness.mjs /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollharness/scenarios.json > /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/rolling/final/harness-ts.json
+exit=0  16-expectations+parity :: python3 /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollts/check.py /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/rollharness/scenarios.json /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/rolling/final/harness-cs.json /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/rolling/final/harness-ts.json

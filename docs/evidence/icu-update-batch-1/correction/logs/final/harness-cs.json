@@ -1,0 +1,1074 @@
+[
+  {
+    "name": "R1 owner example: 06:00 given 06:05 -\u003E 07:05; unresolved while the clock advances; 07:05 given 08:30 -\u003E 09:30",
+    "steps": [
+      {
+        "read": "2026-09-30 05:30",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00~r1",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "read": "2026-09-30 08:30",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:05~r2",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ]
+      },
+      {
+        "read": "2026-09-30 08:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:05~r2",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 08:30",
+        "result": "ok",
+        "next": "2026-09-30 09:30",
+        "nextId": "2026-09-30T09:30~r3"
+      },
+      {
+        "read": "2026-09-30 09:40",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 08:30",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T09:30~r3",
+            "scheduledTime": "2026-09-30 09:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 08:30",
+            "timerRule": "given"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R2 early Given: the 07:05 round given at 06:50 -\u003E 07:50",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 06:50",
+        "result": "ok",
+        "next": "2026-09-30 07:50",
+        "nextId": "2026-09-30T07:50~r3"
+      },
+      {
+        "read": "2026-09-30 06:51",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r3",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R3 on-time Given: the 07:05 round given at 07:05 -\u003E 08:05",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 07:05",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3"
+      }
+    ]
+  },
+  {
+    "name": "R4 q8h unresolved across midnight and two days stays the ONE current round and stays documentable; given with reason -\u003E actual \u002B 8h",
+    "steps": [
+      {
+        "read": "2026-09-30 03:00",
+        "rows": [
+          {
+            "adminId": "2026-09-29T22:00~r1",
+            "scheduledTime": "2026-09-29 22:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "read": "2026-10-01 12:00",
+        "rows": [
+          {
+            "adminId": "2026-09-29T22:00~r1",
+            "scheduledTime": "2026-09-29 22:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "read": "2026-10-02 12:00",
+        "rows": [
+          {
+            "adminId": "2026-09-29T22:00~r1",
+            "scheduledTime": "2026-09-29 22:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-29T22:00~r1",
+        "action": "given",
+        "at": "2026-10-02 12:04",
+        "result": "400-reason-required",
+        "next": "2026-09-29 22:00",
+        "nextId": "2026-09-29T22:00~r1"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-29T22:00~r1",
+        "action": "given",
+        "at": "2026-10-02 12:05",
+        "result": "ok",
+        "next": "2026-10-02 20:05",
+        "nextId": "2026-10-02T20:05~r2"
+      },
+      {
+        "read": "2026-10-02 21:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-29 22:00",
+            "status": "given",
+            "documentedTime": "2026-10-02 12:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-10-02T20:05~r2",
+            "scheduledTime": "2026-10-02 20:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-10-02 12:05",
+            "timerRule": "given"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R5 explicit actual time 06:03 documented later at 06:40 -\u003E next 07:03",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:40",
+        "result": "ok",
+        "next": "2026-09-30 07:03",
+        "nextId": "2026-09-30T07:03~r2"
+      },
+      {
+        "read": "2026-09-30 06:41",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:03",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:03~r2",
+            "scheduledTime": "2026-09-30 07:03",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:03",
+            "timerRule": "given"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R6 older backdated actual (06:00 \u003C timer 06:05) never rewinds; round 3 shares 07:05 with round 2 and stays distinct",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 07:10",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r3"
+      },
+      {
+        "doc": "2026-09-30T07:05~r2",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 07:11",
+        "result": "409-resolved",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r3"
+      },
+      {
+        "read": "2026-09-30 07:12",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:00",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:05~r3",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R7 legacy compatibility (approved case): stored 07:00 slot given 06:50, outstanding 06:00 slot given 06:55 -\u003E 07:55",
+    "steps": [
+      {
+        "read": "2026-09-30 06:52",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00~r1",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:55",
+        "result": "ok",
+        "next": "2026-09-30 07:55",
+        "nextId": "2026-09-30T07:55~r2"
+      },
+      {
+        "read": "2026-09-30 06:56",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:55",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:55~r2",
+            "scheduledTime": "2026-09-30 07:55",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:55",
+            "timerRule": "given"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R8 legacy LATE fact never starts a timer: q8h 02:00 slot given 04:30 (stored) -\u003E round 1 is the grid\u0027s 10:00, not 12:30",
+    "steps": [
+      {
+        "read": "2026-09-30 05:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 02:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 04:30",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:00~r1",
+            "scheduledTime": "2026-09-30 10:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T10:00~r1",
+        "action": "given",
+        "at": "2026-09-30 10:10",
+        "result": "ok",
+        "next": "2026-09-30 18:10",
+        "nextId": "2026-09-30T18:10~r2"
+      }
+    ]
+  },
+  {
+    "name": "R9 legacy active order never documented (signed 3 days ago): round 1 is the first dose; held -\u003E slot \u002B 8h, still overdue; given -\u003E actual \u002B 8h",
+    "steps": [
+      {
+        "read": "2026-09-30 09:00",
+        "rows": [
+          {
+            "adminId": "2026-09-27T06:00~r1",
+            "scheduledTime": "2026-09-27 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-27T06:00~r1",
+        "action": "held",
+        "at": "2026-09-30 09:05",
+        "result": "ok",
+        "next": "2026-09-27 14:00",
+        "nextId": "2026-09-27T14:00~r2"
+      },
+      {
+        "read": "2026-09-30 09:06",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-27 06:00",
+            "status": "held",
+            "documentedTime": "2026-09-30 09:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-27T14:00~r2",
+            "scheduledTime": "2026-09-27 14:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-27 06:00",
+            "timerRule": "skipped"
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-27T14:00~r2",
+        "action": "given",
+        "at": "2026-09-30 09:10",
+        "result": "ok",
+        "next": "2026-09-30 17:10",
+        "nextId": "2026-09-30T17:10~r3"
+      }
+    ]
+  },
+  {
+    "name": "R10 Held/Refused time from the skipped slot (late, early, on time, late again); a past next due is overdue, never skipped",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "held",
+        "at": "2026-09-30 07:20",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r3",
+        "action": "refused",
+        "at": "2026-09-30 07:40",
+        "result": "ok",
+        "next": "2026-09-30 09:05",
+        "nextId": "2026-09-30T09:05~r4"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T09:05~r4",
+        "action": "held",
+        "at": "2026-09-30 09:05",
+        "result": "ok",
+        "next": "2026-09-30 10:05",
+        "nextId": "2026-09-30T10:05~r5"
+      },
+      {
+        "read": "2026-09-30 11:30",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 07:20",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 07:40",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 09:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 09:05",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:05~r5",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 5,
+            "timerFrom": "2026-09-30 09:05",
+            "timerRule": "skipped"
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T10:05~r5",
+        "action": "refused",
+        "at": "2026-09-30 11:30",
+        "result": "ok",
+        "next": "2026-09-30 11:05",
+        "nextId": "2026-09-30T11:05~r6"
+      },
+      {
+        "read": "2026-09-30 11:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 07:20",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 07:40",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 09:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 09:05",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 11:30",
+            "round": 5,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T11:05~r6",
+            "scheduledTime": "2026-09-30 11:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 6,
+            "timerFrom": "2026-09-30 10:05",
+            "timerRule": "skipped"
+          }
+        ]
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T11:05~r6",
+        "action": "given",
+        "at": "2026-09-30 11:35",
+        "result": "ok",
+        "next": "2026-09-30 12:35",
+        "nextId": "2026-09-30T12:35~r7"
+      }
+    ]
+  },
+  {
+    "name": "R11 same-round duplicate and a stale Held after a competing Given -\u003E 409",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "doc": "last",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:06",
+        "result": "409-resolved",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "doc": "last",
+        "id": "2026-09-30T06:00~r1",
+        "action": "held",
+        "at": "2026-09-30 06:07",
+        "result": "409-resolved",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "read": "2026-09-30 06:08",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:05~r2",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R12 frequency modification q1h -\u003E q4h: timer 06:05 \u002B 4h = 10:05; the stale 07:05 identity -\u003E 409",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "modify": "q4h"
+      },
+      {
+        "read": "2026-09-30 06:10",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:05~r2",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ]
+      },
+      {
+        "doc": "2026-09-30T07:05~r2",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 06:11",
+        "result": "409-rescheduled",
+        "next": "2026-09-30 10:05",
+        "nextId": "2026-09-30T10:05~r2"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T10:05~r2",
+        "action": "given",
+        "at": "2026-09-30 06:12",
+        "result": "ok",
+        "next": "2026-09-30 10:12",
+        "nextId": "2026-09-30T10:12~r3"
+      }
+    ]
+  },
+  {
+    "name": "R13 once: unchanged (late given completes; duplicate 409)",
+    "steps": [
+      {
+        "read": "2026-09-30 05:30",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "id": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 09:00",
+        "result": "ok",
+        "next": null,
+        "nextId": null
+      },
+      {
+        "read": "2026-09-30 09:01",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:00",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "id": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 09:02",
+        "result": "409-duplicate",
+        "next": null,
+        "nextId": null
+      }
+    ]
+  },
+  {
+    "name": "R14 PRN: unchanged (every given is a fact; availability stays)",
+    "steps": [
+      {
+        "doc": "prn",
+        "id": "prn",
+        "action": "given",
+        "at": "2026-09-30 09:00",
+        "result": "ok",
+        "next": null,
+        "nextId": null
+      },
+      {
+        "doc": "prn",
+        "id": "prn",
+        "action": "given",
+        "at": "2026-09-30 09:05",
+        "result": "ok",
+        "next": null,
+        "nextId": null
+      },
+      {
+        "read": "2026-09-30 09:06",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:00",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:05",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "prn",
+            "scheduledTime": "",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R15 discontinued order: facts stay, no current round, documenting -\u003E 409",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2"
+      },
+      {
+        "discontinue": true
+      },
+      {
+        "read": "2026-09-30 06:10",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ]
+      },
+      {
+        "doc": "2026-09-30T07:05~r2",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 06:11",
+        "result": "409-inactive",
+        "next": null,
+        "nextId": null
+      }
+    ]
+  },
+  {
+    "name": "R16 daily given 3h late (reason) -\u003E next day at the actual time",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:00~r1",
+        "action": "given",
+        "at": "2026-09-30 11:00",
+        "result": "ok",
+        "next": "2026-10-01 11:00",
+        "nextId": "2026-10-01T11:00~r2"
+      }
+    ]
+  },
+  {
+    "name": "R17 bid given 10 minutes late -\u003E 18:10",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:10",
+        "result": "ok",
+        "next": "2026-09-30 18:10",
+        "nextId": "2026-09-30T18:10~r2"
+      }
+    ]
+  },
+  {
+    "name": "R18 tid given 23:30 -\u003E next day 07:30 (midnight)",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T22:00~r1",
+        "action": "given",
+        "at": "2026-09-30 23:30",
+        "result": "ok",
+        "next": "2026-10-01 07:30",
+        "nextId": "2026-10-01T07:30~r2"
+      },
+      {
+        "read": "2026-10-01 00:30",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 22:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 23:30",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-10-01T07:30~r2",
+            "scheduledTime": "2026-10-01 07:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 23:30",
+            "timerRule": "given"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "R19 a bare grid identity or a future round on a repeating order -\u003E 404",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "id": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "404",
+        "next": "2026-09-30 06:00",
+        "nextId": "2026-09-30T06:00~r1"
+      },
+      {
+        "doc": "2026-09-30T07:00~r2",
+        "id": "2026-09-30T07:00~r2",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "404",
+        "next": "2026-09-30 06:00",
+        "nextId": "2026-09-30T06:00~r1"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:06",
+        "result": "ok",
+        "next": "2026-09-30 07:06",
+        "nextId": "2026-09-30T07:06~r2"
+      }
+    ]
+  }
+]

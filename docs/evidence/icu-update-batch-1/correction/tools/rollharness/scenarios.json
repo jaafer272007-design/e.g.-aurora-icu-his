@@ -1,0 +1,147 @@
+[
+ {"name": "R1 owner example: 06:00 given 06:05 -> 07:05; unresolved while the clock advances; 07:05 given 08:30 -> 09:30",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"read": "2026-09-30 05:30", "expect": {"current": "2026-09-30 06:00", "round": 1}},
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:05", "expect": "ok", "expectNext": "2026-09-30 07:05", "expectNextId": "2026-09-30T07:05~r2"},
+   {"read": "2026-09-30 08:30", "expect": {"current": "2026-09-30 07:05", "round": 2, "timerFrom": "2026-09-30 06:05", "rule": "given"}},
+   {"read": "2026-09-30 08:31", "expect": {"current": "2026-09-30 07:05", "round": 2}},
+   {"doc": "current", "action": "given", "at": "2026-09-30 08:30", "expect": "ok", "expectNext": "2026-09-30 09:30"},
+   {"read": "2026-09-30 09:40", "expect": {"current": "2026-09-30 09:30", "round": 3}}
+  ]},
+ {"name": "R2 early Given: the 07:05 round given at 06:50 -> 07:50",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:05", "expect": "ok", "expectNext": "2026-09-30 07:05"},
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:50", "expect": "ok", "expectNext": "2026-09-30 07:50"},
+   {"read": "2026-09-30 06:51", "expect": {"current": "2026-09-30 07:50", "round": 3, "timerFrom": "2026-09-30 06:50", "rule": "given"}}
+  ]},
+ {"name": "R3 on-time Given: the 07:05 round given at 07:05 -> 08:05",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:05", "expect": "ok", "expectNext": "2026-09-30 07:05"},
+   {"doc": "current", "action": "given", "at": "2026-09-30 07:05", "expect": "ok", "expectNext": "2026-09-30 08:05"}
+  ]},
+ {"name": "R4 q8h unresolved across midnight and two days stays the ONE current round and stays documentable; given with reason -> actual + 8h",
+  "frequency": "q8h", "signed": "2026-09-29 21:20",
+  "steps": [
+   {"read": "2026-09-30 03:00", "expect": {"current": "2026-09-29 22:00", "round": 1}},
+   {"read": "2026-10-01 12:00", "expect": {"current": "2026-09-29 22:00", "round": 1}},
+   {"read": "2026-10-02 12:00", "expect": {"current": "2026-09-29 22:00", "round": 1}},
+   {"doc": "current", "action": "given", "at": "2026-10-02 12:04", "expect": "400-reason-required", "csOnly": true},
+   {"doc": "current", "action": "given", "at": "2026-10-02 12:05", "reason": "synthetic: off the unit", "expect": "ok", "expectNext": "2026-10-02 20:05"},
+   {"read": "2026-10-02 21:00", "expect": {"current": "2026-10-02 20:05", "round": 2}}
+  ]},
+ {"name": "R5 explicit actual time 06:03 documented later at 06:40 -> next 07:03",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:40", "administeredAt": "2026-09-30 06:03", "expect": "ok", "expectNext": "2026-09-30 07:03"},
+   {"read": "2026-09-30 06:41", "expect": {"current": "2026-09-30 07:03", "round": 2, "timerFrom": "2026-09-30 06:03"}}
+  ]},
+ {"name": "R6 older backdated actual (06:00 < timer 06:05) never rewinds; round 3 shares 07:05 with round 2 and stays distinct",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:05", "expect": "ok", "expectNext": "2026-09-30 07:05"},
+   {"doc": "current", "action": "given", "at": "2026-09-30 07:10", "administeredAt": "2026-09-30 06:00", "expect": "ok", "expectNext": "2026-09-30 07:05", "expectNextId": "2026-09-30T07:05~r3"},
+   {"doc": "2026-09-30T07:05~r2", "action": "given", "at": "2026-09-30 07:11", "expect": "409-resolved"},
+   {"read": "2026-09-30 07:12", "expect": {"current": "2026-09-30 07:05", "round": 3, "timerFrom": "2026-09-30 06:05", "rule": "given"}}
+  ]},
+ {"name": "R7 legacy compatibility (approved case): stored 07:00 slot given 06:50, outstanding 06:00 slot given 06:55 -> 07:55",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "legacyFacts": [{"adminId": "ADM-900", "scheduledTime": "2026-09-30 07:00", "status": "given", "documentedTime": "2026-09-30 06:50", "documentedBy": "RN Legacy"}],
+  "steps": [
+   {"read": "2026-09-30 06:52", "expect": {"current": "2026-09-30 06:00", "round": 1}},
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:55", "expect": "ok", "expectNext": "2026-09-30 07:55"},
+   {"read": "2026-09-30 06:56", "expect": {"current": "2026-09-30 07:55", "round": 2, "timerFrom": "2026-09-30 06:55", "rule": "given"}}
+  ]},
+ {"name": "R8 legacy LATE fact never starts a timer: q8h 02:00 slot given 04:30 (stored) -> round 1 is the grid's 10:00, not 12:30",
+  "frequency": "q8h", "signed": "2026-09-30 01:20",
+  "legacyFacts": [{"adminId": "ADM-901", "scheduledTime": "2026-09-30 02:00", "status": "given", "documentedTime": "2026-09-30 04:30", "documentedBy": "RN Legacy", "reason": "synthetic legacy delay"}],
+  "steps": [
+   {"read": "2026-09-30 05:00", "expect": {"current": "2026-09-30 10:00", "round": 1}},
+   {"doc": "current", "action": "given", "at": "2026-09-30 10:10", "expect": "ok", "expectNext": "2026-09-30 18:10"}
+  ]},
+ {"name": "R9 legacy active order never documented (signed 3 days ago): round 1 is the first dose; held -> slot + 8h, still overdue; given -> actual + 8h",
+  "frequency": "q8h", "signed": "2026-09-27 05:20",
+  "steps": [
+   {"read": "2026-09-30 09:00", "expect": {"current": "2026-09-27 06:00", "round": 1}},
+   {"doc": "current", "action": "held", "at": "2026-09-30 09:05", "reason": "synthetic: not given, order under review", "expect": "ok", "expectNext": "2026-09-27 14:00"},
+   {"read": "2026-09-30 09:06", "expect": {"current": "2026-09-27 14:00", "round": 2, "timerFrom": "2026-09-27 06:00", "rule": "skipped"}},
+   {"doc": "current", "action": "given", "at": "2026-09-30 09:10", "reason": "synthetic: resumed", "expect": "ok", "expectNext": "2026-09-30 17:10"}
+  ]},
+ {"name": "R10 Held/Refused time from the skipped slot (late, early, on time, late again); a past next due is overdue, never skipped",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:05", "expect": "ok", "expectNext": "2026-09-30 07:05"},
+   {"doc": "current", "action": "held", "at": "2026-09-30 07:20", "reason": "synthetic: SBP 82", "expect": "ok", "expectNext": "2026-09-30 08:05"},
+   {"doc": "current", "action": "refused", "at": "2026-09-30 07:40", "reason": "synthetic: patient declined", "expect": "ok", "expectNext": "2026-09-30 09:05"},
+   {"doc": "current", "action": "held", "at": "2026-09-30 09:05", "reason": "synthetic: NPO", "expect": "ok", "expectNext": "2026-09-30 10:05"},
+   {"read": "2026-09-30 11:30", "expect": {"current": "2026-09-30 10:05", "round": 5, "timerFrom": "2026-09-30 09:05", "rule": "skipped"}},
+   {"doc": "current", "action": "refused", "at": "2026-09-30 11:30", "reason": "synthetic: declined again", "expect": "ok", "expectNext": "2026-09-30 11:05"},
+   {"read": "2026-09-30 11:31", "expect": {"current": "2026-09-30 11:05", "round": 6}},
+   {"doc": "current", "action": "given", "at": "2026-09-30 11:35", "expect": "ok", "expectNext": "2026-09-30 12:35"}
+  ]},
+ {"name": "R11 same-round duplicate and a stale Held after a competing Given -> 409",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:05", "expect": "ok", "expectNext": "2026-09-30 07:05"},
+   {"doc": "last", "action": "given", "at": "2026-09-30 06:06", "expect": "409-resolved"},
+   {"doc": "last", "action": "held", "at": "2026-09-30 06:07", "reason": "synthetic: stale screen", "expect": "409-resolved"},
+   {"read": "2026-09-30 06:08", "expect": {"current": "2026-09-30 07:05", "round": 2}}
+  ]},
+ {"name": "R12 frequency modification q1h -> q4h: timer 06:05 + 4h = 10:05; the stale 07:05 identity -> 409",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:05", "expect": "ok", "expectNext": "2026-09-30 07:05"},
+   {"modify": "q4h", "at": "2026-09-30 06:09"},
+   {"read": "2026-09-30 06:10", "expect": {"current": "2026-09-30 10:05", "round": 2}},
+   {"doc": "2026-09-30T07:05~r2", "action": "given", "at": "2026-09-30 06:11", "expect": "409-rescheduled"},
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:12", "expect": "ok", "expectNext": "2026-09-30 10:12"}
+  ]},
+ {"name": "R13 once: unchanged (late given completes; duplicate 409)",
+  "frequency": "once", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"read": "2026-09-30 05:30", "expect": {"once": "2026-09-30 06:00"}},
+   {"doc": "2026-09-30T06:00", "action": "given", "at": "2026-09-30 09:00", "reason": "synthetic: pharmacy delay", "expect": "ok"},
+   {"read": "2026-09-30 09:01", "expect": {"none": true}},
+   {"doc": "2026-09-30T06:00", "action": "given", "at": "2026-09-30 09:02", "reason": "x", "expect": "409-duplicate"}
+  ]},
+ {"name": "R14 PRN: unchanged (every given is a fact; availability stays)",
+  "frequency": "q6h", "prn": true, "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "prn", "action": "given", "at": "2026-09-30 09:00", "expect": "ok"},
+   {"doc": "prn", "action": "given", "at": "2026-09-30 09:05", "expect": "ok"},
+   {"read": "2026-09-30 09:06", "expect": {"prn": true}}
+  ]},
+ {"name": "R15 discontinued order: facts stay, no current round, documenting -> 409",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:05", "expect": "ok", "expectNext": "2026-09-30 07:05"},
+   {"discontinue": true, "at": "2026-09-30 06:09"},
+   {"read": "2026-09-30 06:10", "expect": {"none": true}},
+   {"doc": "2026-09-30T07:05~r2", "action": "given", "at": "2026-09-30 06:11", "expect": "409-inactive"}
+  ]},
+ {"name": "R16 daily given 3h late (reason) -> next day at the actual time",
+  "frequency": "daily", "signed": "2026-09-30 07:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 11:00", "reason": "synthetic: off the unit", "expect": "ok", "expectNext": "2026-10-01 11:00"}
+  ]},
+ {"name": "R17 bid given 10 minutes late -> 18:10",
+  "frequency": "bid", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:10", "expect": "ok", "expectNext": "2026-09-30 18:10"}
+  ]},
+ {"name": "R18 tid given 23:30 -> next day 07:30 (midnight)",
+  "frequency": "tid", "signed": "2026-09-30 21:20",
+  "steps": [
+   {"doc": "current", "action": "given", "at": "2026-09-30 23:30", "expect": "ok", "expectNext": "2026-10-01 07:30"},
+   {"read": "2026-10-01 00:30", "expect": {"current": "2026-10-01 07:30", "round": 2}}
+  ]},
+ {"name": "R19 a bare grid identity or a future round on a repeating order -> 404",
+  "frequency": "q1h", "signed": "2026-09-30 05:20",
+  "steps": [
+   {"doc": "2026-09-30T06:00", "action": "given", "at": "2026-09-30 06:05", "expect": "404"},
+   {"doc": "2026-09-30T07:00~r2", "action": "given", "at": "2026-09-30 06:05", "expect": "404"},
+   {"doc": "current", "action": "given", "at": "2026-09-30 06:06", "expect": "ok", "expectNext": "2026-09-30 07:06"}
+  ]}
+]

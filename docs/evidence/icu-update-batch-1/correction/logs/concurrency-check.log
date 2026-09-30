@@ -1,0 +1,64 @@
+server http://localhost:8080 · db aurora_rolling · this branch: expect atomic writes · now 2026-09-30 01:16
+admitted synthetic P-1022 (ENC-1022)
+
+[1] the SAME current round: two nurses document Given at the same moment
+  PASS same round: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 200 | 409 dose round 1 (due 2026-09-30 01:00) was already documented as given by RN Maya C
+  PASS exactly one success, one 409: [200, 409]
+  PASS the 409 names the winner: dose round 1 (due 2026-09-30 01:00) was already documented as given by RN Maya Chen at 2026-09-30 01:16 — it i
+  PASS durable: 1 fact (round 1) and 1 audit entry — consistent
+  PASS fresh read: one current round 2 due 2026-09-30 02:16, timed from the winner's actual time 2026-09-30 01:16
+
+[2] PRN: two valid distinct facts documented at the same moment — BOTH must stay durable
+  PASS PRN pair: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 200 | 200
+  PASS both 200 and both durable: facts 2 by ['RN Maya Chen', 'RN Priya Patel'], audit entries 2
+
+[3] a second action made stale by a competing Given that starts a new round (Given vs Held on the same round)
+  PASS given vs held: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 200 | 409 dose round 1 (due 2026-09-30 01:00) was already documented as given by RN Maya C
+  PASS one wins, the other 409 (it no longer addresses the current round): [200, 409]; durable facts 1 (given)
+  PASS timer consistent with the WINNER (given): round 2 due 2026-09-30 02:16
+
+[4] a relevant order-state change: Given vs discontinue at the same moment
+  PASS given vs discontinue: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 200 | 200
+  PASS discontinue 200, order discontinued (fresh read)
+  PASS Given committed first: fact durable AND discontinue audited after it: ['created', 'signed', 'administered', 'discontinued']
+  PASS no current round on the stopped order
+
+[5] a schedule change: Given (round 2) vs frequency modification q1h -> q4h at the same moment
+  PASS given vs modify: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 200 | 200
+  PASS modify 200
+  PASS Given first: round 3 due its actual + the NEW interval (q4h) = 2026-09-30 05:16
+
+[4b] the same race, the discontinue queued FIRST on the lock (Given 0.4 s later, both still parked)
+  PASS discontinue first: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 409 order 'ORD-134' is discontinued — it is not in force, no dose round is expected | 200
+  PASS discontinue committed first -> the Given revalidated against the fresh state: 409 (order 'ORD-134' is discontinued — it is not in force, no dos), no fact
+
+[5b] the same race, the frequency change queued FIRST
+  PASS modify first: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 409 dose round 2 is now due 2026-09-30 05:16, not 2026-09-30 02:16 — the order's sch | 200
+  PASS modify committed first -> the Given's round had moved: 409 ("dose round 2 is now due 2026-09-30 05:16, not 2026"); round 2 now due 2026-09-30 05:16
+
+[6] independent orders proceed: order B is not blocked while order A's row is locked
+  PASS independent: while the row lock is held, requests in flight = [True, False] (expected [True, False])
+    responses: 200 | 200
+  PASS both 200 and durable: [200, 200]
+
+[7] the discharge cascade vs a Given on the same encounter at the same moment
+  PASS given vs discharge: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 200 | 200
+  PASS discharge 200; order terminal (discontinued)
+  PASS Given committed first: fact durable, then the cascade discontinued it: ['created', 'signed', 'administered', 'discontinued']
+
+[7b] the same race, the discharge queued FIRST
+  PASS discharge first: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 409 encounter 'ENC-1024' is not open — documenting a dose is not permitted: new care | 200
+  PASS discharge committed first: Given 409 on the closed encounter, no fact (encounter 'ENC-1024' is not open — documenting a dose is not)
+
+cleanup: discharged P-1022 -> 200
+
+RESULT: 28 passed, 0 failed
