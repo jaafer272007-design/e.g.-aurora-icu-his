@@ -162,8 +162,24 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
                 <div className={`marrow ${meta.cls}`} key={`${r.orderId}-${r.adminId}`}>
                   <span className="martime num">{displayStamp(r.scheduledTime) || '—'}</span>
                   <div className="marmed">
-                    <div className="mn">{r.medication} <span className="mdose num">{r.dose}</span></div>
-                    <div className="mroute">{r.scheduleNote ?? r.route}</div>
+                    <div className="mn">
+                      {r.medication} <span className="mdose num">{r.dose}</span>
+                      {/* the rolling timer (2026-09-30): a repeating order's
+                          doses are numbered rounds — two can share a due
+                          minute and stay distinguishable */}
+                      {r.round && <span className="marround">round {r.round}</span>}
+                    </div>
+                    <div className="mroute">
+                      {r.scheduleNote ?? r.route}
+                      {/* why the current round is due when it is: the
+                          previous round's GIVEN time, or its scheduled time
+                          when it was held/refused */}
+                      {r.timerFrom && (
+                        <span className="martimer">
+                          {' '}· timed from the {r.timerRule === 'given' ? 'dose given' : 'skipped dose due'} {displayStamp(r.timerFrom)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className={`marstate ${meta.cls}`}>{meta.label}</span>
                   {r.status === 'scheduled' ? (
@@ -190,14 +206,6 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
                       {r.status === 'given'
                         && (stampDiffMinutes(r.scheduledTime, r.documentedTime) ?? 0) > LATE_THRESHOLD_MINUTES
                         && <span className="marlate">LATE</span>}
-                      {/* late-dose re-timing (2026-09-30): this given
-                          dose re-timed the repeating schedule — the next
-                          instance derives from its actual time */}
-                      {r.scheduleAnchor && (
-                        <span className="marretimed" title={`Next repeating dose re-timed from the actual administration time ${displayStamp(r.scheduleAnchor)}`}>
-                          ↻ next dose re-timed
-                        </span>
-                      )}
                       {r.reason && <span className="marreason">— {r.reason}</span>}
                     </span>
                   )}

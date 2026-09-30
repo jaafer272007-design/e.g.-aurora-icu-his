@@ -1408,12 +1408,12 @@ export async function completeImplementation(orderId: string, actor: string, job
  *  scheduled instant (server-enforced — the overdue-delay-reason safety
  *  fix). administeredAt (given only, UTC wire stamp) records the actual
  *  administration time when it differs from the documenting moment (the
- *  #145 editable-timestamp pattern). A GIVEN dose later than its
- *  scheduled instant on a repeating order re-times the next dose from the
- *  actual administration time (late-dose re-timing, 2026-09-30 — the
- *  server stamps the fact's scheduleAnchor; a stale superseded instance
- *  is 409'd). REAL endpoint; mock fallback only when offline. Returns the
- *  updated Order. */
+ *  #145 editable-timestamp pattern). On a repeating order the adminId is
+ *  the CURRENT ROUND ("yyyy-MM-ddTHH:mm~r<n>" — the rolling timer,
+ *  2026-09-30): documenting it starts the next round (Given → actual time
+ *  + interval; Held/Refused → scheduled time + interval); a resolved or
+ *  re-timed round is 409'd. REAL endpoint; mock fallback only when
+ *  offline. Returns the updated Order. */
 export async function documentAdministration(
   orderId: string, adminId: string, action: AdministrationAction, actor: string, jobTitle: JobTitle,
   reason?: string, administeredAt?: string,

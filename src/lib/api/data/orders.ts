@@ -2,10 +2,9 @@ import type {
   AdministrationAction, MarRow, MedicationDetails, NewOrderDraft, Order,
 } from '../types'
 import { nowHm } from '../../time'
-import { datedEpoch } from '../../time'
 import {
-  firstDoseEpoch, instanceIdentity, instanceStamp, intervalInstances, isFact,
-  onGrid, parseFrequency, retimes, retimingState, therapyStartEpoch,
+  currentRound, firstDoseEpoch, instanceIdentity, instanceStamp, isFact,
+  parseFrequency, parseRoundIdentity, roundIdentity, therapyStartEpoch, timerInstant,
 } from '../../marSchedule'
 
 /* Canonical orders store — THE single source of truth for orders and
@@ -332,52 +331,63 @@ export function applyImplementation(orderId: string, actor: string): Order | nul
 
 /** Document a dose — APPENDS an administration FACT (nothing stored is
     consumed; mirrors the real endpoint). adminId is the derived instance
-    identity ("yyyy-MM-ddTHH:mm"), "prn", or "ondemand". administeredAt
-    (given only, UTC wire stamp) is the actual administration time.
-    LATE-DOSE RE-TIMING (2026-09-30): a late GIVEN on a repeating order
-    carries scheduleAnchor per the shared floor rule (lib/marSchedule.ts),
-    and an instance the re-timed grid no longer contains (a stale view) is
-    refused — the server's 409, as a null here. */
+    identity — the current round "yyyy-MM-ddTHH:mm~r<n>" of a repeating
+    order, the dated "yyyy-MM-ddTHH:mm" instance of a 'once' order — or
+    "prn" / "ondemand". administeredAt (given only, UTC wire stamp) is the
+    actual administration time. THE ROLLING TIMER (2026-09-30): only the
+    current round is accepted (a resolved or re-timed round — the server's
+    409 — is a null here); its fact carries `round`, which starts the next
+    round (lib/marSchedule.ts currentRound). */
 export function applyAdministration(
   orderId: string, adminId: string, action: AdministrationAction, actor: string, reason?: string,
   administeredAt?: string,
 ): Order | null {
   const o = ORDERS.find(x => x.orderId === orderId)
   if (!o || !o.medication || o.status !== 'active') return null
-  const scheduledStamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(adminId) ? adminId.replace('T', ' ') : ''
-  const already = (o.administrations ?? []).some(a => isFact(a) && scheduledStamp !== '' && a.scheduledTime === scheduledStamp)
-  if (already) return null
   const nowMs = Date.now()
   const kind = parseFrequency(o.medication)
-  const scheduledMs = scheduledStamp ? datedEpoch(scheduledStamp) : null
-  const state = retimingState(o.administrations ?? [])
-  if (kind.kind === 'interval' && scheduledMs !== null) {
+  const facts = (o.administrations ?? []).filter(isFact)
+  let scheduledStamp = ''
+  let round: number | undefined
+  let first: number | null = null
+  const rid = parseRoundIdentity(adminId)
+  if (rid) {
+    if (kind.kind !== 'interval') return null
     const anchor = therapyStartEpoch(o, nowMs)
-    if (anchor === null || !onGrid(scheduledMs, firstDoseEpoch(anchor), kind.hours, state.anchorsMs)) return null
+    if (anchor === null) return null
+    first = firstDoseEpoch(anchor)
+    const cur = currentRound(first, kind.hours, facts, nowMs)
+    if (rid.number !== cur.number || rid.dueMs !== cur.dueMs) return null
+    scheduledStamp = instanceStamp(cur.dueMs)
+    round = cur.number
+  } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(adminId)) {
+    if (kind.kind !== 'once') return null
+    scheduledStamp = adminId.replace('T', ' ')
+    if (facts.some(a => a.scheduledTime === scheduledStamp)) return null
   }
-  const now = new Date()
-  const time = `${now.toISOString().slice(0, 10)} ${nowHm()}`
-  /* the actual administration time on the UTC wire (explicit when
-     supplied, else this minute) — what the re-timing judges */
-  const actual = action === 'given' && administeredAt ? administeredAt : instanceStamp(Math.floor(nowMs / 60_000) * 60_000)
-  const actualMs = datedEpoch(actual)
-  const lateGiven = action === 'given' && kind.kind === 'interval' && scheduledMs !== null
-    && actualMs !== null && actualMs > scheduledMs
-  const scheduleAnchor = lateGiven && retimes(scheduledMs!, actualMs!, state.floorMs) ? actual : undefined
+  /* the documenting minute on the UTC wire, exactly as the server stamps
+     it — a GIVEN fact's documentedTime (its actual time when no
+     administeredAt is supplied) is what times the next round */
+  const time = instanceStamp(Math.floor(nowMs / 60_000) * 60_000)
   const fact = {
     adminId: nextAdminId(), scheduledTime: scheduledStamp, status: action,
     documentedTime: action === 'given' && administeredAt ? administeredAt : time, documentedBy: actor,
     ...(reason?.trim() ? { reason: reason.trim() } : {}),
-    ...(scheduleAnchor ? { scheduleAnchor } : {}),
+    ...(round !== undefined ? { round } : {}),
   }
   o.administrations = [...(o.administrations ?? []), fact]
+  let timerNote = ''
+  if (round !== undefined && first !== null && kind.kind === 'interval') {
+    const next = currentRound(first, kind.hours, o.administrations.filter(isFact), nowMs)
+    const from = timerInstant(fact) === next.timerFromMs
+      ? (action === 'given' ? 'from the actual administration time' : "from the skipped dose's scheduled time")
+      : `timer unchanged — an administration at ${instanceStamp(next.timerFromMs as number)} already set it; an older time never rewinds it`
+    timerNote = ` — round ${round}; next round due ${instanceStamp(next.dueMs)} (${o.medication.frequency} ${from})`
+  }
   const verb = action === 'given' ? 'administered' : action
-  const retimeNote = scheduleAnchor && kind.kind === 'interval'
-    ? ` — schedule re-timed: next dose ${instanceStamp(actualMs! + kind.hours * 3_600_000)} (${o.medication.frequency} from the actual administration time)`
-    : lateGiven ? ' — schedule not re-timed: a later dose is already documented' : ''
   o.history.push({
     time, actor, action: verb,
-    detail: `${scheduledStamp || (o.medication.prn ? 'PRN' : `unscheduled (${o.medication.frequency})`)} dose ${action} at ${fact.documentedTime}${retimeNote}${reason?.trim() ? ` — ${reason.trim()}` : ''}`,
+    detail: `${scheduledStamp || (o.medication.prn ? 'PRN' : `unscheduled (${o.medication.frequency})`)} dose ${action} at ${fact.documentedTime}${timerNote}${reason?.trim() ? ` — ${reason.trim()}` : ''}`,
   })
   return o
 }
@@ -404,7 +414,7 @@ export function deriveMarRows(patientIds: string[]): MarRow[] {
         sort: Date.parse((a.scheduledTime.includes('-') ? a.scheduledTime : a.documentedTime ?? '').replace(' ', 'T') + ':00Z') || nowMs,
         row: row(a.adminId, a.scheduledTime, a.status, {
           documentedTime: a.documentedTime,
-          ...(a.scheduleAnchor ? { scheduleAnchor: a.scheduleAnchor } : {}),
+          ...(a.round !== undefined ? { round: a.round } : {}),
         }),
       })
     if (o.status !== 'active') continue
@@ -420,19 +430,20 @@ export function deriveMarRows(patientIds: string[]): MarRow[] {
       continue
     }
     const first = firstDoseEpoch(anchor)
-    const documented = new Set(facts.map(a => a.scheduledTime))
     if (kind.kind === 'once') {
-      if (!documented.has(instanceStamp(first)))
+      if (!facts.some(a => a.scheduledTime === instanceStamp(first)))
         rows.push({ sort: first, row: row(instanceIdentity(first), instanceStamp(first), 'scheduled') })
       continue
     }
-    const { anchorsMs } = retimingState(facts)
-    const { aggregatedMissed, oldestAggregatedMs, renderableMs } =
-      intervalInstances(first, kind.hours, anchorsMs, documented, nowMs)
-    if (aggregatedMissed > 0 && oldestAggregatedMs !== null)
-      rows.push({ sort: oldestAggregatedMs, row: row('missed-earlier', instanceStamp(oldestAggregatedMs), 'missed-earlier', { missedEarlier: aggregatedMissed }) })
-    for (const t of renderableMs)
-      rows.push({ sort: t, row: row(instanceIdentity(t), instanceStamp(t), 'scheduled') })
+    /* THE ROLLING TIMER: exactly one current round, whatever the clock says */
+    const cur = currentRound(first, kind.hours, facts, nowMs)
+    rows.push({
+      sort: cur.dueMs,
+      row: row(roundIdentity(cur), instanceStamp(cur.dueMs), 'scheduled', {
+        round: cur.number,
+        ...(cur.timerFromMs !== null ? { timerFrom: instanceStamp(cur.timerFromMs), timerRule: cur.timerRule ?? undefined } : {}),
+      }),
+    })
   }
   return rows.sort((a, b) => a.sort - b.sort).map(r => r.row)
 }

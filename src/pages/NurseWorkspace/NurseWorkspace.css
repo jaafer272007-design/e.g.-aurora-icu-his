@@ -170,6 +170,8 @@
 .marlate{margin-left:6px;padding:1px 6px;border-radius:6px;font-size:9.5px;font-weight:800;letter-spacing:.4px;
   color:var(--amber,#f5b301);background:rgba(var(--amber-rgb,245,179,1),.14);border:1px solid rgba(var(--amber-rgb,245,179,1),.35)}
 .marreason{margin-left:6px;color:var(--dim);font-style:italic}
-/* late-dose re-timing (2026-09-30): a given fact that re-timed the grid */
-.marretimed{margin-left:6px;color:var(--blue);font-weight:600}
+/* the rolling timer (2026-09-30): round number + what timed the current round */
+.marround{margin-left:6px;padding:0 5px;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:.3px;
+  color:var(--dim);border:1px solid var(--stroke2)}
+.martimer{color:var(--cyan)}
 .marlatehint{font-size:12px;color:var(--amber,#f5b301);margin:2px 0 6px}

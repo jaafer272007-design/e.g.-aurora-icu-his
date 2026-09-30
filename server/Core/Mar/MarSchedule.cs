@@ -35,6 +35,11 @@ namespace Aurora.Core.Mar;
      still stays late (its fact keeps its original scheduled identity).
      Only facts carrying the explicit ScheduleAnchor re-time (see
      RetimingState below); the grid still starts at therapy start.]
+     [SUPERSEDED AGAIN 2026-09-30 by the project owner — Amendment B: the
+     ROLLING TIMER. A repeating order has no grid at all: one current round
+     at a time, the next one due from the fact that resolved the last
+     (Given → actual time + interval; Held/Refused → the skipped round's
+     scheduled time + interval). See the rolling-timer section below.]
    - PRN derives from the last administration only (an availability, no grid);
    - a frequency that cannot be honestly parsed gets NO invented schedule —
      the row says so (the #110 free-text-lab discipline). */
@@ -122,6 +127,10 @@ static class MarSchedule
          dose is never an aggregate). Documented instances render as their
          facts wherever the facts fall — facts are the record and are
          always shown. */
+    /* [2026-09-30, Amendment B: repeating orders no longer use this
+       horizon — their single current round renders, and stays documentable,
+       at any age. It remains the bound on how far back an explicit actual
+       administration time (administeredAt) may be entered.] */
     public const int PastWindowHours = 24;
 
     /* LATE-ADMINISTRATION THRESHOLD (overdue delay reason — the clinical
@@ -141,145 +150,112 @@ static class MarSchedule
        schedule and can never be late. */
     public const int LateThresholdHours = 2;
 
-    /* ---------------- LATE-DOSE RE-TIMING (owner's rule, 2026-09-30) ----------------
-       mar-derived-schedule.md Amendment A. On a repeating (interval) order, a
-       dose documented GIVEN whose actual administration time is later than
-       its scheduled instant re-times the grid: the next repeating dose is
-       actual + interval, then every interval after that (q1h due 06:00,
-       given 06:05 → 07:05, 08:05; the 07:05 given 07:12 → 08:12).
+    /* ---------------- THE ROLLING TIMER (owner's rule, 2026-09-30) ----------------
+       mar-derived-schedule.md Amendment B, which supersedes Amendment A's
+       late-only re-timing and its segmented grid. The owner: "the timer of
+       the next round will start after the first has been given (not
+       something fixed)". A repeating (interval) order has ONE CURRENT ROUND
+       at a time, never a grid:
+       - round 1 is the first dose (FirstDose, unchanged), or, for an order
+         whose stored facts all predate this rule, its LEGACY ENTRY slot;
+       - exactly one fact resolves a round, and carries Round = its number;
+       - the next round is due at TIMER + interval. A resolving fact's timer
+         instant is its ACTUAL administration time when GIVEN (early, on time
+         or late alike), and its SCHEDULED time when HELD/REFUSED (the
+         owner-confirmed skipped-dose rule, never the documenting time);
+       - the timer in force is the LATEST of those instants, by actual
+         chronology, so a backdated older actual time resolves its round
+         without rewinding a newer timer;
+       - the clock never creates a round: an unresolved round stays current
+         as it turns due, then overdue, for as long as it takes. There are no
+         missed rows, no future rounds and no 24 h horizon for it.
+       Only stored facts and the order feed this, so a round's identity is
+       stable across refreshes. The write endpoint and the read side call the
+       same CurrentRound, so the endpoint accepts exactly the round
+       GET /api/icu/mar serves. Nothing new is stored but the fact's Round. */
 
-       THE MECHANISM — explicit metadata, derived schedule. The write
-       endpoint stamps the late fact's ScheduleAnchor (= its actual
-       administration time) when, and only when, it re-times; the read side
-       derives the grid from those anchors. Nothing else is stored — no
-       generated future slot ever is. A pre-update fact has no anchor, so
-       installing the update re-times nothing that already exists.
+    /** the current round: its number, its due instant, and what timed it
+        (the timer instant + "given" | "skipped"; null on round 1) */
+    public readonly record struct Round(int Number, DateTime Due, DateTime? TimerFrom, string? TimerRule);
 
-       WHICH late GIVEN re-times (THE FLOOR RULE — one predicate, used by the
-       write endpoint to decide and by the read side to replay in recording
-       order, so the two can never disagree): the actual time must be later
-       than its own scheduled instant AND later than the FLOOR — the latest
-       of every earlier fact's dated scheduled instant and every earlier
-       effective anchor. Consequences, each by construction:
-       - recording an OLDER dose later never rewinds a newer schedule (a
-         backdated actual time at or before the floor re-times nothing);
-       - a documented instance can never fall off the derived grid (the new
-         segment starts after every documented instance), so no fact is
-         orphaned and no duplicate "missed" twin appears beside one;
-       - effective anchors are strictly increasing, so the grid is one
-         strictly increasing sequence (no duplicate instances).
+    /** the round's documentable identity: its due minute plus its number
+        ("yyyy-MM-ddTHH:mm~r<n>", URL-safe). Two rounds, or a round and a
+        stored fact, can share a due minute and stay distinguishable. */
+    public static string RoundIdentity(Round r) => $"{IdentityOf(r.Due)}~r{r.Number}";
 
-       THE GRID with effective anchors A1 < A2 < … < An: therapy-start points
-       first + k·interval while t < A1; then Ai + k·interval (k ≥ 1) while
-       t < A(i+1); the last segment is unbounded (doses never run out).
-       Instances of an earlier segment that fell BEFORE the re-timing
-       instant stay on the grid — a dose missed while the late one was
-       still outstanding is a historical miss and stays missed (never
-       marked given, never erased). Instances at or after it are SUPERSEDED
-       by the re-timed grid — a stale browser posting one gets 409. */
+    public static (DateTime Due, int Number)? ParseRoundIdentity(string id)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(id, @"^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2})~r([1-9][0-9]{0,8})$");
+        if (!m.Success || !DateTime.TryParseExact(m.Groups[1].Value, "yyyy-MM-ddTHH:mm", null,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var due))
+            return null;
+        return (due, int.Parse(m.Groups[2].Value));
+    }
 
     /** a DATED stamp → UTC instant; null for anything else (PRN/on-demand
-        ""; legacy "HH:mm" / "D-n HH:mm" forms, whose instant depends on the
-        reading day and so can never decide a re-timing deterministically) */
+        ""; legacy "HH:mm" / "D-n HH:mm" forms). Every fact this rule writes
+        is dated. */
     public static DateTime? ParseDated(string? t) =>
         !string.IsNullOrEmpty(t) && DateTime.TryParseExact(t, "yyyy-MM-dd HH:mm", null,
             System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
             out var d) ? d : null;
 
-    /** THE FLOOR RULE's single predicate: does a given dose scheduled at
-        `scheduled`, actually administered at `actual`, re-time the grid
-        over the facts summarised by `floor`? */
-    public static bool Retimes(DateTime scheduled, DateTime actual, DateTime? floor) =>
-        actual > scheduled && (floor is null || actual > floor.Value);
+    /** a round-resolving fact's timer instant: GIVEN → its actual
+        administration time (the fact's documentedTime); HELD/REFUSED → the
+        skipped round's scheduled time */
+    public static DateTime? TimerInstant(AdminDto a) =>
+        a.Status == "given" ? ParseDated(a.DocumentedTime) : ParseDated(a.ScheduledTime);
 
-    /** replay the facts IN RECORDING ORDER (AdministrationsJson is
-        append-only) → the effective anchors (strictly increasing) and the
-        floor a NEW fact would be judged against. Only a GIVEN fact carrying
-        a dated ScheduleAnchor is a candidate; legacy facts never are. */
-    public static (List<DateTime> anchors, DateTime? floor) RetimingState(IEnumerable<AdminDto> factsInRecordingOrder)
-    {
-        var anchors = new List<DateTime>();
-        DateTime? floor = null;
-        foreach (var a in factsInRecordingOrder)
-        {
-            if (a.Status == "scheduled") continue;   // retired stub rows are not facts
-            var s = ParseDated(a.ScheduledTime);
-            if (a.Status == "given" && s is not null && ParseDated(a.ScheduleAnchor) is DateTime anchor
-                && Retimes(s.Value, anchor, floor))
-            {
-                anchors.Add(anchor);
-                floor = anchor;   // anchor > floor and > s by the predicate
-            }
-            else if (s is not null && (floor is null || s.Value > floor.Value))
-                floor = s.Value;
-        }
-        return (anchors, floor);
-    }
-
-    /** the derived grid — strictly increasing and unbounded (callers stop
-        iterating; see IntervalInstances) */
-    public static IEnumerable<DateTime> Grid(DateTime first, int intervalHours, IReadOnlyList<DateTime> anchors)
+    /** THE rule, shared by GET /api/icu/mar and the write endpoint. `facts`
+        are the stored administrations in recording order (retired
+        'scheduled' stubs are ignored — never facts). */
+    public static Round CurrentRound(DateTime first, int intervalHours, IReadOnlyList<AdminDto> facts, DateTime nowUtc)
     {
         var step = TimeSpan.FromHours(intervalHours);
-        var start = first;
-        for (var seg = 0; ; seg++)
-        {
-            DateTime? cutoff = seg < anchors.Count ? anchors[seg] : null;
-            for (var t = start; cutoff is null || t < cutoff.Value; t += step)
-                yield return t;
-            start = cutoff!.Value + step;   // the re-timed segment: anchor + interval onward
-        }
+        var resolved = facts.Where(a => a.Round is not null && a.Status != "scheduled").ToList();
+        DateTime? timer = null;
+        string? rule = null;
+        foreach (var a in resolved)
+            if (TimerInstant(a) is DateTime t && (timer is null || t >= timer.Value))
+            {
+                timer = t;
+                rule = a.Status == "given" ? "given" : "skipped";
+            }
+        var number = resolved.Count == 0 ? 1 : resolved.Max(a => a.Round!.Value) + 1;
+        return timer is null
+            ? new(number, LegacyEntry(first, step, facts, nowUtc), null, null)
+            : new(number, timer.Value + step, timer, rule);
     }
 
-    /** is `t` an instance of the derived grid? Arithmetic per segment —
-        never iterates, so an absurd far-future identity costs nothing */
-    public static bool OnGrid(DateTime t, DateTime first, int intervalHours, IReadOnlyList<DateTime> anchors)
+    /** LEGACY ACTIVATION: how an order documented before this rule enters
+        it, without reinterpreting anything. A fact with no Round is a legacy
+        fact: shown as stored, and it NEVER drives the timer, so no old late
+        (or early) administration starts one. Round 1 of such an order is the
+        first slot of its original therapy-start grid, at or after the slot
+        containing its latest legacy fact's recorded time, that no legacy
+        fact documents; with no legacy fact it is simply the first dose. One
+        slot, from stored facts only (never the clock): the grid is not used
+        to generate anything else. Example (the approved compatibility
+        case): q1h, the 07:00 slot given early at 06:50 leaves the 06:00 slot
+        outstanding, so round 1 is 06:00; given at 06:55 → next 07:55. The
+        undated seed forms ("HH:mm", "D-n HH:mm") resolve as ParseStamp
+        always has. */
+    public static DateTime LegacyEntry(DateTime first, TimeSpan step, IReadOnlyList<AdminDto> facts, DateTime nowUtc)
     {
-        var step = TimeSpan.FromHours(intervalHours).Ticks;
-        /* the segment t falls in: the last anchor at or before t */
-        var seg = 0;
-        while (seg < anchors.Count && anchors[seg] <= t) seg++;
-        var segStart = seg == 0 ? first : anchors[seg - 1].AddTicks(step);
-        return t >= segStart && (t - segStart).Ticks % step == 0;
-    }
-
-    /** the re-timing instant that SUPERSEDED `t`, when t was an instance of
-        an earlier segment at or after that segment's cutoff (a stale
-        browser's future instance); null when t never was an instance */
-    public static DateTime? SupersededBy(DateTime t, DateTime first, int intervalHours, IReadOnlyList<DateTime> anchors)
-    {
-        var step = TimeSpan.FromHours(intervalHours).Ticks;
-        for (var seg = 0; seg < anchors.Count; seg++)
-        {
-            var segStart = seg == 0 ? first : anchors[seg - 1].AddTicks(step);
-            if (t >= anchors[seg] && t >= segStart && (t - segStart).Ticks % step == 0)
-                /* name the re-timing currently in force at t */
-                return anchors.Last(a => a <= t);
-        }
-        return null;
-    }
-
-    /** every grid instant for an interval order from therapy start through
-        the next undocumented instance after nowUtc, split into
-        (aggregatedMissed, renderable) — over the RE-TIMED grid. */
-    public static (int aggregatedMissed, DateTime? oldestAggregated, List<DateTime> renderable)
-        IntervalInstances(DateTime first, int intervalHours, IReadOnlyList<DateTime> anchors,
-            HashSet<string> documentedStamps, DateTime nowUtc)
-    {
-        var windowStart = nowUtc.AddHours(-PastWindowHours);
-        var aggregated = 0;
-        DateTime? oldest = null;
-        var renderable = new List<DateTime>();
-        foreach (var t in Grid(first, intervalHours, anchors))
-        {
-            var documented = documentedStamps.Contains(StampOf(t));
-            /* pre-window grid points: count the undocumented ones (aggregated) */
-            if (t < windowStart) { if (!documented) { aggregated++; oldest ??= t; } continue; }
-            /* in-window and next-future instances, stopping at the FIRST
-               undocumented instance after now (the doses-never-run-out rule) */
-            if (t <= nowUtc) { if (!documented) renderable.Add(t); continue; }
-            if (!documented) { renderable.Add(t); break; }
-        }
-        return (aggregated, oldest, renderable);
+        var legacy = facts.Where(a => a.Round is null && a.Status != "scheduled").ToList();
+        DateTime? latest = null;
+        foreach (var a in legacy)
+            if ((ParseStamp(a.DocumentedTime, nowUtc) ?? ParseStamp(a.ScheduledTime, nowUtc)) is DateTime t
+                && (latest is null || t > latest.Value))
+                latest = t;
+        if (latest is null) return first;
+        var documented = legacy.Select(a => ParseStamp(a.ScheduledTime, nowUtc))
+            .Where(t => t is not null).Select(t => t!.Value).ToHashSet();
+        var slot = latest.Value <= first
+            ? first
+            : first.AddTicks((latest.Value - first).Ticks / step.Ticks * step.Ticks);
+        while (documented.Contains(slot)) slot += step;   // bounded by the legacy facts
+        return slot;
     }
 }

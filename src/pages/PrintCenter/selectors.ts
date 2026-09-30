@@ -7,6 +7,7 @@ import type {
   Encounter, LabDraw, Observation, ObservationType, Order, PatientIdentity, RosterRecordDto,
 } from '../../lib/api/types'
 import { dayOffsetOf, localStamp } from '../../lib/time'
+import { nextExpectedDose } from '../../lib/marSchedule'
 import { computeNews2, computeSofa, type ScoreResult } from '../../lib/scoring'
 import type {
   ActiveOrdersData, AdmissionNoteData, ConsultReportData, DailyProgressData, DischargeSummaryData,
@@ -673,6 +674,7 @@ export async function buildMar(patientId: string, encounterId?: string): Promise
       prnIndication: o.medication!.prnIndication,
       status: o.status,
       stoppedReason: o.status === 'discontinued' ? o.statusReason : undefined,
+      nextDue: nextExpectedDose(o, Date.now()) ?? undefined,
       /* the SCHEDULED slots per drug ARE the columns (a q8h drug → 3, a
          q4h → 6 — the validator's decision, no uniform grid). Documented
          doses always print; still-scheduled slots print as awaiting
@@ -684,7 +686,7 @@ export async function buildMar(patientId: string, encounterId?: string): Promise
           adminId: a.adminId, scheduledTime: a.scheduledTime,
           status: a.status, documentedTime: a.documentedTime,
           documentedBy: a.documentedBy, reason: a.reason,
-          scheduleAnchor: a.scheduleAnchor,
+          round: a.round,
         })),
     })),
     unscheduledCount: meds.length - scheduled.length,

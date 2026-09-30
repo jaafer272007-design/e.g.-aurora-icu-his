@@ -144,14 +144,16 @@ jobs:
           # DERIVED SCHEDULE: the retired stub's stored 'scheduled' rows are
           # artefacts, ignored by the derivation — the old seeded stub ids
           # (ADM-401/402/404/405…) must NEVER surface as rows again. Every
-          # scheduled row is a DERIVED instance: dated identity/stamp, or a
-          # prn/ondemand availability. Documented facts keep ADM-n ids.
+          # scheduled row is a DERIVED instance: dated identity/stamp (a
+          # repeating order's current ROUND carries "~r<n>" — the rolling
+          # timer, 2026-09-30), or a prn/ondemand availability. Documented
+          # facts keep ADM-n ids.
           python3 -c '
           import json,re; d=json.load(open("/tmp/mar.json"))
           assert isinstance(d,list) and d, "MAR read returned no rows"
           sched=[r for r in d if r["status"]=="scheduled"]
           for r in sched:
-              ok=re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",r["adminId"]) or r["adminId"] in ("prn","ondemand")
+              ok=re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(~r\d+)?",r["adminId"]) or r["adminId"] in ("prn","ondemand")
               assert ok, f"scheduled row with a non-derived identity (a stored stub leaked): {r}"
               if r["adminId"] not in ("prn","ondemand"):
                   assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",r["scheduledTime"]), f"undated derived instance: {r}"
@@ -178,7 +180,8 @@ jobs:
           mine=[r for r in d if r["orderId"]=="'$OID'"]
           sched=[r for r in mine if r["status"]=="scheduled"]
           assert len(sched)==1, f"expected exactly the next derived instance, got {mine}"
-          assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",sched[0]["adminId"]), sched[0]
+          # a repeating order: its ROUND 1 (the first dose) — the rolling timer
+          assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}~r1",sched[0]["adminId"]) and sched[0].get("round")==1, sched[0]
           print(sched[0]["adminId"])')
           echo "derived next instance: $A1"
           { echo "OID=$OID"; echo "A1=$A1"; } >> "$GITHUB_ENV"
@@ -196,7 +199,7 @@ jobs:
           import json,sys; d=json.load(sys.stdin)
           a=[x for x in d["administrations"] if x["status"]=="given"][0]
           assert a["documentedBy"]=="RN Maya Chen", a
-          assert a["scheduledTime"]=="'$A1'".replace("T"," "), a
+          assert a["scheduledTime"]=="'$A1'".split("~")[0].replace("T"," ") and a.get("round")==1, a
           print("nurse given by:", a["documentedBy"], "for instance", a["scheduledTime"])'
           # DOSES NEVER RUN OUT: with the instance documented, the MAR now
           # derives the NEXT one (+12h) — under the retired stub this order
