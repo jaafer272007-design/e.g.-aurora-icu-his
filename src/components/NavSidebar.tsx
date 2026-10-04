@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { FocusEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './NavSidebar.css'
@@ -6,6 +6,7 @@ import {
   IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPencil, IconPill, IconPrinter, IconPulse, IconSettings, IconShield, IconStats, IconUsers,
 } from './icons'
 import { lastPatientId } from '../lib/patientContext'
+import { lastMousePoint, navHovered, setNavHovered, trackMousePoint } from '../lib/navHover'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 import { useAiSection } from '../lib/aiAvailability'
 import { useEdition } from '../lib/edition'
@@ -57,8 +58,14 @@ interface NavSidebarProps {
    page's main content takes the space the collapsed rail frees. Only on
    a narrow screen (or an engine without :has) does the expanded rail
    OVERLAY the content instead — an explicit, dismissible drawer.
-   All state is local to this component: expanding never re-renders the
-   page, so drafts, scroll and patient context are untouched. */
+   Expanding never re-renders the page, so drafts, scroll and patient
+   context are untouched. The MOUSE hover is the one piece of state that
+   outlives a section (2026-10-04, lib/navHover.ts): each section mounts
+   its own sidebar, so a sidebar mounting under a resting pointer
+   restores the open state, then checks the real pointer position against
+   its OPEN layout (labels included, not just the icon rail) and closes —
+   after the same close delay — only if the pointer is not over it.
+   Keyboard focus and the touch toggle stay local, as before. */
 const HOVER_OPEN_MS = 90
 const HOVER_CLOSE_MS = 180
 /** no hover-capable primary pointer → the tap toggle, never hover */
@@ -91,7 +98,11 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
   const toggleRef = useRef<HTMLButtonElement>(null)
   const touchMode = useMedia(TOUCH_QUERY)
   const overlay = useMedia(OVERLAY_QUERY) || !supportsHas
-  const [hovered, setHovered] = useState(false)
+  /* restored from the shared hover (a section switch under a resting
+     pointer); never on a touch / no-hover device */
+  const [hovered, setHoveredState] = useState(() =>
+    navHovered() && !(typeof window.matchMedia === 'function' && window.matchMedia(TOUCH_QUERY).matches))
+  const setHovered = (v: boolean) => { setNavHovered(v); setHoveredState(v) }
   const [keyboardInside, setKeyboardInside] = useState(false)
   const [pinned, setPinned] = useState(false)
   const timer = useRef<number | undefined>(undefined)
@@ -100,6 +111,20 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     timer.current = undefined
   }
   useEffect(() => clearTimer, [])
+  /* reconcile a RESTORED hover with where the pointer actually is, on the
+     open layout this sidebar mounted with (before paint, so no flicker):
+     still over it → stays open; elsewhere (or unknown) → the normal close
+     delay, exactly as if the pointer had just left */
+  useLayoutEffect(() => {
+    trackMousePoint()
+    if (!hovered || touchMode) return
+    const p = lastMousePoint()
+    const under = p ? document.elementFromPoint(p.x, p.y) : null
+    if (!(under && navRef.current?.contains(under)))
+      timer.current = window.setTimeout(() => { timer.current = undefined; setHovered(false) }, HOVER_CLOSE_MS)
+    // mount-only: later changes arrive as real pointer events
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const expanded = touchMode ? pinned : hovered || keyboardInside
 
   /* mouse hover (touch/pen contacts are ignored — no hover behaviour is

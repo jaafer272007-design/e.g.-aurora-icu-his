@@ -1,6 +1,7 @@
 import { clearLastPatient } from './patientContext'
 import { clearPreferences } from './preferences'
 import { clearChatMemory } from './ai/chatMemory'
+import { clearNavHover } from './navHover'
 
 /* Session + three-layer, permission-based RBAC (Stage 9, auth in Stage 10.2).
    User → Role (JobTitle) → PermissionProfile → Permissions — roles are
@@ -275,6 +276,9 @@ export function signOut(): void {
   /* the AI chat's conversation memory is USER context too — the next
      sign-in (any role) must never inherit the previous user's questions */
   clearChatMemory()
+  /* the sidebar's shared mouse hover (lib/navHover.ts) is in-memory
+     screen state — the next sign-in starts with the rail collapsed */
+  clearNavHover()
 }
 
 /** "Dr. Sara Rahman" → "sara.rahman" — deterministic demo username.

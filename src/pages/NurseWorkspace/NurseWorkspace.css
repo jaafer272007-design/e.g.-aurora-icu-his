@@ -60,6 +60,36 @@
 .nw .mab.refused{color:var(--red);border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.08)}
 .nw .mab.refused:hover,.nw .mab.refused:focus-visible{background:rgba(var(--red-rgb),.18)}
 .nw .mardoc{font-size:10px;color:var(--faint)}
+/* DAILY PRESCRIPTION CARDS (2026-10-04, marDays.ts): one card per
+   prescription per hospital day. The header carries the prescription once
+   (drug, dose, route · frequency, date); the rows inside are the compact
+   round rows. Open cards (today / holding the actionable row) sit on a
+   faint lift; completed history is a collapsed toggle. Theme tokens only,
+   so both themes follow the MAR's existing palette. */
+.nw .mardaycard{margin:8px 0 0;border:1px solid var(--stroke);border-radius:12px;background:rgba(var(--lift-rgb),.02);outline:none}
+.nw .mardaycard.pinned{border-color:var(--stroke2);background:rgba(var(--lift-rgb),.04)}
+.nw .mardaycard:focus-visible{box-shadow:0 0 0 2px rgba(var(--cyan-rgb),.55)}
+.nw .mardaycard.undated{border-style:dashed}
+.nw .mdbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;width:100%;padding:8px 10px;text-align:left;color:inherit;font:inherit}
+.nw .mdtoggle{border-radius:12px;cursor:pointer;background:none;border:0}
+.nw .mdtoggle:hover,.nw .mdtoggle:focus-visible{background:rgba(var(--lift-rgb),.05)}
+.nw .mdhead{display:flex;flex-direction:column;min-width:0;flex:1 1 180px}
+.nw .mdhead .mn{font-size:12.5px;font-weight:600}
+.nw .mdhead .mroute{font-size:10.5px;color:var(--faint);font-family:var(--mono);margin-top:1px}
+.nw .mddate{font-size:11px;font-weight:700;color:var(--dim);white-space:nowrap}
+.nw .mddate.today{color:var(--cyan)}
+.nw .mdsum{flex-basis:100%;font-size:10.5px;color:var(--faint)}
+.nw .mdchev{font-size:11px;color:var(--dim)}
+.nw .mdbody{padding:0 10px 4px;border-top:1px solid rgba(var(--steel-rgb),.1)}
+.nw .mardaycard .marrow{padding:7px 2px}
+.nw .mardaycard .marrow:last-child{border-bottom:none}
+.nw .mardaycard .marround{margin-left:0}
+.nw .markind{font-size:10px;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
+.nw .mardaycard .mardoc{margin-top:2px;font-size:10.5px;color:var(--dim)}
+.nw .mdref{margin:7px 0 2px;padding:7px 9px;border-radius:9px;font-size:11px;line-height:1.45;color:var(--text);
+ border:1px solid rgba(var(--amber-rgb),.35);background:rgba(var(--amber-rgb),.08)}
+.nw .mdref.later{border-color:rgba(var(--cyan-rgb),.35);background:rgba(var(--cyan-rgb),.07)}
+.nw .mdjump{margin-left:2px;font-size:10.5px;font-weight:600;color:var(--blue);text-decoration:underline;padding:2px 0;min-height:24px}
 
 /* ===== orders to implement ===== */
 .nw .ordlist{display:flex;flex-direction:column;gap:8px}
