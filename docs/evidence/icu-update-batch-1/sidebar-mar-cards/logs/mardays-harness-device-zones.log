@@ -1,0 +1,2 @@
+device TZ=Pacific/Kiritimati: RESULT: 25 passed, 0 failed
+device TZ=America/Los_Angeles: RESULT: 25 passed, 0 failed

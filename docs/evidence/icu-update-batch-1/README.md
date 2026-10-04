@@ -100,3 +100,10 @@ The follow-up commits that correct this batch have their own evidence in
 corrected rollback statement. The re-timing evidence above (`scheduleAnchor`,
 the floor rule, missed rows) describes the superseded first version and is kept
 as the record of what was built then.
+
+## Follow-up: sidebar hover + daily MAR cards (`sidebar-mar-cards/`)
+
+Two owner-approved refinements (2026-10-04, after Codex's review passed at
+`def08a9`): the sidebar keeps its hover across section changes, and the nurse
+MAR shows one card per prescription per hospital day. Their proof is in
+`sidebar-mar-cards/` (see `sidebar-mar-cards/README.md`).
