@@ -1,7 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-30 (latest) · current through THE ROLLING-TIMER
-CORRECTION after Codex's review of draft PR #234 at `87358f2` (same branch;
+**Last updated: 2026-10-04 · current through TWO OWNER-APPROVED REFINEMENTS on
+draft PR #234 (same branch; after Codex's review passed at `def08a9`; pushed for
+review only — no merge, no installer, no hospital deployment): the section
+sidebar now stays expanded across section changes under a resting pointer (small
+in-memory shared hover, reconciled with the real pointer position, cleared on
+sign-out); and the Nurse Workspace MAR shows one card per prescription per
+hospital day (presentation only — same rows, actions, dialog and due count; no
+API or data change); the update-write/rollback release gate stays UNRESOLVED —
+the record below. Prior (2026-09-30, latest): THE ROLLING-TIMER CORRECTION after
+Codex's review of draft PR #234 at `87358f2` (same branch;
 pushed for review only — no merge, no installer, no hospital deployment): a
 Given after a Held/Refused round now restarts the timer from its actual
 administration time (the "latest timer instant" rule let a skipped round's later
@@ -81,6 +89,108 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-10-04 · THE SIDEBAR KEEPS ITS HOVER ACROSS SECTIONS; THE NURSE MAR AS
+DAILY PRESCRIPTION CARDS (owner-approved refinements; same branch
+`claude/amazing-hopper-nwzw1x`, from Codex-reviewed `def08a9`; branch pushes for
+review only — no merge, `main` unchanged, no installer or EXE, no hospital
+access; synthetic data only).**
+DESIGN FIRST: the request is committed verbatim, alone, as
+`docs/design/icu-update-sidebar-mar-daily-cards.md`. The MAR presentation
+rule is MAR design **### D**, a pure append.
+
+1. **The sidebar stays expanded across sections.** Each section mounts its
+   own `NavSidebar`, so a hover held in component state was lost on every
+   navigation: the rail snapped shut under a pointer that had not moved.
+   - **Shared state:** a small in-memory module, `lib/navHover.ts`, records
+     whether mouse hover opened the sidebar and the last mouse position. It is
+     never stored, and `signOut()` clears it.
+   - **On mount:** a new sidebar restores the open state, then checks the real
+     pointer position against its open layout, so the label area beyond the
+     icon rail counts. If the pointer is elsewhere, the sidebar closes after
+     the usual close delay.
+   - **Unchanged:** keyboard-focus expansion, the touch toggle, the
+     narrow-screen drawer, hover intent, permissions, routes and patient
+     context. No page was restructured.
+2. **The Nurse Workspace MAR: one card per prescription per hospital day**
+   (`MarCard.tsx` + the pure `marDays.ts`). Presentation only: the same rows,
+   the same controls bound to each row's `orderId` + `adminId`, the same
+   reason/time dialog, the same server refresh, and the same due-count
+   predicate.
+   - **Day of each row:**
+     - a scheduled round belongs to its scheduled day;
+     - a PRN or on-demand dose belongs to its documentation day;
+     - the availability row belongs to today;
+     - undated legacy facts go under "Date unavailable".
+
+     Days are always computed on the hospital clock (`localYmd` /
+     `localDayNumber` over `datedEpoch`).
+   - **Expansion:** today and any card holding the actionable row stay open.
+     History is collapsed, newest first, and the nurse's choices are kept by a
+     stable key across polls.
+   - **Today's card:** created at hospital midnight for every prescription
+     with an actionable row. When that row is on another day (yesterday's
+     outstanding round, tomorrow's current round), the card shows a reference
+     to it, never a second set of controls.
+3. **Unchanged:**
+   - the rolling timer;
+   - overdue-reason and backdating validation, round identities, row locks,
+     and stale/duplicate handling;
+   - the Orders type/status filters;
+   - the printed MAR;
+   - the server: no API, schema, migration, wire-format or stored-record
+     change.
+
+   **The release gate stays UNRESOLVED:** write exclusion during update
+   validation, plus a failed-health rollback drill with round-bearing facts.
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-update-batch-1/sidebar-mar-cards/`).**
+- **Final source.** On `e6a9d48` (source `fc7ad99`), `npm run build`,
+  `dotnet build -c Release` and the `ci.yml` frontend + server steps all exit
+  0. The chunk warning and the `BootGuards.cs` CS8602 are pre-existing.
+- **Rolling-timer harness:** 372 checks, 0 failures.
+- **Grouping harness** (real client modules, hospital Asia/Baghdad): **25/25**,
+  identical with the device zone at UTC, UTC−7 and UTC+14.
+- **Browser on the live stack** (server `fc7ad99`, PostgreSQL 16, server zone
+  Asia/Baghdad, browser zone UTC; one synthetic patient made through the
+  API): **46/46**. The run happened at 02:2x hospital time, when the UTC date
+  was still the previous day. It covered:
+  - **sidebar, mouse:** pointer resting on labels beyond the rail through
+    Orders → Lab Entry → Observations → Orders (open at full width); exit
+    collapses; hover intent; keyboard focus;
+  - **sidebar, other modes:** the 700 px overlay drawer surviving a section
+    change; the touch toggle; sign-out clearing the hover;
+  - **MAR grouping:** one card for three rounds whose UTC date differs; the
+    same drug as two prescriptions; yesterday's outstanding round keeping its
+    controls, with today's reference; tomorrow's current round; 23:00 due /
+    00:20 given staying on the earlier day with its actual date; PRN and
+    on-demand days; Date unavailable;
+  - **MAR integrity:** controls = actionable rows; no generated rows; the due
+    count unchanged; historical expansion surviving a poll;
+  - **midnight:** hospital midnight rollover with the browser clock moved;
+  - **actions:** each posted to the server row's own `adminId`, then the
+    server refresh;
+  - **readability:** new text at ≥ 4.52:1 (dark) and ≥ 5.75:1 (light) against
+    the rendered background; no MAR overflow at 390 px.
+- **Earlier failed runs.** Four were test-side fixes and are kept: two wrong
+  expectations, a non-discriminating sign-out pointer position, summary
+  parsing, and the screenshot capture. The fourth run passed 46/46, but its
+  screenshots predate the chevron CSS fix.
+
+**Not verified / observed, stated:**
+- browsers other than Chromium, and real touch hardware;
+- a real hospital midnight (the rollover was driven by the browser clock and
+  the harness);
+- the `production-seed` / `installer-powershell` CI jobs (GitHub runs them);
+- the release gate.
+
+Observed, pre-existing, not changed:
+- At 390 px the page overflows horizontally because of the I&O card's totals
+  row (`.iototals`), not the MAR.
+- Seeded demo orders that were never documented now show today's card
+  pointing at an outstanding round from days ago. This is the owner-approved
+  legacy entry rule (2026-09-30).
 
 **2026-09-30 (latest) · THE ROLLING TIMER CORRECTED AFTER CODEX'S REVIEW OF
 `87358f2` — A GIVEN AFTER HELD/REFUSED RESTARTS THE TIMER (same branch

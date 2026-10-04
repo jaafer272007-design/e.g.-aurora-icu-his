@@ -489,3 +489,52 @@ lock are unchanged.
 administrations keeps its original first due, even if that is days overdue. It
 is never reset to now and never resolved automatically. This is the rule above,
 confirmed.
+
+### D · Presentation — the nurse MAR as DAILY PRESCRIPTION CARDS (owner-approved, 2026-10-04)
+
+Source: `docs/design/icu-update-sidebar-mar-daily-cards.md` (verbatim). This
+changes **how the Nurse Workspace shows MAR rows, not what the MAR is**. The
+schedule (Amendments B and C), the rows `GET /api/icu/mar` returns, the
+write endpoint, the wire format and the stored facts are all unchanged.
+
+Under each patient, the rows are grouped into **one card per patient +
+prescription (`orderId`) + hospital-calendar day**. Two prescriptions of the
+same drug stay separate. Each card shows the prescription once in its
+header: drug, dose, the route · frequency line and the date. The rows inside
+are compact round rows: scheduled time, round number, status, the recorded
+actual administration time (Given), or the documenting time (Held/Refused,
+labelled as such), and the reason.
+
+**Which day a row belongs to.** This is always decided on the hospital clock
+(`localYmd` / `localDayNumber` over `datedEpoch`), never the browser's zone
+and never a sliced UTC string.
+
+| Row | Its card's day |
+|---|---|
+| Scheduled round, current or documented | its **scheduled** day. A dose due 23:00 and given 00:20 stays on the earlier day, and the row shows the actual administration date. |
+| PRN / on-demand documented dose | its **documentation** day |
+| PRN / on-demand availability, and its controls | **today** |
+| Legacy fact with no dated stamp | **Date unavailable**. No date is invented: `D-n HH:mm` is relative to when it was seeded. |
+
+**Open, closed, and today's card:**
+- **Always open:** today's cards, and any card holding the actionable row (the
+  current round or an availability). That includes yesterday's outstanding
+  round and a current round scheduled tomorrow.
+- **Completed history:** collapsed by default, newest first, with Date
+  unavailable last. The nurse's expand/collapse choices are kept by a stable
+  key (patient | order | day) across polls and refreshed rows.
+- **Today's card for every prescription with an actionable row**, created by
+  the shared clock tick at hospital midnight. When that row lives on another
+  day, today's card shows a **reference** to that card (with a button that
+  moves focus there) instead of a second set of controls.
+
+Nothing is generated: the cards show only the recorded rows and the single
+current round or availability row the interface already returns.
+
+**Unchanged:**
+- The controls appear only on the actionable row, bound to its own
+  `orderId` + `adminId`. The reason/time dialog and the server refresh after
+  documenting are the same.
+- The due count and the Meds Due KPI use the same predicate over the rows,
+  never over cards.
+- The printed MAR is not affected.
