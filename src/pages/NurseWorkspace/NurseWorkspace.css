@@ -60,6 +60,16 @@
 .nw .mab.refused{color:var(--red);border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.08)}
 .nw .mab.refused:hover,.nw .mab.refused:focus-visible{background:rgba(var(--red-rgb),.18)}
 .nw .mardoc{font-size:10px;color:var(--faint)}
+/* ONE ACTION PER ROUND (owner's correction, 2026-10-05): a current round
+   is locked until its scheduled time and while its order saves — the
+   buttons stay visible but disabled, and a full-width line under the row
+   says when they open (or that a save / check is running, or why the last
+   attempt was not recorded) */
+.nw .mab:disabled,.nw .mab:disabled:hover{opacity:.42;cursor:not-allowed;background:transparent}
+.nw .marlockline{grid-column:2/-1;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10.5px;margin-top:-4px}
+.nw .marlock{color:var(--dim);font-weight:600}
+.nw .marbusy{color:var(--cyan);font-weight:600}
+.nw .marnotice{color:var(--red);font-weight:600}
 /* DAILY PRESCRIPTION CARDS (2026-10-04, marDays.ts): one card per
    prescription per hospital day. The header carries the prescription once
    (drug, dose, route · frequency, date); the rows inside are the compact

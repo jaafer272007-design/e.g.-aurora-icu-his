@@ -81,7 +81,9 @@ static class MarApi
            "yyyy-MM-ddTHH:mm" single instance of a 'once' order, "prn" for a PRN
            availability, "ondemand" for an order whose frequency has no
            derivable grid. Documentation APPENDS an administration fact —
-           nothing stored is consumed. */
+           nothing stored is consumed. A scheduled dose (current round or
+           'once' dose) opens at its scheduled time: before it, any action
+           is 409 and nothing is written (one action per round, 2026-10-05). */
         app.MapPost("/api/icu/mar/{orderId}/administrations/{adminId}",
             (string orderId, string adminId, AdministerRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
@@ -215,6 +217,16 @@ static class MarApi
                        changed after this view loaded (a frequency change) */
                     return ApiError.StateConflict(
                         $"dose round {roundNumber} is now due {MarSchedule.StampOf(current.Due)}, not {MarSchedule.StampOf(roundDue)} — the order's schedule changed after this view was loaded; refresh the MAR and document the current round");
+                /* ONE ACTION PER ROUND (owner's correction, 2026-10-05):
+                   the current round opens at its exact scheduled time —
+                   Given, Held and Refused alike, never before (the
+                   30-minute due-soon reminder is display only). Judged
+                   here, inside the order lock, against the round just
+                   derived from the stored facts and the server clock, so
+                   a stale page or a racing request is refused the same
+                   way; nothing is appended or audited. */
+                if (MarSchedule.NotYetDue(current.Due, now) is string early)
+                    return ApiError.StateConflict($"dose round {roundNumber} {early}");
                 round = current;
                 scheduledStamp = MarSchedule.StampOf(current.Due);
                 scheduledInstant = current.Due;
@@ -250,6 +262,9 @@ static class MarApi
                         $"dose '{adminId}' was already documented as {dup.Status}"
                         + (dup.DocumentedBy is null ? "" : $" by {dup.DocumentedBy} at {dup.DocumentedTime}")
                         + " — it is not awaiting documentation");
+                /* the single 'once' dose opens at its scheduled time too */
+                if (MarSchedule.NotYetDue(instant, now) is string early)
+                    return ApiError.StateConflict($"this dose {early}");
             }
             else
             {

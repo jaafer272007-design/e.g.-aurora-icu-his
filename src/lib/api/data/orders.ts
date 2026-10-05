@@ -3,7 +3,7 @@ import type {
 } from '../types'
 import { nowHm } from '../../time'
 import {
-  currentRound, firstDoseEpoch, instanceIdentity, instanceStamp, isFact,
+  currentRound, documentableAt, firstDoseEpoch, instanceIdentity, instanceStamp, isFact, notYetDueMessage,
   parseFrequency, parseRoundIdentity, roundIdentity, therapyStartEpoch, timerInstant,
 } from '../../marSchedule'
 
@@ -336,14 +336,18 @@ export function applyImplementation(orderId: string, actor: string): Order | nul
     "prn" / "ondemand". administeredAt (given only, UTC wire stamp) is the
     actual administration time. THE ROLLING TIMER (2026-09-30): only the
     current round is accepted (a resolved or re-timed round — the server's
-    409 — is a null here); its fact carries `round`, which starts the next
-    round (lib/marSchedule.ts currentRound). */
+    409) is refused; its fact carries `round`, which starts the next
+    round (lib/marSchedule.ts currentRound). ONE ACTION PER ROUND
+    (2026-10-05): a scheduled dose (current round / 'once' dose) is refused
+    before its scheduled time, exactly as the server refuses it. A refusal
+    returns its wording (the server's {error}) and changes nothing. */
 export function applyAdministration(
   orderId: string, adminId: string, action: AdministrationAction, actor: string, reason?: string,
   administeredAt?: string,
-): Order | null {
+): Order | string {
   const o = ORDERS.find(x => x.orderId === orderId)
-  if (!o || !o.medication || o.status !== 'active') return null
+  if (!o || !o.medication) return 'Not found'
+  if (o.status !== 'active') return `order '${orderId}' is ${o.status} — it is not in force, no dose is available from it`
   const nowMs = Date.now()
   const kind = parseFrequency(o.medication)
   const facts = (o.administrations ?? []).filter(isFact)
@@ -352,18 +356,26 @@ export function applyAdministration(
   let first: number | null = null
   const rid = parseRoundIdentity(adminId)
   if (rid) {
-    if (kind.kind !== 'interval') return null
+    if (kind.kind !== 'interval') return 'Not found'
     const anchor = therapyStartEpoch(o, nowMs)
-    if (anchor === null) return null
+    if (anchor === null) return `order '${orderId}' has no parseable therapy start — its schedule cannot be derived`
     first = firstDoseEpoch(anchor)
     const cur = currentRound(first, kind.hours, facts, nowMs)
-    if (rid.number !== cur.number || rid.dueMs !== cur.dueMs) return null
+    if (rid.number < cur.number)
+      return `dose round ${rid.number} was already documented — it is not awaiting documentation; the current round is ${roundIdentity(cur)}`
+    if (rid.number > cur.number) return 'Not found'
+    if (rid.dueMs !== cur.dueMs)
+      return `dose round ${rid.number} is now due ${instanceStamp(cur.dueMs)}, not ${instanceStamp(rid.dueMs)} — the order's schedule changed after this view was loaded; refresh the MAR and document the current round`
+    if (!documentableAt(cur.dueMs, nowMs)) return `dose round ${rid.number} ${notYetDueMessage(cur.dueMs)}`
     scheduledStamp = instanceStamp(cur.dueMs)
     round = cur.number
   } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(adminId)) {
-    if (kind.kind !== 'once') return null
+    if (kind.kind !== 'once') return 'Not found'
     scheduledStamp = adminId.replace('T', ' ')
-    if (facts.some(a => a.scheduledTime === scheduledStamp)) return null
+    if (facts.some(a => a.scheduledTime === scheduledStamp))
+      return `dose '${adminId}' was already documented — it is not awaiting documentation`
+    const at = Date.parse(`${adminId}:00Z`)
+    if (!documentableAt(at, nowMs)) return `this dose ${notYetDueMessage(at)}`
   }
   /* the documenting minute on the UTC wire, exactly as the server stamps
      it — a GIVEN fact's documentedTime (its actual time when no

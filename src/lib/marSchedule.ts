@@ -169,6 +169,17 @@ export function legacyEntry(firstMs: number, step: number, facts: MedAdministrat
   return slot
 }
 
+/** ONE ACTION PER ROUND (owner's correction, 2026-10-05; mirrors
+ *  MarSchedule.NotYetDue): a scheduled dose — a repeating order's current
+ *  round or a 'once' dose — is documentable (given, held or refused) from
+ *  its EXACT scheduled instant, never before. The due-soon window is a
+ *  reminder only; PRN/on-demand doses have no scheduled instant. */
+export const documentableAt = (dueMs: number, nowMs: number): boolean => nowMs >= dueMs
+
+/** the refusal wording for a dose opened too early (mirrors the server's) */
+export const notYetDueMessage = (dueMs: number): string =>
+  `is not due until ${instanceStamp(dueMs)} — one action per dose round: it can be documented (given, held or refused) from its scheduled time, not before`
+
 /** the Orders screen's "next dose" — the current round's due stamp (a
  *  repeating order) or the single expected dose (once), or null when the
  *  order has no derivable schedule / is not in force */

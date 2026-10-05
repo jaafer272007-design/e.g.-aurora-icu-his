@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './NurseWorkspace.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
 import { Toast, useToast } from '../../components/Toast'
-import { displayStamp, dueStateFor, nowHm, useNow } from '../../lib/time'
+import { displayFullStamp, displayStamp, dueStateFor, nowHm, useNow } from '../../lib/time'
 import { IconCheck, IconPencil, IconUsers } from '../../components/icons'
 import {
   completeImplementation, documentAdministration, getImplementationQueue, getIoEntries,
-  getHandoffEntries, getMarRows, getNurseWorklist, getNursingTasks, recordIoEntry, toggleNursingTask, writeHandoff,
+  getHandoffEntries, getMarRows, getMarRowsAuthoritative, getNurseWorklist, getNursingTasks, recordIoEntry, toggleNursingTask, writeHandoff,
 } from '../../lib/api'
 import type {
   AdministrationAction, AssignedPatient, IoEntry, IoKind, MarRow, MineWorklist, NursingTask, Order,
@@ -22,6 +22,31 @@ import { OrdersCard } from './OrdersCard'
 import { TasksCard } from './TasksCard'
 import { IoCard } from './IoCard'
 import { SbarCard, type SbarNote } from './SbarCard'
+
+/* an UNCERTAIN documentation (no answer) is settled as NOT recorded only by
+   a server read started at least this long after the failure — a request
+   still queued on the server (e.g. waiting for the order lock) gets the
+   time to land first; a recorded one is confirmed by the first read */
+const UNCERTAIN_SETTLE_MS = 15_000
+
+/* server refusals carry UTC wire stamps — the nurse reads hospital time */
+const localizeStamps = (s: string) =>
+  s.replace(/(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/g, (_m, d: string, t: string) => displayFullStamp(`${d} ${t}`))
+
+/** one order's documentation, from the click until a fresh SERVER read
+ *  settles it: 'saving' while the request runs, then 'settling' */
+interface MarLock {
+  phase: 'saving' | 'settling'
+  /** the order's fact ids before the click — what settles an uncertain outcome */
+  before: Set<string>
+  uncertain: boolean
+  failedAt: number
+  label: string
+  action: AdministrationAction
+}
+
+const factIdsOf = (rows: MarRow[] | null, orderId: string) =>
+  new Set((rows ?? []).filter(r => r.orderId === orderId && r.status !== 'scheduled').map(r => r.adminId))
 
 
 
@@ -64,12 +89,26 @@ export function NurseWorkspace() {
      an order placed at another station shows here without a reload. */
   const tick = usePollTick()
   const [listAt, setListAt] = useState<number | null>(null)
+  /* MAR reads are applied in the order they STARTED: a poll that began
+     before a documentation committed can never overwrite the fresher read
+     that settled it (which would re-show a resolved round as current) */
+  const marSeq = useRef({ started: 0, applied: 0 })
+  const applyMar = (seq: number, rows: MarRow[]) => {
+    if (seq <= marSeq.current.applied) return
+    marSeq.current.applied = seq
+    setMar(rows)
+  }
+  const marIds = useRef<string[]>([])
   useEffect(() => {
     getNurseWorklist(session.name, session.jobTitle).then(w => {
       setWorklist(w)
       setListAt(Date.now())
       const ids = w.patients.map(p => p.patientId)
-      getMarRows(ids).then(setMar)
+      marIds.current = ids
+      const seq = ++marSeq.current.started
+      getMarRows(ids).then(rows => applyMar(seq, rows))
+      /* an order still waiting on an unsettled outcome retries here */
+      if ([...marLocks.current.values()].some(l => l.phase === 'settling')) void settleMar()
       getImplementationQueue(ids).then(setOrders)
       if (ids[0]) loadHandoffs(ids[0])
     })
@@ -82,16 +121,83 @@ export function NurseWorkspace() {
 
   /* MAR: documentation APPENDS an administration fact on the canonical
      order (derived schedule — nothing stored is consumed), so the honest
-     next state is a fresh derivation: re-fetch rather than patch rows */
-  const documentMar = (orderId: string, adminId: string, action: AdministrationAction, reason?: string, administeredAt?: string) => {
+     next state is a fresh derivation: re-fetch rather than patch rows.
+     ONE ACTION PER ROUND — SUBMISSION PROTECTION (owner's correction,
+     2026-10-05): an order with a documentation in flight, or whose outcome
+     a fresh SERVER read has not yet settled, accepts nothing — Given,
+     Held, Refused and the reason dialog's confirm alike stay disabled
+     through the save AND the authoritative refresh. The ref is the
+     immediate guard (a second click in the same frame sees it before
+     React re-renders); the state drives the disabled buttons and their
+     "saving / checking" line. A refusal is shown with the server's reason.
+     An UNCERTAIN outcome (no answer) is settled by comparing the order's
+     facts before the click with a fresh server read — never by a blind
+     retry; while the server cannot be read the order stays locked and
+     the next poll tries again. */
+  const marLocks = useRef(new Map<string, MarLock>())
+  const [marBusy, setMarBusy] = useState<ReadonlyMap<string, 'saving' | 'checking'>>(() => new Map())
+  const syncMarBusy = () => setMarBusy(new Map(
+    [...marLocks.current].map(([id, l]) => [id, l.phase === 'saving' ? 'saving' : 'checking'] as const)))
+  /* the last refusal per order, shown on its row until it is documented again */
+  const [marNotices, setMarNotices] = useState<Record<string, string>>({})
+  const setNotice = (orderId: string, text: string | null) => setMarNotices(prev => {
+    const next = { ...prev }
+    if (text === null) delete next[orderId]; else next[orderId] = text
+    return next
+  })
+
+  const settleMar = async () => {
+    const waiting = [...marLocks.current].filter(([, l]) => l.phase === 'settling')
+    if (!waiting.length) return
+    const startedAt = Date.now()
+    const seq = ++marSeq.current.started
+    const fresh = await getMarRowsAuthoritative(marIds.current)
+    if (!fresh) return   // the server cannot be read: these orders stay locked; the next poll retries
+    applyMar(seq, fresh)
+    for (const [orderId, l] of waiting) {
+      if (marLocks.current.get(orderId) !== l) continue
+      if (l.uncertain) {
+        const recorded = [...factIdsOf(fresh, orderId)].some(id => !l.before.has(id)
+          && fresh.some(r => r.orderId === orderId && r.adminId === id && r.status === l.action))
+        if (!recorded && startedAt - l.failedAt < UNCERTAIN_SETTLE_MS) continue   // too soon to call it — stay locked
+        if (recorded) {
+          showToast('Documented — confirmed', `${l.label}: a ${l.action} dose is on the record since your attempt`)
+        } else {
+          showToast('Dose NOT recorded', `${l.label}: the server did not record it — it can be documented again`, 6000)
+          setNotice(orderId, 'Not recorded — the server did not answer and has no record of it; document it again if it is still needed.')
+        }
+      }
+      marLocks.current.delete(orderId)
+    }
+    syncMarBusy()
+  }
+
+  const documentMar = async (orderId: string, adminId: string, action: AdministrationAction, reason?: string, administeredAt?: string) => {
+    if (marLocks.current.has(orderId)) return   // immediate: one documentation per order at a time
     const row = mar?.find(r => r.orderId === orderId && r.adminId === adminId)
-    documentAdministration(orderId, adminId, action, session.name, session.jobTitle, reason, administeredAt).then(updated => {
-      if (!updated) return
-      const facts = updated.administrations?.filter(a => a.status === action) ?? []
+    const label = row ? `${row.medication} · ${patientName(row.patientId)}` : orderId
+    const lock: MarLock = { phase: 'saving', before: factIdsOf(mar, orderId), uncertain: false, failedAt: 0, label, action }
+    marLocks.current.set(orderId, lock)
+    setNotice(orderId, null)
+    syncMarBusy()
+    const res = await documentAdministration(orderId, adminId, action, session.name, session.jobTitle, reason, administeredAt)
+    if (res.kind === 'ok') {
+      const facts = res.order.administrations?.filter(a => a.status === action) ?? []
       const fact = facts[facts.length - 1]
-      getMarRows(patients.map(p => p.patientId)).then(setMar)
       if (row) showToast('Documented', `${row.medication} — ${action} ${displayStamp(fact?.documentedTime) || nowHm()} · ${patientName(row.patientId)}`)
-    })
+    } else if (res.kind === 'rejected') {
+      const why = localizeStamps(res.error)
+      showToast('Dose NOT recorded', `${label}: ${why}`, 6000)
+      setNotice(orderId, `Not recorded — ${why}`)
+    } else {
+      lock.uncertain = true
+      lock.failedAt = Date.now()
+      showToast('Checking the record', `${label}: ${res.error} — the MAR is re-read before this dose can be documented again`, 6000)
+      window.setTimeout(() => void settleMar(), UNCERTAIN_SETTLE_MS + 500)
+    }
+    lock.phase = 'settling'
+    syncMarBusy()
+    await settleMar()
   }
 
   const completeOrder = (orderId: string) => {
@@ -181,7 +287,7 @@ export function NurseWorkspace() {
         <main>
           <div className="col">
             {worklist && <AssignedPatientsCard patients={patients} />}
-            {mar && worklist && <MarCard rows={mar} patients={patients} onDocument={documentMar} />}
+            {mar && worklist && <MarCard rows={mar} patients={patients} busy={marBusy} notices={marNotices} onDocument={documentMar} />}
             {io !== undefined && worklist && <IoCard entries={io} patients={patients} onRecord={recordIo} />}
           </div>
           <div className="col">

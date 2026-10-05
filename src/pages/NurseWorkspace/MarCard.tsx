@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { Card } from '../../components/Card'
 import { BedChip } from '../../components/Tag'
 import {
   LATE_THRESHOLD_MINUTES, datedEpoch, displayStamp, dueStateFor, formatHm, hmOf, localStamp, minutesPastStamp,
   stampDiffMinutes, useNow, wireStampOfLocal,
 } from '../../lib/time'
-import { dayLabel, groupMarDays, isActionable, stampOnCard, type MarDayCard } from './marDays'
+import { dayLabel, groupMarDays, isActionable, isEligibleNow, stampOnCard, unlocksAt, type MarDayCard } from './marDays'
 import type { AdministrationAction, AssignedPatient, MarRow } from '../../lib/api/types'
 
 const DOCUMENTED_META: Record<AdministrationAction, { label: string; cls: string }> = {
@@ -18,6 +18,8 @@ const DOCUMENTED_META: Record<AdministrationAction, { label: string; cls: string
 const PENDING_META = {
   overdue: { label: 'OVERDUE', cls: 'st-overdue' },
   due: { label: 'DUE', cls: 'st-due' },
+  /* within the due-soon window but before the scheduled time: locked */
+  soon: { label: 'DUE SOON', cls: 'st-due' },
   upcoming: { label: 'LATER', cls: 'st-upcoming' },
   prn: { label: 'PRN', cls: 'st-prn' },
   /* an order whose frequency has no derivable dose grid (continuous,
@@ -33,6 +35,11 @@ const MISSED_META = { label: 'MISSED', cls: 'st-overdue' }
 interface MarCardProps {
   rows: MarRow[]
   patients: AssignedPatient[]
+  /** orders with a documentation saving, or awaiting the server read that
+   *  settles it — every control of that order is disabled meanwhile */
+  busy: ReadonlyMap<string, 'saving' | 'checking'>
+  /** the last refusal per order, shown on its current row */
+  notices: Record<string, string>
   onDocument: (orderId: string, adminId: string, action: AdministrationAction, reason?: string, administeredAt?: string) => void
 }
 
@@ -47,13 +54,18 @@ type ReasonAction = 'held' | 'refused' | 'given-late'
    wall-clock time, editable (the #145 editable-timestamp pattern),
    converted to the UTC wire on confirm. The dose is never blocked. */
 function MarReasonDialog(
-  { row, action, lateLabel, onCancel, onConfirm }:
+  { row, action, lateLabel, locked, onCancel, onConfirm }:
   {
     row: MarRow; action: ReasonAction; lateLabel?: string
+    /** the dose can no longer be documented from this dialog (a save is
+     *  running for its order, or it is not open yet) */
+    locked: boolean
     onCancel: () => void; onConfirm: (reason: string, administeredAt?: string) => void
   },
 ) {
   const [reason, setReason] = useState('')
+  /* the confirm fires ONCE — a double click cannot submit twice */
+  const sent = useRef(false)
   const [givenAt, setGivenAt] = useState(() => localStamp(Date.now()))
   const taRef = useRef<HTMLTextAreaElement>(null)
   useEffect(() => {
@@ -94,18 +106,29 @@ function MarReasonDialog(
         )}
         <div className="mardfoot">
           <button className="btn ghost" onClick={onCancel}>Cancel</button>
-          <button className={`btn ${action === 'refused' ? 'danger' : 'primary'}`} disabled={!reason.trim()}
-            onClick={() => onConfirm(reason.trim(),
+          <button className={`btn ${action === 'refused' ? 'danger' : 'primary'}`} disabled={!reason.trim() || locked}
+            onClick={e => {
+              if (sent.current || locked || e.detail > 1) return
+              sent.current = true
+              onConfirm(reason.trim(),
               /* typed as WALL TIME on the display clock; the wire stays
                  UTC — a malformed shape passes through raw so the
                  server's validation message stays the messenger */
-              action === 'given-late' ? (wireStampOfLocal(givenAt.trim()) ?? givenAt.trim()) : undefined)}>
+              action === 'given-late' ? (wireStampOfLocal(givenAt.trim()) ?? givenAt.trim()) : undefined)
+            }}>
             {action === 'held' ? '⊘ Hold dose' : action === 'refused' ? '✕ Refuse dose' : '✓ Give dose (late)'}
           </button>
         </div>
       </div>
     </div>
   )
+}
+
+/** "in 42 min" / "in 2 h 05 min" until an unlock */
+const untilLabel = (ms: number): string => {
+  const min = Math.ceil(ms / 60_000)
+  if (min < 1) return 'in under a minute'
+  return min < 60 ? `in ${min} min` : `in ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`
 }
 
 /** Medication Administration Record — a derived view over the canonical
@@ -116,9 +139,30 @@ function MarReasonDialog(
  *  rows are grouped into one card per prescription per hospital day — a
  *  presentation of the same rows; the actions, the dialog and the due
  *  count are unchanged and still bound to each row's orderId + adminId. */
-export function MarCard({ rows, patients, onDocument }: MarCardProps) {
-  const now = useNow()
+export function MarCard({ rows, patients, busy, notices, onDocument }: MarCardProps) {
+  /* ONE ACTION PER ROUND (owner's correction, 2026-10-05): the shared
+     30-second clock, plus an exact wake-up at the next scheduled unlock so
+     a round's controls open at its scheduled time, not up to 30 s later */
+  const tickNow = useNow()
+  const [unlockTick, setUnlockTick] = useState(0)
+  const nowMs = Math.max(tickNow.getTime(), unlockTick)
+  const now = new Date(nowMs)
+  const nextUnlock = rows.reduce<number | null>((soonest, r) => {
+    const at = unlocksAt(r)
+    return at !== null && at > nowMs && (soonest === null || at < soonest) ? at : soonest
+  }, null)
+  useEffect(() => {
+    if (nextUnlock === null) return
+    const t = window.setTimeout(() => setUnlockTick(Date.now()), Math.min(Math.max(0, nextUnlock - Date.now() + 25), 3_600_000))
+    return () => window.clearTimeout(t)
+  }, [nextUnlock, unlockTick])
   const [pending, setPending] = useState<{ row: MarRow; action: ReasonAction } | null>(null)
+  /* a reason dialog whose dose is no longer the current row (documented
+     meanwhile — here or at another station) closes: it cannot submit */
+  useEffect(() => {
+    if (pending && !rows.some(r => r.orderId === pending.row.orderId && r.adminId === pending.row.adminId && isActionable(r)))
+      setPending(null)
+  }, [rows, pending])
   /* historical cards the nurse opened, by STABLE card key — survives the
      poll's fresh rows (keys are patient|order|day, never row identity) */
   const [openKeys, setOpenKeys] = useState<Set<string>>(() => new Set())
@@ -140,7 +184,10 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
         ? DOCUMENTED_META[r.status]
         : r.prn ? PENDING_META.prn
           : r.scheduleNote ? PENDING_META.ondemand
-            : PENDING_META[dueStateFor(r.scheduledTime, now)]
+            /* the due-soon reminder of a round that is not open yet says
+               so — it is a reminder, not permission */
+            : !isEligibleNow(r, nowMs) && dueStateFor(r.scheduledTime, now) === 'due' ? PENDING_META.soon
+              : PENDING_META[dueStateFor(r.scheduledTime, now)]
   /* unchanged: counted over the actionable ROWS, never over cards */
   const dueCount = rows.filter(
     r => r.status === 'scheduled' && !r.prn && dueStateFor(r.scheduledTime, now) !== 'upcoming',
@@ -158,6 +205,21 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
       ? formatHm(hmOf(r.scheduledTime))
       : r.scheduledTime ? displayStamp(r.scheduledTime) : '—'
     const docMs = datedEpoch(r.documentedTime ?? '')
+    const current = isActionable(r)
+    const unlock = unlocksAt(r)
+    const open = isEligibleNow(r, nowMs)
+    const saving = busy.get(r.orderId)
+    const locked = !open || saving !== undefined
+    const lockId = `${r.orderId}-${r.adminId}-lock`.replace(/[^A-Za-z0-9_-]/g, '-')
+    /* the click is re-checked against the real clock and the busy state —
+       never only the last render — and the 2nd/3rd click of a double or
+       triple click is ignored (event.detail = the click count): a fast
+       save can finish between the clicks of one double click, and an
+       on-demand / PRN row is open again once it has */
+    const act = (fn: () => void) => (e: MouseEvent) => {
+      if (e.detail > 1 || !isEligibleNow(r, Date.now()) || busy.has(r.orderId)) return
+      fn()
+    }
     return (
       <div className={`marrow ${meta.cls}`} key={`${r.orderId}-${r.adminId}`}>
         <span className="martime num" title={datedEpoch(r.scheduledTime) !== null ? `scheduled ${localStamp(datedEpoch(r.scheduledTime)!)} (hospital time)` : undefined}>{scheduled}</span>
@@ -194,18 +256,32 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
           )}
         </div>
         <span className={`marstate ${meta.cls}`}>{meta.label}</span>
-        {isActionable(r) && (
+        {current && (
           <div className="maracts" role="group" aria-label={`Document ${r.medication} for ${patientName}`}>
             {/* ON TIME: one click. Past the late threshold the SAME button
                 opens the delay-reason prompt — the dose is never blocked,
-                the lateness gets a documented reason (server-enforced) */}
-            <button className="mab given"
-              onClick={() => lateMinutes(r) > LATE_THRESHOLD_MINUTES
+                the lateness gets a documented reason (server-enforced).
+                ONE ACTION PER ROUND: all three are disabled until the
+                round's scheduled time, and while its order saves */}
+            <button className="mab given" disabled={locked} aria-describedby={locked ? lockId : undefined}
+              onClick={act(() => (lateMinutes(r) > LATE_THRESHOLD_MINUTES
                 ? setPending({ row: r, action: 'given-late' })
-                : onDocument(r.orderId, r.adminId, 'given')}
+                : void onDocument(r.orderId, r.adminId, 'given')))}
               aria-label={`${r.medication}: given`}>✓ Given</button>
-            <button className="mab held" onClick={() => setPending({ row: r, action: 'held' })} aria-label={`${r.medication}: held`}>⊘ Held</button>
-            <button className="mab refused" onClick={() => setPending({ row: r, action: 'refused' })} aria-label={`${r.medication}: refused`}>✕ Refused</button>
+            <button className="mab held" disabled={locked} aria-describedby={locked ? lockId : undefined}
+              onClick={act(() => setPending({ row: r, action: 'held' }))} aria-label={`${r.medication}: held`}>⊘ Held</button>
+            <button className="mab refused" disabled={locked} aria-describedby={locked ? lockId : undefined}
+              onClick={act(() => setPending({ row: r, action: 'refused' }))} aria-label={`${r.medication}: refused`}>✕ Refused</button>
+          </div>
+        )}
+        {current && (locked || notices[r.orderId]) && (
+          <div className="marlockline" id={lockId}>
+            {saving === 'saving' ? <span className="marbusy">Saving…</span>
+              : saving === 'checking' ? <span className="marbusy">Checking the record — the controls reopen once the server confirms</span>
+                : !open && unlock !== null
+                  ? <span className="marlock">🔒 Opens {stampOnCard(r.scheduledTime, card.day)} ({untilLabel(unlock - nowMs)}) — one action per round</span>
+                  : null}
+            {notices[r.orderId] && <span className="marnotice" role="alert">{notices[r.orderId]}</span>}
           </div>
         )}
       </div>
@@ -288,8 +364,9 @@ export function MarCard({ rows, patients, onDocument }: MarCardProps) {
           action={pending.action}
           lateLabel={pending.action === 'given-late' ? lateLabelOf(lateMinutes(pending.row)) : undefined}
           onCancel={() => setPending(null)}
+          locked={busy.has(pending.row.orderId) || !isEligibleNow(pending.row, nowMs)}
           onConfirm={(reason, administeredAt) => {
-            onDocument(pending.row.orderId, pending.row.adminId,
+            void onDocument(pending.row.orderId, pending.row.adminId,
               pending.action === 'given-late' ? 'given' : pending.action, reason, administeredAt)
             setPending(null)
           }}

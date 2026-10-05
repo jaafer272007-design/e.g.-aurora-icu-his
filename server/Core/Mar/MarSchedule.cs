@@ -150,6 +150,25 @@ static class MarSchedule
        schedule and can never be late. */
     public const int LateThresholdHours = 2;
 
+    /* ---------------- ONE ACTION PER ROUND (owner's correction, 2026-10-05) ----------------
+       mar-derived-schedule.md ### E. A scheduled dose — a repeating order's
+       current round, or the single dose of a 'once' order — can be
+       documented (Given, Held or Refused) from its EXACT scheduled time,
+       never before. Documenting a round therefore never makes another one
+       documentable at once: the next round opens at its own due time (an
+       already-due next round is open immediately — no cooldown is added).
+       The due-soon display window (DUE_SOON_MINUTES client-side) is a
+       reminder only. PRN and on-demand doses have no scheduled time, so
+       this rule cannot apply to them. Mirrored by the client
+       (marSchedule.ts documentableAt) and the mock adapter. */
+
+    /** null when a dose scheduled at `due` may be documented at `nowUtc`;
+        otherwise the refusal's wording */
+    public static string? NotYetDue(DateTime due, DateTime nowUtc) =>
+        nowUtc < due
+            ? $"is not due until {StampOf(due)} — one action per dose round: it can be documented (given, held or refused) from its scheduled time, not before"
+            : null;
+
     /* ---------------- THE ROLLING TIMER (owner's rule, 2026-09-30) ----------------
        mar-derived-schedule.md Amendment B, which supersedes Amendment A's
        late-only re-timing and its segmented grid. The owner: "the timer of

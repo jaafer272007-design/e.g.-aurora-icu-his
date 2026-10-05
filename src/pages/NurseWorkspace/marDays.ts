@@ -1,4 +1,5 @@
 import { datedEpoch, formatHm, hmOf, localDayNumber, localYmd } from '../../lib/time'
+import { documentableAt } from '../../lib/marSchedule'
 import type { MarRow } from '../../lib/api/types'
 
 /* ---------------- DAILY PRESCRIPTION CARDS (owner's request, 2026-10-04) ----------------
@@ -58,6 +59,24 @@ export const isActionable = (r: MarRow): boolean => r.status === 'scheduled'
 
 /** availability = an actionable row with no schedule (PRN / on-demand) */
 const isAvailability = (r: MarRow): boolean => isActionable(r) && datedEpoch(r.scheduledTime) === null
+
+/* ONE ACTION PER ROUND (owner's correction, 2026-10-05): the CURRENT row
+   (isActionable — it holds the controls) is not necessarily documentable
+   NOW. A current round or 'once' dose opens at its exact scheduled time
+   (marSchedule.documentableAt, the server's rule); until then its controls
+   are shown locked with that time. PRN / on-demand availability has no
+   scheduled time and is open whenever shown. */
+
+/** when the current row's controls open (epoch ms), or null when it is
+ *  open whenever shown (PRN / on-demand availability) */
+export const unlocksAt = (r: MarRow): number | null => (isActionable(r) ? datedEpoch(r.scheduledTime) : null)
+
+/** may this row be documented at nowMs? */
+export function isEligibleNow(r: MarRow, nowMs: number): boolean {
+  if (!isActionable(r)) return false
+  const at = unlocksAt(r)
+  return at === null || documentableAt(at, nowMs)
+}
 
 /** the hospital day a row belongs to (see above), or null */
 export function rowDay(r: MarRow, nowMs: number): string | null {
