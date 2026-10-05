@@ -1422,22 +1422,30 @@ export async function completeImplementation(orderId: string, actor: string, job
  *  - uncertain: no answer (unreachable, timed out, or a server error) —
  *    the dose MAY have been recorded, so the caller re-reads the MAR
  *    (getMarRowsAuthoritative) before the dose can be documented again.
+ *  SAFE RETRY (2026-10-05, mar-derived-schedule.md ### F): attemptId is
+ *  the caller's identity for this ONE documentation attempt, sent as
+ *  "attemptId" and stored on the fact it creates; resending the same
+ *  attempt (same id, same documentation) is answered with the existing
+ *  record — so a retry after no answer can never record the dose twice,
+ *  even when the original request lands later. A new documentation is a
+ *  new attempt id.
  *  Formerly a refusal was a silent null and an unreachable server fell
  *  through to the mock store; the mock is now used only in mock mode (no
  *  API configured) and for a tokenless local dev session (401), as the
  *  other offline paths do. */
 export type MarWriteResult =
   | { kind: 'ok'; order: Order }
-  | { kind: 'rejected'; error: string }
+  /** status: the HTTP status of a server refusal (absent for a client-side one) */
+  | { kind: 'rejected'; error: string; status?: number }
   | { kind: 'uncertain'; error: string }
 
 export async function documentAdministration(
   orderId: string, adminId: string, action: AdministrationAction, actor: string, jobTitle: JobTitle,
-  reason?: string, administeredAt?: string,
+  reason?: string, administeredAt?: string, attemptId?: string,
 ): Promise<MarWriteResult> {
   if (!hasPermission(jobTitle, 'meds.administer')) return respond({ kind: 'rejected', error: 'Insufficient permissions' }, 120)
   const mock = (): Promise<MarWriteResult> => {
-    const r = applyAdministration(orderId, adminId, action, actor, reason, administeredAt)
+    const r = applyAdministration(orderId, adminId, action, actor, reason, administeredAt, attemptId)
     return respond(typeof r === 'string' ? { kind: 'rejected', error: r } : { kind: 'ok', order: r }, 120)
   }
   if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return mock()
@@ -1450,19 +1458,21 @@ export async function documentAdministration(
         method: 'POST',
         signal: ctrl.signal,
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...(reason ? { reason } : {}), ...(administeredAt ? { administeredAt } : {}) }),
+        body: JSON.stringify({
+          action, ...(reason ? { reason } : {}), ...(administeredAt ? { administeredAt } : {}), ...(attemptId ? { attemptId } : {}),
+        }),
       })
     clearTimeout(timer)
     if (res.ok) return { kind: 'ok', order: (await res.json()) as Order }
     if (res.status === 401) {
       /* a tokenless local dev session reads the mock store — apply there */
       if (import.meta.env.VITE_APP_ENV !== 'production') return mock()
-      return { kind: 'rejected', error: 'your session has expired — sign in again; nothing was recorded' }
+      return { kind: 'rejected', error: 'your session has expired — sign in again; nothing was recorded', status: 401 }
     }
     if (res.status >= 500) return { kind: 'uncertain', error: `the server failed (${res.status})` }
     const err = (await res.json().catch(() => null)) as { error?: string } | null
     console.info(`[aurora] administration documentation API rejected the action (${res.status})`)
-    return { kind: 'rejected', error: err?.error ?? `rejected (${res.status})` }
+    return { kind: 'rejected', error: err?.error ?? `rejected (${res.status})`, status: res.status }
   } catch {
     /* no answer — or an answer whose body never arrived: the server may
        have recorded the dose */

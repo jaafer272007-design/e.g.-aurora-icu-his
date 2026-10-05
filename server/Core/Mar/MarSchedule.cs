@@ -160,7 +160,10 @@ static class MarSchedule
        The due-soon display window (DUE_SOON_MINUTES client-side) is a
        reminder only. PRN and on-demand doses have no scheduled time, so
        this rule cannot apply to them. Mirrored by the client
-       (marSchedule.ts documentableAt) and the mock adapter. */
+       (marSchedule.ts documentableAt) and the mock adapter.
+       [2026-10-05, owner's decisions — ### F: the FIRST dose (no
+       documented administration yet) is exempt — IsFirstDose below;
+       continuous and PRN stay available as needed, with no interval.] */
 
     /** null when a dose scheduled at `due` may be documented at `nowUtc`;
         otherwise the refusal's wording */
@@ -168,6 +171,19 @@ static class MarSchedule
         nowUtc < due
             ? $"is not due until {StampOf(due)} — one action per dose round: it can be documented (given, held or refused) from its scheduled time, not before"
             : null;
+
+    /* THE FIRST DOSE (owner's decision, 2026-10-05 — ### F, superseding the
+       open question in ### E): the first dose is available immediately
+       after signing — round 1 of a repeating order and the single dose of a
+       'once' order — so it is exempt from NotYetDue; every later round
+       stays locked until its due time. "First" means the order has no
+       documented administration at all: an order with recorded doses
+       (including LEGACY facts, whose round 1 is the LegacyEntry slot) is
+       not at its first dose, so its schedule and its lock are unchanged.
+       Nothing is re-derived: round 1 keeps its due minute (FirstDose) and
+       its identity; only when it may be documented changes. */
+    public static bool IsFirstDose(IEnumerable<AdminDto> admins) =>
+        !admins.Any(a => a.Status != "scheduled");
 
     /* ---------------- THE ROLLING TIMER (owner's rule, 2026-09-30) ----------------
        mar-derived-schedule.md Amendment B, which supersedes Amendment A's

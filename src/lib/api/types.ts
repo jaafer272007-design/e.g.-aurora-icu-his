@@ -700,6 +700,10 @@ export interface MedAdministration {
    *  interval; Held/Refused → scheduled time + interval); a fact without
    *  it is a legacy fact and never times anything. Server-stamped. */
   round?: number
+  /** SAFE RETRY (2026-10-05, mar-derived-schedule.md ### F): the client's
+   *  identity for the ONE documentation attempt that recorded this fact —
+   *  a resend of it is answered with this record, never a second fact */
+  attemptId?: string
 }
 
 export interface OrderEvent {
@@ -982,6 +986,13 @@ export interface MarRow {
    *  actual time or a HELD/REFUSED (skipped) dose's scheduled time */
   timerFrom?: string
   timerRule?: 'given' | 'skipped'
+  /** (2026-10-05, ### F) the current round / 'once' row of an order with no
+   *  documented administration: the FIRST dose, open on signing — exempt
+   *  from the scheduled-time lock */
+  firstDose?: boolean
+  /** (### F) documented facts only: the attempt that recorded it — how an
+   *  unanswered save is confirmed as recorded */
+  attemptId?: string
 }
 
 /* ==================== Laboratory & Imaging domain (Screen 6) ====================

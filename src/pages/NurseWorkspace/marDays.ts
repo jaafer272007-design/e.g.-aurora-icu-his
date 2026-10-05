@@ -65,11 +65,14 @@ const isAvailability = (r: MarRow): boolean => isActionable(r) && datedEpoch(r.s
    NOW. A current round or 'once' dose opens at its exact scheduled time
    (marSchedule.documentableAt, the server's rule); until then its controls
    are shown locked with that time. PRN / on-demand availability has no
-   scheduled time and is open whenever shown. */
+   scheduled time and is open whenever shown. [2026-10-05, owner's
+   decisions — ### F: the order's FIRST dose (the row's firstDose flag,
+   set by the server) is open on signing too; later rounds keep the lock.] */
 
 /** when the current row's controls open (epoch ms), or null when it is
- *  open whenever shown (PRN / on-demand availability) */
-export const unlocksAt = (r: MarRow): number | null => (isActionable(r) ? datedEpoch(r.scheduledTime) : null)
+ *  open whenever shown (PRN / on-demand availability, a first dose) */
+export const unlocksAt = (r: MarRow): number | null =>
+  (isActionable(r) && !r.firstDose ? datedEpoch(r.scheduledTime) : null)
 
 /** may this row be documented at nowMs? */
 export function isEligibleNow(r: MarRow, nowMs: number): boolean {

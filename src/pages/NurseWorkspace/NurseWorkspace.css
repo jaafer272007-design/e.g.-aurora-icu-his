@@ -70,6 +70,9 @@
 .nw .marlock{color:var(--dim);font-weight:600}
 .nw .marbusy{color:var(--cyan);font-weight:600}
 .nw .marnotice{color:var(--red);font-weight:600}
+/* SAFE RETRY (2026-10-05, ### F): an unanswered save — kept, unconfirmed */
+.nw .marwarn{color:var(--amber);font-weight:600}
+.nw .marretry{font-size:10.5px;font-weight:700;color:var(--blue);text-decoration:underline;padding:2px 0;min-height:24px}
 /* DAILY PRESCRIPTION CARDS (2026-10-04, marDays.ts): one card per
    prescription per hospital day. The header carries the prescription once
    (drug, dose, route · frequency, date); the rows inside are the compact

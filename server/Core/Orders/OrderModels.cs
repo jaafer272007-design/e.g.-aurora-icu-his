@@ -128,9 +128,18 @@ record InfusionDoseDto(double Value, string MassUnit, string TimeBasis);
    (data, not schema — NO migration); WhenWritingNull keeps every existing
    fact's bytes unchanged. (Amendment A's ScheduleAnchor was never released
    and is gone.) */
+/* AttemptId — SAFE RETRY (2026-10-05, mar-derived-schedule.md ### F):
+   ADDITIVE, optional — the client's identity for ONE documentation
+   attempt (POST …/administrations body "attemptId"), stored on the fact it
+   created. A resend of the same attempt (a retry after no answer, or the
+   original request arriving late) finds it under the order lock and is
+   answered with the existing record — never a second fact or audit entry.
+   Lives inside AdministrationsJson (NO migration); WhenWritingNull keeps
+   every existing fact's bytes unchanged, and a fact without it is simply
+   never matched. */
 record AdminDto(string AdminId, string ScheduledTime, string Status,
     string? DocumentedTime, string? DocumentedBy, string? Reason = null,
-    int? Round = null);
+    int? Round = null, string? AttemptId = null);
 
 record OrderEventDto(string Time, string Actor, string Action, string? Detail);
 

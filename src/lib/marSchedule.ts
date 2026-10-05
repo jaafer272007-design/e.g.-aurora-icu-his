@@ -176,6 +176,14 @@ export function legacyEntry(firstMs: number, step: number, facts: MedAdministrat
  *  reminder only; PRN/on-demand doses have no scheduled instant. */
 export const documentableAt = (dueMs: number, nowMs: number): boolean => nowMs >= dueMs
 
+/** THE FIRST DOSE (owner's decision, 2026-10-05 — ### F; mirrors
+ *  MarSchedule.IsFirstDose): an order with no documented administration is
+ *  at its first dose, which is available immediately after signing (round 1
+ *  / the 'once' dose) — exempt from documentableAt. Recorded doses,
+ *  legacy facts included, end the exemption; nothing is re-derived. */
+export const isFirstDose = (administrations: MedAdministration[] | undefined): boolean =>
+  !(administrations ?? []).some(isFact)
+
 /** the refusal wording for a dose opened too early (mirrors the server's) */
 export const notYetDueMessage = (dueMs: number): string =>
   `is not due until ${instanceStamp(dueMs)} — one action per dose round: it can be documented (given, held or refused) from its scheduled time, not before`

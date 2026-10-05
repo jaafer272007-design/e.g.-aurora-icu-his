@@ -83,7 +83,12 @@ static class MarApi
            derivable grid. Documentation APPENDS an administration fact —
            nothing stored is consumed. A scheduled dose (current round or
            'once' dose) opens at its scheduled time: before it, any action
-           is 409 and nothing is written (one action per round, 2026-10-05). */
+           is 409 and nothing is written (one action per round, 2026-10-05)
+           — except the order's FIRST dose, available immediately after
+           signing (owner's decision, 2026-10-05, ### F). attemptId
+           (optional, ### F SAFE RETRY): the client's identity for this one
+           documentation attempt, stored on the fact; resending it returns
+           the existing record instead of documenting again. */
         app.MapPost("/api/icu/mar/{orderId}/administrations/{adminId}",
             (string orderId, string adminId, AdministerRequest req, ClaimsPrincipal user, AuroraDb db) =>
         {
@@ -109,12 +114,10 @@ static class MarApi
                         System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
                         out var at))
                     return ApiError.BadRequest("administeredAt must be 'yyyy-MM-dd HH:mm'");
-                if (at > DateTime.UtcNow.AddMinutes(1))
-                    return ApiError.BadRequest("administeredAt cannot be in the future");
-                if (at < DateTime.UtcNow.AddHours(-MarSchedule.PastWindowHours))
-                    return ApiError.BadRequest($"administeredAt is more than {MarSchedule.PastWindowHours} hours ago — outside the documentable window");
-                administeredAt = at;
+                administeredAt = at;   // its window is judged after the safe-retry match below
             }
+            if (req.AttemptId is not null && !System.Text.RegularExpressions.Regex.IsMatch(req.AttemptId, "^[A-Za-z0-9_-]{8,64}$"))
+                return ApiError.BadRequest("attemptId must be 8–64 characters of A–Z, a–z, 0–9, '-' or '_'");
 
             /* THE ORDER WRITE LOCK (Codex review of PR #234): the whole
                read → validate → append fact → timer → audit → save below
@@ -126,6 +129,34 @@ static class MarApi
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null || row.MedicationJson is null)
                 return ApiError.NotFound();   // absent order, or not a medication order — the adminId resolves to nothing
+            /* SAFE RETRY (owner-directed correction, 2026-10-05 — ### F): an
+               attempt this order already recorded — the client resending it
+               after getting no answer, or the original request arriving
+               after its retry — is answered with the existing record: no
+               second fact, no audit entry. Judged FIRST, inside the lock,
+               so nothing that changed since (the round this very fact
+               resolved, the order discontinued, the encounter closed, the
+               time window passing) can make a recorded attempt read as
+               refused. The same attempt id carrying different
+               documentation is refused (409). PRN and on-demand doses have
+               no round to deduplicate on — this is what makes their retry
+               safe. */
+            if (req.AttemptId is not null && row.AdministrationsJson is not null
+                && JsonSerializer.Deserialize<List<AdminDto>>(row.AdministrationsJson, JsonOpts.Web)!
+                    .FirstOrDefault(a => a.AttemptId == req.AttemptId) is { } prior)
+            {
+                if (prior.Status == req.Action && SameDose(prior, adminId))
+                    return Results.Json(row.ToDto(), JsonOpts.Web);
+                return ApiError.StateConflict(
+                    $"attempt '{req.AttemptId}' already recorded a different documentation ({prior.Status} — fact {prior.AdminId}); a retry must resend the same documentation");
+            }
+            if (administeredAt is DateTime actual)
+            {
+                if (actual > DateTime.UtcNow.AddMinutes(1))
+                    return ApiError.BadRequest("administeredAt cannot be in the future");
+                if (actual < DateTime.UtcNow.AddHours(-MarSchedule.PastWindowHours))
+                    return ApiError.BadRequest($"administeredAt is more than {MarSchedule.PastWindowHours} hours ago — outside the documentable window");
+            }
             /* THE CHOKEPOINT (409, resource state): the encounter must be
                OPEN — asserted independently of order status so the two can
                never diverge silently, and even a Consultant with full
@@ -224,8 +255,9 @@ static class MarApi
                    here, inside the order lock, against the round just
                    derived from the stored facts and the server clock, so
                    a stale page or a racing request is refused the same
-                   way; nothing is appended or audited. */
-                if (MarSchedule.NotYetDue(current.Due, now) is string early)
+                   way; nothing is appended or audited. The order's FIRST
+                   dose is exempt (### F): available on signing. */
+                if (!MarSchedule.IsFirstDose(admins) && MarSchedule.NotYetDue(current.Due, now) is string early)
                     return ApiError.StateConflict($"dose round {roundNumber} {early}");
                 round = current;
                 scheduledStamp = MarSchedule.StampOf(current.Due);
@@ -262,8 +294,10 @@ static class MarApi
                         $"dose '{adminId}' was already documented as {dup.Status}"
                         + (dup.DocumentedBy is null ? "" : $" by {dup.DocumentedBy} at {dup.DocumentedTime}")
                         + " — it is not awaiting documentation");
-                /* the single 'once' dose opens at its scheduled time too */
-                if (MarSchedule.NotYetDue(instant, now) is string early)
+                /* the single 'once' dose opens at its scheduled time too —
+                   unless it is the order's first documentation, which is
+                   available on signing (### F) */
+                if (!MarSchedule.IsFirstDose(admins) && MarSchedule.NotYetDue(instant, now) is string early)
                     return ApiError.StateConflict($"this dose {early}");
             }
             else
@@ -298,7 +332,7 @@ static class MarApi
                administration time — the audit event below carries the
                documenting moment */
             var fact = new AdminDto(OrderLogic.NextAdminId(), scheduledStamp, req.Action!,
-                adminTime, actor, reason, round?.Number);
+                adminTime, actor, reason, round?.Number, req.AttemptId);
             admins.Add(fact);
             row.AdministrationsJson = JsonSerializer.Serialize(admins, JsonOpts.Web);
             /* the timer this documentation leaves in force, said out loud in
@@ -328,6 +362,17 @@ static class MarApi
             return Results.Json(row.ToDto(), JsonOpts.Web);
         }).RequireAuthorization();
     }
+
+    /** does a recorded fact document the dose `adminId` addresses? — the
+        safe-retry match (a fact's own AdminId is its ADM-n id): the round's
+        number and due minute, the 'once' dose's dated instance, or an
+        unscheduled PRN / on-demand dose */
+    static bool SameDose(AdminDto a, string adminId) =>
+        adminId is "prn" or "ondemand"
+            ? a.Round is null && a.ScheduledTime == ""
+            : MarSchedule.ParseRoundIdentity(adminId) is { } r
+                ? a.Round == r.Number && a.ScheduledTime == MarSchedule.StampOf(r.Due)
+                : a.Round is null && a.ScheduledTime == adminId.Replace('T', ' ');
 }
 
 /* MAR derivation — the read-side composition: stored FACTS first, derived
@@ -347,9 +392,11 @@ static class MarLogic
         var route = $"{m.Route} · {(m.Prn ? $"PRN — {m.PrnIndication ?? "as required"}" : m.Frequency)}";
         MarRowDto Row(string adminId, string scheduledTime, string status,
             string? documentedTime = null, string? scheduleNote = null, string? reason = null,
-            int? round = null, string? timerFrom = null, string? timerRule = null) =>
+            int? round = null, string? timerFrom = null, string? timerRule = null,
+            bool? firstDose = null, string? attemptId = null) =>
             new(o.OrderId, adminId, o.PatientId, o.BedId, m.Drug, m.Dose, route,
-                scheduledTime, m.Prn, status, documentedTime, scheduleNote, reason, round, timerFrom, timerRule);
+                scheduledTime, m.Prn, status, documentedTime, scheduleNote, reason, round, timerFrom, timerRule,
+                firstDose, attemptId);
 
         var admins = o.AdministrationsJson is null
             ? new List<AdminDto>()
@@ -363,7 +410,9 @@ static class MarLogic
                    and the overdue DELAY reason are part of the record; so
                    does the round a rolling-timer fact resolved */
                 Row(a.AdminId, a.ScheduledTime, a.Status, a.DocumentedTime, reason: a.Reason,
-                    round: a.Round)));
+                    round: a.Round, attemptId: a.AttemptId)));
+        /* the order's first dose is open on signing (### F) — said on its row */
+        bool? firstDose = facts.Count == 0 ? true : null;
 
         if (o.Status == "active")
         {
@@ -396,7 +445,8 @@ static class MarLogic
                         /* a single expected dose renders individually forever
                            until its fact exists — never aggregated */
                         if (!facts.Any(a => a.ScheduledTime == MarSchedule.StampOf(first)))
-                            rows.Add((first, Row(MarSchedule.IdentityOf(first), MarSchedule.StampOf(first), "scheduled")));
+                            rows.Add((first, Row(MarSchedule.IdentityOf(first), MarSchedule.StampOf(first), "scheduled",
+                                firstDose: firstDose)));
                         break;
                     }
                     /* THE ROLLING TIMER (Amendment B): exactly ONE current
@@ -408,7 +458,7 @@ static class MarLogic
                     rows.Add((current.Due, Row(MarSchedule.RoundIdentity(current), MarSchedule.StampOf(current.Due), "scheduled",
                         round: current.Number,
                         timerFrom: current.TimerFrom is DateTime tf ? MarSchedule.StampOf(tf) : null,
-                        timerRule: current.TimerRule)));
+                        timerRule: current.TimerRule, firstDose: firstDose)));
                     break;
             }
         }
@@ -424,16 +474,24 @@ static class MarLogic
    round of a repeating order and every fact that resolved one; timerFrom
    ("yyyy-MM-dd HH:mm") + timerRule ("given" | "skipped") only the current
    round, when an earlier round timed it. (The missed-earlier horizon row
-   and its missedEarlier count are gone with the grid.) WhenWritingNull
-   keeps each absent everywhere else. */
+   and its missedEarlier count are gone with the grid.) 2026-10-05 (### F),
+   ADDITIVE: firstDose (true) rides the current round / 'once' row of an
+   order with no documented administration — it is open on signing;
+   attemptId rides a fact that recorded one (the client's confirmation of
+   an unanswered save). WhenWritingNull keeps each absent everywhere else. */
 record MarRowDto(
     string OrderId, string AdminId, string PatientId, string BedId, string Medication,
     string Dose, string Route, string ScheduledTime, bool Prn, string Status,
     string? DocumentedTime, string? ScheduleNote = null, string? Reason = null,
-    int? Round = null, string? TimerFrom = null, string? TimerRule = null);
+    int? Round = null, string? TimerFrom = null, string? TimerRule = null,
+    bool? FirstDose = null, string? AttemptId = null);
 
 /* MAR administration action request (Stage 10 Phase 3) — Disallow rejects
    any unrecognized field; action/reason validated explicitly in the
-   endpoint (reason required for held/refused, like discontinue). */
+   endpoint (reason required for held/refused, like discontinue).
+   AttemptId (2026-10-05, ### F SAFE RETRY): optional and additive — a
+   request without it behaves exactly as before; Disallow means a server
+   older than this field refuses it (400), which the appliance's single
+   origin (client and server ship together) never exercises. */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record AdministerRequest(string? Action, string? Reason, string? AdministeredAt = null);
+record AdministerRequest(string? Action, string? Reason, string? AdministeredAt = null, string? AttemptId = null);

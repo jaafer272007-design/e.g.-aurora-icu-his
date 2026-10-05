@@ -32,15 +32,26 @@ const PENDING_META = {
    window, counted out loud — never silently truncated */
 const MISSED_META = { label: 'MISSED', cls: 'st-overdue' }
 
+/** what the card shows for an order with a documentation in progress */
+export interface MarBusy {
+  phase: 'saving' | 'checking' | 'unconfirmed'
+  action: AdministrationAction
+  /** the documented minute, display clock */
+  at: string
+}
+
 interface MarCardProps {
   rows: MarRow[]
   patients: AssignedPatient[]
-  /** orders with a documentation saving, or awaiting the server read that
-   *  settles it — every control of that order is disabled meanwhile */
-  busy: ReadonlyMap<string, 'saving' | 'checking'>
+  /** orders with a documentation saving, awaiting the server read that
+   *  settles it, or UNCONFIRMED (no answer — SAFE RETRY, ### F) — every
+   *  documenting control of that order is disabled meanwhile */
+  busy: ReadonlyMap<string, MarBusy>
   /** the last refusal per order, shown on its current row */
   notices: Record<string, string>
   onDocument: (orderId: string, adminId: string, action: AdministrationAction, reason?: string, administeredAt?: string) => void
+  /** re-send the order's UNCONFIRMED attempt — the same documentation, never a new dose */
+  onRetry: (orderId: string) => void
 }
 
 type ReasonAction = 'held' | 'refused' | 'given-late'
@@ -139,7 +150,7 @@ const untilLabel = (ms: number): string => {
  *  rows are grouped into one card per prescription per hospital day — a
  *  presentation of the same rows; the actions, the dialog and the due
  *  count are unchanged and still bound to each row's orderId + adminId. */
-export function MarCard({ rows, patients, busy, notices, onDocument }: MarCardProps) {
+export function MarCard({ rows, patients, busy, notices, onDocument, onRetry }: MarCardProps) {
   /* ONE ACTION PER ROUND (owner's correction, 2026-10-05): the shared
      30-second clock, plus an exact wake-up at the next scheduled unlock so
      a round's controls open at its scheduled time, not up to 30 s later */
@@ -231,7 +242,9 @@ export function MarCard({ rows, patients, busy, notices, onDocument }: MarCardPr
             <div className="mroute">⚠ {r.missedEarlier} earlier expected dose{(r.missedEarlier ?? 0) > 1 ? 's' : ''} never documented (oldest shown)</div>
           ) : r.status === 'scheduled' ? (
             <div className="mroute">
-              {r.scheduleNote ?? (r.prn ? 'available as required' : 'current round')}
+              {r.scheduleNote ?? (r.prn ? 'available as required'
+                /* the order's first dose is open on signing (### F) */
+                : r.firstDose ? `first dose — available now (scheduled ${scheduled})` : 'current round')}
               {/* why the current round is due when it is: the previous
                   round's GIVEN time, or its scheduled time when it was
                   held/refused (the rolling timer) */}
@@ -276,8 +289,20 @@ export function MarCard({ rows, patients, busy, notices, onDocument }: MarCardPr
         )}
         {current && (locked || notices[r.orderId]) && (
           <div className="marlockline" id={lockId}>
-            {saving === 'saving' ? <span className="marbusy">Saving…</span>
-              : saving === 'checking' ? <span className="marbusy">Checking the record — the controls reopen once the server confirms</span>
+            {saving?.phase === 'saving' ? <span className="marbusy">Saving…</span>
+              : saving?.phase === 'checking' ? <span className="marbusy">Checking the record — the controls reopen once the server confirms</span>
+                : saving?.phase === 'unconfirmed' ? (
+                  /* SAFE RETRY (### F): no answer — the documentation may
+                     already be saved. Only the record settles it; the
+                     retry re-sends the SAME documentation */
+                  <span className="marwarn" role="status">
+                    ⚠ Not confirmed — your {saving.action} documentation ({saving.at}) may already be saved; checking the record.{' '}
+                    <button type="button" className="marretry" onClick={e => { if (e.detail <= 1) onRetry(r.orderId) }}>
+                      Retry saving
+                    </button>
+                    {' '}(sends the same documentation — it can never be recorded twice)
+                  </span>
+                )
                 : !open && unlock !== null
                   ? <span className="marlock">🔒 Opens {stampOnCard(r.scheduledTime, card.day)} ({untilLabel(unlock - nowMs)}) — one action per round</span>
                   : null}

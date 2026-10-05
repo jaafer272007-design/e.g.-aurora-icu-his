@@ -3,7 +3,7 @@ import type {
 } from '../types'
 import { nowHm } from '../../time'
 import {
-  currentRound, documentableAt, firstDoseEpoch, instanceIdentity, instanceStamp, isFact, notYetDueMessage,
+  currentRound, documentableAt, firstDoseEpoch, instanceIdentity, instanceStamp, isFact, isFirstDose, notYetDueMessage,
   parseFrequency, parseRoundIdentity, roundIdentity, therapyStartEpoch, timerInstant,
 } from '../../marSchedule'
 
@@ -340,17 +340,33 @@ export function applyImplementation(orderId: string, actor: string): Order | nul
     round (lib/marSchedule.ts currentRound). ONE ACTION PER ROUND
     (2026-10-05): a scheduled dose (current round / 'once' dose) is refused
     before its scheduled time, exactly as the server refuses it. A refusal
-    returns its wording (the server's {error}) and changes nothing. */
+    returns its wording (the server's {error}) and changes nothing.
+    2026-10-05 (### F, mirrors the server): the order's FIRST dose is open
+    on signing; attemptId (SAFE RETRY) — a resend of an attempt this order
+    already recorded returns the order unchanged (no fact, no audit
+    entry), judged before any state check. */
 export function applyAdministration(
   orderId: string, adminId: string, action: AdministrationAction, actor: string, reason?: string,
-  administeredAt?: string,
+  administeredAt?: string, attemptId?: string,
 ): Order | string {
   const o = ORDERS.find(x => x.orderId === orderId)
   if (!o || !o.medication) return 'Not found'
+  const prior = attemptId ? (o.administrations ?? []).find(a => a.attemptId === attemptId) : undefined
+  if (prior) {
+    const rid = parseRoundIdentity(adminId)
+    const same = adminId === 'prn' || adminId === 'ondemand'
+      ? prior.round == null && prior.scheduledTime === ''
+      : rid ? prior.round === rid.number && prior.scheduledTime === instanceStamp(rid.dueMs)
+        : prior.round == null && prior.scheduledTime === adminId.replace('T', ' ')
+    return prior.status === action && same
+      ? o
+      : `attempt '${attemptId}' already recorded a different documentation (${prior.status} — fact ${prior.adminId}); a retry must resend the same documentation`
+  }
   if (o.status !== 'active') return `order '${orderId}' is ${o.status} — it is not in force, no dose is available from it`
   const nowMs = Date.now()
   const kind = parseFrequency(o.medication)
   const facts = (o.administrations ?? []).filter(isFact)
+  const firstDose = isFirstDose(o.administrations)
   let scheduledStamp = ''
   let round: number | undefined
   let first: number | null = null
@@ -366,7 +382,7 @@ export function applyAdministration(
     if (rid.number > cur.number) return 'Not found'
     if (rid.dueMs !== cur.dueMs)
       return `dose round ${rid.number} is now due ${instanceStamp(cur.dueMs)}, not ${instanceStamp(rid.dueMs)} — the order's schedule changed after this view was loaded; refresh the MAR and document the current round`
-    if (!documentableAt(cur.dueMs, nowMs)) return `dose round ${rid.number} ${notYetDueMessage(cur.dueMs)}`
+    if (!firstDose && !documentableAt(cur.dueMs, nowMs)) return `dose round ${rid.number} ${notYetDueMessage(cur.dueMs)}`
     scheduledStamp = instanceStamp(cur.dueMs)
     round = cur.number
   } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(adminId)) {
@@ -375,7 +391,7 @@ export function applyAdministration(
     if (facts.some(a => a.scheduledTime === scheduledStamp))
       return `dose '${adminId}' was already documented — it is not awaiting documentation`
     const at = Date.parse(`${adminId}:00Z`)
-    if (!documentableAt(at, nowMs)) return `this dose ${notYetDueMessage(at)}`
+    if (!firstDose && !documentableAt(at, nowMs)) return `this dose ${notYetDueMessage(at)}`
   }
   /* the documenting minute on the UTC wire, exactly as the server stamps
      it — a GIVEN fact's documentedTime (its actual time when no
@@ -386,6 +402,7 @@ export function applyAdministration(
     documentedTime: action === 'given' && administeredAt ? administeredAt : time, documentedBy: actor,
     ...(reason?.trim() ? { reason: reason.trim() } : {}),
     ...(round !== undefined ? { round } : {}),
+    ...(attemptId ? { attemptId } : {}),
   }
   o.administrations = [...(o.administrations ?? []), fact]
   let timerNote = ''
@@ -427,8 +444,11 @@ export function deriveMarRows(patientIds: string[]): MarRow[] {
         row: row(a.adminId, a.scheduledTime, a.status, {
           documentedTime: a.documentedTime,
           ...(a.round !== undefined ? { round: a.round } : {}),
+          ...(a.attemptId ? { attemptId: a.attemptId } : {}),
         }),
       })
+    /* the order's first dose is open on signing (### F) — said on its row */
+    const first1 = facts.length === 0 ? { firstDose: true } : {}
     if (o.status !== 'active') continue
     const kind = parseFrequency(m)
     if (kind.kind === 'prn') { rows.push({ sort: nowMs, row: row('prn', '', 'scheduled') }); continue }
@@ -444,7 +464,7 @@ export function deriveMarRows(patientIds: string[]): MarRow[] {
     const first = firstDoseEpoch(anchor)
     if (kind.kind === 'once') {
       if (!facts.some(a => a.scheduledTime === instanceStamp(first)))
-        rows.push({ sort: first, row: row(instanceIdentity(first), instanceStamp(first), 'scheduled') })
+        rows.push({ sort: first, row: row(instanceIdentity(first), instanceStamp(first), 'scheduled', first1) })
       continue
     }
     /* THE ROLLING TIMER: exactly one current round, whatever the clock says */
@@ -454,6 +474,7 @@ export function deriveMarRows(patientIds: string[]): MarRow[] {
       row: row(roundIdentity(cur), instanceStamp(cur.dueMs), 'scheduled', {
         round: cur.number,
         ...(cur.timerFromMs !== null ? { timerFrom: instanceStamp(cur.timerFromMs), timerRule: cur.timerRule ?? undefined } : {}),
+        ...first1,
       }),
     })
   }
