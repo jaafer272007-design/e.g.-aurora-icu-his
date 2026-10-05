@@ -2,7 +2,8 @@
 # One synthetic patient on the local stack, eight orders, each with its own synthetic
 # formulary drug except the continuous insulin (the formulary's insulin-actrapid,
 # 2.5 U/h IV infusion — the owner's screenshot):
-#   PRNDELAY / PRNOOO / PRNLOST   PRN orders — the delayed-commit, out-of-order and lost-original cases
+#   PRNDELAY / PRNOOO / PRNLOST / PRNSKEW   PRN orders — the delayed-commit, out-of-order, lost-original
+#             and device-clock-ahead cases
 #   CONT      continuous insulin — the ON DEMAND row (no round)
 #   FIRST     q1h signed NOW — round 1 is the first dose (open on signing under ### F)
 #   ONCE      'once' signed NOW — the single dose, also the first
@@ -58,7 +59,7 @@ def history(oid): return json.loads(sql(f"""select "HistoryJson" from "Orders" w
 def set_json(oid, col, v): sql(f"""update "Orders" set "{col}"=$h${json.dumps(v, separators=(',', ':'), ensure_ascii=False)}$h$ where "OrderId"='{oid}'""")
 def scheduled_row(oid): return [r for r in call('GET', '/api/icu/mar', NUR)[1] if r['orderId'] == oid and r['status'] == 'scheduled'][0]
 orders = {}
-for k in ('PRNDELAY', 'PRNOOO', 'PRNLOST'):
+for k in ('PRNDELAY', 'PRNOOO', 'PRNLOST', 'PRNSKEW'):
     oid = order(med(k, 'q6h', prn=True)); orders[k] = {'oid': oid, 'adminId': 'prn'}
 oid = order({'drugId': 'insulin-actrapid', 'drug': 'Insulin (Actrapid)', 'dose': '2.5 U/h', 'route': 'IV infusion', 'frequency': 'continuous', 'duration': 'ongoing', 'prn': False})
 orders['CONT'] = {'oid': oid, 'adminId': 'ondemand'}

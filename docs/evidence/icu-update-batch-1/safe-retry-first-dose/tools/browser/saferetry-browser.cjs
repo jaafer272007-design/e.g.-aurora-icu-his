@@ -8,7 +8,8 @@
 //    releases it AFTER a newer read has been applied.
 // Scenarios: F (first dose / once open; subsequent + legacy rounds locked), S1 (delayed
 // original + retry), S1b (delayed original lands by itself), S2 (out-of-order settlement
-// reads), S3 (lost original, reload, retry). Each ends with an INTENTIONAL later
+// reads), S3 (lost original, reload, retry), S4 (device clock ahead: the retry's pinned
+// minute is refused while the original is still pending). Each ends with an INTENTIONAL later
 // documentation on the same PRN/continuous order (a new attempt).
 // "The nurse follows the page": when the page offers "Retry saving" the harness uses it;
 // when the page says the dose was NOT recorded and reopens it, the harness documents it
@@ -362,6 +363,39 @@ async function openNurse(browser, opts, initPending) {
     const f2 = await facts(oid)
     check(f2.length === f0 + 2 && f2[f2.length - 1].attemptId !== sentId, 'a later intentional Given: a new attempt, a second fact')
     check(await page.evaluate(() => Object.keys(sessionStorage).filter(k => k.startsWith('aurora.marUnconfirmed:')).length) === 0, 'nothing left pending in sessionStorage')
+  }
+
+  if (wants('S4')) {
+    console.log('\n[S4] DEVICE CLOCK 3 MIN AHEAD (PRN): the delayed original is still pending when Retry saving\'s pinned minute is refused')
+    const oid = O.PRNSKEW
+    const t0 = (await toasts(page)).length   // this scenario's toasts only
+    const f0 = (await facts(oid)).length, a0 = (await audit(oid)).length
+    await page.evaluate(() => { const real = Date.now; window.__realNow = real; Date.now = () => real() + 180_000 })
+    const cap = await interceptOriginal(page, oid)
+    await page.click(sel(oid, '.mab.given'))
+    await waitFor(() => cap.req, 5000)
+    const sentId = JSON.parse(cap.req.body).attemptId
+    const late = (async () => { await sleep(cap.t + 21_000 - Date.now()); return sendOriginal(cap.req) })()
+    await waitFor(async () => (await rowState(page, oid)).retry, 10_000)
+    const n0 = postsFor(oid).length
+    await page.click(retrySel(oid))
+    const conf = await waitFor(async () => (await toasts(page, t0)).find(t => t.startsWith('Saved — confirmed')), 10_000)
+    const rp = postsFor(oid).slice(n0).map(p => JSON.parse(p.body))
+    check(rp.length === 2 && rp.every(b => b.attemptId === sentId) && !!rp[0].administeredAt && rp[1].administeredAt === undefined,
+      `Retry saving: the pinned minute (${rp[0]?.administeredAt}, 3 min ahead) was refused 400, then the ORIGINAL request was re-sent exactly: ${JSON.stringify(rp)}`)
+    check(!!conf && !(await toasts(page, t0)).some(t => /NOT saved|NOT recorded/.test(t)), `"Saved — confirmed", never "not saved" (toasts: ${JSON.stringify((await toasts(page, t0)).map(t => t.split('|')[0]))})`)
+    s = await rowState(page, oid)
+    if ((await toasts(page, t0)).some(t => /NOT saved/.test(t)) && s.disabled?.every(d => !d)) {
+      console.log('  the page said NOT saved and reopened the dose -> the nurse documents it again, as told')
+      await page.click(sel(oid, '.mab.given'))
+      await waitFor(async () => (await facts(oid)).length > f0, 10_000)
+    }
+    const lateRes = await late
+    await sleep(1500)
+    const f = await facts(oid)
+    check(lateRes.status === 200 && f.length === f0 + 1 && f.some(x => x.attemptId === sentId) && (await audit(oid)).length === a0 + 1,
+      `the original arrived at +21 s (HTTP ${lateRes.status}): ${f.length - f0} fact(s), ${(await audit(oid)).length - a0} audit entr${(await audit(oid)).length - a0 === 1 ? 'y' : 'ies'} for one dose — exactly one`)
+    await page.evaluate(() => { Date.now = window.__realNow })
   }
 
   await ctx.close(); await browser.close()

@@ -34,24 +34,25 @@ step 18-mardays-run-UTC       bash -c "TZ=UTC node $SP/mardays-harness.mjs"
 step 19-mirror-build          $REPO/node_modules/.bin/esbuild $E/tools/mirror-harness.ts --bundle --platform=node --format=esm --outfile=$SP/mirror-harness.mjs "--define:import.meta.env={\"VITE_APP_ENV\":\"development\"}" --log-level=warning
 step 20-mirror-run-UTC        bash -c "TZ=UTC node $SP/mirror-harness.mjs"
 step 21-mirror-run-LA         bash -c "TZ=America/Los_Angeles node $SP/mirror-harness.mjs"
-# the previous round's mirror harness, UNCHANGED: expected to differ exactly where the owner removed the first-dose lock
-step 22-oneaction-harness-old-build $REPO/node_modules/.bin/esbuild $OA/tools/oneaction-harness.ts --bundle --platform=node --format=esm --outfile=$SP/oneaction-harness.mjs "--define:import.meta.env={\"VITE_APP_ENV\":\"development\"}" --log-level=warning
-step 23-oneaction-harness-old-run-UTC bash -c "TZ=UTC node $SP/oneaction-harness.mjs"
+# (the previous round's oneaction-harness.ts is not re-run: its first scenario documents a NEW order's round 1 and
+#  its once scenario a new once dose, both expected LOCKED — exactly what the owner's first-dose decision opened —
+#  and every later step of that timeline cascades from it. mirror-harness.ts [2] re-runs its owner's example as a
+#  subsequent round, and [5] its midnight case.)
 # --- the live stack on the committed source: publish, staging bundle, restart ---
-step 24-publish-server        dotnet publish server/AuroraIcu.Api.csproj -c Release -o $SP/app-saferetry --nologo
-step 25-vite-staging          bash -c "VITE_APP_ENV=staging npx vite build --outDir $SP/fe-dist-saferetry --emptyOutDir && rm -rf $SP/app-saferetry/wwwroot && cp -r $SP/fe-dist-saferetry $SP/app-saferetry/wwwroot"
+step 22-publish-server        dotnet publish server/AuroraIcu.Api.csproj -c Release -o $SP/app-saferetry --nologo
+step 23-vite-staging          bash -c "VITE_APP_ENV=staging npx vite build --outDir $SP/fe-dist-saferetry --emptyOutDir && rm -rf $SP/app-saferetry/wwwroot && cp -r $SP/fe-dist-saferetry $SP/app-saferetry/wwwroot"
 for p in /proc/[0-9]*; do c=$(readlink $p/cwd 2>/dev/null); case "$c" in $SP/app-*) kill ${p#/proc/};; esac; done; sleep 2
 nohup bash $E/tools/run-server-saferetry.sh $SP/app-saferetry > $L/server.log 2>&1 &
-step 26-healthz               bash -c "for i in \$(seq 1 60); do curl -sf http://localhost:8080/healthz && exit 0; sleep 1; done; exit 1"
+step 24-healthz               bash -c "for i in \$(seq 1 60); do curl -sf http://localhost:8080/healthz && exit 0; sleep 1; done; exit 1"
 # --- real API + PostgreSQL ---
-step 27-api-check-saferetry   python3 $E/tools/api-check-saferetry.py
-step 28-api-check-oneaction-v2 env ONEACTION_DB=aurora_saferetry python3 $E/tools/api-check-oneaction.v2.py
-step 29-suite-mar             python3 $T/run-suite.py .github/workflows/deployed-mar-e2e.yml
-step 30-suite-assignments     python3 $T/run-suite.py .github/workflows/deployed-assignments-e2e.yml
-step 31-suite-encounter-scope python3 $T/run-suite.py .github/workflows/deployed-encounter-scope-e2e.yml --skip=4
+step 25-api-check-saferetry   python3 $E/tools/api-check-saferetry.py
+step 26-api-check-oneaction-v2 env ONEACTION_DB=aurora_saferetry python3 $E/tools/api-check-oneaction.v2.py
+step 27-suite-mar             python3 $T/run-suite.py .github/workflows/deployed-mar-e2e.yml
+step 28-suite-assignments     python3 $T/run-suite.py .github/workflows/deployed-assignments-e2e.yml
+step 29-suite-encounter-scope python3 $T/run-suite.py .github/workflows/deployed-encounter-scope-e2e.yml --skip=4
 # --- browser (controlled transport against the real page) ---
 mkdir -p $SP/shots-saferetry-final; rm -f $SP/shots-saferetry-final/*
-step 32-browser-setup         python3 $E/tools/saferetry-setup.py $L/saferetry-setup.json
-step 33-browser-check         node $E/tools/browser/saferetry-browser.cjs $SP/shots-saferetry-final $L/saferetry-setup.json
-step 34-browser-cleanup       python3 $E/tools/saferetry-cleanup.py $L/saferetry-setup.json
+step 30-browser-setup         python3 $E/tools/saferetry-setup.py $L/saferetry-setup.json
+step 31-browser-check         node $E/tools/browser/saferetry-browser.cjs $SP/shots-saferetry-final $L/saferetry-setup.json
+step 32-browser-cleanup       python3 $E/tools/saferetry-cleanup.py $L/saferetry-setup.json
 cat $S
