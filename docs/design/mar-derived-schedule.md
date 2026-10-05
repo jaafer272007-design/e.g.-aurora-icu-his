@@ -592,8 +592,17 @@ So documenting a dose never makes another round documentable at once.
   - a new fact of that action → "documented — confirmed";
   - none → "not recorded", decided only by a read that started at least
     15 s after the failure, then the round reopens.
+  *[SUPERSEDED 2026-10-05 — ### F, SAFE RETRY: Codex reproduced this rule
+  recording one dose twice (the original request committed after the
+  15 s read) and settling on a stale read. An absent fact no longer
+  settles anything; see ### F.]*
 - **MAR reads are applied in the order they started.** A poll that began
   before a documentation committed can never re-show a resolved round.
+
+*[DECIDED 2026-10-05 by the owner — ### F: continuous medicines are an
+exception, documentation stays available when needed, no recording
+interval; PRN stays as needed, its stored frequency is not a minimum
+interval. The analysis below is kept as it was written.]*
 
 **PRN and continuous / on-demand — UNRESOLVED (no source exists).** These rows
 have no scheduled time, so this rule cannot apply to them. A double or triple
@@ -627,6 +636,10 @@ dose, exactly as before. Both are stated, not hidden.
     same gate.
   - Not done here: it would give a hidden field a new meaning.
 
+*[DECIDED 2026-10-05 by the owner — ### F: the first dose is available
+immediately after signing, including once orders; subsequent rounds stay
+locked until their due time.]*
+
 **A consequence to decide (not changed here).** Round 1 of a newly signed
 repeating order, and the dose of a `once` order, fall at the **next full hour
 after signing**: the pre-existing first-dose rule (`FirstDose`). Under this
@@ -634,3 +647,130 @@ correction they are therefore locked until that hour. A `once` order signed
 at 06:10 can be documented from 07:00. If a first dose (for example a STAT
 dose) must be documentable on signing, that is a change to the first-dose
 rule, for the owner to decide. It is not an exception to this gate.
+
+### F · THE OWNER'S DECISIONS + SAFE RETRY (2026-10-05)
+
+Source: `docs/design/icu-update-mar-safe-retry-first-dose.md` (verbatim). This
+**supersedes the three open questions in ### E**, whose text is kept above with
+a dated note, and **replaces ### E's uncertain-save settlement**. Everything
+else in ### E is unchanged. That covers the lock on every subsequent round,
+the exact-time unlock, submission protection and refusals shown with the
+server's reason. It also covers the rolling timer (B/C), stable identities,
+day cards (D), backdating protection, overdue reasons and the order lock.
+
+**1 · The owner's decisions.**
+- **Continuous medicines are an exception.** Documentation stays available
+  whenever it is needed, through the ON DEMAND row. No recording interval is
+  added, and the `documentEveryHours` proposal in ### E is not taken.
+- **PRN stays as needed.** The stored PRN frequency stays undisplayed and
+  unused. It is not a minimum interval.
+- **The first dose is available immediately after signing**, including the
+  dose of a `once` order. Later rounds stay locked until their due time.
+  - "First" means the order has **no documented administration at all**
+    (`MarSchedule.IsFirstDose`; client `marSchedule.isFirstDose`).
+  - Nothing is re-derived. Round 1 keeps its due minute (`FirstDose`, the next
+    full hour) and its identity. Only *when it may be documented* changes, so
+    no existing history, identity or day card moves.
+  - Documenting round 1 early runs the unchanged timer. Given → next round at
+    the actual time + interval. Held/Refused → round 1's scheduled time +
+    interval. That next round is locked until it is due.
+- **Unresolved legacy orders keep their schedules.** An order with any
+  recorded fact is not at its first dose. That includes a legacy fact with no
+  `round`, whose round 1 is the `LegacyEntry` slot (Amendment B). Its round 1
+  keeps that slot and its lock, so no schedule is silently reset.
+- **Submission and safe-retry protection apply to every medication type:**
+  rounds, `once`, PRN and on-demand.
+
+**2 · SAFE RETRY (the settlement correction).** Codex reproduced two failures
+of ### E's rule with the unchanged handlers, and the browser check in
+`docs/evidence/icu-update-batch-1/safe-retry-first-dose/` reproduced both on
+the pre-change build:
+- **(a) A late commit.** The original request was still processing at
+  failure + 15.5 s. An empty read declared the dose "NOT recorded" and
+  reopened it. The nurse documented it again, then the original committed:
+  two records for one dose.
+- **(b) A stale read.** A newer read had already shown the committed fact.
+  An older settlement read then arrived, was correctly not displayed, but
+  was still used to declare "NOT recorded" and reopen.
+
+The rule now:
+- **Every documentation is one attempt with its own id.** The page draws 32
+  hex characters from `crypto.getRandomValues`, which needs no secure
+  context. The id goes in the request body as `attemptId` and is stored on
+  the fact the attempt creates.
+- **The server deduplicates under the existing order lock.** Before any state
+  check, it looks for a stored fact carrying the same `attemptId`. If that
+  fact documents the same action on the same dose, the server answers with
+  the existing record: 200, no fact, no audit entry. "The same dose" means
+  the same round number and due minute, the same `once` instance, or an
+  unscheduled PRN/on-demand dose.
+  - The check comes first, so a state that changed since cannot make a
+    recorded attempt read as refused. Examples: the round this very fact
+    resolved, a discontinued order, a closed encounter, or an
+    `administeredAt` that has since left the 24 h window. (The window check
+    moved after this match; for every other request it is unchanged.)
+  - The same id carrying different documentation is **409**.
+  - Rounds already allowed only one fact each. This is what makes **PRN and
+    on-demand** retries safe, where round identity cannot deduplicate.
+  - Deduplication is per order.
+- **Only the record settles an unanswered save.** The page keeps the order
+  locked and shows "Not confirmed — your given documentation (12:21) may
+  already be saved; checking the record". It re-reads every 5 s, and the
+  shared poll is 20 s.
+  - It settles as **recorded** when a server read shows a fact carrying
+    this attempt's id.
+  - It settles as **not saved, and cannot be** when the read shows the same
+    round or `once` dose documented by another fact. A round takes one fact,
+    so the original can then only be refused.
+  - **Elapsed time and an absent fact prove nothing.** The original request
+    may still commit.
+- **Stale reads are discarded whole.** A read is displayed, and allowed to
+  settle anything, only if it started after every read already applied. An
+  answered save (recorded or refused) is held until a server read **started
+  after that answer** is applied. So the controls never reopen on rows older
+  than the answer, and a stale verdict cannot exist.
+- **Retry saving.** The only retry is a button that re-sends **the same
+  attempt**: the same id, action, reason and actual time.
+  - A retried on-time Given carries the minute it was documented as its
+    `administeredAt`. Saving late therefore never moves when the dose was
+    given, and never moves the timer.
+  - Only that pinned minute can make a retry fail validation where the
+    original would pass: a device clock ahead of the server, or a day gone
+    by. So a **400 on a pinned retry re-sends the original request
+    exactly**. Found in self-review and reproduced: with the device clock
+    3 min ahead and the original still pending, treating that 400 as final
+    led to two facts.
+  - A refusal of the retry is then final for that attempt. The server
+    looked for the attempt first, and the original would be refused for
+    the same reason. The exception is 401, which happens before the server
+    looks, so the attempt stays unconfirmed: sign in again, then retry.
+  - The wording is about saving the documentation: "Retry saving (sends the
+    same documentation — it can never be recorded twice)". It never suggests
+    giving the dose again.
+- **Reload-safe.** An attempt whose outcome is unknown is kept in
+  `sessionStorage` (this tab, this nurse:
+  `aurora.marUnconfirmed:<name>`). A reload restores it as unconfirmed, with
+  Retry saving.
+- **Intentional later documentation is a new attempt** with a new id, and
+  records a new fact (PRN and continuous are available as needed).
+
+**3 · The additive contract — and its compatibility.**
+
+| Where | Field | Absent when |
+|---|---|---|
+| `POST /api/icu/mar/{orderId}/administrations/{adminId}` body | `attemptId` (optional; 8–64 chars of `A–Z a–z 0–9 - _`, else 400) | — |
+| stored fact (`AdministrationsJson`, `AdminDto` / `MedAdministration`) | `attemptId` | the fact was recorded without one |
+| `GET /api/icu/mar` fact row (`MarRowDto` / `MarRow`) | `attemptId` | as above |
+| `GET /api/icu/mar` current-round / `once` row | `firstDose: true` | the order has a documented administration |
+
+- **Storage.** All of it lives in existing JSON columns: data, not schema,
+  so no migration. `WhenWritingNull` keeps every existing fact's bytes and
+  every existing row's wire form unchanged.
+- **Requests without `attemptId`** behave exactly as before, with no
+  deduplication. Older clients and the deployed suites' plain requests are
+  unaffected.
+- **A server older than this field** refuses a request carrying it with
+  **400**, because `AdministerRequest` disallows unknown fields. A newer
+  client therefore needs this server. The appliance serves its own frontend
+  from one origin, so the two always ship together.
+- **Verification:** `docs/evidence/icu-update-batch-1/safe-retry-first-dose/`.
