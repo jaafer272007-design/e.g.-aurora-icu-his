@@ -255,8 +255,16 @@ export function NurseWorkspace() {
     syncMarBusy()
     /* a retried on-time Given carries the minute it was documented as its
        actual time (Held/Refused carry no administration time) */
-    const at = a.administeredAt ?? (retry && a.action === 'given' ? a.clickedAt : undefined)
-    const res = await documentAdministration(a.orderId, a.adminId, a.action, session.name, session.jobTitle, a.reason, at, a.attemptId)
+    const pinned = retry && a.action === 'given' && !a.administeredAt
+    const send = (at?: string) =>
+      documentAdministration(a.orderId, a.adminId, a.action, session.name, session.jobTitle, a.reason, at, a.attemptId)
+    let res = await send(pinned ? a.clickedAt : a.administeredAt)
+    /* only the pinned time can make a retry fail validation where the
+       original would pass (a device clock ahead of the server, or a day
+       gone by): a 400 then re-sends the ORIGINAL request exactly, so any
+       refusal below is the original's own and the original, still in
+       flight, can never commit after it */
+    if (pinned && res.kind === 'rejected' && res.status === 400 && locks.get(a.orderId) === lock) res = await send(undefined)
     if (locks.get(a.orderId) !== lock) return
     if (res.kind === 'ok') {
       const all = res.order.administrations ?? []
