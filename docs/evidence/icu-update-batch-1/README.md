@@ -116,3 +116,15 @@ immediate submission protection on every MAR action. Continuous and PRN
 documentation intervals are recorded as unresolved, because no source defines
 them. Its proof is in `one-action-per-round/` (see
 `one-action-per-round/README.md`).
+
+## Follow-up: the owner's decisions + safe retry (`safe-retry-first-dose/`)
+
+The owner's decisions and the settlement correction (2026-10-05, after Codex
+verified `d66c6cf`):
+- Continuous stays available when needed and PRN as needed, with no interval.
+- The first dose is open on signing; later rounds stay locked.
+- An unanswered MAR save is settled only from the record, through a
+  server-deduplicated `attemptId`, and Retry saving re-sends the same attempt.
+
+Both of Codex's failures were reproduced on the pre-change build first. Its
+proof is in `safe-retry-first-dose/` (see `safe-retry-first-dose/README.md`).

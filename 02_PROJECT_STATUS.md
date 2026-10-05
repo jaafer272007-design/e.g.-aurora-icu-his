@@ -1,6 +1,15 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-10-05 · current through THE OWNER'S ONE-ACTION-PER-ROUND
+**Last updated: 2026-10-05 · current through THE OWNER'S DECISIONS + SAFE RETRY on
+draft PR #234 (same branch, from Codex-verified `d66c6cf`; pushed for review only —
+no merge, no installer, no hospital deployment): continuous stays available when
+needed and PRN as needed (no interval); an order's first dose is open on signing,
+once orders included, while every later round keeps the scheduled-time lock and
+legacy orders keep their schedules; an unanswered MAR save is settled only from
+the record (an attemptId stored on the fact, deduplicated by the server under the
+order lock) — never by elapsed time — with stale reads discarded and Retry saving
+re-sending the same attempt; the update-write/rollback release gate stays
+UNRESOLVED — the record below. Prior (2026-10-05, latest): THE OWNER'S ONE-ACTION-PER-ROUND
 CORRECTION on draft PR #234 (same branch, from Codex-verified `dacab4e`; pushed
 for review only — no merge, no installer, no hospital deployment): a scheduled
 dose (a repeating order's current round, a `once` dose) can be documented —
@@ -101,6 +110,124 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-10-05 · THE OWNER'S DECISIONS + SAFE RETRY (follow-up on the one-action
+correction; same branch `claude/amazing-hopper-nwzw1x`, from Codex-verified
+`d66c6cf`; branch pushes for review only — no merge, `main` unchanged, no
+installer or EXE, no hospital access; synthetic data only).**
+DESIGN FIRST: the request is committed verbatim, alone, as
+`docs/design/icu-update-mar-safe-retry-first-dose.md`. The rules are MAR design
+**### F**, an append. ### E's three open questions and its uncertain-save
+settlement keep their text, each with a dated DECIDED / SUPERSEDED note. The
+record below (2026-10-05 · ONE ACTION PER MEDICATION ROUND) carries the same
+notes.
+
+1. **The owner's decisions.**
+   - **Continuous:** documentation stays available when needed; no recording
+     interval is added.
+   - **PRN:** stays as needed; its hidden stored frequency is not a minimum
+     interval.
+   - **First dose:** available immediately after signing, `once` orders
+     included (`MarSchedule.IsFirstDose`, which means no documented
+     administration on the order). Every later round keeps the
+     scheduled-time lock.
+   - **Nothing is re-derived:** round 1 keeps its due minute (the next full
+     hour) and its identity, so history, identities and day cards are
+     unchanged.
+   - **Legacy orders:** an order carrying a LEGACY fact is not at its first
+     dose. Its `LegacyEntry` round 1 keeps its slot and its lock, so no
+     schedule is silently reset.
+   - **Protection:** submission and safe-retry protection cover every
+     medication type.
+2. **SAFE RETRY — the uncertain-save settlement corrected.** Codex reproduced
+   two failures of the former 15 s rule, and both were reproduced first on
+   the pre-change build in the browser: a late original commit, and a stale
+   settlement read. Each produced two facts for one dose.
+   - **Server:** every documentation may carry an `attemptId`, stored on its
+     fact. Under the existing order lock, before any state check, a resend of
+     a recorded attempt is answered with the existing record: no fact, no
+     audit entry. The same id with different documentation is 409. This is
+     the deduplication PRN and on-demand doses lacked.
+   - **Page:** an unanswered save stays **unconfirmed** until the record
+     settles it, either through a fact carrying the attempt id, or through the
+     same round documented by another fact. Elapsed time plus an absent fact
+     proves nothing.
+   - **Stale reads:** discarded whole (display and verdict). An answered save
+     is held until a read started after the answer is applied.
+   - **Retry saving:** re-sends the same attempt. A retried on-time Given
+     carries its documented minute. If that pinned minute is refused (400,
+     e.g. a device clock ahead), the original request is re-sent exactly.
+     That was found in self-review and reproduced with the device clock
+     3 min ahead.
+   - **Reload:** unconfirmed attempts survive a reload (`sessionStorage`,
+     this tab and nurse).
+   - **Wording:** about saving the documentation, never about giving the
+     dose again. A later documentation is a new attempt.
+3. **Additive contract** (all inside existing JSON, no migration;
+   `WhenWritingNull` keeps existing bytes):
+   - `attemptId` on the request body, the stored fact and the MAR fact row;
+   - `firstDose: true` on a first-dose row.
+   - A request without `attemptId` behaves exactly as before.
+   - A server older than this change refuses a body carrying `attemptId`
+     (400). The appliance ships client and server together.
+4. **Unchanged:** the rolling timer, every subsequent round's lock and its
+   exact unlock, overdue delay reasons, backdating protection (the
+   `administeredAt` window now runs after the safe-retry match, otherwise
+   identical), row locks, daily cards, hospital dates, midnight references,
+   sidebar and filters.
+
+   **The release gate stays UNRESOLVED:** write exclusion during update
+   validation, plus a failed-health rollback drill with round-bearing facts.
+5. **Tests:** `deployed-mar-e2e.yml` documents the run order's first dose
+   again (as before the one-action rule), asserts the NEXT round 409 with
+   nothing written, and adds a PRN safe-retry leg.
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-update-batch-1/safe-retry-first-dose/`).**
+Final steps run once on the committed source `303ae8c`; all 32 exit 0.
+- **Builds and CI:** `npm run build`, `dotnet build -c Release` and the
+  `ci.yml` frontend + server steps all exit 0 (only the existing CS8602
+  warning).
+- **Rolling-timer replay:** 25 scenarios, **372 checks, 0 failures**.
+- **Grouping harness:** 25/25.
+- **Client/mock mirror on a fake clock:** **46/46** under UTC and under
+  America/Los_Angeles. It covers the first dose open 20 min early with
+  round 2 locked until actual + 1 h; the owner's 06:05 → 07:05 example as a
+  subsequent round (07:04:59.999 refused, 07:05:00.000 open); once; legacy;
+  midnight; and attempt replays.
+- **Real API + PostgreSQL:** **29/29**, plus the previous round's check as a
+  superseding copy, **40/40** (only the new once order's expectation
+  changed).
+  - First dose 33 min early → 200; the next round 409 with nothing written.
+  - Legacy round 1 unchanged and 409.
+  - Replays → 200 with the row byte-identical (PRN, on-demand, round, once,
+    after discontinuation).
+  - **6 concurrent copies of one attempt → 1 fact, 1 audit entry.**
+- **Deployed suites replayed locally:** MAR (updated), assignments and
+  encounter-scope all pass.
+- **Browser, controlled transport against the real page:** **41/41**.
+  - First dose / once open; subsequent and legacy rounds locked.
+  - Delayed original (+21 s) with Retry saving, and without it → **1 fact,
+    1 audit entry**.
+  - Stale read discarded → **1 fact**.
+  - Lost original kept unconfirmed across a reload, then one retry request
+    → recorded at its documented minute.
+  - Device clock 3 min ahead → pinned retry 400, original re-sent → **1
+    fact**.
+  - Every PRN/continuous case ends with an intentional later Given → a
+    second fact (a new attempt).
+  - Contrast ≥ 6.09:1.
+- **Reproduced first:** on the build of `d66c6cf`, S1/S2 → **1 passed, 8
+  failed**, with 2 facts for one dose in each case. On `cbf74cd`, S4 →
+  **0/3**, 2 facts.
+
+**Not verified / limitations:**
+- Chromium only, and real time rather than a faked server clock.
+- Reload persistence is per tab and per nurse (`sessionStorage`); another
+  device documenting a PRN dose again is a new attempt.
+- The 390 px page scroll comes from the I&O card's totals row. It predates
+  this change and was flagged separately.
+- The deployed suites were replayed locally only.
+
 **2026-10-05 · ONE ACTION PER MEDICATION ROUND (the owner's correction; same
 branch `claude/amazing-hopper-nwzw1x`, from Codex-verified `dacab4e`; branch
 pushes for review only — no merge, `main` unchanged, no installer or EXE, no
@@ -140,6 +267,9 @@ DESIGN FIRST: the request is committed verbatim, alone, as
    - An uncertain outcome locks the order until a fresh server read settles it
      ("confirmed", or "not recorded" only from a read started ≥ 15 s after the
      failure).
+     *[SUPERSEDED 2026-10-05 — the record above (SAFE RETRY): the 15 s
+     "not recorded" verdict recorded one dose twice when the original
+     committed later; an unanswered save now settles only from the record.]*
    - MAR reads apply in the order they started.
 4. **Unchanged:** the rolling timer (Amendments B/C), overdue delay reasons,
    backdating protection, round identities, row locks, daily cards, hospital
@@ -148,6 +278,9 @@ DESIGN FIRST: the request is committed verbatim, alone, as
 
    **The release gate stays UNRESOLVED:** write exclusion during update
    validation, plus a failed-health rollback drill with round-bearing facts.
+*[DECIDED 2026-10-05 by the owner — the record above: continuous stays
+available when needed, PRN as needed (no interval), the first dose is open
+on signing. Item 5 is kept as written.]*
 5. **UNRESOLVED — continuous and PRN (no source exists; nothing invented).**
    These rows have no scheduled time, so the rule cannot apply to them.
    - **The owner's screenshot** (continuous Insulin (Actrapid) 2.5 U/h, three

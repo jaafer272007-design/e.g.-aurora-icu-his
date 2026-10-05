@@ -1,0 +1,25 @@
+setup P-1016 at 2026-10-05 09:19 UTC; browser device zone UTC; scenarios: S1,S2
+
+[S1] DELAYED ORIGINAL COMMIT beyond 15 s (PRN): the page gets no answer; the original request reaches the server 21 s later
+  original request captured: {"action":"given"}
+  FAIL failure +16.0 s, the original still pending: the controls stay LOCKED — "Not recorded — the server did not answer and has no record of it; document it again if it is still needed."
+  FAIL no "NOT recorded" verdict while the original may still commit (toasts: ["Checking the record","Dose NOT recorded"])
+  the page reopened the dose -> the nurse documents it again, as told
+  the original reached the server at failure +21.0 s -> HTTP 200
+  FAIL one dose, 2 fact(s) on the record — exactly one
+  FAIL audit: 2 administration entries — exactly one
+  intentional later documentation (a new attempt)
+  FAIL a later Given on the PRN order is recorded as a second fact with a new attempt id (undefined)
+
+[S2] OUT-OF-ORDER settlement reads (PRN): a read taken before the commit arrives after a newer read showed the fact
+  stale read #2 held at failure +15.6 s
+  the original commits (HTTP 200); a newer read is triggered (visibility change)
+  the stale read is released
+  reads: #1 passed (before arming); #2 HELD — the stale read, fetched before the commit; #3 passed — the newer read, after the commit; #4 held until the stale read is released; #5 held until the stale read is released; #6 held until the stale read is released
+  FAIL no "not recorded" verdict from the stale read (verdicts shown: ["Dose NOT recorded","Dose NOT recorded"])
+  FAIL the newer read confirmed the save
+  PASS the display kept the recorded dose after the stale read (documented rows 1 -> 1)
+  the page said NOT recorded and reopened the dose -> the nurse documents it again, as told
+  FAIL one dose, 2 fact(s) on the record — exactly one
+
+RESULT 1 passed, 8 failed

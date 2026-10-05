@@ -1,0 +1,46 @@
+[1] the owner's example: q1h, round 1 due 06:00, Given at 06:05 -> round 2 at 07:05, locked until 07:05, then ONE action
+  FAIL 05:50: round 1 (2026-10-05 06:00) is in the 30-min DUE-SOON window and still LOCKED — the reminder is not permission
+  FAIL 05:50, round 1 before 06:00: Given / Held / Refused all refused by the mock ("ACCEPTED…")
+  FAIL 05:50, round 1 before 06:00: no fact, no audit entry added
+  FAIL 05:50, round 1 before 06:00: the row is current but NOT eligible now; it unlocks at 2026-10-05 06:00 (hospital)
+  FAIL 06:05: round 1 Given -> accepted
+  FAIL round 2 due 2026-10-05 06:50 (hospital) — from the actual time 06:05 + 1 h
+  PASS 06:05, straight after the Given: Given / Held / Refused all refused by the mock ("dose round 2 is not due until 2026-10-05 03:50 — one action per dose r…")
+  PASS 06:05, straight after the Given: no fact, no audit entry added
+  PASS 06:05, straight after the Given: the row is current but NOT eligible now; it unlocks at 2026-10-05 06:50 (hospital)
+  PASS 06:40 (due-soon window): Given / Held / Refused all refused by the mock ("dose round 2 is not due until 2026-10-05 03:50 — one action per dose r…")
+  PASS 06:40 (due-soon window): no fact, no audit entry added
+  PASS 06:40 (due-soon window): the row is current but NOT eligible now; it unlocks at 2026-10-05 06:50 (hospital)
+  PASS 06:40: DUE SOON shown, controls locked
+  FAIL 07:04:59.999: Given / Held / Refused all refused by the mock ("ACCEPTED…")
+  FAIL 07:04:59.999: no fact, no audit entry added
+  FAIL 07:04:59.999: the row is current but NOT eligible now; it unlocks at 2026-10-05 06:50 (hospital)
+  PASS 07:05:00.000: round 2 eligible
+  FAIL 07:05: Held -> accepted (one action)
+  PASS 07:05: a second action on round 2 (given/refused/held) -> refused as already documented
+  FAIL round 3 due 2026-10-05 08:04 = the held round's scheduled 07:05 + 1 h, and LOCKED — recording a dose opened no future round
+  PASS exactly two facts on the order (round 1 Given, round 2 Held)
+
+[2] Refused at due: the next round = scheduled time + interval, locked
+  PASS 08:05: round 3 Refused -> accepted
+  FAIL round 4 due 2026-10-05 09:04, locked
+
+[3] an already-due next round stays eligible (no cooldown)
+  PASS 09:30: round 1 Given late with actual time 07:10 (hospital)
+  PASS round 2 due 2026-10-05 08:10 — already past, eligible immediately
+
+[4] once order
+  FAIL 10:59:59, the once dose (11:00): Given / Held / Refused all refused by the mock ("ACCEPTED…")
+  FAIL 10:59:59, the once dose (11:00): no fact, no audit entry added
+  FAIL 10:59:59, the once dose (11:00): the row is current but NOT eligible now; it unlocks at 2026-10-05 11:00 (hospital)
+file:///tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/oneaction-harness.mjs:3046
+check(typeof doc(O, cur(O).adminId, "given") !== "string" && cur(O) === void 0, "11:00: the once dose Given; nothing further expected");
+                          ^
+
+TypeError: Cannot read properties of undefined (reading 'adminId')
+    at file:///tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/oneaction-harness.mjs:3046:27
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+Node.js v22.22.2
