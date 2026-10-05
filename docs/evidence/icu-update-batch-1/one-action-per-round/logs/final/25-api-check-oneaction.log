@@ -1,0 +1,63 @@
+clock (server wire, UTC): now=2026-10-05 08:24  run=082421  (the server runs TZ=Asia/Baghdad; hospital time = UTC+3)
+admitted synthetic P-1023 (ENC-1024) at B-08
+
+[1] the owner's example, on the server clock: Given now -> the next round opens an interval later; every action before it is refused
+  PASS q1h round 1 Given at 2026-10-05 08:24 -> round 2 due 2026-10-05 09:24 = actual + 1 h (rule given)
+  PASS round 2 before its time: Given / Held / Refused: given->409, held->409, refused->409 (error: "dose round 2 is not due until 2026-10-05 09:24 — one action per dose round: it can be documented (given, held ")
+  PASS round 2 before its time: Given / Held / Refused: stored facts + audit history byte-identical after the refusals
+  PASS round 2 before its time: Given / Held / Refused: GET /api/icu/mar still serves the same current round 2026-10-05T09:24~r2
+  PASS round 2 before its time: Given with a delay reason + an actual time: given->409 (error: "dose round 2 is not due until 2026-10-05 09:24 — one action per dose round: it can be documented (given, held ")
+  PASS round 2 before its time: Given with a delay reason + an actual time: stored facts + audit history byte-identical after the refusals
+  PASS round 2 before its time: Given with a delay reason + an actual time: GET /api/icu/mar still serves the same current round 2026-10-05T09:24~r2
+  PASS the only audit entry is the Given's: "2026-10-05 04:00 dose given at 2026-10-05 08:24 — LATE: 4h 24m after the scheduled time — round 1; next round due 2026-1"
+
+[2] direct early API burst: 6 concurrent early requests (mixed actions) -> all 409, nothing written
+  PASS statuses [409, 409, 409, 409, 409, 409]
+  PASS stored facts + audit history byte-identical after the burst
+
+[3] the exact boundary on the server clock, then ONE action at due (concurrent mixed requests)
+  PASS round 2 due 2026-10-05 08:26 (in 97 s) — set by a Given with actual time 58 min ago
+  PASS 3.9 s before due: Given -> 409
+  PASS stored record unchanged by the boundary refusal
+  PASS at due + 1 s, 5 concurrent mixed requests -> exactly one 200 (given); the rest 409 already-documented: [409, 409, 409, 409, 200]
+  PASS exactly one round-2 fact (given) and exactly one new audit entry
+  PASS round 3 due 2026-10-05 09:26 — documenting round 2 did not open another round
+  PASS round 3 straight after: Given / Held / Refused: given->409, held->409, refused->409 (error: "dose round 3 is not due until 2026-10-05 09:26 — one action per dose round: it can be documented (given, held ")
+  PASS round 3 straight after: Given / Held / Refused: stored facts + audit history byte-identical after the refusals
+  PASS round 3 straight after: Given / Held / Refused: GET /api/icu/mar still serves the same current round 2026-10-05T09:26~r3
+
+[4] stale page: a view loaded before another station documented the round
+  PASS the stale page's Held on the resolved round -> 409 ("dose round 1 (due 2026-10-05 04:00) was already documented as given by RN Maya Chen at 202")
+  PASS the refreshed page's next round (due 2026-10-05 12:26) -> 409 not due yet
+  PASS stored record unchanged by both refusals
+
+[5] an already-due next round stays eligible (no cooldown); a round that ends in the future locks
+  PASS round 2 due 2026-10-05 06:26 (2 h ago) — open
+  PASS round 2 Held -> round 3 due 2026-10-05 07:26 = skipped due + 1 h, already past -> open
+  PASS round 3 Refused -> round 4 due 2026-10-05 08:26
+  PASS round 4 (due 2026-10-05 08:26, past) Given now -> round 5 due 2026-10-05 09:26
+  PASS round 5 (due 2026-10-05 09:26, future): given->409, held->409, refused->409 (error: "dose round 5 is not due until 2026-10-05 09:26 — one action per dose round: it can be documented (given, held ")
+  PASS round 5 (due 2026-10-05 09:26, future): stored facts + audit history byte-identical after the refusals
+  PASS round 5 (due 2026-10-05 09:26, future): GET /api/icu/mar still serves the same current round 2026-10-05T09:26~r5
+
+[6] once orders
+  PASS a new once order's dose (due 2026-10-05 09:00, the next full hour): given->409, held->409, refused->409 (error: "this dose is not due until 2026-10-05 09:00 — one action per dose round: it can be documented (given, held or ")
+  PASS a new once order's dose (due 2026-10-05 09:00, the next full hour): stored facts + audit history byte-identical after the refusals
+  PASS a new once order's dose (due 2026-10-05 09:00, the next full hour): GET /api/icu/mar still serves the same current round 2026-10-05T09:00
+  PASS a due once dose (2026-10-05 04:00) Given -> 200, nothing further is expected
+  PASS the once dose again -> 409
+
+[7] PRN and continuous (on demand): NOT gated — no prescription field defines a next documentation round (recorded, unresolved)
+  PASS continuous order -> ondemand row: "no derivable dose schedule — 'continuous'; document on demand"
+  PASS three sequential Given on the continuous order -> [200, 200, 200]; 3 facts in the same minute (the screenshot's pattern: the SERVER has no rule for it — the client's submission guard stops double clicks, nothing stops deliberate repeats)
+  PASS PRN order (stored frequency q6h, not shown or used) -> two Given [200, 200] (unresolved: whether q6h on a PRN order is a minimum interval)
+
+[8] audit discipline: every 409 above wrote nothing; the successful documentations wrote one fact + one audit entry each
+  PASS ORD-131: 1 stored facts (expected 1)
+  PASS ORD-132: 2 stored facts (expected 2)
+  PASS ORD-133: 1 stored facts (expected 1)
+  PASS ORD-136: 1 stored facts (expected 1)
+
+cleanup: discharged ENC-1024 -> 200
+
+RESULT 41 passed, 0 failed

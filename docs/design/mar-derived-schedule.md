@@ -538,3 +538,99 @@ current round or availability row the interface already returns.
 - The due count and the Meds Due KPI use the same predicate over the rows,
   never over cards.
 - The printed MAR is not affected.
+
+---
+
+### E · ONE ACTION PER ROUND — a scheduled dose opens at its exact scheduled time (owner's correction, 2026-10-05)
+
+Source: `docs/design/icu-update-mar-one-action-per-round.md` (verbatim).
+This **adds a rule on top of Amendments B and C; the timer itself is
+unchanged.** Given → actual administration time + interval; Held/Refused →
+the skipped round's scheduled time + interval; one current round; stable
+identities; backdating protection; overdue delay reasons; row locks.
+
+**The rule.** A scheduled dose — a repeating order's current round, or the
+single dose of a `once` order — can be documented (Given, Held **or**
+Refused) from its **exact scheduled time**, never before. After a round is
+documented, the next round is shown but locked until its own scheduled time.
+So documenting a dose never makes another round documentable at once.
+- **An already-due next round stays open.** For example, a Held round whose
+  scheduled time + interval has already passed. No cooldown is added.
+- **The 30-minute due-soon window** (`DUE_SOON_MINUTES`) is a reminder, not
+  permission: such a round reads **DUE SOON** and stays locked until its time.
+- **Where it is enforced:**
+  - **Server:** `MarSchedule.NotYetDue`, called by the write endpoint inside
+    the existing order lock, against the round just derived from the stored
+    facts and the server clock. Before the scheduled time the answer is
+    **409**: the round exists, and the same request succeeds once it is due.
+    Nothing is appended or audited. The resolved-round, stale due-minute and
+    duplicate 409s keep their order and wording.
+  - **Client:** `marSchedule.documentableAt`, and `marDays.isEligibleNow` /
+    `unlocksAt`.
+  - **Mock adapter:** refuses with the same wording.
+
+**The page.**
+- **A current round that is not open yet** shows its three controls
+  disabled, with a line saying when they open ("Opens 07:05 (in 42 min) — one
+  action per round"). An exact-time wake-up opens them without a reload or a
+  poll.
+- **"Current" and "open now" are separate.** The card that holds the current
+  round is unchanged (### D). Whether its controls are open is a second
+  question.
+- **Submission protection.** An order with a documentation in flight, or
+  whose outcome a fresh server read has not yet settled, accepts nothing.
+  - Given, Held, Refused and the reason dialog's confirm stay disabled through
+    the save and the authoritative refresh.
+  - The guard is immediate: a second click in the same frame is refused
+    before React re-renders.
+  - The dialog's confirm fires once. The 2nd and 3rd clicks of a double or
+    triple click are ignored.
+- **Refusals are shown, not swallowed.** The server's reason appears in hospital
+  time, in a toast and on the row.
+- **An outcome with no answer** (unreachable, timed out, or a 5xx) locks the
+  order until a fresh server read settles it:
+  - a new fact of that action → "documented — confirmed";
+  - none → "not recorded", decided only by a read that started at least
+    15 s after the failure, then the round reopens.
+- **MAR reads are applied in the order they started.** A poll that began
+  before a documentation committed can never re-show a resolved round.
+
+**PRN and continuous / on-demand — UNRESOLVED (no source exists).** These rows
+have no scheduled time, so this rule cannot apply to them. A double or triple
+click now records one dose. A deliberate later click still records another
+dose, exactly as before. Both are stated, not hidden.
+- **Continuous** (the owner's screenshot: Insulin (Actrapid) 2.5 U/h,
+  `frequency: continuous`):
+  - Neither the medication order (`MedicationDto` / `MedicationDetails`), its
+    structured infusion dose (`infusion`: value, mass unit, time basis — a
+    rate), the formulary entry (doses, routes, frequencies) nor any order set
+    defines when a continuous infusion's next documentation is due.
+  - "U/h" is a rate, not a repeat frequency.
+  - The only "q1h" on that seeded order is free text in its creation history
+    ("Glucose check q1h while on infusion"). It is a glucose-check
+    instruction, not a documentation round.
+  - **Smallest proposed change, if the owner wants it:** an additive,
+    prescriber-set `documentEveryHours` (or a named check interval) on
+    continuous-infusion medication orders. It would be validated like a
+    frequency, stored inside `MedicationJson` (data, not schema, so no
+    migration), shown on the order and the MAR card, and drive a rolling
+    "rate check" round through this same rule. Until then, a continuous
+    order stays ON DEMAND.
+- **PRN:** a PRN order does store a frequency (the order form requires one,
+  e.g. paracetamol PRN `q6h`), but nothing displays or uses it. PRN orders
+  render "PRN (indication)", and the validator's rule is that PRN derives from
+  the last administration only.
+  - Whether that stored frequency is a **minimum interval** is a clinical
+    decision.
+  - If confirmed, the smallest change is: PRN availability opens at the last
+    Given + that interval, shown on the order and the card, enforced by this
+    same gate.
+  - Not done here: it would give a hidden field a new meaning.
+
+**A consequence to decide (not changed here).** Round 1 of a newly signed
+repeating order, and the dose of a `once` order, fall at the **next full hour
+after signing**: the pre-existing first-dose rule (`FirstDose`). Under this
+correction they are therefore locked until that hour. A `once` order signed
+at 06:10 can be documented from 07:00. If a first dose (for example a STAT
+dose) must be documentable on signing, that is a change to the first-dose
+rule, for the owner to decide. It is not an exception to this gate.

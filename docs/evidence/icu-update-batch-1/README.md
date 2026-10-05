@@ -107,3 +107,12 @@ Two owner-approved refinements (2026-10-04, after Codex's review passed at
 `def08a9`): the sidebar keeps its hover across section changes, and the nurse
 MAR shows one card per prescription per hospital day. Their proof is in
 `sidebar-mar-cards/` (see `sidebar-mar-cards/README.md`).
+
+## Follow-up: one action per medication round (`one-action-per-round/`)
+
+The owner's correction (2026-10-05, after Codex verified `dacab4e`): a
+scheduled dose can be documented only from its exact scheduled time, with
+immediate submission protection on every MAR action. Continuous and PRN
+documentation intervals are recorded as unresolved, because no source defines
+them. Its proof is in `one-action-per-round/` (see
+`one-action-per-round/README.md`).

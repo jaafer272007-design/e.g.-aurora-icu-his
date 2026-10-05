@@ -1,0 +1,26 @@
+clock (server wire, UTC): now=2026-10-05 08:05  run=080515  (the server runs TZ=Asia/Baghdad; hospital time = UTC+3)
+admitted synthetic P-1015 (ENC-1015) at B-08
+
+[1] the owner's example, on the server clock: Given now -> the next round opens an interval later; every action before it is refused
+  PASS q1h round 1 Given at 2026-10-05 08:05 -> round 2 due 2026-10-05 09:05 = actual + 1 h (rule given)
+  PASS round 2 before its time: Given / Held / Refused: given->409, held->409, refused->409 (error: "dose round 2 is not due until 2026-10-05 09:05 — one action per dose round: it can be documented (given, held ")
+  PASS round 2 before its time: Given / Held / Refused: stored facts + audit history byte-identical after the refusals
+  PASS round 2 before its time: Given / Held / Refused: GET /api/icu/mar still serves the same current round 2026-10-05T09:05~r2
+  PASS round 2 before its time: Given with a delay reason + an actual time: given->409 (error: "dose round 2 is not due until 2026-10-05 09:05 — one action per dose round: it can be documented (given, held ")
+  PASS round 2 before its time: Given with a delay reason + an actual time: stored facts + audit history byte-identical after the refusals
+  PASS round 2 before its time: Given with a delay reason + an actual time: GET /api/icu/mar still serves the same current round 2026-10-05T09:05~r2
+  PASS the only audit entry is the Given's: "2026-10-05 04:00 dose given at 2026-10-05 08:05 — LATE: 4h 05m after the scheduled time — round 1; next round due 2026-1"
+
+[2] direct early API burst: 6 concurrent early requests (mixed actions) -> all 409, nothing written
+  PASS statuses [409, 409, 409, 409, 409, 409]
+  PASS stored facts + audit history byte-identical after the burst
+
+[3] the exact boundary on the server clock, then ONE action at due (concurrent mixed requests)
+Traceback (most recent call last):
+  File "/home/user/e.g.-aurora-icu-his/docs/evidence/icu-update-batch-1/one-action-per-round/tools/api-check-oneaction.py", line 130, in <module>
+    q2 = order('Q', 'q1h', F)
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/e.g.-aurora-icu-his/docs/evidence/icu-update-batch-1/one-action-per-round/tools/api-check-oneaction.py", line 63, in order
+    assert st == 200, (st, o)
+           ^^^^^^^^^
+AssertionError: (409, {'error': 'safety warning — Duplicate therapy: Oneaction Q1 080515 1 mg is already active (ORD-101). Ordering requires an acknowledged override (overrideJustification).'})

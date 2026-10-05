@@ -1,0 +1,43 @@
+SKIP  [0] Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objec
+SKIP  [1] ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+SKIP  [2] Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+PASS  [3] Login as doctor and nurse
+      sara.rahman: token issued
+      maya.chen: token issued
+SKIP  [4] ORD-113 was neutralized by the audited backfill (read-only; re-asserting every run IS the  (asserts a hosted-staging data artefact absent from a fresh local database)
+PASS  [5] Clinical initiation on a patient with NO open encounter → 409 Conflict (chokepoint, not va
+      create on discharged P-1017 -> HTTP 409
+      precise 409: patient 'P-1017' has no open encounter — creating orders is not permitted: new care cannot be initiated on a closed episode
+PASS  [6] encounterId is STRICTLY SERVER-DERIVED — supplying it in a mutation payload fails binding 
+      create with client-supplied encounterId -> HTTP 400
+      create with client-supplied encounterId -> HTTP 400
+      modify with encounterId in changes -> HTTP 400
+      encounterId rejected everywhere it could be supplied — scoping is the server's alone
+PASS  [7] Admit THIS RUN's patient (unique MRN, dynamic free bed)
+      admitted P-1026 on ENC-1027 (bed B-08)
+PASS  [8] Create signed med order + pending order — BOTH scoped to the open encounter
+      created ORD-142 (active, dose 2026-10-05T09:00~r1) + ORD-143 (pending) — both carry encounterId=ENC-1027
+PASS  [9] MAR serves the order's doses while the encounter is open
+      MAR contains the run order while its encounter is open
+PASS  [10] Discharge → the cascade discontinues BOTH orders in the same transaction (audited, clinici
+      discharged by Dr. Sara Rahman
+      cascade: active + pending both discontinued, actor = discharging clinician, exact reason, no scheduled doses (derived schedule ends with the order)
+PASS  [11] sign/modify/implement on the CLOSED encounter → 409 at the guard (live since the four-code
+      /api/icu/orders/ORD-143/sign -> HTTP 409
+      /api/icu/orders/ORD-143/implement -> HTTP 403
+      sign on closed encounter -> 409 at the GUARD (not a status 409): encounter 'ENC-1027' is not open — signing an order is not permitted: new care cannot be initiated on a closed episode
+      modify on closed encounter -> 409 at the guard
+PASS  [12] MAR drops the discharged encounter's rows; documenting a dose → 409 at the chokepoint
+      MAR no longer serves the discharged encounter
+      administer after discharge -> HTTP 409
+      precise 409: encounter 'ENC-1027' is not open — documenting a dose is not permitted: new care cannot be initiated on a closed episode
+PASS  [13] Readmit by patientId (the typed MRN is RETIRED) → same patient, same MRN, NEW encounter, N
+      readmitted P-1026 on NEW encounter ENC-1028
+      readmission: no stale actives; 2 orders remain on the longitudinal chart
+      ORD-144 scoped to the NEW encounter ENC-1028
+PASS  [14] Final discharge — the cascade closes out the readmission's order too (second cascade evide
+      both encounters closed — the run leaves NO active or pending order behind (cascade is the cleanup)
+PASS  [15] Failure-path cleanup — release THIS run's encounters (runs on failure/cancel too)
+      no open encounter remains for P-1026 — nothing leaked
+      cleanup verified: no active/pending order left on the run patient
+SUITE PASSED

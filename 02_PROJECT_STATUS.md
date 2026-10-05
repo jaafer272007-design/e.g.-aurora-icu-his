@@ -1,6 +1,17 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-10-04 · current through TWO OWNER-APPROVED REFINEMENTS on
+**Last updated: 2026-10-05 · current through THE OWNER'S ONE-ACTION-PER-ROUND
+CORRECTION on draft PR #234 (same branch, from Codex-verified `dacab4e`; pushed
+for review only — no merge, no installer, no hospital deployment): a scheduled
+dose (a repeating order's current round, a `once` dose) can be documented —
+Given, Held or Refused — from its exact scheduled time, never before: refused
+409 by the server inside the order lock with nothing written, shown locked on
+the MAR card with when it opens, mirrored by the mock adapter; immediate
+submission protection on every MAR action, visible refusals, uncertain outcomes
+settled by a fresh server read before any retry; the rolling timer unchanged;
+continuous and PRN documentation intervals UNRESOLVED (no prescription source
+exists — proposals recorded); the update-write/rollback release gate stays
+UNRESOLVED — the record below. Prior (2026-10-04, latest): TWO OWNER-APPROVED REFINEMENTS on
 draft PR #234 (same branch; after Codex's review passed at `def08a9`; pushed for
 review only — no merge, no installer, no hospital deployment): the section
 sidebar now stays expanded across section changes under a resting pointer (small
@@ -89,6 +100,127 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-10-05 · ONE ACTION PER MEDICATION ROUND (the owner's correction; same
+branch `claude/amazing-hopper-nwzw1x`, from Codex-verified `dacab4e`; branch
+pushes for review only — no merge, `main` unchanged, no installer or EXE, no
+hospital access; synthetic data only).**
+DESIGN FIRST: the request is committed verbatim, alone, as
+`docs/design/icu-update-mar-one-action-per-round.md`. The rule is MAR design
+**### E**, a pure append.
+
+1. **The rule.** A scheduled dose (a repeating order's current round, or a
+   `once` dose) can be documented (Given, Held or Refused) from its **exact
+   scheduled time**, never before. After a round is documented, the next round
+   is shown locked until its own time, so recording a dose never opens another
+   round at once.
+   - An already-due next round stays open; no cooldown is added.
+   - The 30-minute due-soon window is a reminder only: such a round reads
+     DUE SOON and stays locked.
+   - **Server:** `MarSchedule.NotYetDue`, inside the existing order lock,
+     against the freshly derived round and the server clock. Before the
+     scheduled time the answer is 409 and nothing is appended or audited. The
+     resolved/stale/duplicate 409s are unchanged.
+   - **Client mirror:** `marSchedule.documentableAt`, `marDays.isEligibleNow` /
+     `unlocksAt`. The mock adapter refuses the same way and now returns its
+     refusal wording.
+2. **The MAR card.** A current round that is not open yet shows Given / Held /
+   Refused disabled, with "Opens HH:mm (in N min) — one action per round". An
+   exact-time wake-up opens them without a reload. "Current" and "open now"
+   are now separate questions.
+3. **Submission protection.** One documentation per order at a time.
+   - An immediate ref guard, plus controls disabled through the save and the
+     authoritative refresh.
+   - The dialog's confirm fires once; the 2nd/3rd clicks of a multi-click are
+     ignored.
+   - Refusals are shown with the server's reason, in hospital time, in a toast
+     and on the row. `documentAdministration` now returns ok / rejected /
+     uncertain. Before, a refusal was a silent `null`, and an unanswered
+     request fell through to the mock store.
+   - An uncertain outcome locks the order until a fresh server read settles it
+     ("confirmed", or "not recorded" only from a read started ≥ 15 s after the
+     failure).
+   - MAR reads apply in the order they started.
+4. **Unchanged:** the rolling timer (Amendments B/C), overdue delay reasons,
+   backdating protection, round identities, row locks, daily cards, hospital
+   dates, midnight references, history, sidebar, filters, the printed MAR, and
+   the wire format and stored data.
+
+   **The release gate stays UNRESOLVED:** write exclusion during update
+   validation, plus a failed-health rollback drill with round-bearing facts.
+5. **UNRESOLVED — continuous and PRN (no source exists; nothing invented).**
+   These rows have no scheduled time, so the rule cannot apply to them.
+   - **The owner's screenshot** (continuous Insulin (Actrapid) 2.5 U/h, three
+     Given at the same minute): repeated clicks now record one dose per
+     multi-click. A deliberate later click still records another dose.
+   - **Continuous:** no field on the medication order, its structured infusion
+     dose (a rate), the formulary or the order sets defines a next
+     documentation round. The only "q1h" is free text about glucose checks.
+     Proposed: a prescriber-set documentation interval on continuous-infusion
+     orders, inside `MedicationJson` (no migration), driving a rolling "rate
+     check" round through the same gate.
+   - **PRN:** a PRN order stores a frequency that is never shown or used.
+     Whether it is a minimum interval is the owner's decision.
+   - **First doses:** round 1 and a `once` dose fall at the next full hour
+     after signing (the existing first-dose rule), so they are locked until
+     then. A documentable-on-signing first dose would be a first-dose rule
+     change, also the owner's decision.
+6. **Tests that allowed early documentation, updated:**
+   - `deployed-mar-e2e.yml`: a run-created round 1 is now asserted 409 with
+     nothing written; the positive, replay and held legs use a run-created
+     PRN order.
+   - `deployed-assignments-e2e.yml`: the removed nurse documents a PRN dose.
+   - The timer replay's TS harness got a superseding copy (see verification).
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-update-batch-1/one-action-per-round/`).** Final steps run
+once on the committed source `d32a7ad`:
+- **Builds and CI:** `npm run build`, `dotnet build -c Release` and the
+  `ci.yml` frontend + server steps all exit 0.
+- **Rolling-timer replay:** 25 scenarios, **372 checks, 0 failures**, through
+  a superseding TS harness. The original read the mock's new refusal string
+  as success, and 12 of its steps document a round early, which was legal on
+  2026-09-30. Those steps are now loaded as stored pre-gate facts on both
+  sides. The first run's 122 client-side mismatches are kept.
+- **Grouping harness:** 25/25.
+- **One-action fake-clock harness:** 36/36 under UTC and under
+  America/Los_Angeles. It includes the owner's literal 06:05 → 07:05 example,
+  07:04:59.999 refused and 07:05:00.000 open, hospital midnight, and once
+  orders.
+- **Real API + PostgreSQL:** 41/41.
+  - Early Given/Held/Refused → 409, with stored facts and audit
+    byte-identical.
+  - 6 concurrent early requests → all 409.
+  - 4 s before due → 409; at due + 1 s, 5 concurrent mixed requests → exactly
+    one 200.
+  - Stale page; an already-due next round open; once orders.
+  - PRN/continuous ungated (stated).
+- **Deployed suites replayed locally:** MAR, assignments and encounter-scope
+  all pass. The unmodified MAR suite fails at exactly its old early leg.
+- **Browser on the live stack:** 60/60.
+  - A DUE SOON round is locked with "Opens HH:mm", stays locked through a poll,
+    and opens by itself 46 ms after its time.
+  - 5 + 3 rapid mixed clicks → one request; a dialog double-confirm → one
+    request.
+  - Uncertain outcomes: recorded → confirmed; not recorded → locked for
+    ≥ 15 s, then reopened.
+  - A stale page shows its refusal in hospital time.
+  - The continuous insulin row records one dose per real multi-click.
+  - Lock text ≥ 6.36:1 contrast.
+- **Process note:** the browser steps ran twice, because the verification
+  script was edited while running. The first run also exited 0; the kept log
+  is the second run's. This is stated in the evidence README.
+
+**Not verified:**
+- Chromium only.
+- No faked server clock: midnight and the exact boundary are covered by the
+  client harness; the server was tested 4 s before and 1 s after a real due
+  time.
+- Browser/server clock skew can refuse a click at the due second once (it is
+  shown, and a moment later it succeeds).
+- The deployed suites were replayed locally, not against a hosted target.
+- The earlier concurrency suite was not re-run; the row lock is unchanged and
+  is exercised by the API check's bursts.
 
 **2026-10-04 · THE SIDEBAR KEEPS ITS HOVER ACROSS SECTIONS; THE NURSE MAR AS
 DAILY PRESCRIPTION CARDS (owner-approved refinements; same branch
