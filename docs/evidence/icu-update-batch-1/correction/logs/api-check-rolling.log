@@ -1,0 +1,57 @@
+clock (server wire, UTC): now=2026-09-30 01:13  run=011321
+admitted synthetic P-1016 (ENC-1016) at B-08
+
+[A] q1h: an overdue round stays the ONE current round; explicit actual vs later documentation; early; duplicate; backdated no-rewind; held/refused
+  PASS 3 h after the first dose: exactly one current round, round 1 due F=2026-09-29 22:00 (no generated missed/future rounds): [{'orderId': 'ORD-102', 'adminId': '2026-09-29T22:00~r1', 'patientId': 'P-1016', 'bedId': 'B-08', 'medication': 'Rolling A 011321', 'dose': '1 mg', 'route': 'IV · q1h', 'scheduledTime': '2026-09-29 22:00', 'prn': False, 'status': 'scheduled', 'round': 1}]
+  PASS given 3 h late without a reason -> 400 at the documenting moment (this dose was scheduled at 2026-09-29 22:00 and is 3h 13m overdue — a )
+  PASS given with reason + administeredAt 2026-09-30 01:03: fact keeps slot 2026-09-29 22:00, actual 2026-09-30 01:03, round 1
+  PASS audit: documenting time separate + next round stated: "2026-09-29 22:00 dose given at 2026-09-30 01:03 (documented 2026-09-30 01:13) — LATE: 3h 13m after the scheduled time — round 1; next round due 2026-09-30 02:03 (q1h from the actual administration time) — synthetic: off the unit"
+  PASS MAR: round 2 due actual+1h = 2026-09-30 02:03 (timed from given 2026-09-30 01:03)
+  PASS round 2 given EARLY at 2026-09-30 01:13 (due 2026-09-30T02:03) -> round 3 due 2026-09-30 02:13 = given+1h
+  PASS duplicate round 2 -> 409 (dose round 2 (due 2026-09-30 02:03) was already documented as given by RN Maya Chen at 202)
+  PASS round 3 given with an OLDER backdated actual (2026-09-30 00:53 < timer 2026-09-30 01:13): timer not rewound; round 4 shares due 2026-09-30 02:13 with round 3 but has its own identity 2026-09-30T02:13~r4
+  PASS audit says the timer was unchanged: "09-30 02:13 (q1h timer unchanged — an administration at 2026-09-30 01:13 already set it; an older time never rewinds it)"
+  PASS held without a reason -> 400
+  PASS round 4 HELD early (due 2026-09-30 02:13) -> round 5 due slot+1h 2026-09-30 03:13 (not documenting time + 1h)
+  PASS round 5 REFUSED -> round 6 due 2026-09-30 04:13
+  PASS durable facts: rounds [1, 2, 3, 4, 5] statuses ['given', 'given', 'given', 'held', 'refused']
+
+[B] held/refused LATE: next = skipped slot + interval, already past -> overdue (never skipped or auto-documented); then Given
+  PASS held 2 h late -> round 2 due 2026-09-30 00:00 (slot+1h, already past = overdue, the ONLY pending row)
+  PASS refused -> round 3 due 2026-09-30 01:00
+  PASS then GIVEN at 2026-09-30 01:13 -> round 4 due 2026-09-30 02:13
+  PASS no fabricated catch-up facts: 3 facts for 3 resolutions
+
+[C] multi-day overdue: a q8h round overdue 2+ days (across midnight) stays current and documentable
+  PASS round 1 due 2026-09-27 22:00 is the single current round 51 h later
+  PASS given 2026-09-30 01:13 -> round 2 due 2026-09-30 09:13
+
+[D] legacy activation — the approved compatibility case, on the real clock (F = "06:00")
+  PASS stored "07:00" slot given at "06:50" (legacy) -> round 1 is the outstanding "06:00" slot 2026-09-29 22:00: [('2026-09-29 22:00', 'scheduled'), ('2026-09-29 23:00', 'given')]
+  PASS "06:00" given at "06:55" -> next round "07:55" = 2026-09-29 23:55
+  PASS the legacy fact bytes are unchanged after a new documentation on the same order
+  PASS a legacy LATE given (2.5 h) starts no timer: round 1 = the original grid slot 2026-09-30 04:00, not 2026-09-30 06:30
+
+[F] frequency modification q1h -> q4h: the timer in force + the new interval; the stale identity -> 409
+  PASS modified to q4h -> round 2 due given+4h 2026-09-30 05:13
+  PASS the pre-modification identity 2026-09-30T02:13~r2 -> 409 (dose round 2 is now due 2026-09-30 05:13, not 2026-09-30 02:13 — the order's sch)
+
+[G] once and PRN unchanged
+  PASS once: one dated instance, no round: 2026-09-30T02:00
+  PASS once given -> order completed, nothing pending
+  PASS once duplicate -> 409
+  PASS PRN: two facts, availability stays, no rounds
+
+[H] discontinued: facts stay, no current round, documenting -> 409
+  PASS MAR after discontinue: facts only ['held', 'refused', 'given']
+  PASS document on discontinued -> 409 (order 'ORD-103' is discontinued — it is not in force, no dos)
+
+[I] a bare grid identity and a not-yet-existing round -> 404
+  PASS bare dated identity on a repeating order -> 404
+  PASS a future round number -> 404
+
+[J] discharge: encounter scope hides every order; documenting -> 409
+  PASS discharged -> MAR rows for P-1016: 0
+  PASS document after discharge -> 409 (encounter 'ENC-1016' is not open — documenting a dose is not)
+
+RESULT: 35 passed, 0 failed · synthetic patient P-1016 · orders A=ORD-102 B=ORD-103 C=ORD-104 D=ORD-105 E=ORD-106 F=ORD-107 once=ORD-108 prn=ORD-109

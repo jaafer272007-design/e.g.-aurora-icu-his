@@ -1,0 +1,18 @@
+
+> aurora-icu-his@0.1.0 build
+> tsc -b && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 234 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   1.22 kB │ gzip:   0.75 kB
+dist/assets/index-Bl_o6xvL.css  196.19 kB │ gzip:  31.54 kB
+dist/assets/index-DazIB0bv.js   854.84 kB │ gzip: 236.56 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.93s

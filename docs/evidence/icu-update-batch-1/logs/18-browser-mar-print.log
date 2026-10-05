@@ -1,0 +1,36 @@
+MAR group found: true
+  D-1 22:00 Synthetic A 000650 1 mg IV · q1h GIVEN documented D-1 22:05↻ next dose re-timed— synthetic: pump occlusion
+  D-1 23:05 Synthetic A 000650 1 mg IV · q1h GIVEN documented D-1 23:12↻ next dose re-timed
+  00:12 Synthetic A 000650 1 mg IV · q1h DUE ✓ Given ⊘ Held ✕ Refused
+  D-1 23:00 Synthetic B 000650 1 mg IV · q8h GIVEN documented D-1 23:40↻ next dose re-timed
+  D-1 22:00 Synthetic C 000650 1 mg IV · q1h GIVEN documented D-1 22:10— synthetic: charted late
+  D-1 23:00 Synthetic C 000650 1 mg IV · q1h GIVEN documented D-1 23:05↻ next dose re-timed
+  00:05 Synthetic C 000650 1 mg IV · q1h OVERDUE ✓ Given ⊘ Held ✕ Refused
+  01:05 Synthetic C 000650 1 mg IV · q1h LATER ✓ Given ⊘ Held ✕ Refused
+  D-1 23:00 Synthetic D 000650 1 mg IV · q1h HELD documented 00:06— synthetic: SBP 82
+  00:00 Synthetic D 000650 1 mg IV · q1h REFUSED documented 00:06— synthetic: declined
+  01:00 Synthetic D 000650 1 mg IV · q1h GIVEN documented 00:06
+  02:00 Synthetic D 000650 1 mg IV · q1h LATER ✓ Given ⊘ Held ✕ Refused
+  D-1 23:00 Synthetic E 000650 1 mg IV · q1h GIVEN documented D-1 23:20
+  00:00 Synthetic E 000650 1 mg IV · q1h GIVEN documented 00:06↻ next dose re-timed
+  01:06 Synthetic E 000650 1 mg IV · q1h LATER ✓ Given ⊘ Held ✕ Refused
+  D-1 23:00 Synthetic F 000650 1 mg IV · q4h GIVEN documented D-1 23:05↻ next dose re-timed
+  03:05 Synthetic F 000650 1 mg IV · q4h LATER ✓ Given ⊘ Held ✕ Refused
+  D-1 23:00 Synthetic G 000650 1 mg IV · once GIVEN documented 00:06
+  — Synthetic P 000650 1 mg IV · PRN — pain GIVEN documented 00:06
+  — Synthetic P 000650 1 mg IV · PRN — pain PRN ✓ Given ⊘ Held ✕ Refused
+Meds-Due KPI=9 · MAR card aside=9 due
+print cells:
+  2026-09-29 22:00 GIVEN at 2026-09-29 22:05 RN Maya Chen ↻ next dose re-timed from this time “synthetic: pump occlusion”
+  2026-09-29 23:05 GIVEN at 2026-09-29 23:12 RN Maya Chen ↻ next dose re-timed from this time
+  2026-09-29 23:00 GIVEN at 2026-09-29 23:40 RN Maya Chen ↻ next dose re-timed from this time
+  2026-09-29 23:00 GIVEN at 2026-09-29 23:05 RN Maya Chen ↻ next dose re-timed from this time
+  2026-09-29 22:00 GIVEN at 2026-09-29 22:10 RN Maya Chen “synthetic: charted late”
+  2026-09-29 23:00 HELD at 2026-09-30 00:06 RN Maya Chen “synthetic: SBP 82”
+  2026-09-30 00:00 REFUSED at 2026-09-30 00:06 RN Maya Chen “synthetic: declined”
+  2026-09-30 01:00 GIVEN at 2026-09-30 00:06 RN Maya Chen
+  2026-09-29 23:00 GIVEN at 2026-09-29 23:20 Legacy Nurse
+  2026-09-30 00:00 GIVEN at 2026-09-30 00:06 RN Maya Chen ↻ next dose re-timed from this time
+  2026-09-29 23:00 GIVEN at 2026-09-29 23:05 RN Maya Chen ↻ next dose re-timed from this time
+  2026-09-29 23:00 GIVEN at 2026-09-30 00:06 RN Maya Chen
+  PRN GIVEN at 2026-09-30 00:06 RN Maya Chen

@@ -1,0 +1,51 @@
+clock (server wire, UTC): now=2026-10-05 09:37  run=093708  (the server runs TZ=Asia/Baghdad; hospital time = UTC+3)
+admitted synthetic P-1026 (ENC-1026) at B-08
+
+[1] FIRST DOSE — q1h signed now: round 1 open on signing; round 2 keeps the lock and the rolling timer
+  PASS the MAR row: round 1 due 2026-10-05 10:00 (the next full hour, unchanged), firstDose=True
+  PASS Given at 2026-10-05 09:37, 22 min BEFORE its scheduled time -> 200; the fact carries round 1 + attemptId
+  PASS round 2 due 2026-10-05 10:37 = actual + 1 h (rule given); no firstDose flag
+  PASS GET /api/icu/mar: the fact row carries its attemptId
+  PASS round 2 before its time: Given/Held/Refused -> [409, 409, 409]; nothing written
+  PASS the first dose's attempt resent after round 2 exists (a late original): resend -> 200, the existing record returned; facts + audit byte-identical
+  PASS a DIFFERENT attempt on resolved round 1 -> 409 "dose round 1 (due 2026-10-05 10:00) was already documented as given by RN Maya C…"
+  PASS first dose HELD before its time -> 200; round 2 due 2026-10-05 11:00 = round 1's scheduled 2026-10-05 10:00 + 1 h (skipped rule)
+
+[2] FIRST DOSE — a once order signed now
+  PASS once dose due 2026-10-05 10:00: Refused before its time -> 200; nothing further expected
+  PASS the once attempt resent: resend -> 200, the existing record returned; facts + audit byte-identical
+  PASS a different attempt on the once dose -> 409
+
+[3] LEGACY order: a fact recorded before the rolling timer -> not a first dose; round 1 unchanged and locked
+  PASS round 1 = the LegacyEntry slot 2026-10-05 11:00 (the slot after the legacy fact's 2026-10-05 10:00); no firstDose flag
+  PASS Given before that slot -> 409; nothing written
+  PASS its schedule is not reset: the same round 1 is still served
+
+[4] SAFE RETRY — PRN: replay, a different documentation under the same id, a new attempt
+  PASS PRN Given with attemptId -> 200; one fact carrying it
+  PASS the same attempt resent (a retry / the late original): resend -> 200, the existing record returned; facts + audit byte-identical
+  PASS the same id with a different action -> 409 "attempt 'prn-093708-11-synthetic' already recorded a different documentation (given — fact…"; nothing written
+  PASS a NEW attempt (a later intentional dose) -> 200; 2 facts
+  PASS the same attempt id on ANOTHER order is a different attempt (deduplication is per order) -> 200
+
+[5] SAFE RETRY — 6 concurrent copies of one attempt (PRN): exactly one fact, one audit entry
+  PASS 6 concurrent copies -> [200, 200, 200, 200, 200, 200]; 1 fact, 1 audit entry
+
+[6] SAFE RETRY — continuous (on demand)
+  PASS on-demand Given with attemptId -> 200
+  PASS the same attempt resent: resend -> 200, the existing record returned; facts + audit byte-identical
+  PASS a new attempt -> 200; 2 facts (continuous stays available when needed)
+
+[7] SAFE RETRY — after the order was discontinued, a recorded attempt still reads as recorded
+  PASS the order is discontinued -> 200
+  PASS the recorded attempt resent: resend -> 200, the existing record returned; facts + audit byte-identical
+  PASS a new attempt -> 409 "order 'ORD-192' is discontinued — it is not in force, no dose is avail…"
+
+[8] attemptId validation; a request without one behaves as before
+  PASS malformed ids (too short, space, 65 chars, ";") -> [400, 400, 400, 400]; nothing written
+  PASS two plain {"action":"given"} (no attemptId) -> [200, 200]; 2 facts, no attemptId stored (unchanged behaviour)
+  PASS their MAR rows carry no attemptId field (WhenWritingNull)
+
+cleanup: discharged ENC-1026 -> 200
+
+RESULT 29 passed, 0 failed

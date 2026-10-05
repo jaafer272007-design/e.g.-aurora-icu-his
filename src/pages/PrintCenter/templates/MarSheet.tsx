@@ -25,6 +25,7 @@ function Cell({ c }: { c: MarCell }) {
       <div className="pd-mar-status">{STATUS_LABEL[c.status]}</div>
       {c.documentedTime && <div className="pd-mar-meta">at {displayFullStamp(c.documentedTime)}</div>}
       {c.documentedBy && <div className="pd-mar-meta">{c.documentedBy}</div>}
+      {c.round && <div className="pd-mar-meta">round {c.round}</div>}
       {c.reason && <div className="pd-mar-reason">“{c.reason}”</div>}
     </div>
   )
@@ -49,6 +50,7 @@ export function MarSheet({ data }: { data: MarSheetData }) {
                 {m.status !== 'active' && (
                   <span className="pd-mar-stopped"> · order {m.status}{m.stoppedReason ? ` — ${m.stoppedReason}` : ''}</span>
                 )}
+                {m.nextDue && <span className="pd-sub"> · next dose due {displayFullStamp(m.nextDue)}</span>}
               </div>
               <div className="pd-mar-cells">
                 {m.cells.length === 0
@@ -71,7 +73,10 @@ export function MarSheet({ data }: { data: MarSheetData }) {
           as-required availability. GIVEN/HELD/REFUSED cells show the actual documented time
           and the administering nurse exactly as persisted; a reason is recorded whenever a
           dose was held or refused. “not documented” on an active order is a dose still
-          awaiting bedside documentation — never assumed given.
+          awaiting bedside documentation — never assumed given. A repeating medication runs on a
+          rolling timer, one numbered round at a time: a round given (early, on time or late)
+          makes the next round due one interval after its actual administration time; a round
+          held or refused makes it due one interval after that round&apos;s scheduled time.
         </p>
       </Section>
       <SignatureBlock role="Nurse — shift verification" />

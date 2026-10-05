@@ -6,6 +6,19 @@
 # polarity holds (doctor 403 on administer, nurse 200), replays are 409,
 # malformed payloads are 400 (never a silent no-op), and held/refused
 # require a reason. Dispatch manually after merging /server changes.
+# [2026-10-05, ONE ACTION PER ROUND: a scheduled dose opens at its exact
+# scheduled time. A run-created order's round 1 is the next full hour, so
+# it is NEVER documentable in-run: the suite now asserts that every action
+# on it is 409 with nothing written, and its positive/replay/held legs run
+# on a run-created PRN order. The round-advance legs ("the NEXT round
+# appears") need a due round and are covered by the local real-API check —
+# docs/evidence/icu-update-batch-1/one-action-per-round/.]
+# [2026-10-05, the owner's decisions — MAR design ### F, superseding the
+# note above for round 1: an order's FIRST dose is available on signing, so
+# the run-created order's round 1 is documented in-run again (as before the
+# one-action rule) and the NEXT round is the one asserted 409 before its
+# time with nothing written. SAFE RETRY: a resend of a recorded attempt
+# (same attemptId) is answered with the record and adds no fact.]
 #
 # IDEMPOTENT BY DESIGN: read assertions never depend on exact counts, and
 # every administration action targets a DERIVED dose instance of an order
@@ -144,14 +157,16 @@ jobs:
           # DERIVED SCHEDULE: the retired stub's stored 'scheduled' rows are
           # artefacts, ignored by the derivation — the old seeded stub ids
           # (ADM-401/402/404/405…) must NEVER surface as rows again. Every
-          # scheduled row is a DERIVED instance: dated identity/stamp, or a
-          # prn/ondemand availability. Documented facts keep ADM-n ids.
+          # scheduled row is a DERIVED instance: dated identity/stamp (a
+          # repeating order's current ROUND carries "~r<n>" — the rolling
+          # timer, 2026-09-30), or a prn/ondemand availability. Documented
+          # facts keep ADM-n ids.
           python3 -c '
           import json,re; d=json.load(open("/tmp/mar.json"))
           assert isinstance(d,list) and d, "MAR read returned no rows"
           sched=[r for r in d if r["status"]=="scheduled"]
           for r in sched:
-              ok=re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",r["adminId"]) or r["adminId"] in ("prn","ondemand")
+              ok=re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(~r\d+)?",r["adminId"]) or r["adminId"] in ("prn","ondemand")
               assert ok, f"scheduled row with a non-derived identity (a stored stub leaked): {r}"
               if r["adminId"] not in ("prn","ondemand"):
                   assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}",r["scheduledTime"]), f"undated derived instance: {r}"
@@ -178,44 +193,108 @@ jobs:
           mine=[r for r in d if r["orderId"]=="'$OID'"]
           sched=[r for r in mine if r["status"]=="scheduled"]
           assert len(sched)==1, f"expected exactly the next derived instance, got {mine}"
-          assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}",sched[0]["adminId"]), sched[0]
+          # a repeating order: its ROUND 1 (the first dose) — the rolling timer
+          assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}~r1",sched[0]["adminId"]) and sched[0].get("round")==1, sched[0]
           print(sched[0]["adminId"])')
           echo "derived next instance: $A1"
-          { echo "OID=$OID"; echo "A1=$A1"; } >> "$GITHUB_ENV"
+          # a run-created PRN order — its availability is documentable at once
+          curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"paracetamol","drug":"Paracetamol","dose":"1 g","route":"IV","frequency":"q6h","duration":"3 days","prn":true,"prnIndication":"temp ≥ 38.3 °C"}}],"sign":true}' \
+            "$API/api/icu/orders" > /tmp/po.json
+          POID=$(python3 -c 'import json; print(json.load(open("/tmp/po.json"))[0]["orderId"])')
+          echo "created PRN $POID"
+          { echo "OID=$OID"; echo "A1=$A1"; echo "POID=$POID"; } >> "$GITHUB_ENV"
 
-      - name: RBAC polarity — doctor 403 on administer, nurse 200; the NEXT instance appears (doses never run out)
+      - name: RBAC polarity — doctor 403 on administer, nurse 200 on the FIRST dose (open on signing); ONE ACTION PER ROUND — the next round before its time is 409 and writes nothing; SAFE RETRY
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1")
           echo "doctor administer -> HTTP $code"; [ "$code" = "403" ] || exit 1
-          # nurse documents the derived instance → a FACT is appended
-          # carrying the instance's DATED identity as its scheduledTime
+          # THE FIRST DOSE (owner's decision, 2026-10-05 — ### F): round 1
+          # of a newly signed order is available on signing — the nurse
+          # documents it before its scheduled time -> a FACT is appended
+          # carrying the round's DATED identity and its round number
           curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1" \
             | python3 -c '
           import json,sys; d=json.load(sys.stdin)
           a=[x for x in d["administrations"] if x["status"]=="given"][0]
           assert a["documentedBy"]=="RN Maya Chen", a
-          assert a["scheduledTime"]=="'$A1'".replace("T"," "), a
-          print("nurse given by:", a["documentedBy"], "for instance", a["scheduledTime"])'
-          # DOSES NEVER RUN OUT: with the instance documented, the MAR now
-          # derives the NEXT one (+12h) — under the retired stub this order
-          # would eventually show an active med with nothing ever due
+          assert a["scheduledTime"]=="'$A1'".split("~")[0].replace("T"," ") and a.get("round")==1, a
+          print("nurse given by:", a["documentedBy"], "for round 1", a["scheduledTime"], "(the first dose, open on signing)")'
+          # DOSES NEVER RUN OUT: the MAR now derives the NEXT round — and
+          # ONE ACTION PER ROUND (2026-10-05): it is not open before its
+          # time; Given, Held and Refused are all 409 and nothing is
+          # written (no fact, no audit entry)
           curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" -o /tmp/mar2.json
           A2=$(python3 -c '
           import json; d=json.load(open("/tmp/mar2.json"))
           sched=[r for r in d if r["orderId"]=="'$OID'" and r["status"]=="scheduled"]
-          assert len(sched)==1 and sched[0]["adminId"]!="'$A1'", f"next instance missing after documentation: {sched}"
+          assert len(sched)==1 and sched[0]["adminId"]!="'$A1'" and sched[0].get("round")==2 and "firstDose" not in sched[0], f"next round missing after documentation: {sched}"
           print(sched[0]["adminId"])')
-          echo "NEXT derived instance after documenting: $A2"
+          echo "NEXT round after documenting: $A2"
           echo "A2=$A2" >> "$GITHUB_ENV"
-          # re-document the same instance → 409 STATE CONFLICT (four-code
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID" -o /tmp/before.json
+          for body in '{"action":"given"}' '{"action":"held","reason":"probe"}' '{"action":"refused","reason":"probe"}'; do
+            out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/mar/$OID/administrations/$A2")
+            code=$(echo "$out" | tail -1); echo "nurse $body on round 2 before its time -> HTTP $code"; [ "$code" = "409" ] || { echo "$out"; exit 1; }
+            echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "is not due until" in e and "one action per dose round" in e, e; print("  precise 409:", e)'
+          done
+          curl -sf -H "Authorization: Bearer $DOC" "$API/api/icu/orders?patientId=$PID" -o /tmp/after.json
+          python3 -c '
+          import json
+          pick=lambda f: [o for o in json.load(open(f)) if o["orderId"]=="'$OID'"][0]
+          b, a = pick("/tmp/before.json"), pick("/tmp/after.json")
+          assert a["administrations"] == b["administrations"] and len(a["administrations"]) == 1 and a["history"] == b["history"], (a.get("administrations"), a["history"][-1])
+          print("nothing written: still the one round-1 fact, audit history unchanged")'
+          # re-document round 1 -> 409 STATE CONFLICT (four-code rule): a
+          # racing second nurse must see "already given by X", never
+          # "not found"
+          out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1")
+          code=$(echo "$out" | tail -1); echo "re-document round 1 -> HTTP $code"; [ "$code" = "409" ] || { echo "$out"; exit 1; }
+          echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already documented as given" in e and "RN Maya Chen" in e, e; print("precise 409:", e)'
+          # the nurse documents the PRN availability -> a FACT is appended;
+          # the availability is never consumed
+          curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"given"}' "$API/api/icu/mar/$POID/administrations/prn" > /tmp/pg.json
+          PADM=$(python3 -c '
+          import json; d=json.load(open("/tmp/pg.json"))
+          a=[x for x in d["administrations"] if x["status"]=="given"][0]
+          assert a["documentedBy"]=="RN Maya Chen" and a["scheduledTime"]=="", a
+          print(a["adminId"])')
+          echo "nurse given (PRN) by RN Maya Chen -> fact $PADM"
+          echo "PADM=$PADM" >> "$GITHUB_ENV"
+          curl -sf -H "Authorization: Bearer $NUR" "$API/api/icu/mar" | python3 -c '
+          import json,sys; d=json.load(sys.stdin)
+          assert [r for r in d if r["orderId"]=="'$POID'" and r["adminId"]=="prn" and r["status"]=="scheduled"], "PRN availability consumed"
+          print("PRN availability still offered (never consumed)")'
+          # re-document the stored fact -> 409 STATE CONFLICT (four-code
           # rule): a racing second nurse must see "already given by X",
           # never "not found"
           out=$(curl -s -w '\n%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
-            -d '{"action":"given"}' "$API/api/icu/mar/$OID/administrations/$A1")
+            -d '{"action":"given"}' "$API/api/icu/mar/$POID/administrations/$PADM")
           code=$(echo "$out" | tail -1); echo "re-document -> HTTP $code"; [ "$code" = "409" ] || { echo "$out"; exit 1; }
           echo "$out" | head -1 | python3 -c 'import json,sys; e=json.load(sys.stdin)["error"]; assert "already documented as given" in e and "RN Maya Chen" in e, e; print("precise 409:", e)'
+          # SAFE RETRY (### F): a resend of a RECORDED attempt (same
+          # attemptId — a retry after no answer, or the original arriving
+          # late) is answered with the record and adds nothing; the same id
+          # with different documentation is 409
+          ATT="e2e-${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-saferetry"
+          for i in 1 2; do
+            code=$(curl -s -o /tmp/sr$i.json -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+              -d '{"action":"given","attemptId":"'$ATT'"}' "$API/api/icu/mar/$POID/administrations/prn")
+            echo "PRN given with attemptId (send $i) -> HTTP $code"; [ "$code" = "200" ] || { cat /tmp/sr$i.json; exit 1; }
+          done
+          python3 -c '
+          import json
+          a, b = json.load(open("/tmp/sr1.json")), json.load(open("/tmp/sr2.json"))
+          mine = [x for x in b["administrations"] if x.get("attemptId") == "'$ATT'"]
+          assert len(mine) == 1 and a["administrations"] == b["administrations"] and a["history"] == b["history"], (len(mine), len(a["administrations"]), len(b["administrations"]))
+          print("the resend returned the record: one fact for the attempt, nothing added")'
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
+            -d '{"action":"held","reason":"probe","attemptId":"'$ATT'"}' "$API/api/icu/mar/$POID/administrations/prn")
+          echo "same attemptId, different documentation -> HTTP $code"; [ "$code" = "409" ] || exit 1
           # absent ids stay 404 — an unknown order, a never-issued fact id,
           # and an OFF-GRID dated identity (not an expected instance)
           for path in "$API/api/icu/mar/ORD-0000/administrations/$A1" "$API/api/icu/mar/$OID/administrations/ADM-0000" "$API/api/icu/mar/$OID/administrations/2020-01-01T00:07"; do
@@ -225,6 +304,7 @@ jobs:
 
       - name: Held requires a reason (validation live); with reason → 200 + persisted
         run: |
+          # (validation precedes the due-time gate: round 2 answers 400 here)
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"action":"held"}' "$API/api/icu/mar/$OID/administrations/$A2")
           echo "held without reason -> HTTP $code"; [ "$code" = "400" ] || exit 1
@@ -232,8 +312,9 @@ jobs:
             code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' -d "$body" "$API/api/icu/mar/$OID/administrations/$A2")
             echo "malformed '$body' -> HTTP $code"; [ "$code" = "400" ] || exit 1
           done
+          # held WITH a reason persists — on the PRN availability (round 2 is not open in-run)
           curl -sf -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
-            -d '{"action":"held","reason":"SBP 82 — holding per parameters"}' "$API/api/icu/mar/$OID/administrations/$A2" \
+            -d '{"action":"held","reason":"SBP 82 — holding per parameters"}' "$API/api/icu/mar/$POID/administrations/prn" \
             | python3 -c 'import json,sys; d=json.load(sys.stdin); a=[x for x in d["administrations"] if x["status"]=="held"][0]; assert a["reason"]=="SBP 82 — holding per parameters" and a["documentedBy"]=="RN Maya Chen", a; print("held with reason:", a["reason"])'
 
       - name: OVERDUE DELAY REASON (option a) — a 2h+ overdue dose cannot be given WITHOUT a reason (non-mutating probes on a seeded instance)
@@ -277,7 +358,7 @@ jobs:
           code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $NUR" -H 'Content-Type: application/json' \
             -d '{"action":"held","reason":"probe","administeredAt":"2026-01-01 00:00"}' "$API/api/icu/mar/$SOID/administrations/$SAID")
           echo "administeredAt on held -> HTTP $code"; [ "$code" = "400" ] || exit 1
-          # the run order's ON-TIME instance needed no reason (asserted in
+          # the run order's ON-TIME round 1 needed no reason (asserted in
           # the RBAC step above: given with a bare {"action":"given"} was
           # 200) — the single-click flow is unchanged.
 

@@ -694,6 +694,16 @@ export interface MedAdministration {
   documentedBy?: string
   /** documented reason — required when held/refused (Stage 10 Phase 3 MAR) */
   reason?: string
+  /** THE ROLLING TIMER (owner's rule, 2026-09-30): present only on a
+   *  fact that resolved a round of a repeating order — the round's number.
+   *  It marks the facts that time the next round (Given → actual time +
+   *  interval; Held/Refused → scheduled time + interval); a fact without
+   *  it is a legacy fact and never times anything. Server-stamped. */
+  round?: number
+  /** SAFE RETRY (2026-10-05, mar-derived-schedule.md ### F): the client's
+   *  identity for the ONE documentation attempt that recorded this fact —
+   *  a resend of it is answered with this record, never a second fact */
+  attemptId?: string
 }
 
 export interface OrderEvent {
@@ -941,11 +951,12 @@ export interface OrderSetDef {
 
 export interface MarRow {
   orderId: string
-  /** derived instances carry the DATED identity "yyyy-MM-ddTHH:mm" (the
-   *  MAR safety fix — a missed dose can never be relabelled as another
-   *  day's dose); "prn"/"ondemand" for availability rows;
-   *  "missed-earlier" on the horizon summary row; documented facts keep
-   *  their stored ADM-n ids */
+  /** derived instances carry the DATED identity (the MAR safety fix — a
+   *  missed dose can never be relabelled as another day's dose): the
+   *  current round of a repeating order "yyyy-MM-ddTHH:mm~r<n>" (the
+   *  rolling timer, 2026-09-30), the single instance of a 'once' order
+   *  "yyyy-MM-ddTHH:mm"; "prn"/"ondemand" for availability rows;
+   *  documented facts keep their stored ADM-n ids */
   adminId: string
   patientId: string
   bedId: string
@@ -956,11 +967,10 @@ export interface MarRow {
    *  PRN/on-demand · legacy facts keep whatever they recorded */
   scheduledTime: string
   prn: boolean
+  /** 'missed-earlier' (+ missedEarlier) was the fixed grid's horizon
+   *  summary row; the rolling timer (2026-09-30) no longer emits it */
   status: 'scheduled' | 'missed-earlier' | AdministrationAction
   documentedTime?: string
-  /** only on the per-order horizon summary row: undocumented instances
-   *  older than the render window, counted out loud — never silently
-   *  truncated */
   missedEarlier?: number
   /** only on the honest underivable row: why no schedule is derived */
   scheduleNote?: string
@@ -968,6 +978,21 @@ export interface MarRow {
    *  reason on a dose given more than LATE_THRESHOLD_MINUTES past its
    *  scheduled instant (the overdue-delay-reason safety fix) */
   reason?: string
+  /** THE ROLLING TIMER (2026-09-30): the round number — on the current
+   *  round of a repeating order and on every fact that resolved one */
+  round?: number
+  /** the current round only, when an earlier round timed it: the dated
+   *  "yyyy-MM-dd HH:mm" timer instant and whether it was a GIVEN dose's
+   *  actual time or a HELD/REFUSED (skipped) dose's scheduled time */
+  timerFrom?: string
+  timerRule?: 'given' | 'skipped'
+  /** (2026-10-05, ### F) the current round / 'once' row of an order with no
+   *  documented administration: the FIRST dose, open on signing — exempt
+   *  from the scheduled-time lock */
+  firstDose?: boolean
+  /** (### F) documented facts only: the attempt that recorded it — how an
+   *  unanswered save is confirmed as recorded */
+  attemptId?: string
 }
 
 /* ==================== Laboratory & Imaging domain (Screen 6) ====================

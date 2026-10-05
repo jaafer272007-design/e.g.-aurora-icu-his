@@ -1,0 +1,1 @@
+confirmed: /healthz reports aiAssistant from AI_PROVIDER; the frontend shows the AI section ONLY on "enabled" (nav `when`, both /ai routes behind RequireAiAssistant, one healthz fetch feeding the store on both outcomes) (SOURCE check: this does not render the sidebar)

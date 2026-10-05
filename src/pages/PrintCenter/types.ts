@@ -324,6 +324,9 @@ export interface MarCell {
   documentedBy?: string
   /** server-required for held/refused — absent on given (not a gap) */
   reason?: string
+  /** the rolling timer (2026-09-30): the dose round this fact resolved
+   *  (repeating orders; absent on legacy facts) */
+  round?: number
 }
 
 export interface MarMedRow {
@@ -337,6 +340,10 @@ export interface MarMedRow {
   status: string
   /** recorded when the order was discontinued (its documented doses stay) */
   stoppedReason?: string
+  /** an ACTIVE order's next expected dose ("yyyy-MM-dd HH:mm") — for a
+   *  repeating order the current round of the rolling timer; the same
+   *  derivation as the MAR screen and the Orders next-dose chip */
+  nextDue?: string
   cells: MarCell[]
 }
 

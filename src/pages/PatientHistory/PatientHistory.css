@@ -1,7 +1,7 @@
 /* Patient History Overview — patient-scoped, read-only (match+overview
    design §5). Single-column document flow: this is a history to READ,
    not a workspace. */
-.ph .shell{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;min-height:0}
+.ph .shell{display:grid;grid-template-columns:var(--nav-col) minmax(0,1fr);gap:16px;min-height:0}
 /* INNER SCROLL (the ≥13" clipping fix): like every other screen, main
    scrolls itself instead of overflowing the fixed-height .app-frame (which
    is overflow:hidden). Without overflow-y:auto + min-height:0 the full

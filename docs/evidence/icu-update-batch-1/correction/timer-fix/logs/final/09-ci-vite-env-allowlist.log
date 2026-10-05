@@ -1,0 +1,8 @@
+ok: vite allow-list mirrors AppEnv.Known: development | production | staging
+ok: unknown VITE_APP_ENV refused by the gate's own message
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+ok: production identity still builds

@@ -1,0 +1,74 @@
+SKIP  [0] Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objec
+SKIP  [1] ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+SKIP  [2] Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+PASS  [3] Login (doctor, nurse, pharmacist) + run-unique names
+      sara.rahman: token issued
+      maya.chen: token issued
+      samir.qassem: token issued
+PASS  [4] Create the run drug + admit the run patient (self-sufficiency)
+      run drug e2e-odrug-local1790731059 created
+      admitted P-1026 (ENC-1026) at B-08
+PASS  [5] Unauthenticated order reads → 401
+      orders?patientId=P-1001 -> HTTP 401
+      orders?status=pending -> HTTP 401
+      orders?implement=true -> HTTP 401
+PASS  [6] Authenticated reads contain the seeded data (+ CORS)
+      Access-Control-Allow-Origin: https://jaafer272007-design.github.io
+      P-1001 orders: 11 (seeded 11 all present; extras from prior writes are expected)
+PASS  [7] Malformed create payloads → 400, never persisted (validation live)
+      malformed create -> HTTP 400
+      malformed create -> HTTP 400
+      malformed create -> HTTP 400
+      order count 11 -> 11 (must be unchanged)
+PASS  [8] Unparseable frequency 400; UNKNOWN drugId/testId 400 (formulary/catalogue AUTHORITY — the 
+      frequency 'q99999999999h' -> {"error":"drafts[0].medication.frequency \u0027q99999999999h\u0027 is not a valid frequency \u2014 must be one of: continuous, daily, bid, tid, qid, once, sliding scale, per level, per CRRT protocol, or q\u003C1-48\u003Eh"}
+      400
+      frequency 'q0h' -> {"error":"drafts[0].medication.frequency \u0027q0h\u0027 is not a valid frequency \u2014 must be one of: continuous, daily, bid, tid, qid, once, sliding scale, per level, per CRRT protocol, or q\u003C1-48\u003Eh"}
+      400
+      frequency 'whenever' -> {"error":"drafts[0].medication.frequency \u0027whenever\u0027 is not a valid frequency \u2014 must be one of: continuous, daily, bid, tid, qid, once, sliding scale, per level, per CRRT protocol, or q\u003C1-48\u003Eh"}
+      400
+      UNKNOWN drugId -> HTTP 400
+      400: drafts[0].medication.drugId 'totally-fake-drug-xyz' does not match any formulary drug
+      UNKNOWN testId -> HTTP 400
+      400: drafts[0].testId 'no-such-test' does not match any catalogue test
+PASS  [9] NURSE token → 403 on ALL prescriber mutations (server-side RBAC)
+      create -> HTTP 403
+      sign -> HTTP 403
+      modify -> HTTP 403
+      discontinue -> HTTP 403
+PASS  [10] DOCTOR full lifecycle on THIS RUN's own orders (actor from token)
+      created pending ORD-141
+      pending queue contains ORD-141
+      signed: active | no stored schedule (derived at MAR read)
+      modified: dose: 1 g → 500 mg — deployed E2E
+      discontinued | no scheduled admins (derived schedule ends with the order)
+PASS  [11] FOUR-CODE RULE on the same order — replays → 409 naming the state; absent ids → 404; shape
+      sign discontinued -> HTTP 409
+      re-discontinue -> HTTP 409
+      modify discontinued -> HTTP 409
+      implement med order -> HTTP 400 (shape)
+      absent /api/icu/orders/ORD-0000/sign (DOC) -> HTTP 404
+      absent /api/icu/orders/ORD-0000/discontinue (DOC) -> HTTP 404
+      absent /api/icu/orders/ORD-0000/implement (NUR) -> HTTP 404
+      absent modify -> HTTP 404
+PASS  [12] Implement is nurse-only, on THIS RUN's own order (doctor 403, nurse 200)
+      doctor implement ORD-142 -> HTTP 403
+      nurse implement: completed | by: RN Maya Chen
+      re-implement -> HTTP 409
+      implement pending -> HTTP 409
+PASS  [13] SERVER-SIDE SAFETY — hard block never overridable; warn 409 → audited override; the client
+      allergy-blocked drug (override='') -> HTTP 409
+      allergy-blocked drug (override='clinically essential') -> HTTP 409
+      warn w/o override -> HTTP 409
+      409: safety warning — Documented allergy: "Penicillin" — possible cross-reactivity with Meropenem (penicillin). Ordering requires an acknowledged override (overrideJustification).
+      override AUDITED on ORD-144 | Documented allergy: "Penicillin" — possible cross-reactivity with Meropenem (pen…
+      duplicate therapy w/o override -> HTTP 409
+      block-severity interaction (override='') -> HTTP 409
+      block-severity interaction (override='please') -> HTTP 409
+      warn-severity interaction w/o override -> HTTP 409
+PASS  [14] Cleanup — discharge the run encounter + deactivate the run drug (runs on failure/cancel to
+      discharge ENC-1026 -> HTTP 200
+      deactivate e2e-odrug-local1790731059 -> HTTP 200
+      encounters final: discharged
+      cleanup complete — no active run state remains
+SUITE PASSED

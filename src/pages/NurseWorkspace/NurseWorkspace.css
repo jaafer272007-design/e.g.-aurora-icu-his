@@ -1,6 +1,6 @@
 /* Nurse Workspace — Screen 4. First screen designed directly in React;
    follows docs/design-system.md and reuses the shared components. */
-.nw .shell{display:grid;grid-template-columns:198px 1fr;min-height:0}
+.nw .shell{display:grid;grid-template-columns:var(--nav-col) 1fr;min-height:0}
 .nw main{min-height:0;overflow-y:auto;padding:16px;display:grid;gap:14px;grid-template-columns:1.55fr 1fr;align-content:start}
 .nw .col{display:flex;flex-direction:column;gap:14px;min-width:0}
 
@@ -60,6 +60,49 @@
 .nw .mab.refused{color:var(--red);border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.08)}
 .nw .mab.refused:hover,.nw .mab.refused:focus-visible{background:rgba(var(--red-rgb),.18)}
 .nw .mardoc{font-size:10px;color:var(--faint)}
+/* ONE ACTION PER ROUND (owner's correction, 2026-10-05): a current round
+   is locked until its scheduled time and while its order saves — the
+   buttons stay visible but disabled, and a full-width line under the row
+   says when they open (or that a save / check is running, or why the last
+   attempt was not recorded) */
+.nw .mab:disabled,.nw .mab:disabled:hover{opacity:.42;cursor:not-allowed;background:transparent}
+.nw .marlockline{grid-column:2/-1;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10.5px;margin-top:-4px}
+.nw .marlock{color:var(--dim);font-weight:600}
+.nw .marbusy{color:var(--cyan);font-weight:600}
+.nw .marnotice{color:var(--red);font-weight:600}
+/* SAFE RETRY (2026-10-05, ### F): an unanswered save — kept, unconfirmed */
+.nw .marwarn{color:var(--amber);font-weight:600}
+.nw .marretry{font-size:10.5px;font-weight:700;color:var(--blue);text-decoration:underline;padding:2px 0;min-height:24px}
+/* DAILY PRESCRIPTION CARDS (2026-10-04, marDays.ts): one card per
+   prescription per hospital day. The header carries the prescription once
+   (drug, dose, route · frequency, date); the rows inside are the compact
+   round rows. Open cards (today / holding the actionable row) sit on a
+   faint lift; completed history is a collapsed toggle. Theme tokens only,
+   so both themes follow the MAR's existing palette. */
+.nw .mardaycard{margin:8px 0 0;border:1px solid var(--stroke);border-radius:12px;background:rgba(var(--lift-rgb),.02);outline:none}
+.nw .mardaycard.pinned{border-color:var(--stroke2);background:rgba(var(--lift-rgb),.04)}
+.nw .mardaycard:focus-visible{box-shadow:0 0 0 2px rgba(var(--cyan-rgb),.55)}
+.nw .mardaycard.undated{border-style:dashed}
+.nw .mdbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;width:100%;padding:8px 10px;text-align:left;color:inherit;font:inherit}
+.nw .mdtoggle{border-radius:12px;cursor:pointer;background:none;border:0}
+.nw .mdtoggle:hover,.nw .mdtoggle:focus-visible{background:rgba(var(--lift-rgb),.05)}
+.nw .mdhead{display:flex;flex-direction:column;min-width:0;flex:1 1 180px}
+.nw .mdhead .mn{font-size:12.5px;font-weight:600}
+.nw .mdhead .mroute{font-size:10.5px;color:var(--faint);font-family:var(--mono);margin-top:1px}
+.nw .mddate{font-size:11px;font-weight:700;color:var(--dim);white-space:nowrap}
+.nw .mddate.today{color:var(--cyan)}
+.nw .mdsum{order:5;flex-basis:100%;font-size:10.5px;color:var(--faint)}   /* below the line; the chevron stays beside the date */
+.nw .mdchev{font-size:11px;color:var(--dim)}
+.nw .mdbody{padding:0 10px 4px;border-top:1px solid rgba(var(--steel-rgb),.1)}
+.nw .mardaycard .marrow{padding:7px 2px}
+.nw .mardaycard .marrow:last-child{border-bottom:none}
+.nw .mardaycard .marround{margin-left:0}
+.nw .markind{font-size:10px;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
+.nw .mardaycard .mardoc{margin-top:2px;font-size:10.5px;color:var(--dim)}
+.nw .mdref{margin:7px 0 2px;padding:7px 9px;border-radius:9px;font-size:11px;line-height:1.45;color:var(--text);
+ border:1px solid rgba(var(--amber-rgb),.35);background:rgba(var(--amber-rgb),.08)}
+.nw .mdref.later{border-color:rgba(var(--cyan-rgb),.35);background:rgba(var(--cyan-rgb),.07)}
+.nw .mdjump{margin-left:2px;font-size:10.5px;font-weight:600;color:var(--blue);text-decoration:underline;padding:2px 0;min-height:24px}
 
 /* ===== orders to implement ===== */
 .nw .ordlist{display:flex;flex-direction:column;gap:8px}
@@ -127,7 +170,7 @@
 .nw .field + .field{margin-top:12px}
 .nw .sbarsave{margin-top:14px}
 
-@media(max-width:1180px){.nw .shell{grid-template-columns:64px 1fr}}
+@media(max-width:1180px){.nw .shell{grid-template-columns:var(--nav-col) 1fr}}
 @media(max-width:1180px){
  .nw main{grid-template-columns:1fr;overflow:visible}
  .nw.app-frame{height:auto;overflow:visible}
@@ -170,4 +213,8 @@
 .marlate{margin-left:6px;padding:1px 6px;border-radius:6px;font-size:9.5px;font-weight:800;letter-spacing:.4px;
   color:var(--amber,#f5b301);background:rgba(var(--amber-rgb,245,179,1),.14);border:1px solid rgba(var(--amber-rgb,245,179,1),.35)}
 .marreason{margin-left:6px;color:var(--dim);font-style:italic}
+/* the rolling timer (2026-09-30): round number + what timed the current round */
+.marround{margin-left:6px;padding:0 5px;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:.3px;
+  color:var(--dim);border:1px solid var(--stroke2)}
+.martimer{color:var(--cyan)}
 .marlatehint{font-size:12px;color:var(--amber,#f5b301);margin:2px 0 6px}

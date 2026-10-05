@@ -1,6 +1,6 @@
 /* Laboratory & Imaging — Screen 6. Canonical results screen; follows
    docs/design-system.md and reuses the shared components. */
-.li .shell{display:grid;grid-template-columns:198px 240px 1fr;min-height:0}
+.li .shell{display:grid;grid-template-columns:var(--nav-col) 240px 1fr;min-height:0}
 .li main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 
 
@@ -125,7 +125,7 @@
 
 @media(max-width:1280px){.li .licols{grid-template-columns:1fr}}
 @media(max-width:1180px){
- .li .shell{grid-template-columns:64px 1fr}
+ .li .shell{grid-template-columns:var(--nav-col) 1fr}
  .li .ptrail{display:none}
  .li.app-frame{height:auto;overflow:visible}
  .li main{overflow:visible}

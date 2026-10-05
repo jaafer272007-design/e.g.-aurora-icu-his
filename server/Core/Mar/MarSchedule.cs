@@ -28,6 +28,18 @@ namespace Aurora.Core.Mar;
    - doses never run out — instances are generated, not consumed;
    - a late dose stays late and does NOT shift the schedule: the grid derives
      from THERAPY START, never from the last documented dose;
+     [SUPERSEDED 2026-09-30 by the project owner — mar-derived-schedule.md
+     Amendment A: a dose documented GIVEN later than its scheduled instant
+     on a repeating order RE-TIMES the grid — the next repeating dose is
+     the actual administration time + the interval. The late dose itself
+     still stays late (its fact keeps its original scheduled identity).
+     Only facts carrying the explicit ScheduleAnchor re-time (see
+     RetimingState below); the grid still starts at therapy start.]
+     [SUPERSEDED AGAIN 2026-09-30 by the project owner — Amendment B: the
+     ROLLING TIMER. A repeating order has no grid at all: one current round
+     at a time, the next one due from the fact that resolved the last
+     (Given → actual time + interval; Held/Refused → the skipped round's
+     scheduled time + interval). See the rolling-timer section below.]
    - PRN derives from the last administration only (an availability, no grid);
    - a frequency that cannot be honestly parsed gets NO invented schedule —
      the row says so (the #110 free-text-lab discipline). */
@@ -115,6 +127,10 @@ static class MarSchedule
          dose is never an aggregate). Documented instances render as their
          facts wherever the facts fall — facts are the record and are
          always shown. */
+    /* [2026-09-30, Amendment B: repeating orders no longer use this
+       horizon — their single current round renders, and stays documentable,
+       at any age. It remains the bound on how far back an explicit actual
+       administration time (administeredAt) may be entered.] */
     public const int PastWindowHours = 24;
 
     /* LATE-ADMINISTRATION THRESHOLD (overdue delay reason — the clinical
@@ -134,37 +150,177 @@ static class MarSchedule
        schedule and can never be late. */
     public const int LateThresholdHours = 2;
 
-    /** every grid instant for an interval order from therapy start through
-        the next undocumented instance after nowUtc, split into
-        (aggregatedMissed, renderable). Pure arithmetic on the anchor grid —
-        never loops over the order's full age. */
-    public static (int aggregatedMissed, DateTime? oldestAggregated, List<DateTime> renderable)
-        IntervalInstances(DateTime first, int intervalHours, HashSet<string> documentedStamps, DateTime nowUtc)
+    /* ---------------- ONE ACTION PER ROUND (owner's correction, 2026-10-05) ----------------
+       mar-derived-schedule.md ### E. A scheduled dose — a repeating order's
+       current round, or the single dose of a 'once' order — can be
+       documented (Given, Held or Refused) from its EXACT scheduled time,
+       never before. Documenting a round therefore never makes another one
+       documentable at once: the next round opens at its own due time (an
+       already-due next round is open immediately — no cooldown is added).
+       The due-soon display window (DUE_SOON_MINUTES client-side) is a
+       reminder only. PRN and on-demand doses have no scheduled time, so
+       this rule cannot apply to them. Mirrored by the client
+       (marSchedule.ts documentableAt) and the mock adapter.
+       [2026-10-05, owner's decisions — ### F: the FIRST dose (no
+       documented administration yet) is exempt — IsFirstDose below;
+       continuous and PRN stay available as needed, with no interval.] */
+
+    /** null when a dose scheduled at `due` may be documented at `nowUtc`;
+        otherwise the refusal's wording */
+    public static string? NotYetDue(DateTime due, DateTime nowUtc) =>
+        nowUtc < due
+            ? $"is not due until {StampOf(due)} — one action per dose round: it can be documented (given, held or refused) from its scheduled time, not before"
+            : null;
+
+    /* THE FIRST DOSE (owner's decision, 2026-10-05 — ### F, superseding the
+       open question in ### E): the first dose is available immediately
+       after signing — round 1 of a repeating order and the single dose of a
+       'once' order — so it is exempt from NotYetDue; every later round
+       stays locked until its due time. "First" means the order has no
+       documented administration at all: an order with recorded doses
+       (including LEGACY facts, whose round 1 is the LegacyEntry slot) is
+       not at its first dose, so its schedule and its lock are unchanged.
+       Nothing is re-derived: round 1 keeps its due minute (FirstDose) and
+       its identity; only when it may be documented changes. */
+    public static bool IsFirstDose(IEnumerable<AdminDto> admins) =>
+        !admins.Any(a => a.Status != "scheduled");
+
+    /* ---------------- THE ROLLING TIMER (owner's rule, 2026-09-30) ----------------
+       mar-derived-schedule.md Amendment B, which supersedes Amendment A's
+       late-only re-timing and its segmented grid. The owner: "the timer of
+       the next round will start after the first has been given (not
+       something fixed)". A repeating (interval) order has ONE CURRENT ROUND
+       at a time, never a grid:
+       - round 1 is the first dose (FirstDose, unchanged), or, for an order
+         whose stored facts all predate this rule, its LEGACY ENTRY slot;
+       - exactly one fact resolves a round, and carries Round = its number;
+       - the next round is due at TIMER + interval. A resolving fact's timer
+         instant is its ACTUAL administration time when GIVEN (early, on time
+         or late alike), and its SCHEDULED time when HELD/REFUSED (the
+         owner-confirmed skipped-dose rule, never the documenting time);
+       - the rounds are replayed in order, keeping ACTION chronology apart
+         from scheduled due identity. A fact's action instant is its actual
+         administration time (Given) or its documenting time (Held/Refused).
+         A Given no older than every earlier action restarts the timer at its
+         actual time, even when a preceding Held/Refused left a later
+         scheduled timer (corrected 2026-09-30 after Codex's review: the
+         former "latest timer instant" rule let a skipped 07:05 swallow a
+         subsequent actual Given at 06:50). A GENUINELY OLDER backdated
+         Given (older than an action already recorded) never rewinds the
+         timer: it only moves it forward when its own time is later;
+       - the clock never creates a round: an unresolved round stays current
+         as it turns due, then overdue, for as long as it takes. There are no
+         missed rows, no future rounds and no 24 h horizon for it.
+       Only stored facts and the order feed this, so a round's identity is
+       stable across refreshes. The write endpoint and the read side call the
+       same CurrentRound, so the endpoint accepts exactly the round
+       GET /api/icu/mar serves. Nothing new is stored but the fact's Round. */
+
+    /** the current round: its number, its due instant, and what timed it
+        (the timer instant + "given" | "skipped"; null on round 1) */
+    public readonly record struct Round(int Number, DateTime Due, DateTime? TimerFrom, string? TimerRule);
+
+    /** the round's documentable identity: its due minute plus its number
+        ("yyyy-MM-ddTHH:mm~r<n>", URL-safe). Two rounds, or a round and a
+        stored fact, can share a due minute and stay distinguishable. */
+    public static string RoundIdentity(Round r) => $"{IdentityOf(r.Due)}~r{r.Number}";
+
+    public static (DateTime Due, int Number)? ParseRoundIdentity(string id)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(id, @"^([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2})~r([1-9][0-9]{0,8})$");
+        if (!m.Success || !DateTime.TryParseExact(m.Groups[1].Value, "yyyy-MM-ddTHH:mm", null,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var due))
+            return null;
+        return (due, int.Parse(m.Groups[2].Value));
+    }
+
+    /** a DATED stamp → UTC instant; null for anything else (PRN/on-demand
+        ""; legacy "HH:mm" / "D-n HH:mm" forms). Every fact this rule writes
+        is dated. */
+    public static DateTime? ParseDated(string? t) =>
+        !string.IsNullOrEmpty(t) && DateTime.TryParseExact(t, "yyyy-MM-dd HH:mm", null,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+            out var d) ? d : null;
+
+    /** a round-resolving fact's timer instant: GIVEN → its actual
+        administration time (the fact's documentedTime); HELD/REFUSED → the
+        skipped round's scheduled time */
+    public static DateTime? TimerInstant(AdminDto a) =>
+        a.Status == "given" ? ParseDated(a.DocumentedTime) : ParseDated(a.ScheduledTime);
+
+    /** a round-resolving fact's ACTION instant, its place in actual
+        chronology: GIVEN → its actual administration time; HELD/REFUSED →
+        when it was documented (neither carries a separate actual time) */
+    public static DateTime? ActionInstant(AdminDto a) => ParseDated(a.DocumentedTime);
+
+    /** THE rule, shared by GET /api/icu/mar and the write endpoint. `facts`
+        are the stored administrations in recording order (retired
+        'scheduled' stubs are ignored — never facts); the resolving facts are
+        replayed in round order, which the order write lock makes their
+        recording order. */
+    public static Round CurrentRound(DateTime first, int intervalHours, IReadOnlyList<AdminDto> facts, DateTime nowUtc)
     {
         var step = TimeSpan.FromHours(intervalHours);
-        var windowStart = nowUtc.AddHours(-PastWindowHours);
-        /* index of the first grid point inside the render window */
-        var k0 = first >= windowStart ? 0 : (int)Math.Ceiling((windowStart - first) / step);
-        /* pre-window grid points: count the undocumented ones (aggregated) */
-        var aggregated = 0;
-        DateTime? oldest = null;
-        for (var k = 0; k < k0; k++)
+        var resolved = facts.Where(a => a.Round is not null && a.Status != "scheduled")
+            .OrderBy(a => a.Round!.Value).ToList();   // stable: recording order within a round
+        DateTime? timer = null;
+        string? rule = null;
+        DateTime? latestAction = null;
+        foreach (var a in resolved)
         {
-            var t = first + k * step;
-            if (documentedStamps.Contains(StampOf(t))) continue;
-            aggregated++;
-            oldest ??= t;
+            if (a.Status == "given")
+            {
+                if (TimerInstant(a) is DateTime t
+                    && (latestAction is null || t >= latestAction.Value   // a subsequent Given restarts the interval
+                        || timer is null || t > timer.Value))           // an older backdated one never rewinds it
+                {
+                    timer = t;
+                    rule = "given";
+                }
+            }
+            else if (TimerInstant(a) is DateTime s)
+            {
+                timer = s;   // the skipped round's scheduled time (always after the timer that made it due)
+                rule = "skipped";
+            }
+            if (ActionInstant(a) is DateTime act && (latestAction is null || act > latestAction.Value))
+                latestAction = act;
         }
-        /* in-window and next-future instances, stopping at the FIRST
-           undocumented instance after now (the doses-never-run-out rule) */
-        var renderable = new List<DateTime>();
-        for (var k = k0; ; k++)
-        {
-            var t = first + k * step;
-            var documented = documentedStamps.Contains(StampOf(t));
-            if (t <= nowUtc) { if (!documented) renderable.Add(t); continue; }
-            if (!documented) { renderable.Add(t); break; }
-        }
-        return (aggregated, oldest, renderable);
+        var number = resolved.Count == 0 ? 1 : resolved.Max(a => a.Round!.Value) + 1;
+        return timer is null
+            ? new(number, LegacyEntry(first, step, facts, nowUtc), null, null)
+            : new(number, timer.Value + step, timer, rule);
+    }
+
+    /** LEGACY ACTIVATION: how an order documented before this rule enters
+        it, without reinterpreting anything. A fact with no Round is a legacy
+        fact: shown as stored, and it NEVER drives the timer, so no old late
+        (or early) administration starts one. Round 1 of such an order is the
+        first slot of its original therapy-start grid, at or after the slot
+        containing its latest legacy fact's recorded time, that no legacy
+        fact documents; with no legacy fact it is simply the first dose. One
+        slot, from stored facts only (never the clock): the grid is not used
+        to generate anything else. Example (the approved compatibility
+        case): q1h, the 07:00 slot given early at 06:50 leaves the 06:00 slot
+        outstanding, so round 1 is 06:00; given at 06:55 → next 07:55. The
+        undated seed forms ("HH:mm", "D-n HH:mm") resolve as ParseStamp
+        always has. */
+    public static DateTime LegacyEntry(DateTime first, TimeSpan step, IReadOnlyList<AdminDto> facts, DateTime nowUtc)
+    {
+        var legacy = facts.Where(a => a.Round is null && a.Status != "scheduled").ToList();
+        DateTime? latest = null;
+        foreach (var a in legacy)
+            if ((ParseStamp(a.DocumentedTime, nowUtc) ?? ParseStamp(a.ScheduledTime, nowUtc)) is DateTime t
+                && (latest is null || t > latest.Value))
+                latest = t;
+        if (latest is null) return first;
+        var documented = legacy.Select(a => ParseStamp(a.ScheduledTime, nowUtc))
+            .Where(t => t is not null).Select(t => t!.Value).ToHashSet();
+        var slot = latest.Value <= first
+            ? first
+            : first.AddTicks((latest.Value - first).Ticks / step.Ticks * step.Ticks);
+        while (documented.Contains(slot)) slot += step;   // bounded by the legacy facts
+        return slot;
     }
 }

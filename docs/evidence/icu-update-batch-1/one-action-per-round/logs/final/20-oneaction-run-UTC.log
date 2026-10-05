@@ -1,0 +1,49 @@
+[1] the owner's example: q1h, round 1 due 06:00, Given at 06:05 -> round 2 at 07:05, locked until 07:05, then ONE action
+  PASS 05:50: round 1 (2026-10-05 06:00) is in the 30-min DUE-SOON window and still LOCKED — the reminder is not permission
+  PASS 05:50, round 1 before 06:00: Given / Held / Refused all refused by the mock ("dose round 1 is not due until 2026-10-05 03:00 — one action per dose r…")
+  PASS 05:50, round 1 before 06:00: no fact, no audit entry added
+  PASS 05:50, round 1 before 06:00: the row is current but NOT eligible now; it unlocks at 2026-10-05 06:00 (hospital)
+  PASS 06:05: round 1 Given -> accepted
+  PASS round 2 due 2026-10-05 07:05 (hospital) — from the actual time 06:05 + 1 h
+  PASS 06:05, straight after the Given: Given / Held / Refused all refused by the mock ("dose round 2 is not due until 2026-10-05 04:05 — one action per dose r…")
+  PASS 06:05, straight after the Given: no fact, no audit entry added
+  PASS 06:05, straight after the Given: the row is current but NOT eligible now; it unlocks at 2026-10-05 07:05 (hospital)
+  PASS 06:40 (due-soon window): Given / Held / Refused all refused by the mock ("dose round 2 is not due until 2026-10-05 04:05 — one action per dose r…")
+  PASS 06:40 (due-soon window): no fact, no audit entry added
+  PASS 06:40 (due-soon window): the row is current but NOT eligible now; it unlocks at 2026-10-05 07:05 (hospital)
+  PASS 06:40: DUE SOON shown, controls locked
+  PASS 07:04:59.999: Given / Held / Refused all refused by the mock ("dose round 2 is not due until 2026-10-05 04:05 — one action per dose r…")
+  PASS 07:04:59.999: no fact, no audit entry added
+  PASS 07:04:59.999: the row is current but NOT eligible now; it unlocks at 2026-10-05 07:05 (hospital)
+  PASS 07:05:00.000: round 2 eligible
+  PASS 07:05: Held -> accepted (one action)
+  PASS 07:05: a second action on round 2 (given/refused/held) -> refused as already documented
+  PASS round 3 due 2026-10-05 08:05 = the held round's scheduled 07:05 + 1 h, and LOCKED — recording a dose opened no future round
+  PASS exactly two facts on the order (round 1 Given, round 2 Held)
+
+[2] Refused at due: the next round = scheduled time + interval, locked
+  PASS 08:05: round 3 Refused -> accepted
+  PASS round 4 due 2026-10-05 09:05, locked
+
+[3] an already-due next round stays eligible (no cooldown)
+  PASS 09:30: round 1 Given late with actual time 07:10 (hospital)
+  PASS round 2 due 2026-10-05 08:10 — already past, eligible immediately
+
+[4] once order
+  PASS 10:59:59, the once dose (11:00): Given / Held / Refused all refused by the mock ("this dose is not due until 2026-10-05 08:00 — one action per dose roun…")
+  PASS 10:59:59, the once dose (11:00): no fact, no audit entry added
+  PASS 10:59:59, the once dose (11:00): the row is current but NOT eligible now; it unlocks at 2026-10-05 11:00 (hospital)
+  PASS 11:00: the once dose Given; nothing further expected
+
+[5] hospital midnight: a q8h round due 00:00 (21:00Z the previous UTC day)
+  PASS 16:00: round 1 Given -> round 2 due 00:00 hospital
+  PASS 23:59:59: round 2 (00:00 tomorrow) locked
+  PASS 23:59:59: the round sits on TOMORROW's open card; today's card references it — no second set of controls
+  PASS 00:00:00: the round is eligible and on TODAY's card (the new hospital day)
+
+[6] PRN and on-demand availability: no scheduled time -> no lock (unresolved: no source defines a next round)
+  PASS PRN availability: unlocksAt = null, eligible
+  PASS continuous (on demand): unlocksAt = null, eligible
+  PASS three Given on the continuous order in the same minute -> three facts (the screenshot; only the page's submission guard prevents double clicks)
+
+RESULT 36 passed, 0 failed (device zone UTC)

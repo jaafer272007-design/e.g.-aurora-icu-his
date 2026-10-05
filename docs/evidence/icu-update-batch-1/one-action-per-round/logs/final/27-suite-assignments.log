@@ -1,0 +1,72 @@
+SKIP  [0] Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objec
+SKIP  [1] ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+SKIP  [2] Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+PASS  [3] Login (SeniorDoctor, Specialist, two nurses)
+      sara.rahman: token issued
+      liam.osei: token issued
+      maya.chen: token issued
+      priya.patel: token issued
+PASS  [4] Admit THIS RUN's patient (dynamic free bed)
+      admitted P-1025 (ENC-1026) at B-08
+PASS  [5] DEFAULT COVERAGE — no setup: both nurses cover the fresh patient; doctor /mine = the censu
+      unauth coverage -> HTTP 401
+      SEN reads coverage -> HTTP 200
+      SPE reads coverage -> HTTP 200
+      NUR1 reads coverage -> HTTP 200
+      NUR2 reads coverage -> HTTP 200
+      unknown query param -> HTTP 400
+      Access-Control-Allow-Origin: https://jaafer272007-design.github.io
+      fresh patient covered by 3 nurse(s) with ZERO setup — the opt-out default
+      nurse /mine carries the new patient immediately
+      doctor /mine is the CENSUS (no assignment concept)
+      doctor /mine is the CENSUS (no assignment concept)
+PASS  [6] RBAC + the retired wire — remove/restore/staff are SeniorDoctor-only; the staff picker lis
+      SPE remove -> HTTP 403
+      SPE restore -> HTTP 403
+      SPE staff -> HTTP 403
+      NUR1 remove -> HTTP 403
+      NUR1 restore -> HTTP 403
+      NUR1 staff -> HTTP 403
+      unauth remove -> HTTP 401
+      staff picker: 3 nurse account(s), zero doctors
+      old opt-in shape (kind/role/shift) -> HTTP 400 (Disallow binding)
+      unknown patient -> HTTP 400
+      unknown user -> HTTP 400
+      removing a DOCTOR -> HTTP 400
+PASS  [7] REMOVE + the worklist effect — audited removal; the patient leaves ONLY that nurse's /mine
+      removal audited: RMV-1004 by Dr. Sara Rahman — 1:1 with another patient — assignments E2E
+      the patient left the REMOVED nurse's focused worklist (and is named as removed)
+      the OTHER nurse still covers (exceptions are per-nurse)
+      coverage read shows the exception inline (audit visible to every clinical viewer)
+      remove replay -> HTTP 409
+PASS  [8] 🔴 WORKLIST, NEVER AUTHORITY — ZERO EXCEPTIONS: the REMOVED nurse documents administration,
+      signed order ORD-141
+      REMOVED nurse documents administration of dose prn -> HTTP 200
+      REMOVED nurse charts an observation -> HTTP 200
+      REMOVED nurse posts an SBAR handoff -> HTTP 200 (the #114 assignment gate is GONE)
+      authority comes from role and licensure, never a list — asserted on all three write paths
+PASS  [9] RESTORE — audited both halves; the patient returns to the worklist; restore replay 409
+      restored: RMV-1004 — 2026-10-05 08:26 → 2026-10-05 08:26
+      the patient is back on the worklist
+      restore replay -> HTTP 409
+PASS  [10] 🔴 NEVER ZERO NURSES — removing the LAST covering nurse is REFUSED (state-aware walk of the
+      live covering nurses: 3 (daniel.okoro maya.chen priya.patel)
+      removed daniel.okoro (2 still covering)
+      removed maya.chen (1 still covering)
+      removing the LAST covering nurse (priya.patel) -> HTTP 409
+      the hard guarantee holds: a patient can never reach zero nurse coverage
+      restored daniel.okoro
+      restored maya.chen
+      coverage back to the full default (3 nurses)
+PASS  [11] MIGRATION HONESTY live — no legacy #114 row is still active (the boot supersede); history 
+      legacy #114 history: 0 row(s) readable, 0 active, 0 carrying the supersede reason
+PASS  [12] DISCHARGE — the patient leaves every worklist by construction (coverage derives over OPEN 
+      discharged ENC-1026
+      closed encounter: off the nurse worklist
+      closed encounter: off the doctor census
+      closed encounter: no coverage row (open encounters only)
+      remove on the closed episode -> HTTP 409
+PASS  [13] Failure-path cleanup — restore this run's removals and release the encounter (runs on fail
+      cleanup discharge ENC-1026 -> HTTP 409 (200 = closed now, 409 = already closed by the suite)
+      all run encounters discharged: True
+SUITE PASSED

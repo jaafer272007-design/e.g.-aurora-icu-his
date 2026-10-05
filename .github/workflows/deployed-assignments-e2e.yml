@@ -208,9 +208,12 @@ jobs:
 
       - name: "🔴 WORKLIST, NEVER AUTHORITY — ZERO EXCEPTIONS: the REMOVED nurse documents administration, charts observations AND posts an SBAR handoff on the removed patient (the #114 handoff gate is DROPPED)"
         run: |
-          # a signed order so there is a real dose to document
+          # a signed order so there is a real dose to document. A PRN order:
+          # its availability is documentable at once — a scheduled order's
+          # round 1 (the next full hour) opens only at its scheduled time
+          # (one action per round, 2026-10-05), never within a run
           OID=$(curl -sf -X POST -H "Authorization: Bearer $SEN" -H 'Content-Type: application/json' \
-            -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"paracetamol","drug":"Paracetamol","dose":"1 g","route":"IV","frequency":"q6h","duration":"3 days","prn":false}}],"sign":true}' \
+            -d '{"drafts":[{"patientId":"'$PID'","category":"Medication","priority":"Routine","medication":{"drugId":"paracetamol","drug":"Paracetamol","dose":"1 g","route":"IV","frequency":"q6h","duration":"3 days","prn":true,"prnIndication":"temp ≥ 38.3 °C"}}],"sign":true}' \
             "$API/api/icu/orders" | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["orderId"])')
           echo "signed order $OID"
           # the dose instance is DERIVED at read — take its adminId from the MAR

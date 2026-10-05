@@ -1,0 +1,62 @@
+clock (server/UTC): now=2026-09-30 00:06  F0 (this hour)=2026-09-30 00:00  run=000650
+admitted synthetic P-1022 (ENC-1022) at B-16
+
+[A] q1h — owner example with explicit actual times; the 2h delay-reason rule judged at the DOCUMENTING moment
+    before: 2026-09-29 22:00 scheduled | 2026-09-29 23:00 scheduled | 2026-09-30 00:00 scheduled | 2026-09-30 01:00 scheduled
+  PASS before: therapy-start grid F, F+1h, F+2h
+  PASS actual 5 min late but documented 126 min after the slot, no reason -> 400 delay reason (400: this dose was scheduled at 2026-09-29 22:00 and is 2h 06m overdue — a delay reas)
+  PASS with reason -> 200; fact scheduleAnchor=2026-09-29 22:05 (actual time, not the documenting time)
+  PASS original scheduled time + actual time preserved on the fact
+  PASS history records the re-timing: 2026-09-29 22:00 dose given at 2026-09-29 22:05 (documented 2026-09-30 00:06) — LATE: 2h 06m after the scheduled time — schedule re-timed: next dose 2026-09-29 
+    after F@F+5: 2026-09-29 22:00 given@22:05↻ | 2026-09-29 23:05 scheduled | 2026-09-30 00:05 scheduled | 2026-09-30 01:05 scheduled
+  PASS next grid F+65 (…), old F+1h/F+2h superseded: ['2026-09-29 23:05', '2026-09-30 00:05', '2026-09-30 01:05']
+  PASS stale browser posts 2026-09-29 23:00 -> 409 (dose '2026-09-29T23:00' is no longer an expected instance — the schedule was re-timed by a)
+  PASS stale browser posts 2026-09-30 00:00 -> 409 (dose '2026-09-30T00:00' is no longer an expected instance — the schedule was re-timed by a)
+  PASS F+65 given at F+72 (no reason: 61 min < 120) -> anchor 2026-09-29 23:12
+  PASS next = F+132 (the "07:05 given 07:12 -> 08:12" step): ['2026-09-30 00:12']
+    after F+65@F+72: 2026-09-29 22:00 given@22:05↻ | 2026-09-29 23:05 given@23:12↻ | 2026-09-30 00:12 scheduled
+
+[B] q8h — 40-min delay needs no reason but re-times; duplicate; discontinue
+    before: 2026-09-29 23:00 scheduled | 2026-09-30 07:00 scheduled
+  PASS given at F+40, no reason -> 200 + anchor
+  PASS next = F+8h40: ['2026-09-30 07:40']
+  PASS stale F+8h -> 409
+  PASS duplicate F -> 409 (dose '2026-09-29T23:00' was already documented as given by RN Maya Che)
+    after: 2026-09-29 23:00 given@23:40↻ | 2026-09-30 07:40 scheduled
+
+[C] older dose recorded later never rewinds the newer schedule
+  PASS F+1h given at F+65 -> anchor
+  PASS older F given at F+10 without reason -> 400 (backdating cannot dodge the reason rule)
+  PASS older F given at F+10 with reason -> 200, NO anchor
+  PASS history says why it did not re-time
+  PASS schedule stays F+125 (not rewound to F+70): ['2026-09-30 00:05', '2026-09-30 01:05']
+    after: 2026-09-29 22:00 given@22:10 | 2026-09-29 23:00 given@23:05↻ | 2026-09-30 00:05 scheduled | 2026-09-30 01:05 scheduled
+
+[D] held / refused / early given never re-time
+  PASS held F -> no anchor
+  PASS refused F0 -> no anchor
+  PASS grid unchanged, next F0+1h: ['2026-09-30 01:00']
+  PASS early given (documented before its slot) -> no anchor
+  PASS next F0+2h: ['2026-09-30 02:00']
+
+[E] a pre-update late fact (no anchor) is never reinterpreted; its bytes stay identical
+  PASS legacy late fact: grid stays F+1h (not F+80): ['2026-09-30 00:00', '2026-09-30 01:00']
+  PASS after a new documentation the legacy fact bytes are unchanged
+    after: 2026-09-29 23:00 given@23:20 | 2026-09-30 00:00 given@00:06↻ | 2026-09-30 01:06 scheduled
+
+[F] frequency modification keeps the re-timing: next = anchor + NEW interval
+  PASS q1h re-timed at F+5 then modified to q4h -> next F+4h05: ['2026-09-30 03:05']
+
+[G] once + PRN never re-time; #110 completion preserved
+  PASS once given late -> no anchor; GET /orders derives it completed (#110)
+  PASS PRN given -> no anchor
+
+agreement snapshot -> /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/agreement-snapshot-keep.json  (patient P-1022)
+
+[H] discontinued order: facts stay (anchor kept), nothing derived, documenting -> 409
+  PASS MAR after discontinue: [('2026-09-29 23:00', 'given', '2026-09-29 23:40')]
+  PASS document on discontinued -> 409 (order 'ORD-141' is discontinued — it is not in force, no dos)
+
+[I] encounter KEPT OPEN for the browser checks: P-1022 / ENC-1022
+
+API CHECK PASSED

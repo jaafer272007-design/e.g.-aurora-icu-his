@@ -1,5 +1,5 @@
 /* ICU Bed Overview — page-scoped styles (ported from reference/icu-bed-overview.html) */
-.bo .shell{display:grid;grid-template-columns:198px 1fr 278px;min-height:0}
+.bo .shell{display:grid;grid-template-columns:var(--nav-col) 1fr 278px;min-height:0}
 
 /* main + filter bar */
 .bo main{min-height:0;display:flex;flex-direction:column;overflow:hidden}
@@ -95,7 +95,7 @@
 .bo .bs .delta{margin-left:auto;font-size:10px;font-family:var(--mono);font-weight:700}
 .bo .up{color:var(--green)}.bo .dn{color:var(--red)}.bo .fl{color:var(--dim)}
 
-@media(max-width:1180px){.bo .shell{grid-template-columns:64px 1fr}.bo .rp{display:none}.bo .bottom{grid-template-columns:repeat(3,1fr)}
+@media(max-width:1180px){.bo .shell{grid-template-columns:var(--nav-col) 1fr}.bo .rp{display:none}.bo .bottom{grid-template-columns:repeat(3,1fr)}
  .bo.app-frame{height:auto;overflow:visible}.bo main{overflow:visible}.bo .gridwrap{overflow:visible}}
 
 /* ---- Unassigned patients (Patient Assignment & Responsibility) ---- */
