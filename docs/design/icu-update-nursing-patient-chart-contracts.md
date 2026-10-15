@@ -454,3 +454,139 @@ export function PatientNurseCarePanel({ patientId }: { patientId: string }): JSX
 9. **No automatic resend** of an uncertain I&O save (observations carry no attempt id); the nurse
    is told to check history.
 10. **Session branch names** for Sessions 2 and 3 are the ones in §1.
+
+---
+
+## 9. Amendment 1 — 2026-10-15 (Codex review of prep commit `9d68bca`)
+
+*Appended; §1–§8 above are unchanged text. Where this section conflicts with them, **this section
+wins**. Sessions 2 and 3 start from the commit that adds it. The approved plan is unchanged.*
+
+### 9.1 Nursing rounds keep the full interval (supersedes the minute precision in §3.2, §3.3, §3.5 and §8 item 1)
+
+The rule is completion time **plus the chosen interval**. Truncating completion to the minute let a
+Done at 10:00:59 reopen at 10:01:00. Corrected:
+
+- **New nursing stamp form:** UTC with milliseconds, **`yyyy-MM-ddTHH:mm:ss.fffZ`**
+  (e.g. `2026-10-15T10:00:59.900Z`; `Date.parse` reads it directly). It is used **only** for
+  `NursingRound.dueTime`, `NursingCompletion.dueTime`, `NursingCompletion.completedTime` and the
+  round identity. Medication stamps, MAR rounds, history/audit stamps (`OrderEvent.time`,
+  `orderedTime`) and every existing timer keep the minute form `yyyy-MM-dd HH:mm`, unchanged.
+- **Round identity:** `"<dueTime>~r<number>"` in the new form, e.g.
+  `2026-10-15T10:01:59.900Z~r2`.
+- **`completedTime`** = the server clock at completion, **rounded up** to the whole millisecond
+  (so the recorded time is never before the actual one).
+- **Next round** (repeating): `dueTime = completedTime + intervalMinutes` exactly, to the
+  millisecond. It is completable when `now ≥ dueTime` (server: 409 before; client: disabled before,
+  a timer opens it at that instant).
+- **Round 1** is due at the signing minute from the `signed` history event, written in the new
+  form (`…T08:00:00.000Z~r1`); that is never after the signing, so round 1 is open on signing.
+- **Acceptance:** Done at 10:00:59.900 with a 1-minute interval → next round due
+  `10:01:59.900Z` or later (later only by sub-millisecond rounding); a request at 10:01:59.899 is
+  409, one at 10:01:59.900 or after is accepted.
+- **Server refusal texts** for nursing rounds carry stamps in the new form; clients localise them
+  with `localizeNursingStamps` (below), not the MAR's minute regex.
+
+Revised `src/lib/nursingRounds.ts` exports (additions and changed meanings; the rest of §3.5
+stands):
+
+```ts
+/** 'yyyy-MM-ddTHH:mm:ss.fffZ' → epoch ms; null for any other form (the minute form included) */
+export function parseNursingStamp(stamp: string): number | null
+/** epoch ms → 'yyyy-MM-ddTHH:mm:ss.fffZ' */
+export function nursingStampOf(ms: number): string
+/** hospital clock, to the second, 12h/24h aware: "10:01:59" today, "D-1 10:01:59" earlier */
+export function displayNursingTime(stamp: string): string
+/** a server refusal text with nursing stamps converted to hospital time */
+export function localizeNursingStamps(text: string): string
+/** "<yyyy-MM-ddTHH:mm:ss.fffZ>~r<n>" → { dueMs, number }; null when malformed */
+export function parseNursingRoundId(id: string): { dueMs: number; number: number } | null
+// NursingRoundState is unchanged in shape; dueMs is now millisecond-exact and
+// nursingRoundState() is open exactly when nowMs >= dueMs.
+```
+
+### 9.2 An unresolved nursing save stays unconfirmed after a refused retry (supersedes the `rejected` line of §3.6)
+
+A retry that receives 401, 403 or any other refusal while its attempt is still unresolved does not
+prove the original request failed: the original may still be in flight and commit later.
+
+- **First send of an attempt:** `ok` → confirmed (held until a read started after the answer);
+  `rejected` → the server refused the only request: **not saved**, shown with its reason (401
+  included: nothing was written); `uncertain` → **unconfirmed**.
+- **Retry of an unconfirmed attempt** (same `{ roundId, attemptId }`): `ok` → confirmed;
+  `rejected` (401, 403, 400, 404, 409, …) → the reason is **shown** (for 401: "sign in again, then
+  retry saving") but the attempt, its lock and its stored copy are **kept unconfirmed**; an
+  authoritative re-read is started. `uncertain` → stays unconfirmed.
+- **Settlement comes only from an authoritative read of the order** (applied in start order,
+  stale reads discarded whole):
+  - **confirmed** — a completion on that order carries the attempt's `attemptId`;
+  - **not saved (terminal)** — the order is present and either a completion of the attempt's
+    `roundId` carries a different (or no) `attemptId`, or the order is no longer `active`
+    (completed, discontinued, encounter closed) and no completion carries the attempt. The server
+    replays a recorded attempt before any state check and refuses a stale round, so in both cases
+    the original can never commit afterwards;
+  - otherwise — the order absent from the read, the read unavailable, or the attempt's round still
+    current — it **stays unconfirmed**. Elapsed time and an absent read prove nothing.
+- **The authoritative read is the per-patient order list**, which keeps completed and
+  discontinued orders. The implementation queue drops them, so a missing queue row proves nothing.
+- **Required checks** (whoever implements a Done control): a delayed original request; an
+  expired-session (401) retry that leaves the attempt unconfirmed; the original subsequently
+  committing → confirmed with exactly one completion.
+- The MAR's own retry handling (§4) is not changed by this amendment.
+
+Revised shared exports:
+
+```ts
+// src/lib/api/index.ts — the settling read: the server's own rows, or null when the server
+// cannot be read (a mock fallback would settle nothing); in mock mode the mock store is the record
+export function getPatientOrdersAuthoritative(patientId: string): Promise<Order[] | null>
+
+// src/lib/nursingRounds.ts — one settlement rule for every Done control
+export interface NursingPendingAttempt {
+  attemptId: string
+  orderId: string
+  patientId: string
+  roundId: string
+  label: string
+  /** nursing stamp form, when Done was clicked */
+  clickedAt: string
+}
+export type NursingSettlement =
+  | { kind: 'confirmed'; completion: NursingCompletion }
+  | { kind: 'not-saved'; reason: string }
+  | { kind: 'unconfirmed' }
+/** `orders` = one authoritative per-patient read; never call it with a fallback/mock list in API mode */
+export function settleNursingAttempt(attempt: NursingPendingAttempt, orders: Order[]): NursingSettlement
+```
+
+The stored shape for Orders to Implement (§3.6, key `aurora.nursingUnconfirmed:<session.name>`) is
+`NursingPendingAttempt[]` (`patientId` added so the settling read can be made).
+
+### 9.3 I&O saves are bound to the admission shown in the form (supersedes the write rules of §5.2 and `recordIoSnapshot` in §5.3)
+
+- **Server:** `POST /api/icu/observations` gains an optional field,
+  `ChartObservationsRequest { patientId, entries, expectedEncounterId? }` (additive; unknown fields
+  still 400; every existing caller is unchanged).
+  - **Required** (400 when absent) when any entry is `io_current_intake_ml` or
+    `io_current_output_ml`; optional for every other type.
+  - When present, it is checked **inside the write transaction**: the transaction locks that
+    encounter's row (`SELECT … FOR UPDATE`; discharge updates the same row, so the two
+    serialise), then requires the patient's current open encounter to be exactly
+    `expectedEncounterId`. A mismatch (discharged, readmitted, unknown or another patient's) is
+    **409 with nothing written**. The existing no-open-encounter 409 is unchanged.
+- **Client:**
+
+  ```ts
+  // src/lib/api/index.ts — replaces the §5.3 signature
+  export function recordIoSnapshot(
+    patientId: string, encounterId: string, draft: IoSnapshotDraft, jobTitle: JobTitle,
+  ): Promise<IoWriteResult>
+  ```
+
+  `encounterId` is the loaded `IoView.encounterId`; the adapter sends it as
+  `expectedEncounterId`. `chartObservations` is unchanged.
+- **Editor state** is keyed to `patientId` + `encounterId`. When a read returns a different
+  encounter or `no-open-encounter`, or a save is refused with the mismatch 409, the typed values are
+  cleared and the view re-read. The old admission's values are never resent into the new one.
+- **Required check:** a form loaded for admission A, then discharge and readmission B before
+  submission → the stale save is 409 and creates no observation in B (or in A).
