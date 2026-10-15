@@ -113,6 +113,24 @@ static class OrderLogic
         /* a provided-but-blank summary must never override the composed
            medication summary or create a contentless order */
         if (CheckText($"{at}.summary", d.Summary, required: false) is string s) return s;
+        /* NURSING ORDERS (icu-update-nursing-patient-chart-contracts.md §3.1):
+           a schedule is SHAPE — only a Nursing task order may carry one, its
+           instructions are required free text, and the interval is whole
+           minutes from 1 minute through 48 hours (absent = one-time) */
+        if (d.Nursing is not null)
+        {
+            if (d.Category != "Nursing")
+                return $"{at}: only a Nursing order may carry a nursing schedule (nursing)";
+            if (d.Medication is not null)
+                return $"{at}: a nursing order cannot carry a medication";
+            if (d.RequiresImplementation != true)
+                return $"{at}: a nursing schedule requires requiresImplementation true — its rounds are completed from Orders to Implement";
+            if (CheckText($"{at}.summary (the nursing instructions)", d.Summary, required: true) is string instr)
+                return instr;
+            if (d.Nursing.IntervalMinutes is int m
+                && (m < NursingRounds.MinIntervalMinutes || m > NursingRounds.MaxIntervalMinutes))
+                return $"{at}.nursing.intervalMinutes must be a whole number of minutes from {NursingRounds.MinIntervalMinutes} to {NursingRounds.MaxIntervalMinutes} (1 minute through 48 hours)";
+        }
         if (d.Medication is not null)
         {
             /* med orders are administered via the MAR schedule — the one-shot

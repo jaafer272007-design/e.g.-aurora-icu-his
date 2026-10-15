@@ -191,6 +191,18 @@ static class ObservationCatalog
         // missing tops up existing deployments incl. staging on next boot).
         new("acvpu", "neuro", "Consciousness (ACVPU)", "", "enum",
             Values: ["Alert", "Confusion", "Voice", "Pain", "Unresponsive"]),
+        // Intake & Output MANUAL SNAPSHOTS (icu-update-nursing-patient-chart.md
+        // §3, contracts §5): the nurse's latest entered intake / output, each
+        // a separately named observation — entering 200 after 500 shows 200
+        // and keeps 500 in history. NOT per-interval amounts: deliberately
+        // outside the Fluid Balance group, so no interval total, the bedside
+        // fluid strip, the printed flowsheet's fluid rows or any score reads
+        // them (those use explicit code lists / that group). Not score
+        // inputs; no flagging ranges; plausibility as the derived totals.
+        // Appended as data — seed-if-missing adds exactly these two rows to
+        // an existing install on its next boot, rewriting nothing.
+        new("io_current_intake_ml", "nursing", "Current Intake (manual snapshot)", "mL", "numeric", 0, 20000),
+        new("io_current_output_ml", "nursing", "Current Output (manual snapshot)", "mL", "numeric", 0, 20000),
     ];
 
     public static void Seed(AuroraDb db)

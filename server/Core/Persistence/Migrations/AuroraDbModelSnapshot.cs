@@ -1409,6 +1409,9 @@ namespace Aurora.Core.Persistence.Migrations
                     b.Property<string>("MedicationJson")
                         .HasColumnType("text");
 
+                    b.Property<string>("NursingJson")
+                        .HasColumnType("text");
+
                     b.Property<string>("OrderedBy")
                         .IsRequired()
                         .HasColumnType("text");
