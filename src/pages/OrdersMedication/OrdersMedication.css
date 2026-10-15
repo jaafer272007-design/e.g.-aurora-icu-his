@@ -213,3 +213,22 @@
 .om .ominfpreview b{color:var(--cyan);font-size:12px}
 .om .ominfnow{color:var(--amber);font-style:italic}
 .om .ooinfusion{font-size:10.5px;color:var(--cyan);margin-top:3px}
+
+/* New Nursing Order + nursing rounds (icu-update-nursing-patient-chart.md §2) */
+.om .omnulbl{display:block;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+.om .omnusched{display:flex;gap:6px}
+.om .omnuopt{flex:1;min-height:44px;border-radius:10px;border:1px solid var(--stroke);color:var(--dim);font-size:12px;transition:.15s}
+.om .omnuopt:hover{color:var(--text)}
+.om .omnuopt.on{background:rgba(var(--amber-rgb),.13);border-color:rgba(var(--amber-rgb),.5);color:var(--amber);font-weight:600}
+.om .omnurepeat{border:1px dashed rgba(var(--amber-rgb),.4);border-radius:11px;padding:10px 11px;margin-top:11px}
+.om .omnurepeatrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.om .omnurepeatrow label{font-size:12px;color:var(--dim)}
+.om .omnurepeatrow input{width:110px;min-height:44px;padding:8px 10px;border-radius:10px;background:rgba(var(--lift-rgb),.04);border:1px solid var(--stroke);outline:none}
+.om .omnurepeatrow input:focus{border-color:var(--blue)}
+.om .omnurepeatrow input[aria-invalid="true"]{border-color:var(--red)}
+.om .omnurepeatrow select{min-height:44px;padding:8px 9px;border-radius:10px;background:rgba(var(--lift-rgb),.04);border:1px solid var(--stroke);color:var(--text)}
+.om .omnuhint{font-size:10.5px;color:var(--faint);margin-top:7px;line-height:1.45}
+.om .omnuhint.bad{color:var(--red)}
+.om .oonurse{font-size:10.5px;color:var(--faint);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.om .oonursenote{font-size:11px;color:var(--amber);margin-top:6px;line-height:1.45}
+.om .oab:disabled{opacity:.55;cursor:not-allowed}
