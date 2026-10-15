@@ -757,6 +757,61 @@ export interface Order {
   history: OrderEvent[]
   /** required reason recorded on discontinue */
   statusReason?: string
+  /** NURSING ORDERS (icu-update-nursing-patient-chart-contracts.md §3.2):
+   *  present only on a nursing order created with a schedule (the New
+   *  Nursing Order form) — its repeat interval, completed rounds and the
+   *  server-DERIVED current round. Absent on every legacy order (one-time,
+   *  completed with the empty implement request). */
+  nursing?: NursingOrderDetails
+}
+
+/** one nursing round: completable from dueTime onward (millisecond-exact).
+ *  NURSING STAMP FORM (contracts §9.1): UTC with milliseconds,
+ *  'yyyy-MM-ddTHH:mm:ss.fffZ' — only for nursing round/completion times;
+ *  every other stamp keeps the minute wire form 'yyyy-MM-dd HH:mm'. */
+export interface NursingRound {
+  /** "<dueTime>~r<number>", e.g. "2026-10-15T10:01:59.900Z~r2" */
+  roundId: string
+  number: number
+  /** nursing stamp form */
+  dueTime: string
+}
+
+/** one completed round — append-only, oldest first */
+export interface NursingCompletion {
+  round: number
+  roundId: string
+  dueTime: string
+  /** the server clock at completion, rounded up to the millisecond (nursing
+   *  stamp form) — a repeating order's next round is due at exactly this +
+   *  intervalMinutes */
+  completedTime: string
+  /** the token's name claim */
+  completedBy: string
+  /** present when completed with the round/attempt contract (safe retry) */
+  attemptId?: string
+}
+
+export interface NursingOrderDetails {
+  /** whole minutes, 1…2880; absent = one-time */
+  intervalMinutes?: number
+  completions: NursingCompletion[]
+  /** DERIVED by the server from stored facts (never the clock): present only
+   *  while the order is active — round 1 at the signing minute (…:00.000Z),
+   *  then the last completion time + the full interval */
+  currentRound?: NursingRound
+}
+
+/** NewOrderDraft.nursing — absent interval = one-time */
+export interface NursingOrderDraft {
+  intervalMinutes?: number
+}
+
+/** the optional implement body: complete the order's CURRENT round. One
+ *  attemptId per deliberate Done — a retry re-sends the same pair. */
+export interface NursingImplementRequest {
+  roundId: string
+  attemptId: string
 }
 
 export interface NewOrderDraft {
@@ -778,6 +833,9 @@ export interface NewOrderDraft {
   contrast?: boolean
   priority: OrderPriority
   requiresImplementation?: boolean
+  /** New Nursing Order form only (category 'Nursing', requiresImplementation
+   *  true): {} = one-time, { intervalMinutes } = repeating */
+  nursing?: NursingOrderDraft
 }
 
 /* ---------- GET /api/icu/formulary (Layer 4 — master data, Aurora Core) ----------
