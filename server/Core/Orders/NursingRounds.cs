@@ -20,9 +20,13 @@ namespace Aurora.Core.Orders;
      the interval (the owner's rule), numbered n + 1;
    - the clock never creates a round: a late round keeps its number and due
      time until it is completed.
-   Every stamp is the application's UTC wire form "yyyy-MM-dd HH:mm" (minute
-   precision): completion time is the server clock truncated to the minute,
-   so the next round opens exactly at that stamp + interval, :00.000.
+   PRECISION (contract Amendment 1, §9.1): the round's due time, the
+   completion time and the round identity use the NURSING stamp form, UTC
+   with milliseconds "yyyy-MM-ddTHH:mm:ss.fffZ" — completion time is the
+   server clock rounded UP to the millisecond, and the next round is due at
+   exactly that + the full interval (Done at 10:00:59.900 with a 1-minute
+   interval opens at 10:01:59.900, never earlier). History/audit stamps and
+   every medication stamp keep the minute wire form "yyyy-MM-dd HH:mm".
 
    Completing a round is POST /api/icu/orders/{id}/implement with
    { roundId, attemptId } under the existing order row lock (OrdersApi); a
@@ -34,25 +38,34 @@ static class NursingRounds
     public const int MinIntervalMinutes = 1;
     public const int MaxIntervalMinutes = 48 * 60;
 
+    const string NursingStampFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
     static readonly System.Text.RegularExpressions.Regex RoundIdPattern =
-        new(@"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})~r([1-9][0-9]{0,5})$");
+        new(@"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)~r([1-9][0-9]{0,5})$");
     static readonly System.Text.RegularExpressions.Regex AttemptIdPattern =
         new("^[A-Za-z0-9_-]{8,64}$");
 
-    public static string StampOf(DateTime t) => t.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-    public static string RoundIdOf(DateTime due, int number) =>
-        $"{due.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)}~r{number}";
+    /** the NURSING stamp form — due/completion times and round identity only */
+    public static string StampOf(DateTime t) => t.ToString(NursingStampFormat, CultureInfo.InvariantCulture);
+    public static string RoundIdOf(DateTime due, int number) => $"{StampOf(due)}~r{number}";
 
-    /** the dated UTC wire stamp only — a nursing round is never derived from
-        the undated legacy stamp forms ("HH:mm", "D-n HH:mm"), whose day moves
-        with the clock and would change the round's identity */
+    /** a NURSING stamp → UTC instant; null for any other form */
     public static DateTime? ParseStamp(string? t) =>
+        t is not null && DateTime.TryParseExact(t, NursingStampFormat, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var d)
+            ? d : null;
+
+    /** the minute wire stamp of a history event — the DATED form only: a
+        nursing round is never derived from the undated legacy forms ("HH:mm",
+        "D-n HH:mm"), whose day moves with the clock */
+    static DateTime? ParseMinuteStamp(string? t) =>
         t is not null && DateTime.TryParseExact(t, "yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var d)
             ? d : null;
 
-    public static DateTime TruncateToMinute(DateTime t) =>
-        new(t.Year, t.Month, t.Day, t.Hour, t.Minute, 0, DateTimeKind.Utc);
+    /** the recorded completion instant: the clock rounded UP to the whole
+        millisecond, so it is never before the actual moment */
+    public static DateTime CeilToMillisecond(DateTime t) =>
+        new((t.Ticks + TimeSpan.TicksPerMillisecond - 1) / TimeSpan.TicksPerMillisecond * TimeSpan.TicksPerMillisecond, DateTimeKind.Utc);
 
     public static bool IsValidRoundId(string id) => RoundIdPattern.IsMatch(id);
     public static bool IsValidAttemptId(string id) => AttemptIdPattern.IsMatch(id);
@@ -66,7 +79,7 @@ static class NursingRounds
     static DateTime? SignedAt(OrderRow row)
     {
         var history = JsonSerializer.Deserialize<List<OrderEventDto>>(row.HistoryJson, JsonOpts.Web)!;
-        return ParseStamp(history.FirstOrDefault(e => e.Action == "signed")?.Time);
+        return ParseMinuteStamp(history.FirstOrDefault(e => e.Action == "signed")?.Time);
     }
 
     /** the order's current round, from stored facts only (never the clock);

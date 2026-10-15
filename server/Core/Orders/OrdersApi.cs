@@ -495,7 +495,10 @@ static class OrdersApi
             }
             if (nursing is not null && current is not null)
             {
-                nursing.Completions.Add(new(current.Number, current.RoundId, current.DueTime, time, actor, attemptId));
+                /* the precise completion instant (nursing stamp form) — the
+                   next round is due at exactly this + the interval */
+                var completedAt = NursingRounds.StampOf(NursingRounds.CeilToMillisecond(nowUtc));
+                nursing.Completions.Add(new(current.Number, current.RoundId, current.DueTime, completedAt, actor, attemptId));
                 row.NursingJson = NursingRounds.Write(nursing);
             }
             if (nursing?.IntervalMinutes is not null)

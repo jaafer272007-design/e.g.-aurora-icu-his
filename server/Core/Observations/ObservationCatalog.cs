@@ -49,6 +49,10 @@ static class ObservationCatalog
         "gcs", "gcs_total", "map", "urine_output",
     ];
 
+    /* the I&O manual-snapshot types (contracts §5/§9.3) — charting them
+       requires the admission binding (expectedEncounterId) */
+    public static readonly string[] IoSnapshotTypes = ["io_current_intake_ml", "io_current_output_ml"];
+
     sealed record G(string Code, string Name, bool EnabledByDefault);
     sealed record T(
         string Code, string Group, string Name, string Unit, string Kind,
