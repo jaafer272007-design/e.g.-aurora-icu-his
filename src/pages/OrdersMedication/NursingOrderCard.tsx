@@ -15,11 +15,14 @@ export interface NursingOrderEntry {
 }
 
 interface NursingOrderCardProps {
+  /** the patient this editor is shown for — the page keys the card by it, so
+   *  a patient switch mounts a fresh editor; a submission carries it */
+  patientId: string
   /** orders.sign — without it only Pending is offered (the server 403s a
    *  signed create regardless) */
   canSign: boolean
   /** resolves true when the order was created (the form then resets) */
-  onCreate: (entry: NursingOrderEntry, sign: boolean) => Promise<boolean>
+  onCreate: (patientId: string, entry: NursingOrderEntry, sign: boolean) => Promise<boolean>
 }
 
 /** New Nursing Order (icu-update-nursing-patient-chart.md §2): required
@@ -28,7 +31,7 @@ interface NursingOrderCardProps {
  *  interval in minutes or hours (1 minute through 48 hours), and the
  *  existing Pending / Sign & Order workflow. Its rounds are completed from
  *  Orders to Implement; the first is open as soon as it is signed. */
-export function NursingOrderCard({ canSign, onCreate }: NursingOrderCardProps) {
+export function NursingOrderCard({ patientId, canSign, onCreate }: NursingOrderCardProps) {
   const [instructions, setInstructions] = useState('')
   const [priority, setPriority] = useState<OrderPriority>('Routine')
   const [repeat, setRepeat] = useState(false)
@@ -46,7 +49,7 @@ export function NursingOrderCard({ canSign, onCreate }: NursingOrderCardProps) {
     if (!ready) return
     setBusy(true)
     try {
-      const ok = await onCreate({ instructions: instructions.trim(), priority, intervalMinutes: repeat ? interval : null }, sign)
+      const ok = await onCreate(patientId, { instructions: instructions.trim(), priority, intervalMinutes: repeat ? interval : null }, sign)
       if (ok) {
         setInstructions('')
         setPriority('Routine')
