@@ -8,6 +8,8 @@ import {
 } from '../../lib/time'
 import { dayLabel, groupMarDays, isActionable, isEligibleNow, stampOnCard, unlocksAt, type MarDayCard } from './marDays'
 import type { AdministrationAction, AssignedPatient, MarRow } from '../../lib/api/types'
+import type { MarBusy } from './marController'
+import './nurseCare.css'
 
 const DOCUMENTED_META: Record<AdministrationAction, { label: string; cls: string }> = {
   given: { label: 'GIVEN', cls: 'st-given' },
@@ -32,17 +34,14 @@ const PENDING_META = {
    window, counted out loud — never silently truncated */
 const MISSED_META = { label: 'MISSED', cls: 'st-overdue' }
 
-/** what the card shows for an order with a documentation in progress */
-export interface MarBusy {
-  phase: 'saving' | 'checking' | 'unconfirmed'
-  action: AdministrationAction
-  /** the documented minute, display clock */
-  at: string
-}
+export type { MarBusy }
+
+/** the patient header a group needs (an AssignedPatient, or the chart's patient) */
+export type MarPatient = Pick<AssignedPatient, 'patientId' | 'bedId' | 'name' | 'allergies'>
 
 interface MarCardProps {
   rows: MarRow[]
-  patients: AssignedPatient[]
+  patients: MarPatient[]
   /** orders with a documentation saving, awaiting the server read that
    *  settles it, or UNCONFIRMED (no answer — SAFE RETRY, ### F) — every
    *  documenting control of that order is disabled meanwhile */
@@ -52,6 +51,12 @@ interface MarCardProps {
   onDocument: (orderId: string, adminId: string, action: AdministrationAction, reason?: string, administeredAt?: string) => void
   /** re-send the order's UNCONFIRMED attempt — the same documentation, never a new dose */
   onRetry: (orderId: string) => void
+  /** no documenting controls (a viewer without meds.administer): rows only */
+  readOnly?: boolean
+  /** shown when no listed patient has a MAR row (the single-patient chart) */
+  emptyText?: string
+  /** the source's data-age chip, when the card is its own refreshed source */
+  dataAge?: ReactNode
 }
 
 type ReasonAction = 'held' | 'refused' | 'given-late'
@@ -150,7 +155,7 @@ const untilLabel = (ms: number): string => {
  *  rows are grouped into one card per prescription per hospital day — a
  *  presentation of the same rows; the actions, the dialog and the due
  *  count are unchanged and still bound to each row's orderId + adminId. */
-export function MarCard({ rows, patients, busy, notices, onDocument, onRetry }: MarCardProps) {
+export function MarCard({ rows, patients, busy, notices, onDocument, onRetry, readOnly = false, emptyText, dataAge }: MarCardProps) {
   /* ONE ACTION PER ROUND (owner's correction, 2026-10-05): the shared
      30-second clock, plus an exact wake-up at the next scheduled unlock so
      a round's controls open at its scheduled time, not up to 30 s later */
@@ -216,7 +221,7 @@ export function MarCard({ rows, patients, busy, notices, onDocument, onRetry }: 
       ? formatHm(hmOf(r.scheduledTime))
       : r.scheduledTime ? displayStamp(r.scheduledTime) : '—'
     const docMs = datedEpoch(r.documentedTime ?? '')
-    const current = isActionable(r)
+    const current = isActionable(r) && !readOnly
     const unlock = unlocksAt(r)
     const open = isEligibleNow(r, nowMs)
     const saving = busy.get(r.orderId)
@@ -322,10 +327,12 @@ export function MarCard({ rows, patients, busy, notices, onDocument, onRetry }: 
 
   return (
     <Card
+      className="ncmar"
       icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2" width="10" height="20" rx="4" /><path d="M7 9h10M7 15h10" /></svg>}
       title="Medication Administration Record"
-      aside={`${dueCount} due · administer & document only`}
+      aside={<span className="ncaside">{readOnly ? `${dueCount} due · view only` : `${dueCount} due · administer & document only`}{dataAge}</span>}
     >
+      {emptyText && !patients.some(p => rows.some(r => r.patientId === p.patientId)) && <div className="ncempty">{emptyText}</div>}
       {patients.map(p => {
         const mine = rows.filter(r => r.patientId === p.patientId)
         if (!mine.length) return null
