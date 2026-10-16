@@ -1,0 +1,187 @@
+/* Nurse care (src/features/nurse-care) — the shared MAR card, the I&O panel and
+   the patient chart's PatientNurseCarePanel. Moved from NurseWorkspace.css
+   (ICU nursing/patient-chart update) and scoped to the feature's own roots
+   (.ncmar, .ncio, .ncpanel) so the same components render identically in the
+   Nurse Workspace and the patient chart. Theme tokens only (both themes);
+   container queries adapt each card to the width it is given. */
+
+/* ===== MAR ===== */
+.ncmar .margroup{margin-bottom:12px}
+.ncmar .margroup:last-child{margin-bottom:0}
+.ncmar .marpt{display:flex;align-items:center;gap:9px;padding:7px 2px;border-bottom:1px solid rgba(var(--steel-rgb),.1);font-size:12.5px}
+.ncmar .marpt .marallergy{margin-left:auto;font-size:10px;color:var(--red)}
+.ncmar .marrow{display:grid;grid-template-columns:44px 1fr auto auto;gap:10px;align-items:center;
+ padding:9px 4px;border-bottom:1px dashed rgba(var(--steel-rgb),.09)}
+.ncmar .margroup .marrow:last-child{border-bottom:none}
+.ncmar .martime{font-size:12px;font-weight:700;color:var(--dim)}
+.ncmar .marrow.st-overdue .martime{color:var(--red)}
+.ncmar .marrow.st-due .martime{color:var(--amber)}
+.ncmar .marmed .mn{font-size:12.5px;font-weight:600}
+.ncmar .marmed .mdose{font-size:11px;color:var(--cyan);font-weight:600;margin-left:5px}
+.ncmar .marmed .mroute{font-size:10.5px;color:var(--faint);font-family:var(--mono);margin-top:2px}
+.ncmar .marstate{font-size:9px;font-weight:700;letter-spacing:.7px;padding:2.5px 8px;border-radius:7px;text-transform:uppercase}
+.ncmar .marstate.st-overdue{background:rgba(var(--red-rgb),.15);color:var(--red)}
+.ncmar .marstate.st-due{background:rgba(var(--amber-rgb),.16);color:var(--amber)}
+.ncmar .marstate.st-upcoming{background:rgba(var(--steel-rgb),.12);color:var(--dim)}
+.ncmar .marstate.st-prn{background:rgba(var(--violet-rgb),.16);color:var(--violet)}
+.ncmar .marstate.st-given{background:rgba(var(--green-rgb),.14);color:var(--green)}
+.ncmar .marstate.st-held{background:rgba(var(--amber-rgb),.16);color:var(--amber)}
+.ncmar .marstate.st-refused{background:rgba(var(--red-rgb),.15);color:var(--red)}
+.ncmar .maracts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.ncmar .mab{font-size:10.5px;font-weight:600;padding:7px 10px;border-radius:9px;border:1px solid var(--stroke);transition:.15s;min-height:36px}
+.ncmar .mab.given{color:var(--green);border-color:rgba(var(--green-rgb),.4);background:rgba(var(--green-rgb),.08)}
+.ncmar .mab.given:hover,.ncmar .mab.given:focus-visible{background:rgba(var(--green-rgb),.18)}
+.ncmar .mab.held{color:var(--amber);border-color:rgba(var(--amber-rgb),.4);background:rgba(var(--amber-rgb),.08)}
+.ncmar .mab.held:hover,.ncmar .mab.held:focus-visible{background:rgba(var(--amber-rgb),.18)}
+.ncmar .mab.refused{color:var(--red);border-color:rgba(var(--red-rgb),.4);background:rgba(var(--red-rgb),.08)}
+.ncmar .mab.refused:hover,.ncmar .mab.refused:focus-visible{background:rgba(var(--red-rgb),.18)}
+.ncmar .mardoc{font-size:10px;color:var(--faint)}
+/* ONE ACTION PER ROUND (owner's correction, 2026-10-05): a current round
+   is locked until its scheduled time and while its order saves — the
+   buttons stay visible but disabled, and a full-width line under the row
+   says when they open (or that a save / check is running, or why the last
+   attempt was not recorded) */
+.ncmar .mab:disabled,.ncmar .mab:disabled:hover{opacity:.42;cursor:not-allowed;background:transparent}
+.ncmar .marlockline{grid-column:2/-1;display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10.5px;margin-top:-4px}
+.ncmar .marlock{color:var(--dim);font-weight:600}
+.ncmar .marbusy{color:var(--cyan);font-weight:600}
+.ncmar .marnotice{color:var(--red);font-weight:600}
+/* SAFE RETRY (2026-10-05, ### F): an unanswered save — kept, unconfirmed */
+.ncmar .marwarn{color:var(--amber);font-weight:600}
+.ncmar .marretry{font-size:10.5px;font-weight:700;color:var(--blue);text-decoration:underline;padding:2px 0;min-height:24px}
+/* DAILY PRESCRIPTION CARDS (2026-10-04, marDays.ts): one card per
+   prescription per hospital day. The header carries the prescription once
+   (drug, dose, route · frequency, date); the rows inside are the compact
+   round rows. Open cards (today / holding the actionable row) sit on a
+   faint lift; completed history is a collapsed toggle. Theme tokens only,
+   so both themes follow the MAR's existing palette. */
+.ncmar .mardaycard{margin:8px 0 0;border:1px solid var(--stroke);border-radius:12px;background:rgba(var(--lift-rgb),.02);outline:none}
+.ncmar .mardaycard.pinned{border-color:var(--stroke2);background:rgba(var(--lift-rgb),.04)}
+.ncmar .mardaycard:focus-visible{box-shadow:0 0 0 2px rgba(var(--cyan-rgb),.55)}
+.ncmar .mardaycard.undated{border-style:dashed}
+.ncmar .mdbar{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;width:100%;padding:8px 10px;text-align:left;color:inherit;font:inherit}
+.ncmar .mdtoggle{border-radius:12px;cursor:pointer;background:none;border:0}
+.ncmar .mdtoggle:hover,.ncmar .mdtoggle:focus-visible{background:rgba(var(--lift-rgb),.05)}
+.ncmar .mdhead{display:flex;flex-direction:column;min-width:0;flex:1 1 180px}
+.ncmar .mdhead .mn{font-size:12.5px;font-weight:600}
+.ncmar .mdhead .mroute{font-size:10.5px;color:var(--faint);font-family:var(--mono);margin-top:1px}
+.ncmar .mddate{font-size:11px;font-weight:700;color:var(--dim);white-space:nowrap}
+.ncmar .mddate.today{color:var(--cyan)}
+.ncmar .mdsum{order:5;flex-basis:100%;font-size:10.5px;color:var(--faint)}   /* below the line; the chevron stays beside the date */
+.ncmar .mdchev{font-size:11px;color:var(--dim)}
+.ncmar .mdbody{padding:0 10px 4px;border-top:1px solid rgba(var(--steel-rgb),.1)}
+.ncmar .mardaycard .marrow{padding:7px 2px}
+.ncmar .mardaycard .marrow:last-child{border-bottom:none}
+.ncmar .mardaycard .marround{margin-left:0}
+.ncmar .markind{font-size:10px;font-weight:600;color:var(--faint);text-transform:uppercase;letter-spacing:.4px}
+.ncmar .mardaycard .mardoc{margin-top:2px;font-size:10.5px;color:var(--dim)}
+.ncmar .mdref{margin:7px 0 2px;padding:7px 9px;border-radius:9px;font-size:11px;line-height:1.45;color:var(--text);
+ border:1px solid rgba(var(--amber-rgb),.35);background:rgba(var(--amber-rgb),.08)}
+.ncmar .mdref.later{border-color:rgba(var(--cyan-rgb),.35);background:rgba(var(--cyan-rgb),.07)}
+.ncmar .mdjump{margin-left:2px;font-size:10.5px;font-weight:600;color:var(--blue);text-decoration:underline;padding:2px 0;min-height:24px}
+
+/* the card adapts to its OWN width (the chart's column or the workspace) */
+.ncmar,.ncio{container-type:inline-size}
+@container (max-width:560px){
+ .ncmar .marrow{grid-template-columns:44px 1fr;grid-auto-flow:row}
+ .ncmar .maracts{justify-content:flex-start;grid-column:2}
+ .ncmar .marstate{justify-self:start;grid-column:2}
+}
+@media(max-width:1180px){
+ .ncmar .marrow{grid-template-columns:44px 1fr;grid-auto-flow:row}
+ .ncmar .maracts{justify-content:flex-start;grid-column:2}
+ .ncmar .marstate{justify-self:start;grid-column:2}
+}
+.ncempty{text-align:center;color:var(--faint);font-size:12px;padding:18px 0}
+
+/* shared form controls inside the nurse-care cards (the reason dialog, the I&O form) */
+.ncmar .field label,.ncio .field label{display:block;font-size:10.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+.ncmar .field input,.ncmar .field textarea,.ncio .field input,.ncio .field select{width:100%;padding:10px 12px;border-radius:10px;background:rgba(var(--lift-rgb),.04);
+ border:1px solid var(--stroke);outline:none;transition:.15s;min-height:44px;color:var(--text)}
+.ncmar .field input:focus,.ncmar .field textarea:focus,.ncio .field input:focus,.ncio .field select:focus{border-color:var(--blue)}
+.ncmar .btn,.ncio .btn{padding:12px 16px;border-radius:11px;font-size:13px;font-weight:600;transition:.18s;min-height:46px}
+.ncmar .btn.primary,.ncio .btn.primary{background:linear-gradient(135deg,var(--grad-a),var(--cyan));color:var(--ink)}
+.ncmar .btn.primary:hover,.ncmar .btn.primary:focus-visible,.ncio .btn.primary:hover,.ncio .btn.primary:focus-visible{filter:brightness(1.08)}
+.ncmar .btn.primary:disabled,.ncio .btn.primary:disabled{opacity:.45;cursor:not-allowed;filter:none}
+.ncmar .btn.ghost{border:1px solid var(--stroke2);color:var(--dim)}
+.ncmar .btn.ghost:hover,.ncmar .btn.ghost:focus-visible{color:var(--text)}
+.ncmar .btn.danger{background:rgba(var(--red-rgb),.16);border:1px solid rgba(var(--red-rgb),.5);color:var(--red)}
+.ncmar .btn.danger:disabled{opacity:.45;cursor:not-allowed}
+.ncmar .btn:focus-visible,.ncio .btn:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* MAR held/refused reason dialog (Stage 10 Phase 3) */
+.marscrim{position:fixed;inset:0;background:rgba(4,8,14,.66);backdrop-filter:blur(3px);display:grid;place-items:center;z-index:50;padding:20px}
+.mardialog{width:min(460px,100%);background:var(--panel,#0c141f);border:1px solid var(--stroke2,rgba(var(--steel-rgb),.22));border-radius:16px;
+ padding:18px 20px;box-shadow:0 18px 50px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:12px}
+.mardialog h2{font-size:14.5px;font-weight:700}
+.mardialog .field{display:flex;flex-direction:column;gap:6px}
+.mardialog label{font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--dim)}
+.mardialog textarea{min-height:76px;resize:vertical;border:1px solid var(--stroke2,rgba(var(--steel-rgb),.22));border-radius:11px;
+ background:rgba(var(--glass2-rgb),.9);color:var(--text);font-size:13px;padding:10px 12px;font-family:inherit}
+.mardialog textarea:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+.mardfoot{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}
+
+/* overdue delay reason (validator option a): the LATE marker on a given
+   fact beyond the threshold, the documented reason on any fact row, and
+   the dialog's lateness note */
+.marlate{margin-left:6px;padding:1px 6px;border-radius:6px;font-size:9.5px;font-weight:800;letter-spacing:.4px;
+  color:var(--amber,#f5b301);background:rgba(var(--amber-rgb,245,179,1),.14);border:1px solid rgba(var(--amber-rgb,245,179,1),.35)}
+.marreason{margin-left:6px;color:var(--dim);font-style:italic}
+/* the rolling timer (2026-09-30): round number + what timed the current round */
+.marround{margin-left:6px;padding:0 5px;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:.3px;
+  color:var(--dim);border:1px solid var(--stroke2)}
+.martimer{color:var(--cyan)}
+.marlatehint{font-size:12px;color:var(--amber,#f5b301);margin:2px 0 6px}
+
+/* ===== the card header's aside: count + data-age chip ===== */
+.ncaside{display:inline-flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px 10px}
+
+/* ===== PatientNurseCarePanel ===== */
+.ncpanel{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* ===== Intake & Output — latest manual values ===== */
+.ncio .iotiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:4px}
+.ncio .iotile{display:flex;flex-direction:column;gap:3px;border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;
+ background:rgba(var(--lift-rgb),.03);min-width:0}
+.ncio .iotl{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--faint);font-weight:600}
+.ncio .iotv{font-size:19px;font-weight:700;line-height:1.2}
+.ncio .iotile.in .iotv{color:var(--cyan)}
+.ncio .iotile.out .iotv{color:var(--amber)}
+.ncio .iotile.bal.pos .iotv{color:var(--green)}
+.ncio .iotile.bal.neg .iotv{color:var(--red)}
+.ncio .iotv.iotnone{font-size:13px;font-weight:600;color:var(--dim)}
+.ncio .iostamp{font-size:10.5px;color:var(--dim);overflow-wrap:anywhere}
+.ncio .ionote{font-size:11px;color:var(--dim);line-height:1.5;margin:10px 0 0}
+.ncio .iowarn{font-size:11.5px;color:var(--amber);font-weight:600;line-height:1.5;margin:6px 0}
+.ncio .ioform{display:grid;grid-template-columns:1fr 1fr auto;gap:10px 12px;align-items:end;margin-top:12px}
+.ncio .ioform .field + .field{margin-top:0}
+.ncio .ioform input{font-family:var(--mono)}
+.ncio .ioform input[aria-invalid="true"]{border-color:var(--red)}
+.ncio .iosave{min-width:132px}
+.ncio .iohelp{grid-column:1/-1;margin:0;font-size:10.5px;color:var(--dim)}
+.ncio .iooutcome{margin:8px 0 0;font-size:11.5px;font-weight:600;line-height:1.5}
+.ncio .iooutcome.ok{color:var(--green)}
+.ncio .iooutcome.rejected{color:var(--red)}
+.ncio .iooutcome.uncertain{color:var(--amber)}
+.ncio .iohist{margin-top:14px;border-top:1px solid rgba(var(--steel-rgb),.12);padding-top:10px}
+.ncio .iohhead{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:6px}
+.ncio .iohlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;max-height:280px;overflow-y:auto}
+.ncio .iohrow{display:grid;grid-template-columns:62px auto 1fr;gap:2px 10px;align-items:baseline;padding:6px 2px;
+ border-bottom:1px dashed rgba(var(--steel-rgb),.1);font-size:11.5px}
+.ncio .iohkind{font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.ncio .iohrow.intake .iohkind{color:var(--cyan)}
+.ncio .iohrow.output .iohkind{color:var(--amber)}
+.ncio .iohval{font-weight:700}
+.ncio .iohval small{font-weight:500;color:var(--dim)}
+.ncio .iohmeta{color:var(--dim);font-size:10.5px;text-align:right;overflow-wrap:anywhere}
+.ncio .iohamend{grid-column:2/-1;font-size:10.5px;color:var(--violet);font-style:italic}
+.ncio .iomore{margin-top:6px;font-size:11px;font-weight:600;color:var(--blue);text-decoration:underline;min-height:28px}
+.ncio .iopick{margin-bottom:10px}
+@container (max-width:520px){
+ .ncio .iotiles{grid-template-columns:1fr 1fr}
+ .ncio .iotile.bal{grid-column:1/-1}
+ .ncio .ioform{grid-template-columns:1fr 1fr}
+ .ncio .iosave{grid-column:1/-1}
+ .ncio .iohrow{grid-template-columns:56px 1fr}
+ .ncio .iohmeta{grid-column:2;text-align:left}
+}
