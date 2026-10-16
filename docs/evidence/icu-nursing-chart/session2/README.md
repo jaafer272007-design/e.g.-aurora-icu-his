@@ -14,6 +14,7 @@ touched or contacted.
 | Reviewed base | `2fc317ca4cb923abae1718a9a30ad9af8a7592ba`, an ancestor of the prep commit; draft PR #234's branch was still at it when this work started |
 | `main` | `f0bf4647c7fb921baf760225bf838f69f655c697`, unchanged |
 | Branch | `claude/icu-nursing-chart-patient-chart`, created from `05e92e2`. No PR was opened (contract §1) |
+| Prep ref at push time (2026-10-16) | **moved to `ede8358`**: "contract Amendment 2", appended §10. It changes only the server's implement check order (an absent order is 404 before any body 400). It is docs-only (+26 lines in the contracts file) and says "Sessions 2 and 3 need no change". `05e92e2` is its parent. This branch was **not** rebased: it stays on the verified `05e92e2`, and nothing in it depends on §10 |
 
 ## Commits (in order)
 
