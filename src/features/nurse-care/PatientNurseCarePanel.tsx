@@ -18,8 +18,9 @@ import './nurseCare.css'
    started here and still unanswered keeps its lock, its stored attempt and its
    captured patient when the nurse moves to the workspace or another patient.
    Self-contained: its only input is the patient id. It reads the session
-   itself, shows documenting controls only to a viewer holding meds.administer
-   and the I&O entry only to observations.record, and renders its own loading /
+   itself, reads the MAR only for a viewer holding orders.view (the server's
+   read permission), shows documenting controls only to meds.administer and the
+   I&O entry only to observations.record, and renders its own loading /
    empty / error states and data-age chips. A patient switch clears it at once;
    a late response for the previous patient never renders. It shows the
    patient regardless of the nurse's opt-out worklist (any patient's dose may
@@ -27,9 +28,10 @@ import './nurseCare.css'
 
 export function PatientNurseCarePanel({ patientId }: { patientId: string }) {
   const session = getSession()
+  const canViewMar = !!session && hasPermission(session.jobTitle, 'orders.view')
   const canDocument = !!session && hasPermission(session.jobTitle, 'meds.administer')
   const tick = usePollTick()
-  const ids = useMemo(() => [patientId], [patientId])
+  const ids = useMemo(() => (canViewMar ? [patientId] : null), [patientId, canViewMar])
   const mar = useMarView(ids, tick)
 
   /* the MAR group header (name, bed, allergies) for THIS patient only */
@@ -52,7 +54,11 @@ export function PatientNurseCarePanel({ patientId }: { patientId: string }) {
 
   return (
     <section className="ncpanel" aria-label="Medication administration and intake & output for this patient" data-patient={patientId}>
-      {rows === null ? (
+      {!canViewMar ? (
+        <Card className="ncmar" title="Medication Administration Record">
+          <div className="ncempty" role="note">Medication administration is not available to your role.</div>
+        </Card>
+      ) : rows === null ? (
         <Card className="ncmar" title="Medication Administration Record"
           aside={<DataAge at={null} live label="MAR" what="This patient's medication administration rows" />}>
           <div className="ncempty" role="status">Loading medication administration…</div>

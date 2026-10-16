@@ -149,7 +149,8 @@
 .ncio .iotile.out .iotv{color:var(--amber)}
 .ncio .iotile.bal.pos .iotv{color:var(--green)}
 .ncio .iotile.bal.neg .iotv{color:var(--red)}
-.ncio .iotv.iotnone{font-size:13px;font-weight:600;color:var(--dim)}
+/* "Not recorded" / no balance: never in a value colour (it is not a value) */
+.ncio .iotile .iotv.iotnone{font-size:13px;font-weight:600;color:var(--dim)}
 .ncio .iostamp{font-size:10.5px;color:var(--dim);overflow-wrap:anywhere}
 .ncio .ionote{font-size:11px;color:var(--dim);line-height:1.5;margin:10px 0 0}
 .ncio .iowarn{font-size:11.5px;color:var(--amber);font-weight:600;line-height:1.5;margin:6px 0}
