@@ -1,0 +1,21 @@
+== migration
+  PASS newest applied migration is AddOrderNursingSchedule (20261015232419_AddOrderNursingSchedule)
+  PASS Orders.NursingJson is nullable text (text YES)
+  PASS every pre-existing order has NursingJson NULL
+== existing orders unchanged
+  PASS the legacy rows are identical apart from the new NULL column
+  PASS legacy orders carry no `nursing` on the wire
+== legacy one-time implement (empty request) unchanged
+  PASS legacy active -> 200 completed, implemented + completed, no nursing field (200)
+  PASS legacy order still has NursingJson NULL after implement
+  PASS legacy replay -> 409 already completed (409)
+  PASS legacy pending, empty request -> 409 pending (409)
+  PASS roundId on a legacy order -> 400 shape (400)
+== catalogue top-up: exactly two rows added, tenant configuration untouched
+  PASS ObservationTypes 55 -> 57
+  PASS every pre-existing ObservationTypes row byte-identical (incl. the drain_output range, the retired type, the custom type)
+  PASS ObservationGroups byte-identical (devices still enabled)
+  PASS io_current_intake_ml: nursing group, mL numeric 0-20000, active, not a score input, no ranges
+  PASS io_current_output_ml: nursing group, mL numeric 0-20000, active, not a score input, no ranges
+
+RESULT: 15 passed, 0 failed
