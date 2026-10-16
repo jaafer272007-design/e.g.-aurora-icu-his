@@ -60,7 +60,7 @@ export interface MarAttempt {
 
 /** one order's documentation, from the click until the server's record settles it:
  *  - 'saving': the attempt's request is in flight;
- *  - 'settling': answered (recorded or refused) — held until a server read
+ *  - 'settling': answered (recorded, or a FIRST send refused) — held until a server read
  *    STARTED AFTER the answer, covering this order's patient, is applied
  *    (afterSeq), so the controls never reopen on rows older than the answer;
  *  - 'unconfirmed': no answer. Only the record settles it: a fact carrying
@@ -69,7 +69,8 @@ export interface MarAttempt {
  *    time and an absent fact prove nothing — the original request may
  *    still commit. The nurse may RETRY SAVING the same attempt: same id,
  *    same documentation, which the server answers with the existing record
- *    if either copy already landed. */
+ *    if either copy already landed. A REFUSED retry leaves it unconfirmed:
+ *    the refusal may precede the server's attempt lookup. */
 interface MarLock {
   phase: 'saving' | 'settling' | 'unconfirmed'
   attempt: MarAttempt
@@ -294,6 +295,7 @@ export class MarController {
       const facts = rows.filter(r => r.orderId === orderId && r.status !== 'scheduled')
       if (facts.some(r => r.attemptId === a.attemptId)) {
         this.locks.delete(orderId); changed = true
+        this.setNotice(orderId, null)   // a refused retry's notice no longer applies
         this.toast('Saved — confirmed', `${a.label}: your ${a.action} documentation (${displayStamp(a.administeredAt ?? a.clickedAt)}) is on the record`)
         continue
       }
@@ -367,14 +369,14 @@ export class MarController {
     let res = await send(pinned ? a.clickedAt : a.administeredAt)
     /* only the pinned time can make a retry fail validation where the
        original would pass (a device clock ahead of the server, or a day
-       gone by): a 400 then re-sends the ORIGINAL request exactly, so any
-       refusal below is the original's own and the original, still in
-       flight, can never commit after it */
+       gone by): a 400 then re-sends the ORIGINAL request exactly. Its
+       refusal is still a refused retry — the original may still be in
+       flight — so it settles nothing (below) */
     if (pinned && res.kind === 'rejected' && res.status === 400 && this.locks.get(a.orderId) === lock) res = await send(undefined)
     if (this.locks.get(a.orderId) !== lock) {
       /* the nurse signed out (or another nurse signed in) meanwhile: the
          outcome updates only that nurse's stored copy */
-      if (this.owner !== owner) this.settleOrphan(owner, a, res.kind === 'ok' || (res.kind === 'rejected' && !(retry && res.status === 401)))
+      if (this.owner !== owner) this.settleOrphan(owner, a, res.kind === 'ok' || (res.kind === 'rejected' && !retry))
       return
     }
     if (res.kind === 'ok') {
@@ -382,20 +384,34 @@ export class MarController {
       const fact = all.find(f => f.attemptId === a.attemptId) ?? all.filter(f => f.status === a.action).pop()
       this.toast(retry ? 'Saved — confirmed' : 'Documented', `${a.label} — ${a.action} ${displayStamp(fact?.documentedTime) || nowHm()}`)
       lock.phase = 'settling'
-    } else if (res.kind === 'rejected' && !(retry && res.status === 401)) {
-      /* the server answered: this attempt is not on the record — on a
-         retry, judged after the server looked for it, so nothing in flight
-         can still record it */
+    } else if (res.kind === 'rejected' && !retry) {
+      /* the server refused the ONLY request (a first send): nothing was
+         recorded */
       const why = localizeStamps(res.error)
-      this.toast(retry ? 'Documentation NOT saved' : 'Dose NOT recorded', `${a.label}: ${why}`, 6000)
-      this.setNotice(a.orderId, `${retry ? 'Not saved' : 'Not recorded'} — ${why}`)
+      this.toast('Dose NOT recorded', `${a.label}: ${why}`, 6000)
+      this.setNotice(a.orderId, `Not recorded — ${why}`)
       lock.phase = 'settling'
     } else {
-      /* no answer (or, on a retry, a session that must sign in again —
-         the server never looked): the outcome is unknown */
+      /* no answer — or a REFUSED RETRY of an unconfirmed attempt (Codex
+         review of 72a7894): a refusal can come before the server looks for
+         the attempt (401, 403, a client-side check, request validation —
+         the pinned-minute fallback's included), and an absent fact proves
+         nothing, so it never shows that the original failed: the original
+         may still be in flight and commit later. The attempt stays
+         unconfirmed with its stored copy; only the record settles it
+         (settleFrom — its fact, or its round / 'once' dose documented by
+         another fact). Same rule as the nursing rounds (Amendment 1 §9.2). */
       lock.phase = 'unconfirmed'
-      const what = res.kind === 'rejected' ? 'your session has expired — sign in again, then retry saving' : res.error
-      this.toast('Save not confirmed',
+      /* the actual reason: a 401 keeps its sign-in wording; any other
+         refusal (403, a client-side check, validation) shows its own */
+      const expired = res.kind === 'rejected' && res.status === 401
+      const what = res.kind !== 'rejected' ? res.error
+        : expired ? 'your session has expired — sign in again, then retry saving'
+          : `the retry was refused — ${localizeStamps(res.error)}`
+      if (res.kind === 'rejected')
+        this.setNotice(a.orderId, `Retry refused — ${expired ? 'your session has expired — sign in again, then retry saving' : localizeStamps(res.error)}. `
+          + `Your original ${a.action} documentation may already be on the record; checking.`)
+      this.toast(res.kind === 'rejected' && !expired ? 'Retry refused' : 'Save not confirmed',
         `${a.label}: ${what} — your ${a.action} documentation is kept and may already be on the record. `
         + 'It is confirmed from the server\'s record; "Retry saving" re-sends the same documentation and can never record it twice.', 8000)
     }
@@ -405,8 +421,9 @@ export class MarController {
   }
 
   /** an answered attempt of a nurse no longer signed in: an answer that
-   *  settles it (recorded / refused) removes it from that nurse's stored
-   *  copy; no answer keeps it there, unconfirmed */
+   *  settles it (recorded, or a refused FIRST send) removes it from that
+   *  nurse's stored copy; no answer or a refused retry keeps it there,
+   *  unconfirmed */
   private settleOrphan(owner: string, a: MarAttempt, answered: boolean) {
     if (!answered) return
     try {
