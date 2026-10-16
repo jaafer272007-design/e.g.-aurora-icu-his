@@ -25,6 +25,7 @@ import { AttachmentsCard } from './AttachmentsCard'
 import { LabsCard } from './LabsCard'
 import { ActiveMedicationsCard } from './ActiveMedicationsCard'
 import { ImagingResultsCard } from './ImagingResultsCard'
+import { PatientNurseCarePanel } from '../../features/nurse-care/PatientNurseCarePanel'
 import { WeightHeightCard } from './WeightHeightCard'
 import { SofaCard } from './SofaCard'
 import { News2Card } from './News2Card'
@@ -591,15 +592,19 @@ export function MissionControl() {
             </div>
           )}
 
-          {/* THE NURSE'S MEDICATION + I&O SLOT. The final insertion places
-              Session 3's PatientNurseCarePanel({patientId}) here (contract
-              §6) — the nurse's MAR cards and I&O panel. Until that frozen
-              component is handed off, this slot shows the same read-only
-              medication summary every other role sees (no administration
-              controls, nothing simulated). */}
-          {shown && isNurseChart && canOrder && (
+          {/* THE NURSE'S MEDICATION + I&O SLOT — Session 3's
+              PatientNurseCarePanel (contract §6): this patient's MAR cards
+              (Given / Held / Refused through the ONE NurseCareProvider that
+              App.tsx mounts around the routes — no provider here) and the
+              I&O panel. Self-contained: it reads the session and provider
+              itself and clears on a patientId change. Rendered only for the
+              routed patient (`shown`), and keyed per patient like every
+              other patient card here, so none of its local state renders
+              under another patient; saves in flight complete into the
+              provider's controller, not into this instance. */}
+          {shown && isNurseChart && (
             <div className="nursecare">
-              <ActiveMedicationsCard key={`meds-${patientId}`} patientId={patientId} />
+              <PatientNurseCarePanel key={`care-${patientId}`} patientId={patientId} />
             </div>
           )}
 
