@@ -1,0 +1,42 @@
+PASS  every typeCode read exactly once
+PASS  I&O manual snapshot codes never read
+PASS  ventilator group = the retired card (Mode + its 11 tiles, same order)
+PASS  hemodynamics group = the retired card minus CVP (the duplicate)
+PASS  CVP stays in the bedside group
+PASS  all charted, Pplat/PEEP same time: ventilator values identical to the retired card (incl. driving pressure)
+PASS  all charted, Pplat/PEEP same time: hemodynamic values identical to the retired card (CVP via bedside)
+PASS  all charted, Pplat/PEEP same time: driving pressure derived = 16
+PASS  all charted, Pplat/PEEP same time: every real value carries its time + source
+PASS  Pplat/PEEP different times: ventilator values identical to the retired card (incl. driving pressure)
+PASS  Pplat/PEEP different times: hemodynamic values identical to the retired card (CVP via bedside)
+PASS  Pplat/PEEP different times: driving pressure not derived
+PASS  Pplat/PEEP different times: every real value carries its time + source
+PASS  only PEEP: ventilator values identical to the retired card (incl. driving pressure)
+PASS  only PEEP: hemodynamic values identical to the retired card (CVP via bedside)
+PASS  only PEEP: driving pressure not derived
+PASS  only PEEP: every real value carries its time + source
+PASS  amended Pplat at the shared time: ventilator values identical to the retired card (incl. driving pressure)
+PASS  amended Pplat at the shared time: hemodynamic values identical to the retired card (CVP via bedside)
+PASS  amended Pplat at the shared time: driving pressure derived = 16
+PASS  amended Pplat at the shared time: every real value carries its time + source
+PASS  latest wins (two Pplat, newer one shares PEEP time): ventilator values identical to the retired card (incl. driving pressure)
+PASS  latest wins (two Pplat, newer one shares PEEP time): hemodynamic values identical to the retired card (CVP via bedside)
+PASS  latest wins (two Pplat, newer one shares PEEP time): driving pressure derived = 16
+PASS  latest wins (two Pplat, newer one shares PEEP time): every real value carries its time + source
+PASS  nothing charted: ventilator values identical to the retired card (incl. driving pressure)
+PASS  nothing charted: hemodynamic values identical to the retired card (CVP via bedside)
+PASS  nothing charted: driving pressure not derived
+PASS  nothing charted: every real value carries its time + source
+PASS  bedside: a real charted value beats the demo snapshot
+PASS  bedside: demo snapshot only where nothing real exists, tagged demo
+PASS  ventilator/hemodynamics never use a demo fallback
+PASS  active meds: only active Medication orders of this patient
+PASS  active meds: two orders of one drug stay two rows
+PASS  active meds: continuous = frequency "continuous" or a structured infusion
+PASS  active meds: PRN by its flag
+PASS  active meds: q8h / once / sliding scale are scheduled
+PASS  active meds: grouped continuous → scheduled → PRN
+PASS  imaging: this patient only, newest activity first, undated last
+
+39 passed, 0 failed
+exit 0
