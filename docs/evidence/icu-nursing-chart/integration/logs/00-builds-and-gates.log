@@ -1,0 +1,37 @@
+# builds + ci.yml frontend/server gates, ONCE, clean worktree at 4f1009de6271c461d385bf60c6934ec4d1a431cd (2026-10-16T10:00:19Z)
+$ npx tsc -b --force
+exit 0
+$ npx vite build
+✓ 248 modules transformed.
+✓ built in 3.66s
+exit 0
+$ VITE_APP_ENV=production npx vite build --base=/   (appliance bundle for the combined acceptance)
+✓ built in 3.27s
+exit 0
+$ VITE_APP_ENV=staging npx vite build --base=/   (staging bundle for the MAR safe-retry replay)
+✓ built in 3.20s
+exit 0
+$ ci.yml: VITE_APP_ENV allow-list gate (unknown value must be refused)
+ok: refused by the gate's own message (exit 1)
+$ node scripts/reception-required-fields-gate.mjs
+confirmed: src/pages/Reception/Reception.tsx — all 5 of design §3.2's required fields are present in the submit gate and it still disables the button (SOURCE check: this does not exercise the screen)
+exit 0
+$ node scripts/awaiting-bed-gate.mjs
+confirmed: awaiting-bed calls assignBed (never transfer) over the bedless=true read; /awaiting-bed costs beds.assign; BedChip + print layout keep their explicit bedless renderings (SOURCE check: this does not exercise the screen)
+exit 0
+$ node scripts/ai-section-gate.mjs
+confirmed: /healthz reports aiAssistant from AI_PROVIDER; the frontend shows the AI section ONLY on "enabled" (nav `when`, both /ai routes behind RequireAiAssistant, one healthz fetch feeding the store on both outcomes) (SOURCE check: this does not render the sidebar)
+exit 0
+$ node scripts/edition-gate.mjs
+confirmed: /healthz reports edition (default icu); the module-2 screens — Reception, Awaiting Bed, the four reception vocabularies, the Admissions pointer — exist only on the full edition; Wards stays; the installer writes icu, build.ps1 treats it as optional, staging and the appliance set full (SOURCE check: this does not render the screens)
+exit 0
+$ node scripts/vocab-registration-gate.mjs
+confirmed: 64 server .cs files scanned, 11 MapVocab references, no default-arm table writes
+exit 0
+$ dotnet build server -c Release --nologo --no-incremental
+exit 0
+    1 Warning(s)
+    0 Error(s)
+server/Core/Persistence/BootGuards.cs(103,13): warning CS8602: Dereference of a possibly null reference. 
+$ git diff --stat 5eac744 4f1009de6271c461d385bf60c6934ec4d1a431cd -- server   (server source vs Session 1's verified 5eac744)
+(empty = identical)

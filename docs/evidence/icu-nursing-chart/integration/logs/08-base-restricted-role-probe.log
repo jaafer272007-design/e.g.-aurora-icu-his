@@ -1,0 +1,7 @@
+# attribution probe on the PRE-INTEGRATION head 2fc317ca4cb923abae1718a9a30ad9af8a7592ba (main f0bf464 + the first ICU batch): its own server publish + its own production bundle, same origin, port 8081, separate disposable DB aurora_base_probe (2026-10-16T10:38:44Z)
+NOTICE:  database "aurora_base_probe" does not exist, skipping
+{"status":"ok","service":"aurora-icu-api","phase":"stage10-phase3","build":"2fc317ca4cb923abae1718a9a30ad9af8a7592ba-local","environment":"production","aiAssistant":"disabled","edition":"icu"}
+base probe setup done: P-1001
+  BASE Physiotherapist: 403 responses on the chart: GET /api/icu/orders?patientId=P-1001, GET /api/icu/orders?patientId=P-1001; overlay: "YOU DON'T HAVE ACCESS TO THIS AREA"
+  BASE Receptionist: 403 responses on the chart: GET /api/icu/results/labs?patientId=P-1001, GET /api/icu/orders?patientId=P-1001, GET /api/icu/results/labs?patientId=P-1001, GET /api/icu/orders?patientId=P-1001; overlay: "YOU DON'T HAVE ACCESS TO THIS AREA"
+probe server (8081) stopped

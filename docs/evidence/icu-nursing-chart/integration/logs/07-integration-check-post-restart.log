@@ -1,0 +1,11 @@
+== R: after a server restart on the same database — nursing, MAR and I&O state identical
+  PASS I&O rows identical after restart (Alpha 6, Delta A 1, Delta B 0)
+  PASS P-1001: every order's status, nursing completions/current round and MAR facts identical (8 orders)
+  PASS P-1002: every order's status, nursing completions/current round and MAR facts identical (4 orders)
+  PASS P-1004: every order's status, nursing completions/current round and MAR facts identical (0 orders)
+  PASS P-1005: every order's status, nursing completions/current round and MAR facts identical (1 orders)
+  PASS nurse chart after restart: I&O 360 mL / 120 mL / +240 mL; the Vancomycin dose still "given at …"
+  PASS workspace after restart: the 30-min order keeps its recorded round 2 ("Round 2 · Next due 14:04:12 (in 26 min)")
+  PASS no page errors, no 403 responses
+
+RESULT: 8 passed, 0 failed

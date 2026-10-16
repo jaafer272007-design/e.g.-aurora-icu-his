@@ -1,0 +1,2 @@
+server stopped; restarting on aurora_nursing_prod
+{"status":"ok","service":"aurora-icu-api","phase":"stage10-phase3","build":"4f1009de6271c461d385bf60c6934ec4d1a431cd-local","environment":"production","aiAssistant":"disabled","edition":"icu"}
