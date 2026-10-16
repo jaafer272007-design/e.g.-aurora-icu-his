@@ -402,30 +402,38 @@ static class OrdersApi
         {
             if (Rbac.Deny(user, "orders.implement") is IResult denied) return denied;
             /* the body is read by hand so that the existing no-body request
-               (no Content-Type) keeps binding exactly as before */
+               (no Content-Type) keeps binding exactly as before. Its verdict
+               is reported AFTER the order lookup (contract Amendment 2): an
+               absent order is 404 whatever the body — the endpoint used to
+               ignore any body, and the deployed orders suite probes an absent
+               id with a generic {"reason":"x"} */
             ImplementRequest? req = null;
+            string? bodyProblem = null;
             using (var reader = new StreamReader(ctx.Request.Body))
             {
                 var text = await reader.ReadToEndAsync();
-                if (text.Length > 4096) return ApiError.BadRequest("implementation request body is too large");
-                if (!string.IsNullOrWhiteSpace(text))
+                if (text.Length > 4096) bodyProblem = "implementation request body is too large";
+                else if (!string.IsNullOrWhiteSpace(text))
                 {
                     try { req = JsonSerializer.Deserialize<ImplementRequest>(text, JsonOpts.Web); }
-                    catch (JsonException) { return ApiError.BadRequest("implementation request must be empty or { roundId, attemptId }"); }
+                    catch (JsonException) { bodyProblem = "implementation request must be empty or { roundId, attemptId }"; }
                 }
             }
             var roundId = req?.RoundId;
             var attemptId = req?.AttemptId;
-            if ((roundId is null) != (attemptId is null))
-                return ApiError.BadRequest("roundId and attemptId go together — send both to complete a nursing round, or neither for a one-time order");
-            if (attemptId is not null && !NursingRounds.IsValidAttemptId(attemptId))
-                return ApiError.BadRequest("attemptId must be 8–64 characters of A–Z, a–z, 0–9, '-' or '_'");
-            if (roundId is not null && !NursingRounds.IsValidRoundId(roundId))
-                return ApiError.BadRequest("roundId must be the order's current round identity ('yyyy-MM-ddTHH:mm~r<n>')");
+            bodyProblem ??=
+                (roundId is null) != (attemptId is null)
+                    ? "roundId and attemptId go together — send both to complete a nursing round, or neither for a one-time order"
+                : attemptId is not null && !NursingRounds.IsValidAttemptId(attemptId)
+                    ? "attemptId must be 8–64 characters of A–Z, a–z, 0–9, '-' or '_'"
+                : roundId is not null && !NursingRounds.IsValidRoundId(roundId)
+                    ? "roundId must be the order's current round identity ('yyyy-MM-ddTHH:mm:ss.fffZ~r<n>')"
+                : null;
 
             using var tx = OrderLogic.LockOrder(db, orderId);   // the order write lock (atomic mutation)
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null) return ApiError.NotFound();
+            if (bodyProblem is not null) return ApiError.BadRequest(bodyProblem);
             /* THE TWO HALVES of the old folded lookup, split deliberately:
                requiresImplementation is SHAPE — immutable; implementing
                this order can never succeed in any state → 400 (the same
