@@ -1,0 +1,102 @@
+# Session 3's controller harness (controller-harness.ts, unchanged) over the corrected source ff08a52d07645ef5e07e67b7271468775e8f7062: the MAR (M1-M10: delayed original, out-of-order reads, reload, pinned 400 fallback, route/patient switch, sign-out, previous-build attempt, 401 retry, double click, first dose / round taken) and nursing-round (N1-N11) scenarios + the I&O save guard
+[M1] delayed original + Retry saving: one fact, settled only by the record
+  PASS no answer -> unconfirmed (not failed)
+  PASS attempt stored with its captured patient
+  PASS 30 min later + rechecks with no fact: still unconfirmed (elapsed time proves nothing)
+  PASS Retry saving re-sends the SAME attempt id
+  PASS retry answered + authoritative read -> settled
+  PASS the original committing later records nothing more: exactly 1 fact
+[M2] out-of-order settlement reads: an older read applied later is discarded whole
+  PASS the newer read (R2) confirms it
+  PASS the late older read (R1) did not replace the newer rows
+  PASS and produced no verdict
+[M3] lost original + same-tab reload: the attempt is restored and retried with its id
+  PASS restored as unconfirmed after the reload
+  PASS retry sent the stored id; 1 fact; settled
+[M4] pinned-minute retry refused 400 -> the original request exactly
+  PASS retry 1 pinned the documented minute; the 400 fallback re-sent the original (no administeredAt, same id)
+  PASS recorded once, settled
+[M5] route / patient switch during a pending save: the attempt keeps its patient
+  PASS the read on B's chart still covers A's lock (ids P-S3A,P-S3B)
+  PASS stored attempt still targets patient A
+  PASS confirmed from a read made while B was showing
+     … a SAVING (unanswered) request when every screen unmounts
+  PASS saving
+  PASS the answer completed into the controller and an authoritative read settled it with no screen mounted
+  PASS that read covered exactly the lock's patient
+[M6] sign-out / another nurse: attempts stay with their nurse
+  PASS another nurse: not in memory, still stored under the first nurse
+  PASS the other nurse cannot send it (no lock to retry)
+  PASS signing back in restores it, unconfirmed
+  PASS retried and settled: 1 fact
+     … an answer arriving after sign-out updates only that nurse's stored copy
+  PASS saving attempt stored (reload-safe)
+  PASS recorded; removed from the signed-out nurse's stored list
+  PASS not restored as unconfirmed
+[M7] an attempt stored by the PREVIOUS build (no patientId) settles once a read shows its order
+  PASS no screen, patient unknown: nothing read, stays unconfirmed (not failed)
+  PASS the worklist read learned its patient and confirmed it
+[M8] a retry answered 401 stays unconfirmed ("sign in again, then retry saving")
+  PASS unconfirmed, told to sign in again
+  PASS retry after sign-in: recorded once
+[M9] double click / another screen clicking the same order: one request
+  PASS 1 request(s) for three clicks in one frame
+[M10] the round documented by another documentation -> not saved, never twice
+  PASS q1h round 1 is the first dose (open on signing)
+  PASS not saved, with the reason on the row
+  PASS exactly the other station's fact
+[N1] repeating every 1 min: completion time + interval, to the millisecond
+  PASS round 1 open on signing
+  PASS next round due 2026-10-15T07:01:59.900Z (Done 07:00:59.900 + 1 min)
+  PASS Done reopened only after the authoritative read (settling released)
+  PASS 07:01:59.899: locked
+  PASS a Done 1 ms early sends nothing
+  PASS 07:01:59.900: open exactly
+  PASS round 2 completed; round 3 shown (the order is never suppressed)
+     … a late round keeps its identity; the clock creates no rounds
+  PASS 5 h later: still round 3, open (overdue, actionable)
+[N2] one-time: completes once and leaves the list; a second Done sends nothing
+  PASS one-time order with round 1
+  PASS completed: gone from Orders to Implement, 1 completion
+  PASS a Done on the stale row sends nothing (freshest version: completed)
+[N3] double click: one request
+  PASS 1 request for three clicks
+  PASS 1 completion, settled
+[N4] no answer -> unconfirmed; Retry saving re-sends the same round + attempt (server replay)
+  PASS unconfirmed (a lost read settles nothing)
+  PASS retry body identical: { roundId, attemptId }
+  PASS server replayed: 1 completion, confirmed
+[N5] Amendment 1 §9.2 required check: delayed original, 401 retry stays unconfirmed, original commits -> confirmed, 1 completion
+  PASS refused retry (401): kept unconfirmed, told to sign in again
+  PASS its stored copy is kept
+  PASS the original committed -> confirmed from the per-patient read
+  PASS exactly one completion, carrying the attempt id
+[N6] absent reads and elapsed time prove nothing; a missing queue row proves nothing
+  PASS the queue no longer lists it (completed server-side)…
+  PASS …yet with the per-patient read unavailable it stays unconfirmed after 2 h
+  PASS the first readable per-patient read confirms it
+[N7] the round completed by another completion -> not saved
+  PASS not saved, reason on the row
+  PASS 1 completion (the other station's)
+[N8] out-of-order per-patient reads: the older one is discarded
+  PASS R2 confirmed; round 2 shown
+  PASS late R1 discarded: still round 2, no verdict
+[N9] legacy one-time order: the existing empty request; no answer settles when the record shows it completed
+  PASS no nursing data: legacy
+  PASS sent with no body
+  PASS the per-patient read shows it completed -> settled
+[N10] stored shape + reload recovery + another nurse
+  PASS stored as NursingPendingAttempt: attemptId,clickedAt,label,orderId,patientId,roundId
+  PASS clickedAt in the nursing stamp form (2026-10-15T14:01:59.900Z)
+  PASS another nurse does not see it
+  PASS the same nurse after a reload: unconfirmed
+  PASS retried with the stored pair; 1 completion
+[N11] counts: actionable due work vs upcoming work
+  PASS due 2 (one-time + legacy), upcoming 1 (the repeating order's next round)
+  PASS the upcoming round stays visible
+[I1] the I&O save guard: one save per patient + admission in flight
+  PASS a second save of the same admission is refused locally (nothing sent)
+  PASS another admission is independent
+  PASS released when answered
+
+RESULT: 74 passed, 0 failed

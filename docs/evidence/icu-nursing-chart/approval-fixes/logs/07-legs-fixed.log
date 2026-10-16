@@ -1,0 +1,50 @@
+# approval legs (fixed) against http://localhost:8080: {"status":"ok","service":"aurora-icu-api","phase":"stage10-phase3","build":"ff08a52-local","environment":"production","aiAssistant":"disabled","edition":"icu"}
+# bundle served: corrected source; patients A=P-1001 B=P-1002
+== M: PRN Given unanswered -> Retry refused 403 by the real server (RBAC, before the order lock) -> real empty reads -> the original lands late
+  PASS the doctor's PRN paracetamol for A is active (ORD-105)
+  PASS first Given: no answer -> "Not confirmed", controls locked
+  PASS Retry saving sent the SAME attempt (9219acaa1003dc8e18d4daf56d90386d); the real server refused it 403 "Insufficient permissions"
+  info: a MAR read started after the refusal was answered 200 by the real server
+  PASS the real record: no fact yet (the original is still held)
+  PASS after a real empty authoritative read: still "Not confirmed" (row: "— PRN available as required PRN ✓ Given ⊘ Held ✕ Refused ⚠ Not confirmed — your given documentation (16:19) may already be saved; checking the record. Retry sav")
+  PASS Given / Held / Refused stay disabled
+  PASS the SAME attempt is still stored for the nurse (this tab)
+  PASS the actual refusal reason is shown, never "session expired", never "give again" ("Retry refused — Insufficient permissions. Your original given documentation may already be on the record; checking.")
+  PASS Nurse Workspace (navigated, no reload): the same attempt is unconfirmed and locked there too
+  PASS 390 px: no horizontal page overflow with the refusal notice (0px)
+  PASS the held ORIGINAL reaches the real server late (nurse's own token) and commits (200)
+  PASS the real record holds exactly ONE fact (1: given/9219acaa1003dc8e18d4daf56d90386d)
+  PASS it is the original attempt
+  PASS confirmed from the record: "Saved — confirmed", controls reopen, no stale notice, nothing left stored
+  PASS the page sent exactly the original + its one retry — no new attempt (2 requests; answers 403)
+  PASS no page error, no overlay
+  info: cleanup: the doctor discontinued ORD-105 (200)
+== N1: A's typed draft (Urgent, repeat 30 min) and a patient-rail switch to B — no order is written
+  PASS A: a complete draft enables Sign & order
+  info: first sample after the switch: {"url":"/orders/P-1002","bar":"","editor":{"instr":"","priority":"Routine","oneTime":"true","every":0,"pending":false,"sign":false}}
+  PASS during the switch: no A display with an enabled submit under B's route, no A draft
+  PASS B: a clean one-time / Routine editor, submit disabled ({"instr":"","priority":"Routine","oneTime":"true","every":0,"pending":false,"sign":false})
+  PASS B: A's draft text appears nowhere on B's page (text or any field value)
+  PASS B: submit enables only with B's own valid input
+  PASS back on A: no A draft revived ({"instr":"","priority":"Routine","oneTime":"true","every":0,"pending":false,"sign":false})
+  PASS the real record: no order carries the probe text (nothing was written)
+== N2: A's order + roster reads held, released after B is shown with its own draft
+  info: A routed, its reads held: {"url":"/orders/P-1001","bar":"","editor":null}
+  PASS while A's reads are held: no B display (header / list / enabled editor) under A's route
+  info: held: http://localhost:8080/api/icu/patients | http://localhost:8080/api/icu/orders?patientId=P-1001
+  info: released after 477 ms (under the client's 8 s read timeout)
+  PASS after A's late reads: still B's header (Synthetic Approval Bravo)
+  PASS after A's late reads: still B's order list (no Alpha order)
+  PASS after A's late reads: B's draft is intact ("Bravo draft kept while A's reads land (fixed)")
+== N3: A's real create committed, its answer held while B is shown and gets its own draft
+  PASS the real server created A's order (200, ORD-106); the page has no answer yet
+  info: A's answer released 844 ms after the click
+  info: toast: "Nursing order signed & active APPROVAL A in-flight create (fixed) (patient Synthetic Approval Alpha)"
+  PASS after A's answer: still B's header
+  PASS after A's answer: B's draft is not cleared or replaced ("APPROVAL B draft must stay (fixed)")
+  PASS after A's answer: B's list is not refreshed with A's orders
+  PASS the real record: exactly one "APPROVAL A in-flight create (fixed)" order, for A (ORD-106); none on B; B's draft never sent
+  PASS back on A: its new order is listed; its editor is empty
+  PASS no page error, no overlay
+RESULT 34 passed, 0 failed
+disposable server stopped
