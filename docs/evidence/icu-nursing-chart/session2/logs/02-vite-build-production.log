@@ -1,0 +1,8 @@
+../../../tmp/claude-0/-home-user-e-g--aurora-icu-his/352633db-0d88-5c3c-b60a-32bdfc1ab1cc/scratchpad/dist-prod/assets/index-kooOHVI-.js   801.49 kB │ gzip: 221.39 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.51s
+exit 0

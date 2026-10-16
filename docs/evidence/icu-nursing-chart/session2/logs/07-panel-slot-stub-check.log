@@ -1,0 +1,10 @@
+PASS  nurse: panel mounted in the medication slot with the routed patient
+PASS  nurse: the read-only summary card is gone from the nurse chart
+PASS  nurse: the panel never receives the previous patient after a switch
+PASS  nurse: panel follows the switch (P-1002)
+PASS  nurse: slot sits directly after the observations row
+PASS  doctor: no nurse care panel
+PASS  doctor: medication summary still shown
+
+7 passed, 0 failed
+exit 0

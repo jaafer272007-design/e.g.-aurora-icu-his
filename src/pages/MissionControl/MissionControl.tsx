@@ -1,33 +1,31 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './MissionControl.css'
 import { Card } from '../../components/Card'
-import { NotYetAvailable } from '../../components/NotYetAvailable'
 import { Badge } from '../../components/Badge'
 import { BedChip, TagList } from '../../components/Tag'
-import { AlertRow } from '../../components/AlertRow'
 import { BackButton } from '../../components/AppHeader'
 import { DataAge } from '../../components/DataAge'
 import { NotFoundCard } from '../../components/NotFoundCard'
-import { VitalTile } from '../../components/VitalTile'
-import { Sparkline } from '../../components/Sparkline'
-import { IconCheck, IconPulse, IconSearch, IconVent } from '../../components/icons'
+import { IconPulse, IconSearch } from '../../components/icons'
 import { useClock } from '../../hooks/useClock'
 import { getCoverage, getCodeStatuses, getEncounters, getIsolationTypes, getPatientDetail, getPatientIdentity, getPatients, isolationTypeLabel, setEncounterCodeStatus, setEncounterIsolation } from '../../lib/api'
-import { usePatientScores } from '../../hooks/usePatientScores'
+import { usePatientObservations, usePatientScores } from '../../hooks/usePatientScores'
 import { unitSuffix, useHospitalIdentity } from '../../lib/hospitalIdentity'
 import { resolveCodeStatus } from '../../lib/codeStatus'
 import { Toast, useToast } from '../../components/Toast'
-import { latestObservations, type LatestObservation } from '../../lib/api/bedside'
+import { latestObservations, projectHemodynamics, type LatestObservation } from '../../lib/api/bedside'
 import { useRememberPatient } from '../../lib/patientContext'
-import { getSession, hasPermission, signOut } from '../../lib/session'
-import type { CoverageRow, CodeStatusEntry, IsolationTypeEntry, PatientAlert, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
+import { getSession, hasPermission, profileOf, signOut } from '../../lib/session'
+import type { CoverageRow, CodeStatusEntry, IsolationTypeEntry, PatientDetailResponse, PatientIdentity, PatientSummary } from '../../lib/api/types'
 import { IdentityDialog } from './IdentityDialog'
 import { AssignmentDialog } from './AssignmentDialog'
 import { LatestObservationsCard } from './LatestObservationsCard'
 import { AttachmentsCard } from './AttachmentsCard'
-import { DigitalTwin } from './DigitalTwin'
 import { LabsCard } from './LabsCard'
+import { ActiveMedicationsCard } from './ActiveMedicationsCard'
+import { ImagingResultsCard } from './ImagingResultsCard'
+import { PatientNurseCarePanel } from '../../features/nurse-care/PatientNurseCarePanel'
 import { WeightHeightCard } from './WeightHeightCard'
 import { SofaCard } from './SofaCard'
 import { News2Card } from './News2Card'
@@ -62,11 +60,6 @@ function matches(p: PatientSummary, filter: Filter, query: string): boolean {
   return p.flags.includes(filter)
 }
 
-interface LiveAlert extends PatientAlert {
-  key: number
-  leaving: boolean
-}
-
 const initials = (name: string) => name.split(' ').map(w => w[0]).slice(0, 2).join('')
 
 export function MissionControl() {
@@ -76,6 +69,14 @@ export function MissionControl() {
   const hospIdentity = useHospitalIdentity()
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
   const [detail, setDetail] = useState<PatientDetailResponse | null>(null)
+  /* PATIENT ISOLATION (owner's plan §3): everything below that holds a
+     patient's data is shown ONLY when it belongs to the routed patient.
+     `current` is the patient on screen now — a refresh answering after a
+     switch is dropped instead of overwriting the new patient's state. */
+  const current = useRef(patientId)
+  current.current = patientId
+  const refreshDetail = (id: string) =>
+    getPatientDetail(id).then(r => { if (r && current.current === id) setDetail(r) })
   /* CHART AGE (step 1): stamped by the chart read that backs this screen's
      body. Deliberately NOT the score fetch: in an environment where only the
      observation domain is unreachable the scores are unavailable while the
@@ -84,7 +85,10 @@ export function MissionControl() {
      already state their own unavailable status — that division of labour is
      the #154 display-honesty rule, and this chip does not duplicate it. */
   const [chartAt, setChartAt] = useState<number | null>(null)
-  const [missing, setMissing] = useState(false)
+  /* the patient whose id did not resolve — tagged, so a switch never
+     shows the previous id's not-found card for the new one */
+  const [missingFor, setMissingFor] = useState<string | null>(null)
+  const missing = missingFor !== null && missingFor === patientId
   /* ADT disposition of the routed patient, from a REAL encounter read —
      Mission Control is the OPEN-CENSUS view, so a discharged patient does
      not belong here: it redirects to their durable record at /history. This
@@ -97,16 +101,6 @@ export function MissionControl() {
   const [adt, setAdt] = useState<'checking' | 'present' | 'redirecting'>('checking')
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
-  const [alerts, setAlerts] = useState<LiveAlert[]>([])
-  const [goals, setGoals] = useState<{ label: string; done: boolean }[]>([])
-  /* false = the domain does not exist in this version (production,
-     Phase 3 PR 2) — the cards render the honest not-yet state */
-  const [alertsAvailable, setAlertsAvailable] = useState(true)
-  const [goalsAvailable, setGoalsAvailable] = useState(true)
-  /* §12 step 4: the latest-per-type observation map for the bedside card
-     (real read; empty when nothing is charted or the API is unreachable —
-     the card then shows demo-tagged fallbacks or honest blanks) */
-  const [latestObs, setLatestObs] = useState<Map<string, LatestObservation>>(new Map())
 
   useEffect(() => { getPatients().then(setPatients) }, [])
 
@@ -119,11 +113,20 @@ export function MissionControl() {
   const session = getSession()
   const { toast, showToast } = useToast()
   const canCorrectIdentity = session ? hasPermission(session.jobTitle, 'identity.correct') : false
+  /* THE NURSE'S CHART (owner's decision 2026-10-15; contract §6: the
+     Nurse permission profile): SOFA / NEWS2 are hidden throughout it —
+     cards, observation score chips, legends — while every observation
+     stays visible. Every other profile keeps its scoring presentation. */
+  const isNurseChart = session ? profileOf(session.jobTitle) === 'Nurse' : false
+  const showScores = !isNurseChart
   /* the Patient History Overview (match+overview design §5.4 — reachable
      from the chart too): clinical history, so results.view — held by
      every clinical profile and by NEITHER administrator (the locked
      rule: the office Administrator never sees clinical data) */
   const canHistory = session ? hasPermission(session.jobTitle, 'results.view') : false
+  /* the chart's Laboratory / Imaging Results ride the same results.view —
+     the server's gate on both reads; a profile without it sees neither */
+  const canResults = canHistory
   /* ORDER shortcut — jumps straight to Orders & Meds scoped to THIS
      patient (real navigation, not a fabricated drawer — the fake
      "+ Order" drawer was retired in #93). Gated on orders.view, the same
@@ -188,7 +191,7 @@ export function MissionControl() {
       const names = isoSel.length === 0 ? 'cleared' : isoSel.map(isolationTypeLabel).join(' + ')
       showToast('Isolation precautions', `${names} — recorded on ${open[0].encounterId} (audited)`)
       getPatients().then(setPatients)
-      getPatientDetail(patientId).then(r => { if (r) setDetail(r) })
+      refreshDetail(patientId)
       return
     }
     setIsoError(res.kind === 'rejected' ? res.error
@@ -207,7 +210,7 @@ export function MissionControl() {
     if (res.kind === 'ok') {
       setCsOpen(false)
       showToast('Code status set', `${label} — recorded on ${open[0].encounterId} (audited)`)
-      getPatientDetail(patientId).then(r => { if (r) setDetail(r) })
+      refreshDetail(patientId)
       return
     }
     setCsError(res.kind === 'rejected' ? res.error
@@ -223,6 +226,7 @@ export function MissionControl() {
   useEffect(() => {
     let stale = false
     setPid(null)
+    setCorrecting(false)
     if (patientId) getPatientIdentity(patientId).then(r => { if (!stale) setPid(r) })
     return () => { stale = true }
   }, [patientId])
@@ -232,14 +236,27 @@ export function MissionControl() {
   useRememberPatient(patientId, patients)
 
   /* ONE fetch+compute for every score-derived surface on this page:
-     NEWS2 + SOFA cards, the observation tiles' score colours, the
-     SOFA-derived digital twin — and the latest-observations map, which
-     projects from the SAME full-chart read NEWS2 consumes (no second
-     observation fetch, no possible disagreement). */
-  const scores = usePatientScores(patientId)
-  useEffect(() => {
-    setLatestObs(scores.observations ? latestObservations(scores.observations) : new Map())
-  }, [scores.observations])
+     NEWS2 + SOFA cards and the observation tiles' score colours — and the
+     latest-observations map, which projects from the SAME full-chart read
+     NEWS2 consumes (no second observation fetch, no possible
+     disagreement). The nurse's chart shows no score, so it reads ONLY that
+     full chart (usePatientObservations) and computes nothing it would
+     hide. Both hooks are patient-keyed: a switch shows the new patient's
+     loading state in the same render, never the previous chart. */
+  const scores = usePatientScores(showScores ? patientId : '')
+  const nurseObs = usePatientObservations(showScores ? '' : patientId)
+  const obsRead = showScores ? scores : nurseObs
+  const chartObservations = obsRead.observations
+  /* §12 step 4: the latest-per-type observation map for the combined card
+     (real read; empty when nothing is charted or the read failed — the
+     card then says "not charted" / "not read" honestly) */
+  const latestObs = useMemo<Map<string, LatestObservation>>(
+    () => (chartObservations ? latestObservations(chartObservations) : new Map()), [chartObservations])
+  /* the 24 h fluid-balance strip — projectHemodynamics' own computation
+     over the same read (charted INTERVAL fluids only), unchanged */
+  const fluidBalance = useMemo(
+    () => (chartObservations ? projectHemodynamics(latestObs, chartObservations).fluidBalance : undefined),
+    [latestObs, chartObservations])
 
   /* REAL open-encounter check drives the discharged→history redirect. ONE
      read of the patient's encounters: an OPEN one → admitted, render Mission
@@ -268,24 +285,20 @@ export function MissionControl() {
 
   useEffect(() => {
     let stale = false
-    setMissing(false)
+    setMissingFor(null)
+    setDetail(null)
+    setChartAt(null)
     getPatientDetail(patientId).then(res => {
       if (stale) return
       if (!res) {
         /* Locked decision: an unresolved ID must render an explicit not-found
            state — never redirect to or display another patient's chart. */
         setDetail(null)
-        setAlerts([])
-        setGoals([])
-        setMissing(true)
+        setMissingFor(patientId)
         return
       }
       setDetail(res)
       setChartAt(Date.now())
-      setAlertsAvailable(res.alerts !== null)
-      setGoalsAvailable(res.goals !== null)
-      setAlerts((res.alerts ?? []).map((a, i) => ({ ...a, key: i, leaving: false })))
-      setGoals(res.goals ?? [])
     })
     return () => { stale = true }
   }, [patientId])
@@ -300,24 +313,17 @@ export function MissionControl() {
   }, [patients])
 
   const filtered = patients?.filter(p => matches(p, filter, query)) ?? []
-  const p = detail?.patient
-  const critAlerts = alerts.filter(a => !a.leaving && a.severity === 'crit').length
-  const activeAlerts = alerts.filter(a => !a.leaving)
-
-  const ackAlert = (key: number) => {
-    setAlerts(prev => prev.map(a => (a.key === key ? { ...a, leaving: true } : a)))
-    setTimeout(() => setAlerts(prev => prev.filter(a => a.key !== key)), 320)
-  }
-
-  const toggleGoal = (i: number) =>
-    setGoals(prev => prev.map((goal, k) => (k === i ? { ...goal, done: !goal.done } : goal)))
-  const goalPct = goals.length ? Math.round((goals.filter(x => x.done).length / goals.length) * 100) : 0
-
-  /* "running" is a PUMP fact — computable only on trend-carrying demo
-     rows; real order-derived rows have no trend, so the aside counts
-     ordered channels instead of claiming run states */
-  const infusionsHaveTrends = detail ? detail.infusions.some(m => m.trend) : false
-  const runningInfusions = detail ? detail.infusions.filter(m => m.trend && m.trend[m.trend.length - 1] > 0).length : 0
+  /* the routed patient's chart ONLY — a detail, identity or coverage row
+     still held for the previous patient renders as absent */
+  const shown = detail && detail.patient.patientId === patientId ? detail : null
+  const shownPid = pid && pid.patientId === patientId ? pid : null
+  const shownTeam = careTeam && careTeam.patientId === patientId ? careTeam : null
+  const p = shown?.patient
+  /* the header's unit-stats figure, unchanged in meaning: it counts the
+     critical entries of the per-patient alerts feed (absent in production
+     → 0). Only the chart's Smart Alerts CARD was removed (owner's plan
+     §3); this figure, the rail's alert counts and the Alerts filter stay. */
+  const critAlerts = (shown?.alerts ?? []).filter(a => a.severity === 'crit').length
 
   return (
     <div className="app-frame mc">
@@ -357,29 +363,29 @@ export function MissionControl() {
               {/* the PATIENT HEADER carries the FULL LEGAL NAME (all
                   present parts) + national ID — the compact display name
                   serves everywhere else; legacy single names render as-is */}
-              <h1>{pid?.fullName ?? p?.name ?? '—'}</h1>
+              <h1>{shownPid?.fullName ?? p?.name ?? '—'}</h1>
               <div className="sub">
                 {/* EMPTY IS ABSENT, not a value (ward.md A5): the nullish
                     guard alone rendered "Bed " for a bedless patient — ""
                     is how the model spells "no bed", so it gets the words,
                     while a still-loading p keeps the honest dash */}
                 <span>{p?.mrn ?? 'MRN —'}</span> · <span>{p ? (p.bedId ? `Bed ${p.bedId}` : 'Awaiting bed') : 'Bed —'}</span>
-                {pid?.nationalId && <> · <span className="num" title="National identity number — as on the identity card">ID {pid.nationalId}</span></>}
-                {pid?.fileNumber && <> · <span className="num" title="Patient file number — the hospital's own chart number">File {pid.fileNumber}</span></>}
-                {(pid?.identity?.length ?? 0) > 0 && (
+                {shownPid?.nationalId && <> · <span className="num" title="National identity number — as on the identity card">ID {shownPid.nationalId}</span></>}
+                {shownPid?.fileNumber && <> · <span className="num" title="Patient file number — the hospital's own chart number">File {shownPid.fileNumber}</span></>}
+                {(shownPid?.identity?.length ?? 0) > 0 && (
                   <> · <span
                     className="idmark"
-                    title={pid!.identity!.map(e => `${e.time} · ${e.actor} (${e.role}): ${e.detail} — ${e.reason}`).join('\n')}
-                  >identity corrected ×{pid!.identity!.length}</span></>
+                    title={shownPid!.identity!.map(e => `${e.time} · ${e.actor} (${e.role}): ${e.detail} — ${e.reason}`).join('\n')}
+                  >identity corrected ×{shownPid!.identity!.length}</span></>
                 )}
-                {canCorrectIdentity && pid && (
-                  <> · <button className="idbtn" onClick={() => setCorrecting(true)} aria-label={`Correct identity of ${pid.fullName ?? pid.name}`}>✎ Correct identity</button></>
+                {canCorrectIdentity && shownPid && (
+                  <> · <button className="idbtn" onClick={() => setCorrecting(true)} aria-label={`Correct identity of ${shownPid.fullName ?? shownPid.name}`}>✎ Correct identity</button></>
                 )}
                 {canHistory && (
                   <> · <button className="idbtn" onClick={() => navigate(`/patients/${patientId}/history`)} aria-label="Open the patient history overview">🕘 History</button></>
                 )}
                 {canOrder && patientId && (
-                  <> · <button className="idbtn" onClick={() => navigate(`/orders/${patientId}`)} aria-label={`Place an order for ${pid?.fullName ?? pid?.name ?? 'this patient'}`}>💊 Order</button></>
+                  <> · <button className="idbtn" onClick={() => navigate(`/orders/${patientId}`)} aria-label={`Place an order for ${shownPid?.fullName ?? shownPid?.name ?? 'this patient'}`}>💊 Order</button></>
                 )}
               </div>
             </div>
@@ -397,13 +403,13 @@ export function MissionControl() {
                 open encounter → no coverage row → the chip stays em-dash. */}
             <button
               className="chip ctchip"
-              onClick={() => careTeam && setTeamOpen(true)}
+              onClick={() => shownTeam && setTeamOpen(true)}
               aria-label="Nurse coverage — view and manage exceptions"
             >
               <span className="k">Coverage</span>
               <span className="v">{(() => {
-                if (!careTeam) return '—'
-                const names = careTeam.nurses.map(n => n.name)
+                if (!shownTeam) return '—'
+                const names = shownTeam.nurses.map(n => n.name)
                 const rest = names.length - names.slice(0, 2).length
                 return names.length === 0 ? '—'
                   : names.slice(0, 2).join(' · ') + (rest > 0 ? ` +${rest}` : '')
@@ -483,9 +489,9 @@ export function MissionControl() {
         </div>
       </header>
 
-      {teamOpen && careTeam && session && (
+      {teamOpen && shownTeam && session && (
         <AssignmentDialog
-          coverage={careTeam}
+          coverage={shownTeam}
           canManage={canManageAssignments}
           actor={session.name}
           jobTitle={session.jobTitle}
@@ -493,9 +499,9 @@ export function MissionControl() {
           onChanged={() => loadCareTeam(patientId)}
         />
       )}
-      {correcting && pid && (
+      {correcting && shownPid && (
         <IdentityDialog
-          patient={pid}
+          patient={shownPid}
           onCancel={() => setCorrecting(false)}
           onCorrected={updated => {
             setCorrecting(false)
@@ -503,7 +509,7 @@ export function MissionControl() {
             /* the corrected display name flows through every derived
                surface — re-read the roster and this chart */
             getPatients().then(setPatients)
-            getPatientDetail(patientId).then(res => { if (res) setDetail(res) })
+            refreshDetail(patientId)
           }}
         />
       )}
@@ -546,7 +552,7 @@ export function MissionControl() {
           </div>
         </aside>
 
-        <main>
+        <main className={isNurseChart ? 'nursechart' : 'fullchart'}>
           {/* Suppress the body until the ADT check resolves: a discharged
               patient redirects to /history and must never flash the (possibly
               mock-backed) Mission Control body first — that flash IS the
@@ -555,149 +561,71 @@ export function MissionControl() {
           {adt === 'present' && <>
           {missing && <NotFoundCard />}
 
-          {detail && (
+          {/* LATEST CHARTED OBSERVATIONS — the one combined card (bedside,
+              ventilator and the unique hemodynamic readings + the 24 h
+              fluid strip); score chips/legend only where scores are shown */}
+          {shown && (
             <LatestObservationsCard
+              key={`obs-${patientId}`}
               latest={latestObs}
-              vitals={detail.patient.vitals}
-              rhythm={detail.patient.rhythm}
-              patientId={detail.patient.patientId}
-              news2={scores.news2}
+              vitals={shown.patient.vitals}
+              rhythm={shown.patient.rhythm}
+              patientId={patientId}
+              news2={showScores ? scores.news2 : null}
+              showScores={showScores}
+              readState={obsRead.state}
+              fluidBalance={fluidBalance}
             />
           )}
 
-          {detail && (
+          {shown && (
             <div className="colR">
-              {/* organ status DERIVED from the computed SOFA — the wire
-                  organs snapshot (fixtures + all-"ok" fresh-admit default)
-                  is retired (no-reassuring-default rule) */}
-              <DigitalTwin />
+              {/* Weight & Height (encounter-scoped reference values, kg/cm) —
+                  reads the REAL identity endpoint; renders nothing in pure
+                  mock mode (no mock store behind this domain) */}
+              <WeightHeightCard key={`wh-${patientId}`} patientId={patientId} />
+              {/* non-nurse charts: the medication SUMMARY (orders.view —
+                  the server's gate on the read). The nurse's chart carries
+                  Laboratory Results here; its medication slot is below. */}
+              {!isNurseChart && canOrder && <ActiveMedicationsCard key={`meds-${patientId}`} patientId={patientId} />}
+              {isNurseChart && canResults && <LabsCard key={`labs-${patientId}`} labs={shown.labs} patientId={patientId} />}
             </div>
           )}
 
-          {/* Weight & Height (person-level reference values, kg/cm) — reads
-              the REAL identity endpoint; renders nothing in pure mock mode
-              (no mock store behind this domain, nothing fabricated) */}
-          {detail && <WeightHeightCard patientId={patientId} />}
-
-          {/* Classic SOFA v1 — real computed organ-dysfunction score (the
-              Clinical Scoring Engine's first score), computed at render from
-              the canonical reads; the honest replacement for the fabricated
-              bedside SOFA. Decision-support pending clinical validation. */}
-          {detail && <SofaCard state={scores.state} sofa={scores.sofa} />}
-
-          {/* Standard NEWS2 v1 — the engine's second real score, the honest
-              replacement for the fabricated bedside/roster EWS. Display-only
-              band/colour, no automated alerts. Decision-support. */}
-          {detail && <News2Card state={scores.state} news2={scores.news2} />}
-
-          {detail && (
-            <Card id="vent" icon={<IconVent size={15} stroke="var(--blue)" />} title="Ventilator"
-              aside={<Badge color="blue">{detail.ventilator.mode}</Badge>}>
-              <div className="tgrid">
-                {detail.ventilator.tiles.map(t => (
-                  <VitalTile key={t.label} variant="tile" label={t.label} value={t.value} unit={t.unit} warn={t.warn} />
-                ))}
-              </div>
-            </Card>
+          {/* THE NURSE'S MEDICATION + I&O SLOT — Session 3's
+              PatientNurseCarePanel (contract §6): this patient's MAR cards
+              (Given / Held / Refused through the ONE NurseCareProvider that
+              App.tsx mounts around the routes — no provider here) and the
+              I&O panel. Self-contained: it reads the session and provider
+              itself and clears on a patientId change. Rendered only for the
+              routed patient (`shown`), and keyed per patient like every
+              other patient card here, so none of its local state renders
+              under another patient; saves in flight complete into the
+              provider's controller, not into this instance. */}
+          {shown && isNurseChart && (
+            <div className="nursecare">
+              <PatientNurseCarePanel key={`care-${patientId}`} patientId={patientId} />
+            </div>
           )}
 
-          {detail && (
-            <Card id="hemo"
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21C7 17 3 13.5 3 9a5 5 0 019-3 5 5 0 019 3c0 4.5-4 8-9 12z" /></svg>}
-              title="Hemodynamics" aside="Latest charted">
-              <div className="tgrid">
-                {detail.hemodynamics.metrics.map(t => (
-                  <VitalTile key={t.label} variant="tile" label={t.label} value={t.value} unit={t.unit} warn={t.warn} />
-                ))}
-              </div>
-              {detail.hemodynamics.fluidBalance && (
-                <div className="fluid">
-                  <div className="fk"><span>Fluid balance · 24 h</span><b className="num" style={{ color: 'var(--cyan)' }}>{detail.hemodynamics.fluidBalance.value}</b></div>
-                  <div className="fbar"><i style={{ width: `${detail.hemodynamics.fluidBalance.percent}%` }} /></div>
-                </div>
-              )}
-            </Card>
-          )}
+          {/* Classic SOFA v1 + Standard NEWS2 v1 — computed at render from
+              the canonical reads; decision-support pending clinical
+              validation. Never on the nurse's chart (owner's decision
+              2026-10-15); unchanged for every other profile. */}
+          {shown && showScores && <SofaCard state={scores.state} sofa={scores.sofa} />}
+          {shown && showScores && <News2Card state={scores.state} news2={scores.news2} />}
 
-          {detail && (
-            <Card id="meds"
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="7" y="2" width="10" height="20" rx="4" /><path d="M7 9h10M7 15h10" /></svg>}
-              title="Active Infusions"
-              aside={infusionsHaveTrends
-                ? `${runningInfusions} running · ${detail.infusions.length} channels`
-                : `${detail.infusions.length} active infusion order${detail.infusions.length === 1 ? '' : 's'}`}>
-              <div>
-                {detail.infusions.length === 0 && (
-                  /* a REAL empty — the orders domain answered and holds no
-                     active infusion orders; a clinical statement, not a
-                     missing domain */
-                  <p className="mednone">No active infusion orders for this patient.</p>
-                )}
-                {detail.infusions.map(m => {
-                  const running = m.trend ? m.trend[m.trend.length - 1] > 0 : false
-                  return (
-                    <div className="medrow" key={m.name}>
-                      <div><div className="mn">{m.name}</div><div className="md">{m.dose}{m.route ? ` · ${m.route}` : ''}</div></div>
-                      {/* rate/trend/status are PUMP facts — rendered only
-                          when a source exists (demo fixture); real
-                          order-derived rows show NO sparkline, NO rate,
-                          NO status dot (never fabricated) */}
-                      {m.rate !== undefined && <div className="mr">{m.rate}</div>}
-                      {m.trend && <Sparkline data={m.trend} color={running ? 'var(--cyan)' : 'rgba(var(--steel-rgb),.3)'} width={62} height={22} baseline="zero" />}
-                      {m.status && <span className={`mwarn ${m.status}`} title={m.status === 'hi' ? 'High-dose warning' : m.status === 'md' ? 'Review due' : 'Nominal'} />}
-                    </div>
-                  )
-                })}
-              </div>
-            </Card>
-          )}
-
-          {detail && <LabsCard labs={detail.labs} />}
+          {/* LABORATORY RESULTS (renamed from Laboratory Trends) and IMAGING
+              RESULTS — results.view, the server's gate on both reads */}
+          {shown && !isNurseChart && canResults && <LabsCard key={`labs-${patientId}`} labs={shown.labs} patientId={patientId} />}
+          {shown && canResults && <ImagingResultsCard key={`img-${patientId}`} patientId={patientId} />}
 
           {/* File Attachments (2026-07-25): patient-scoped, DB-resident,
               clinical-tier view / documenting-roles add — the card gates
               itself on attachments.view and renders nothing without it */}
-          <AttachmentsCard patientId={patientId ?? ''} />
+          <AttachmentsCard key={`att-${patientId}`} patientId={patientId ?? ''} />
 
-          {detail && (
-            <Card id="alerts"
-              icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l10 18H2L12 3z" /><path d="M12 10v5m0 3v.01" /></svg>}
-              title="Smart Alerts" aside={alertsAvailable ? `${activeAlerts.length} active` : undefined}>
-              {/* the per-patient alerts DOMAIN does not exist yet (alert
-                  rules are a future domain; the roster bedAlert and the
-                  unacked-results inbox are the nearest real signals and
-                  are NOT synthesized into a feed here) — say so, never a
-                  blank that reads "no alerts" (the PR-1 rule) */}
-              {!alertsAvailable && <NotYetAvailable what="Per-patient smart alerts" />}
-              <div className="alist">
-                {alerts.map(a => (
-                  <AlertRow key={a.key} severity={a.severity} text={a.message} time={a.time} leaving={a.leaving} onAck={() => ackAlert(a.key)} />
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {detail && (
-            <Card id="goals" icon={<IconCheck size={15} stroke="var(--green)" strokeWidth={2} />} title="Daily Goals · Rounding Checklist" aside={goalsAvailable ? 'Tap to complete' : undefined}>
-              {!goalsAvailable && <NotYetAvailable what="The care-goals checklist" />}
-              {goalsAvailable && (<>
-              <div className="gprog">
-                <div className="gbar"><i style={{ width: `${goalPct}%` }} /></div>
-                <b>{goalPct}%</b>
-              </div>
-              <div className="glist">
-                {goals.map((goal, i) => (
-                  <button key={goal.label} className={`goal${goal.done ? ' done' : ''}`} aria-pressed={goal.done} onClick={() => toggleGoal(i)}>
-                    <span className="cb"><IconCheck size={11} /></span>
-                    <span>{goal.label}</span>
-                  </button>
-                ))}
-              </div>
-              </>)}
-            </Card>
-          )}
-
-          {detail && (
+          {shown && (
             <Card id="timeline"
               icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></svg>}
               title="Clinical Timeline · Last 24 h"
@@ -708,7 +636,7 @@ export function MissionControl() {
               )}>
               {/* derived view over the aggregated feed (Screen 7) — same data, compact strip */}
               <div className="tl">
-                {detail.timeline.map(ev => (
+                {shown.timeline.map(ev => (
                   <div className="tle" key={ev.id}>
                     <span className="tt">{displayStamp(ev.time)}</span>
                     <span className={`tc ${ev.category}`}>{ev.categoryLabel}</span>
@@ -718,7 +646,7 @@ export function MissionControl() {
               </div>
             </Card>
           )}
-          {!detail && !missing && <div style={{ gridColumn: '1/-1' }} aria-busy="true" />}
+          {!shown && !missing && <div style={{ gridColumn: '1/-1' }} aria-busy="true" />}
           </>}
         </main>
       </div>

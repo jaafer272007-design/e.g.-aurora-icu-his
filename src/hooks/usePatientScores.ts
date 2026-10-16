@@ -62,21 +62,62 @@ export async function fetchPatientScores(patientId: string): Promise<Omit<Patien
 
 /** scores for ONE patient — recomputes on patientId change (opening the
  *  patient re-reads the chart; a live charting refresh is a later
- *  refinement, unchanged from the retired useNews2) */
+ *  refinement, unchanged from the retired useNews2). '' = no patient: no
+ *  read, the neutral loading state.
+ *
+ *  PATIENT-KEYED (ICU update 2026-10-15): the result is held WITH the
+ *  patientId it was computed for, so the render that switches patients
+ *  already returns the loading state — the previous patient's scores and
+ *  observations are never shown under the new patient for even one
+ *  render, and a late result for the old patient is discarded (stale). */
 export function usePatientScores(patientId: string): PatientScores {
-  const [scores, setScores] = useState<PatientScores>(EMPTY('loading'))
+  const [held, setHeld] = useState<{ key: string; scores: PatientScores }>({ key: '', scores: EMPTY('loading') })
 
   useEffect(() => {
     let stale = false
-    setScores(EMPTY('loading'))
+    setHeld({ key: patientId, scores: EMPTY('loading') })
     if (!patientId) return
     fetchPatientScores(patientId)
-      .then(r => { if (!stale) setScores(r ? { state: 'ready', fetchedAt: Date.now(), ...r } : EMPTY('unavailable')) })
-      .catch(() => { if (!stale) setScores(EMPTY('unavailable')) })
+      .then(r => { if (!stale) setHeld({ key: patientId, scores: r ? { state: 'ready', fetchedAt: Date.now(), ...r } : EMPTY('unavailable') }) })
+      .catch(() => { if (!stale) setHeld({ key: patientId, scores: EMPTY('unavailable') }) })
     return () => { stale = true }
   }, [patientId])
 
-  return scores
+  return held.key === patientId ? held.scores : EMPTY('loading')
+}
+
+/** What a chart that does NOT show scores needs: the patient's full-chart
+ *  observations only. */
+export interface PatientObservations {
+  state: ScoreState
+  /** the same full-chart read the score path projects the latest
+   *  observations from — null while loading or when unreachable */
+  observations: Observation[] | null
+  fetchedAt: number | null
+}
+
+/** the chart's observations WITHOUT scores — the NURSE's patient chart
+ *  hides SOFA and NEWS2 (owner's decision, 2026-10-15), so it reads exactly
+ *  the full chart the latest-observations card projects from (the read
+ *  NEWS2 consumes) and nothing else: no labs / orders / encounter fan-out,
+ *  no score computed that nothing would show. Score formulas and every
+ *  other consumer are untouched. Same patient keying as usePatientScores;
+ *  '' = no read. */
+export function usePatientObservations(patientId: string): PatientObservations {
+  const none = (state: ScoreState): PatientObservations => ({ state, observations: null, fetchedAt: null })
+  const [held, setHeld] = useState<{ key: string; obs: PatientObservations }>({ key: '', obs: none('loading') })
+
+  useEffect(() => {
+    let stale = false
+    setHeld({ key: patientId, obs: none('loading') })
+    if (!patientId) return
+    getObservations(patientId)
+      .then(o => { if (!stale) setHeld({ key: patientId, obs: o ? { state: 'ready', observations: o, fetchedAt: Date.now() } : none('unavailable') }) })
+      .catch(() => { if (!stale) setHeld({ key: patientId, obs: none('unavailable') }) })
+    return () => { stale = true }
+  }, [patientId])
+
+  return held.key === patientId ? held.obs : none('loading')
 }
 
 /** What a board knows about its severity map: the scores themselves, plus
