@@ -8,7 +8,7 @@ import {
   displayNursingTime, formatNursingInterval, isRepeatingNursing, lastNursingCompletion, nursingRoundState,
   type NursingRoundState,
 } from '../../lib/nursingRounds'
-import { DUE_SOON_MINUTES, displayStamp, useNow } from '../../lib/time'
+import { displayStamp, useNow } from '../../lib/time'
 import type { NursingBusy } from '../../features/nurse-care/nursingController'
 
 const PRIORITY_COLOR: Record<OrderPriority, BadgeColor> = {
@@ -17,22 +17,19 @@ const PRIORITY_COLOR: Record<OrderPriority, BadgeColor> = {
   Routine: 'blue',
 }
 
-/* a round open this long past its due time reads OVERDUE (the MAR's due-soon
-   window); it stays actionable however late — the clock never creates rounds */
-const OVERDUE_AFTER_MS = DUE_SOON_MINUTES * 60_000
-
-type RowState = 'overdue' | 'due' | 'upcoming' | 'closed'
+/* DUE from the round's exact due instant, UPCOMING before it. No nursing
+   deadline exists: a late round stays DUE (and actionable) however late, with
+   the elapsed time since its due instant shown as a fact — the clock never
+   creates rounds and never re-labels one. */
+type RowState = 'due' | 'upcoming' | 'closed'
 const STATE_META: Record<RowState, { label: string; cls: string }> = {
-  overdue: { label: 'OVERDUE', cls: 'st-overdue' },
   due: { label: 'DUE', cls: 'st-due' },
   upcoming: { label: 'UPCOMING', cls: 'st-upcoming' },
   closed: { label: 'NOT OPEN', cls: 'st-upcoming' },
 }
 
-const rowStateOf = (s: NursingRoundState, nowMs: number): RowState =>
-  s.kind === 'legacy' ? 'due'
-    : s.kind === 'open' ? (nowMs - s.dueMs >= OVERDUE_AFTER_MS ? 'overdue' : 'due')
-      : s.kind === 'locked' ? 'upcoming' : 'closed'
+const rowStateOf = (s: NursingRoundState): RowState =>
+  s.kind === 'legacy' || s.kind === 'open' ? 'due' : s.kind === 'locked' ? 'upcoming' : 'closed'
 
 /** "in 42 min" / "in 2 h 05 min" / "in 40 s" until an opening */
 const untilLabel = (ms: number): string => {
@@ -40,8 +37,10 @@ const untilLabel = (ms: number): string => {
   const min = Math.ceil(ms / 60_000)
   return min < 60 ? `in ${min} min` : `in ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`
 }
-const lateLabel = (ms: number): string => {
+/** "12 min" / "2 h 05 min" since a due instant; null under a minute */
+const sinceLabel = (ms: number): string | null => {
   const min = Math.floor(ms / 60_000)
+  if (min < 1) return null
   return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`
 }
 
@@ -63,8 +62,8 @@ interface OrdersCardProps {
 export function implementCounts(orders: Order[], nowMs: number): { due: number; upcoming: number } {
   let due = 0, upcoming = 0
   for (const o of orders) {
-    const st = rowStateOf(nursingRoundState(o, nowMs), nowMs)
-    if (st === 'due' || st === 'overdue') due++
+    const st = rowStateOf(nursingRoundState(o, nowMs))
+    if (st === 'due') due++
     else if (st === 'upcoming') upcoming++
   }
   return { due, upcoming }
@@ -75,7 +74,7 @@ export function implementCounts(orders: Order[], nowMs: number): { due: number; 
  *  NURSING ROUNDS (ICU nursing/patient-chart update): one row per order, showing
  *  its ONE current round — a repeating order's next round is shown with its
  *  opening time and Done stays disabled until exactly then (a timer opens it, no
- *  reload); an overdue round stays actionable; the completion history and the
+ *  reload); a late round stays DUE and actionable; the completion history and the
  *  interval are on the row. One-time orders complete once and leave the list.
  *  Only Done — no Held/Refused for nursing rounds. */
 export function OrdersCard({ orders, busy, notices, onDone, onRetry, dataAge }: OrdersCardProps) {
@@ -83,10 +82,10 @@ export function OrdersCard({ orders, busy, notices, onDone, onRetry, dataAge }: 
   const [unlockTick, setUnlockTick] = useState(0)
   const nowMs = Math.max(tickNow.getTime(), unlockTick)
   const states = new Map(orders.map(o => [o.orderId, nursingRoundState(o, nowMs)] as const))
-  /* the exact opening of the next locked round — and the overdue flip */
+  /* the exact opening of the next locked round */
   const nextChange = orders.reduce<number | null>((soonest, o) => {
     const s = states.get(o.orderId)!
-    const at = s.kind === 'locked' ? s.dueMs : s.kind === 'open' && nowMs - s.dueMs < OVERDUE_AFTER_MS ? s.dueMs + OVERDUE_AFTER_MS : null
+    const at = s.kind === 'locked' ? s.dueMs : null
     return at !== null && at > nowMs && (soonest === null || at < soonest) ? at : soonest
   }, null)
   useEffect(() => {
@@ -97,8 +96,8 @@ export function OrdersCard({ orders, busy, notices, onDone, onRetry, dataAge }: 
 
   const order = (o: Order) => {
     const s = states.get(o.orderId)!
-    const st = rowStateOf(s, nowMs)
-    return st === 'overdue' ? 0 : st === 'due' ? 1 : st === 'upcoming' ? 2 : 3
+    const st = rowStateOf(s)
+    return st === 'due' ? 0 : st === 'upcoming' ? 1 : 2
   }
   const dueOf = (o: Order) => { const s = states.get(o.orderId)!; return s.kind === 'open' || s.kind === 'locked' ? s.dueMs : 0 }
   const sorted = [...orders].sort((a, b) => order(a) - order(b) || dueOf(a) - dueOf(b) || a.orderedTime.localeCompare(b.orderedTime))
@@ -115,12 +114,13 @@ export function OrdersCard({ orders, busy, notices, onDone, onRetry, dataAge }: 
         {orders.length === 0 && <div className="nwempty">No orders awaiting implementation.</div>}
         {sorted.map(o => {
           const s = states.get(o.orderId)!
-          const st = rowStateOf(s, nowMs)
+          const st = rowStateOf(s)
           const meta = STATE_META[st]
           const saving = busy.get(o.orderId)
           const open = s.kind === 'legacy' || s.kind === 'open'
           const locked = !open || saving !== undefined
           const repeating = isRepeatingNursing(o)
+          const since = s.kind === 'open' ? sinceLabel(nowMs - s.dueMs) : null
           const last = lastNursingCompletion(o)
           const completions = o.nursing?.completions ?? []
           const lineId = `ord-${o.orderId}-line`.replace(/[^A-Za-z0-9_-]/g, '-')
@@ -141,7 +141,7 @@ export function OrdersCard({ orders, busy, notices, onDone, onRetry, dataAge }: 
                     {repeating ? `Round ${s.round.number} · ` : ''}
                     {s.kind === 'locked'
                       ? <>Next due {displayNursingTime(s.round.dueTime)} <span className="ordwhen">({untilLabel(s.dueMs - nowMs)})</span></>
-                      : <>Due {displayNursingTime(s.round.dueTime)}{st === 'overdue' && <span className="ordlate"> · overdue {lateLabel(nowMs - s.dueMs)}</span>}</>}
+                      : <>Due {displayNursingTime(s.round.dueTime)}{since && <span className="ordwhen"> ({since} since due)</span>}</>}
                   </span>
                 )}
                 {last && (

@@ -235,7 +235,7 @@ export function OrderListCard({
 }
 
 /** a nursing order's schedule and round state: one-time / repeat interval,
- *  the current round's due time (open, overdue or opening), the last
+ *  the current round's due time (open, or the instant it opens), the last
  *  completion. Times are hospital clock, to the second (§9.1). */
 function NursingLine({ order, nowMs }: { order: Order; nowMs: number }) {
   const n = order.nursing!

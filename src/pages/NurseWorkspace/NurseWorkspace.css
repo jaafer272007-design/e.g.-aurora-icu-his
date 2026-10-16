@@ -37,7 +37,6 @@
    full-width status line (opens at / saving / checking / unconfirmed + retry) */
 .nw .ordrow{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:6px 10px;align-items:start;
  border:1px solid var(--stroke);border-radius:12px;padding:10px 12px;background:rgba(var(--lift-rgb),.02);transition:.2s}
-.nw .ordrow.st-overdue{border-color:rgba(var(--red-rgb),.45)}
 .nw .ordrow .badge{flex:none;margin-top:2px}
 .nw .ordtext{font-size:12.5px;line-height:1.42;min-width:0;overflow-wrap:anywhere}
 .nw .ordtext small{display:flex;flex-wrap:wrap;align-items:center;gap:6px;color:var(--faint);font-size:10px;margin-top:4px}
@@ -45,7 +44,6 @@
 .nw .ordfreq{font-family:var(--mono);color:var(--cyan);font-weight:600}
 .nw .ordround{display:block;margin-top:4px;font-size:11px;font-weight:600;color:var(--text)}
 .nw .ordwhen{color:var(--dim);font-weight:500}
-.nw .ordlate{color:var(--red)}
 .nw .ordlast{display:block;margin-top:2px;font-size:10.5px;color:var(--dim)}
 .nw .ordhist{margin-top:4px;font-size:10.5px;color:var(--dim)}
 .nw .ordhist summary{cursor:pointer;color:var(--blue);font-weight:600;min-height:24px;display:inline-flex;align-items:center}
@@ -53,7 +51,6 @@
 .nw .ordhist ol{margin:4px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:2px}
 .nw .orddue{color:var(--faint)}
 .nw .ordstate{font-size:9px;font-weight:700;letter-spacing:.7px;padding:2.5px 8px;border-radius:7px;text-transform:uppercase;margin-top:3px;white-space:nowrap}
-.nw .ordstate.st-overdue{background:rgba(var(--red-rgb),.15);color:var(--red)}
 .nw .ordstate.st-due{background:rgba(var(--amber-rgb),.16);color:var(--amber)}
 .nw .ordstate.st-upcoming{background:rgba(var(--steel-rgb),.12);color:var(--dim)}
 .nw .ordbtn{font-size:11px;font-weight:600;padding:7px 13px;border-radius:9px;border:1px solid var(--stroke2);
