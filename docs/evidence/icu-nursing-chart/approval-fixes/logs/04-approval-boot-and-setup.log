@@ -1,0 +1,15 @@
+# boot: server publish of ff08a52, wwwroot = PRE-FIX production bundle (/tmp/claude-0/-home-user-e-g--aurora-icu-his/18ef2caf-d2d8-55f7-b9f4-10b2d48e9929/scratchpad/ui-old-prod)
+{"status":"ok","service":"aurora-icu-api","phase":"stage10-phase3","build":"ff08a52-local","environment":"production","aiAssistant":"disabled","edition":"icu"}
+  PASS server reports environment=production (ff08a52-local)
+  PASS clean production database (no patients)
+  PASS Consultant omar.approval created individually (200: )
+  PASS Staff Nurse noor.approval created individually (200: )
+  PASS Clinical Pharmacist rami.approval created individually (200: )
+  PASS Receptionist dana.approval created individually (200: )
+  PASS pharmacist reactivates starter drug paracetamol (200)
+  PASS admitted Alpha (200: P-1001)
+  PASS Alpha baseline nursing order (200)
+  PASS admitted Bravo (200: P-1002)
+  PASS Bravo baseline nursing order (200)
+
+RESULT: 11 passed, 0 failed

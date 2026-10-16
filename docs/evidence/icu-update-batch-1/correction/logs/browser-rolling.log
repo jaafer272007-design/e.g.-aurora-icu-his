@@ -1,0 +1,64 @@
+setup: P-1031 · given actual 2026-09-30 00:05 UTC (Baghdad 03:05) -> next 2026-09-30 01:05 UTC (Baghdad 04:05) · held slot 2026-09-30 00:00 -> next 2026-09-30 01:00
+
+[1] dark theme + server zone
+  PASS theme=dark, device zone=UTC (display must follow the server zone, not the device)
+
+[2] nurse MAR: the current rounds, their timers and the actual time, on Asia/Baghdad
+    03:00 Display G 0120 1 mground 1 IV · q1h GIVEN documented 03:05
+    04:05 Display G 0120 1 mground 2 IV · q1h · timed from the dose given 03:05 OVERDUE ✓ Given ⊘ Held ✕ Refused
+    03:00 Display H 0120 1 mground 1 IV · q1h HELD documented 04:20— synthetic: SBP 82
+    04:00 Display H 0120 1 mground 2 IV · q1h · timed from the skipped dose due 03:00 OVERDUE ✓ Given ⊘ Held ✕ Refused
+    05:00 Display W 0120 1 mground 1 IV · q8h LATER ✓ Given ⊘ Held ✕ Refused
+  PASS given order: ONE current round 2 at 04:05 (Baghdad), "timed from the dose given 03:05"
+  PASS the round-1 fact shows its actual time 03:05 Baghdad (stored 2026-09-30 00:05 UTC)
+  PASS held order: round 2 at 04:00, "timed from the skipped dose due 03:00"
+  PASS an untouched order shows only its round 1
+  PASS due counts agree: Meds-Due KPI 5 = MAR card 5
+
+[3] Orders next-dose chip = the MAR current round (doctor)
+    Display G 0120 1 mg -> next dose 04:05 · OVERDUE
+    Display H 0120 1 mg -> next dose 04:00 · OVERDUE
+    Display W 0120 1 mg -> next dose 05:00
+  PASS Orders chips show the same current rounds (Baghdad)
+
+[4] dark theme: the type-filter row and the sidebar stay readable
+    [on] All3               5.22:1  (text rgb(77, 163, 255) on rendered rgb(26, 46, 74))
+         Pending0           6.74:1  (text rgb(143, 163, 188) on rendered rgb(18, 26, 42))
+         Active3            6.78:1  (text rgb(143, 163, 188) on rendered rgb(14, 26, 42))
+         Completed0         6.81:1  (text rgb(143, 163, 188) on rendered rgb(14, 26, 38))
+         Discontinued0      7.00:1  (text rgb(143, 163, 188) on rendered rgb(14, 22, 38))
+         Type               4.89:1  (text rgb(120, 137, 162) on rendered rgb(18, 26, 42))
+         All types          6.74:1  (text rgb(143, 163, 188) on rendered rgb(18, 26, 42))
+    [on] Medication         8.16:1  (text rgb(53, 224, 208) on rendered rgb(22, 50, 62))
+         Laboratory         6.81:1  (text rgb(143, 163, 188) on rendered rgb(14, 26, 38))
+         Imaging            7.00:1  (text rgb(143, 163, 188) on rendered rgb(14, 22, 38))
+  PASS every filter label/button >= 4.5:1 against its rendered background (10 controls; lowest 4.89:1)
+  PASS hover expands the rail: 198px, 17/17 labels
+         Dashboard              7.46:1
+         ICU Beds               7.46:1
+         Observations           7.46:1
+    [on] Orders & Meds          14.33:1
+         Labs & Imaging         15.85:1
+         Lab Entry              7.46:1
+         Timeline               7.46:1
+         Admissions             7.48:1
+         Discharges             7.48:1
+         Discharged Patients    7.48:1
+         Print Center           7.48:1
+         Lab Catalogue          7.48:1
+         Order Sets             7.48:1
+         Configuration          7.48:1
+         Alerts                 7.48:1
+         Statistics             7.48:1
+         Settings               7.48:1
+  PASS every expanded sidebar item >= 4.5:1 against its rendered background, incl. the active and the hovered item (17 items; lowest 7.46:1)
+
+[5] printed MAR: round per cell, next dose per active order (Baghdad)
+    Display G 0120 1 mg · IV · q1h ORD-152 · next dose due 2026-09-30 04:05
+    Display H 0120 1 mg · IV · q1h ORD-153 · next dose due 2026-09-30 04:00
+      cell: 2026-09-30 00:00 GIVEN at 2026-09-30 03:05 RN Maya Chen round 1
+      cell: 2026-09-30 00:00 HELD at 2026-09-30 04:20 RN Maya Chen round 1 “synthetic: SBP 82”
+  PASS print: each active repeating order states its next dose (the current round, Baghdad)
+  PASS print: the resolved rounds print with their round and actual time
+
+RESULT: 12 passed, 0 failed

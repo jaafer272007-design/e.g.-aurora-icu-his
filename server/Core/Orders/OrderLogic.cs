@@ -113,6 +113,24 @@ static class OrderLogic
         /* a provided-but-blank summary must never override the composed
            medication summary or create a contentless order */
         if (CheckText($"{at}.summary", d.Summary, required: false) is string s) return s;
+        /* NURSING ORDERS (icu-update-nursing-patient-chart-contracts.md §3.1):
+           a schedule is SHAPE — only a Nursing task order may carry one, its
+           instructions are required free text, and the interval is whole
+           minutes from 1 minute through 48 hours (absent = one-time) */
+        if (d.Nursing is not null)
+        {
+            if (d.Category != "Nursing")
+                return $"{at}: only a Nursing order may carry a nursing schedule (nursing)";
+            if (d.Medication is not null)
+                return $"{at}: a nursing order cannot carry a medication";
+            if (d.RequiresImplementation != true)
+                return $"{at}: a nursing schedule requires requiresImplementation true — its rounds are completed from Orders to Implement";
+            if (CheckText($"{at}.summary (the nursing instructions)", d.Summary, required: true) is string instr)
+                return instr;
+            if (d.Nursing.IntervalMinutes is int m
+                && (m < NursingRounds.MinIntervalMinutes || m > NursingRounds.MaxIntervalMinutes))
+                return $"{at}.nursing.intervalMinutes must be a whole number of minutes from {NursingRounds.MinIntervalMinutes} to {NursingRounds.MaxIntervalMinutes} (1 minute through 48 hours)";
+        }
         if (d.Medication is not null)
         {
             /* med orders are administered via the MAR schedule — the one-shot
@@ -349,6 +367,42 @@ static class OrderLogic
         if (row.Status == "active" && OneOffGiven(row))
             return "completed";
         return row.Status;
+    }
+
+    /* ---------------- ORDER WRITE LOCK (atomic documentation) ----------------
+       Codex's review of PR #234: every order mutation is a read-modify-write
+       of whole JSON columns (AdministrationsJson, HistoryJson), so two
+       overlapping requests could both validate against the same facts and
+       the later save silently dropped the earlier one's fact, audit entry
+       or timer. A request that mutates an order therefore opens its
+       transaction here and takes the order ROW LOCK (SELECT … FOR UPDATE)
+       BEFORE it reads the order: a competing mutation of the same order
+       waits for the first to commit, then reads, validates and writes
+       against the fresh facts (its own 409s — already documented, order
+       not in force — do the rest). Different orders never wait on each
+       other. Database-backed on purpose (the lock lives in PostgreSQL, so
+       it holds across processes and service restarts); no schema or model
+       change, no migration. Callers commit after SaveChanges; an early
+       return disposes the transaction and releases the lock. SQLite (the
+       ephemeral demo mode) has no row locks: BeginTransaction there is
+       BEGIN IMMEDIATE, which takes SQLite's single write lock up front and
+       serializes the same paths. */
+    public static Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction LockOrder(AuroraDb db, string orderId)
+    {
+        var tx = db.Database.BeginTransaction();
+        if (db.Database.IsNpgsql())
+            db.Database.ExecuteSql($"SELECT 1 FROM \"Orders\" WHERE \"OrderId\" = {orderId} FOR UPDATE");
+        return tx;
+    }
+
+    /** the discharge cascade's form: every order of the encounter, locked
+        in one statement in a fixed (OrderId) order */
+    public static Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction LockEncounterOrders(AuroraDb db, string encounterId)
+    {
+        var tx = db.Database.BeginTransaction();
+        if (db.Database.IsNpgsql())
+            db.Database.ExecuteSql($"SELECT 1 FROM \"Orders\" WHERE \"EncounterId\" = {encounterId} ORDER BY \"OrderId\" FOR UPDATE");
+        return tx;
     }
 
     /** THE single discontinue mechanics — status + reason, remaining

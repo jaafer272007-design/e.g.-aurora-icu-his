@@ -1,0 +1,21 @@
+clock (server wire, UTC): now=2026-10-04 23:22  run=232236
+admitted synthetic P-1036 (ENC-1037) at B-16
+hospital now 2026-10-05 02:22 · hospital midnight = 2026-10-04 21:00 UTC (UTC date 2026-10-04, hospital date 2026-10-05)
+synthetic patient P-1036 (ENC-1037); 17 MAR rows:
+  ORD-180 ADM-594                sched=2026-10-04 22:00  given     doc=2026-10-04 22:05 round=1
+  ORD-180 ADM-595                sched=2026-10-04 23:05  held      doc=2026-10-04 23:22 round=2
+  ORD-180 2026-10-05T00:05~r3    sched=2026-10-05 00:05  scheduled doc=— round=3
+  ORD-181 ADM-596                sched=2026-10-04 22:00  given     doc=2026-10-04 22:10 round=1
+  ORD-181 2026-10-05T02:10~r2    sched=2026-10-05 02:10  scheduled doc=— round=2
+  ORD-182 2026-10-04T18:00~r1    sched=2026-10-04 18:00  scheduled doc=— round=1
+  ORD-183 ADM-597                sched=2026-10-04 21:00  given     doc=2026-10-04 23:22 round=1
+  ORD-183 2026-10-05T23:22~r2    sched=2026-10-05 23:22  scheduled doc=— round=2
+  ORD-184 ADM-598                sched=2026-10-04 20:00  given     doc=2026-10-04 21:20 round=1
+  ORD-184 2026-10-05T03:20~r2    sched=2026-10-05 03:20  scheduled doc=— round=2
+  ORD-185 ADM-599                sched=—                 given     doc=2026-10-04 19:00 round=None
+  ORD-185 ADM-600                sched=—                 given     doc=2026-10-04 23:22 round=None
+  ORD-185 prn                    sched=—                 scheduled doc=— round=None
+  ORD-186 ADM-601                sched=—                 given     doc=2026-10-04 18:30 round=None
+  ORD-186 ondemand               sched=—                 scheduled doc=— round=None
+  ORD-187 ADM-LEG2322362         sched=D-1 20:00         refused   doc=D-1 20:10 round=None
+  ORD-187 ADM-LEG2322361         sched=08:00             given     doc=08:05 round=None

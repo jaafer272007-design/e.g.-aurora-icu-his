@@ -1,9 +1,12 @@
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import type { FocusEvent, KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import './NavSidebar.css'
 import {
   IconAdmit, IconAlertTriangle, IconBed, IconBrain, IconClock, IconDischarge, IconFlask, IconGrid, IconPencil, IconPill, IconPrinter, IconPulse, IconSettings, IconShield, IconStats, IconUsers,
 } from './icons'
 import { lastPatientId } from '../lib/patientContext'
+import { lastMousePoint, navHovered, setNavHovered, trackMousePoint } from '../lib/navHover'
 import { getSession, hasPermission, landingRouteOf, type Permission } from '../lib/session'
 import { useAiSection } from '../lib/aiAvailability'
 import { useEdition } from '../lib/edition'
@@ -40,11 +43,131 @@ interface NavSidebarProps {
   footerLines: string[]
 }
 
+/* ---------------- COLLAPSIBLE SECTION SIDEBAR (owner's request, 2026-09-30) ----------------
+   docs/design/icu-update-batch-1.md §3. The rail sits COLLAPSED (≈64px,
+   icons + tooltips + accessible names) and expands to the labeled width:
+   - mouse devices: while the pointer is over it (short hover intent so a
+     pointer merely crossing the rail never expands it; a close delay
+     longer than the width transition so the moving edge can never outrun
+     the pointer and flicker), and while KEYBOARD focus is inside it
+     (focus-visible — a mouse click's focus never pins it open);
+   - touch / no-hover devices: only by the labeled tap toggle
+     (aria-expanded), never by a tap on a section — which just navigates.
+   The expanded state is published as .nav-open; the parent .shell's nav
+   column follows it through the shared --nav-col (tokens.css), so the
+   page's main content takes the space the collapsed rail frees. Only on
+   a narrow screen (or an engine without :has) does the expanded rail
+   OVERLAY the content instead — an explicit, dismissible drawer.
+   Expanding never re-renders the page, so drafts, scroll and patient
+   context are untouched. The MOUSE hover is the one piece of state that
+   outlives a section (2026-10-04, lib/navHover.ts): each section mounts
+   its own sidebar, so a sidebar mounting under a resting pointer
+   restores the open state, then checks the real pointer position against
+   its OPEN layout (labels included, not just the icon rail) and closes —
+   after the same close delay — only if the pointer is not over it.
+   Keyboard focus and the touch toggle stay local, as before. */
+const HOVER_OPEN_MS = 90
+const HOVER_CLOSE_MS = 180
+/** no hover-capable primary pointer → the tap toggle, never hover */
+const TOUCH_QUERY = '(hover: none), (pointer: coarse)'
+/** too narrow to push the content — MUST match the width in tokens.css */
+const OVERLAY_QUERY = '(max-width: 760px)'
+const supportsHas = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('selector(:has(*))')
+
+function useMedia(query: string): boolean {
+  const read = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(query).matches
+  const [matches, setMatches] = useState(read)
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const mq = window.matchMedia(query)
+    const sync = () => setMatches(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [query])
+  return matches
+}
+
 /** Primary navigation rail. "Dashboard" resolves to the signed-in profile's
  *  landing view, and items are filtered by the profile's permissions —
  *  both derived from the session's JobTitle at render (Stage 9 RBAC). */
 export function NavSidebar({ active, footerLines }: NavSidebarProps) {
   const navigate = useNavigate()
+  const navId = useId()
+  const navRef = useRef<HTMLElement>(null)
+  const toggleRef = useRef<HTMLButtonElement>(null)
+  const touchMode = useMedia(TOUCH_QUERY)
+  const overlay = useMedia(OVERLAY_QUERY) || !supportsHas
+  /* restored from the shared hover (a section switch under a resting
+     pointer); never on a touch / no-hover device */
+  const [hovered, setHoveredState] = useState(() =>
+    navHovered() && !(typeof window.matchMedia === 'function' && window.matchMedia(TOUCH_QUERY).matches))
+  const setHovered = (v: boolean) => { setNavHovered(v); setHoveredState(v) }
+  const [keyboardInside, setKeyboardInside] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const timer = useRef<number | undefined>(undefined)
+  const clearTimer = () => {
+    if (timer.current !== undefined) window.clearTimeout(timer.current)
+    timer.current = undefined
+  }
+  useEffect(() => clearTimer, [])
+  /* reconcile a RESTORED hover with where the pointer actually is, on the
+     open layout this sidebar mounted with (before paint, so no flicker):
+     still over it → stays open; elsewhere (or unknown) → the normal close
+     delay, exactly as if the pointer had just left */
+  useLayoutEffect(() => {
+    trackMousePoint()
+    if (!hovered || touchMode) return
+    const p = lastMousePoint()
+    const under = p ? document.elementFromPoint(p.x, p.y) : null
+    if (!(under && navRef.current?.contains(under)))
+      timer.current = window.setTimeout(() => { timer.current = undefined; setHovered(false) }, HOVER_CLOSE_MS)
+    // mount-only: later changes arrive as real pointer events
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const expanded = touchMode ? pinned : hovered || keyboardInside
+
+  /* mouse hover (touch/pen contacts are ignored — no hover behaviour is
+     forced onto touch users) */
+  const onPointerEnter = (e: ReactPointerEvent) => {
+    if (touchMode || e.pointerType !== 'mouse') return
+    clearTimer()
+    if (!hovered) timer.current = window.setTimeout(() => { timer.current = undefined; setHovered(true) }, HOVER_OPEN_MS)
+  }
+  /* a page that mounts UNDER a resting pointer gets no enter event —
+     the first move inside counts as one */
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (!hovered && timer.current === undefined) onPointerEnter(e)
+  }
+  const onPointerLeave = (e: ReactPointerEvent) => {
+    if (touchMode || e.pointerType !== 'mouse') return
+    clearTimer()
+    if (hovered) timer.current = window.setTimeout(() => { timer.current = undefined; setHovered(false) }, HOVER_CLOSE_MS)
+  }
+  /* keyboard focus anywhere inside keeps it open; leaving collapses */
+  const onFocus = (e: FocusEvent) => {
+    let keyboard = true
+    try { keyboard = (e.target as HTMLElement).matches(':focus-visible') } catch { /* engine without :focus-visible — treat as keyboard */ }
+    setKeyboardInside(keyboard)
+  }
+  const onBlur = (e: FocusEvent) => {
+    if (!navRef.current?.contains(e.relatedTarget as Node | null)) setKeyboardInside(false)
+  }
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && pinned) { setPinned(false); toggleRef.current?.focus() }
+  }
+  /* the narrow-screen drawer closes on a tap outside it (it overlays the
+     content; closing moves nothing underneath, so the tap lands where the
+     user aimed). The push layout never closes this way — collapsing would
+     slide the content under the finger mid-tap. */
+  useEffect(() => {
+    if (!(pinned && overlay)) return
+    const onDown = (e: PointerEvent) => {
+      if (!navRef.current?.contains(e.target as Node)) setPinned(false)
+    }
+    document.addEventListener('pointerdown', onDown, true)
+    return () => document.removeEventListener('pointerdown', onDown, true)
+  }, [pinned, overlay])
   const session = getSession()
   const title = session?.jobTitle
   const allowed = (p?: Permission) => !p || (!!title && hasPermission(title, p))
@@ -127,20 +250,40 @@ export function NavSidebar({ active, footerLines }: NavSidebarProps) {
     it.when !== false && (it.anyPerm ? (!!title && it.anyPerm.some(p => hasPermission(title, p))) : allowed(it.perm)))
 
   return (
-    <nav className="nav-sidebar" aria-label="Primary">
+    <nav
+      ref={navRef} id={navId}
+      className={`nav-sidebar${expanded ? ' nav-open' : ''}${overlay ? ' nav-overlay' : ''}`}
+      aria-label="Primary"
+      onPointerEnter={onPointerEnter} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave}
+      onFocus={onFocus} onBlur={onBlur} onKeyDown={onKeyDown}
+    >
+      {touchMode && (
+        /* the touch/no-hover control: opening it never navigates */
+        <button
+          ref={toggleRef} type="button" className="nvtoggle"
+          aria-expanded={pinned} aria-controls={navId} aria-label="Section menu"
+          title={pinned ? 'Hide section names' : 'Show section names'}
+          onClick={() => setPinned(p => !p)}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16" />
+            <path d={pinned ? 'M16 10l-2 2 2 2' : 'M13 10l2 2-2 2'} />
+          </svg>
+          <span aria-hidden="true">{pinned ? 'Collapse' : 'Menu'}</span>
+        </button>
+      )}
       {items.map(it => (
         <button
           key={it.key}
           className={`nv${it.key === active ? ' on' : ''}`}
           aria-current={it.key === active ? 'page' : undefined}
           /* aria-label + title so the item stays identifiable when the
-             sidebar is icon-only (below the 13" floor, where the label
-             span is display:none): screen readers get the name, and a
-             hover tooltip names each bare icon. Harmless when the label
-             text is visible (≥1180px). */
+             sidebar is collapsed to its icon rail (the label span is
+             hidden): screen readers get the name, and a hover tooltip
+             names each bare icon. Harmless when the label is visible. */
           aria-label={it.label}
           title={it.label}
-          onClick={it.to ? () => navigate(it.to!) : undefined}
+          onClick={it.to ? () => { setPinned(false); navigate(it.to!) } : undefined}
         >
           {it.icon}
           <span>{it.label}</span>

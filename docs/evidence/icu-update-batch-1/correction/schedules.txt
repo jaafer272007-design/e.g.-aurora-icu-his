@@ -1,0 +1,109 @@
+Rolling timer — deterministic schedules (times UTC, "MM-DD HH:mm"; [ ] = the ONE current round).
+
+## R1 owner example: 06:00 given 06:05 -> 07:05; unresolved while the clock advances; 07:05 given 08:30 -> 09:30  (q1h; signed 09-30 05:20)
+  read @ 09-30 05:30:  [09-30 06:00 round 1]
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  read @ 09-30 08:30:  09-30 06:00 given@09-30 06:05 r1 | [09-30 07:05 round 2](timed from given 09-30 06:05)
+  read @ 09-30 08:31:  09-30 06:00 given@09-30 06:05 r1 | [09-30 07:05 round 2](timed from given 09-30 06:05)
+  given   2026-09-30T07:05~r2 @ 09-30 08:30: ok -> next round 09-30 09:30 [2026-09-30T09:30~r3]   (as expected)
+  read @ 09-30 09:40:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 given@09-30 08:30 r2 | [09-30 09:30 round 3](timed from given 09-30 08:30)
+
+## R2 early Given: the 07:05 round given at 06:50 -> 07:50  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  given   2026-09-30T07:05~r2 @ 09-30 06:50: ok -> next round 09-30 07:50 [2026-09-30T07:50~r3]   (as expected)
+  read @ 09-30 06:51:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 given@09-30 06:50 r2 | [09-30 07:50 round 3](timed from given 09-30 06:50)
+
+## R3 on-time Given: the 07:05 round given at 07:05 -> 08:05  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  given   2026-09-30T07:05~r2 @ 09-30 07:05: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+
+## R4 q8h unresolved across midnight and two days stays the ONE current round and stays documentable; given with reason -> actual + 8h  (q8h; signed 09-29 21:20)
+  read @ 09-30 03:00:  [09-29 22:00 round 1]
+  read @ 10-01 12:00:  [09-29 22:00 round 1]
+  read @ 10-02 12:00:  [09-29 22:00 round 1]
+  given   2026-09-29T22:00~r1 @ 10-02 12:04: 400-reason-required   (as expected)
+  given   2026-09-29T22:00~r1 @ 10-02 12:05: ok -> next round 10-02 20:05 [2026-10-02T20:05~r2]   (as expected)
+  read @ 10-02 21:00:  09-29 22:00 given@10-02 12:05 r1 | [10-02 20:05 round 2](timed from given 10-02 12:05)
+
+## R5 explicit actual time 06:03 documented later at 06:40 -> next 07:03  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:40 (actual 09-30 06:03): ok -> next round 09-30 07:03 [2026-09-30T07:03~r2]   (as expected)
+  read @ 09-30 06:41:  09-30 06:00 given@09-30 06:03 r1 | [09-30 07:03 round 2](timed from given 09-30 06:03)
+
+## R6 older backdated actual (06:00 < timer 06:05) never rewinds; round 3 shares 07:05 with round 2 and stays distinct  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  given   2026-09-30T07:05~r2 @ 09-30 07:10 (actual 09-30 06:00): ok -> next round 09-30 07:05 [2026-09-30T07:05~r3]   (as expected)
+  given   2026-09-30T07:05~r2 @ 09-30 07:11: 409-resolved   (as expected)
+  read @ 09-30 07:12:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 given@09-30 06:00 r2 | [09-30 07:05 round 3](timed from given 09-30 06:05)
+
+## R7 legacy compatibility (approved case): stored 07:00 slot given 06:50, outstanding 06:00 slot given 06:55 -> 07:55  (q1h; signed 09-30 05:20)
+  legacy facts: 09-30 07:00 given@09-30 06:50
+  read @ 09-30 06:52:  [09-30 06:00 round 1] | 09-30 07:00 given@09-30 06:50 legacy
+  given   2026-09-30T06:00~r1 @ 09-30 06:55: ok -> next round 09-30 07:55 [2026-09-30T07:55~r2]   (as expected)
+  read @ 09-30 06:56:  09-30 06:00 given@09-30 06:55 r1 | 09-30 07:00 given@09-30 06:50 legacy | [09-30 07:55 round 2](timed from given 09-30 06:55)
+
+## R8 legacy LATE fact never starts a timer: q8h 02:00 slot given 04:30 (stored) -> round 1 is the grid's 10:00, not 12:30  (q8h; signed 09-30 01:20)
+  legacy facts: 09-30 02:00 given@09-30 04:30
+  read @ 09-30 05:00:  09-30 02:00 given@09-30 04:30 legacy | [09-30 10:00 round 1]
+  given   2026-09-30T10:00~r1 @ 09-30 10:10: ok -> next round 09-30 18:10 [2026-09-30T18:10~r2]   (as expected)
+
+## R9 legacy active order never documented (signed 3 days ago): round 1 is the first dose; held -> slot + 8h, still overdue; given -> actual + 8h  (q8h; signed 09-27 05:20)
+  read @ 09-30 09:00:  [09-27 06:00 round 1]
+  held    2026-09-27T06:00~r1 @ 09-30 09:05: ok -> next round 09-27 14:00 [2026-09-27T14:00~r2]   (as expected)
+  read @ 09-30 09:06:  09-27 06:00 held@09-30 09:05 r1 | [09-27 14:00 round 2](timed from skipped slot 09-27 06:00)
+  given   2026-09-27T14:00~r2 @ 09-30 09:10: ok -> next round 09-30 17:10 [2026-09-30T17:10~r3]   (as expected)
+
+## R10 Held/Refused time from the skipped slot (late, early, on time, late again); a past next due is overdue, never skipped  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 07:20: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  refused 2026-09-30T08:05~r3 @ 09-30 07:40: ok -> next round 09-30 09:05 [2026-09-30T09:05~r4]   (as expected)
+  held    2026-09-30T09:05~r4 @ 09-30 09:05: ok -> next round 09-30 10:05 [2026-09-30T10:05~r5]   (as expected)
+  read @ 09-30 11:30:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 07:20 r2 | 09-30 08:05 refused@09-30 07:40 r3 | 09-30 09:05 held@09-30 09:05 r4 | [09-30 10:05 round 5](timed from skipped slot 09-30 09:05)
+  refused 2026-09-30T10:05~r5 @ 09-30 11:30: ok -> next round 09-30 11:05 [2026-09-30T11:05~r6]   (as expected)
+  read @ 09-30 11:31:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 07:20 r2 | 09-30 08:05 refused@09-30 07:40 r3 | 09-30 09:05 held@09-30 09:05 r4 | 09-30 10:05 refused@09-30 11:30 r5 | [09-30 11:05 round 6](timed from skipped slot 09-30 10:05)
+  given   2026-09-30T11:05~r6 @ 09-30 11:35: ok -> next round 09-30 12:35 [2026-09-30T12:35~r7]   (as expected)
+
+## R11 same-round duplicate and a stale Held after a competing Given -> 409  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  given   2026-09-30T06:00~r1 @ 09-30 06:06: 409-resolved   (as expected)
+  held    2026-09-30T06:00~r1 @ 09-30 06:07: 409-resolved   (as expected)
+  read @ 09-30 06:08:  09-30 06:00 given@09-30 06:05 r1 | [09-30 07:05 round 2](timed from given 09-30 06:05)
+
+## R12 frequency modification q1h -> q4h: timer 06:05 + 4h = 10:05; the stale 07:05 identity -> 409  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  modify frequency -> q4h
+  read @ 09-30 06:10:  09-30 06:00 given@09-30 06:05 r1 | [09-30 10:05 round 2](timed from given 09-30 06:05)
+  given   2026-09-30T07:05~r2 @ 09-30 06:11: 409-rescheduled   (as expected)
+  given   2026-09-30T10:05~r2 @ 09-30 06:12: ok -> next round 09-30 10:12 [2026-09-30T10:12~r3]   (as expected)
+
+## R13 once: unchanged (late given completes; duplicate 409)  (once; signed 09-30 05:20)
+  read @ 09-30 05:30:  [09-30 06:00 pending]
+  given   2026-09-30T06:00 @ 09-30 09:00: ok   (as expected)
+  read @ 09-30 09:01:  09-30 06:00 given@09-30 09:00 legacy
+  given   2026-09-30T06:00 @ 09-30 09:02: 409-duplicate   (as expected)
+
+## R14 PRN: unchanged (every given is a fact; availability stays)  (q6h, PRN; signed 09-30 05:20)
+  given   prn @ 09-30 09:00: ok   (as expected)
+  given   prn @ 09-30 09:05: ok   (as expected)
+  read @ 09-30 09:06:  (prn) given@09-30 09:00 legacy | (prn) given@09-30 09:05 legacy | [(prn) pending]
+
+## R15 discontinued order: facts stay, no current round, documenting -> 409  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  discontinue the order
+  read @ 09-30 06:10:  09-30 06:00 given@09-30 06:05 r1
+  given   2026-09-30T07:05~r2 @ 09-30 06:11: 409-inactive   (as expected)
+
+## R16 daily given 3h late (reason) -> next day at the actual time  (daily; signed 09-30 07:20)
+  given   2026-09-30T08:00~r1 @ 09-30 11:00: ok -> next round 10-01 11:00 [2026-10-01T11:00~r2]   (as expected)
+
+## R17 bid given 10 minutes late -> 18:10  (bid; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:10: ok -> next round 09-30 18:10 [2026-09-30T18:10~r2]   (as expected)
+
+## R18 tid given 23:30 -> next day 07:30 (midnight)  (tid; signed 09-30 21:20)
+  given   2026-09-30T22:00~r1 @ 09-30 23:30: ok -> next round 10-01 07:30 [2026-10-01T07:30~r2]   (as expected)
+  read @ 10-01 00:30:  09-30 22:00 given@09-30 23:30 r1 | [10-01 07:30 round 2](timed from given 09-30 23:30)
+
+## R19 a bare grid identity or a future round on a repeating order -> 404  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00 @ 09-30 06:05: 404   (as expected)
+  given   2026-09-30T07:00~r2 @ 09-30 06:05: 404   (as expected)
+  given   2026-09-30T06:00~r1 @ 09-30 06:06: ok -> next round 09-30 07:06 [2026-09-30T07:06~r2]   (as expected)
+

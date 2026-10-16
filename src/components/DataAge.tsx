@@ -1,5 +1,5 @@
 import { LIVE_STALL_MS } from '../hooks/useLive'
-import { displayStamp, localStamp, useNow } from '../lib/time'
+import { displayStamp, useNow } from '../lib/time'
 import './DataAge.css'
 
 /* DATA AGE — step 1 of the multi-user staleness work (the verify-first
@@ -62,7 +62,12 @@ export function DataAge({ at, live = false, label, what, unavailable = false }: 
     )
   }
 
-  const shown = displayStamp(localStamp(at))
+  /* ONE conversion to the hospital clock: displayStamp takes the UTC wire
+     form ("yyyy-MM-dd HH:mm") and renders it on the display clock — today
+     "HH:mm", an earlier hospital day "D-n HH:mm", 12h/24h per preference.
+     (It used to be handed localStamp(at), which is ALREADY hospital wall
+     time, so a UTC+3 hospital read three hours ahead.) */
+  const shown = displayStamp(new Date(at).toISOString().slice(0, 16).replace('T', ' '))
   const stalled = live && now.getTime() - at > LIVE_STALL_MS
   const subject = what ?? 'this view'
 

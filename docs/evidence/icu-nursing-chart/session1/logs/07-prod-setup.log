@@ -1,0 +1,10 @@
+{"status":"ok","service":"aurora-icu-api","phase":"stage10-phase3","build":"5eac7445fa8c3911717c936c054ae977097db780-local","environment":"production","aiAssistant":"disabled","edition":"icu"}
+  PASS server reports environment=production (5eac7445fa8c3911717c936c054ae977097db780-local)
+  PASS clean production DB: no patients; AddOrderNursingSchedule applied from empty
+  PASS production reference seed carries both I&O snapshot types
+  PASS Consultant omar.synthetic created individually (200: )
+  PASS Staff Nurse noor.synthetic created individually (200: )
+  PASS synthetic admission (200)
+  PASS legacy-style task order (no nursing data) created (ORD-101)
+
+RESULT: 7 passed, 0 failed

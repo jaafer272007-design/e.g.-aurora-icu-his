@@ -1,0 +1,1 @@
+confirmed: src/pages/Reception/Reception.tsx — all 5 of design §3.2's required fields are present in the submit gate and it still disables the button (SOURCE check: this does not exercise the screen)

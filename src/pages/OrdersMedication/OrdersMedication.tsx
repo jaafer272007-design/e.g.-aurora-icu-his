@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import './OrdersMedication.css'
 import { DataAge } from '../../components/DataAge'
@@ -26,6 +26,8 @@ import { NewOrderCard } from './NewOrderCard'
 import { OrderSetsCard } from './OrderSetsCard'
 import { LabOrderCard } from './LabOrderCard'
 import { ImagingOrderCard } from './ImagingOrderCard'
+import { NursingOrderCard, type NursingOrderEntry } from './NursingOrderCard'
+import { useNursingDone } from './useNursingDone'
 import { NotYetAvailable } from '../../components/NotYetAvailable'
 import { DiscontinueDialog, ModifyDialog } from './OrderDialogs'
 
@@ -51,9 +53,31 @@ export function OrdersMedication() {
   const navigate = useNavigate()
   const { toast, showToast } = useToast()
   const [patients, setPatients] = useState<PatientSummary[] | null>(null)
-  const [patient, setPatient] = useState<Patient | null>(null)
-  const [missing, setMissing] = useState(false)
-  const [orders, setOrders] = useState<Order[] | null>(null)
+  /* PATIENT-KEYED (Codex review of 72a7894): the identity, the order list,
+     the not-found flag and the weight are held WITH the patient they were
+     read for, and shown only while that patient is the routed one — so on a
+     patient switch the previous patient's header and prescribing body are
+     gone from the very first render (no effect clearing them a render
+     later), and a late read or a write's refresh for the previous patient
+     can never fill this one's page. */
+  const [rosterOf, setRosterOf] = useState<{ pid: string; patient: Patient } | null>(null)
+  const [missingOf, setMissingOf] = useState<string | null>(null)
+  const [ordersOf, setOrdersOf] = useState<{ pid: string; list: Order[] } | null>(null)
+  const patient = rosterOf?.pid === patientId ? rosterOf.patient : null
+  const missing = missingOf === patientId
+  const orders = ordersOf?.pid === patientId ? ordersOf.list : null
+  /* the routed patient as of the last commit: async answers compare against it */
+  const routedRef = useRef(patientId)
+  useLayoutEffect(() => { routedRef.current = patientId }, [patientId])
+  /* order-list reads land in the order they STARTED (an older read never
+     replaces a newer one) and only for the patient still routed */
+  const ordersSeq = useRef({ started: 0, applied: 0 })
+  const acceptOrders = useCallback((pid: string, seq: number, list: Order[]): boolean => {
+    if (routedRef.current !== pid || seq <= ordersSeq.current.applied) return false
+    ordersSeq.current.applied = seq
+    setOrdersOf({ pid, list })
+    return true
+  }, [])
   const [pendingAll, setPendingAll] = useState<Order[]>([])
   const [formulary, setFormulary] = useState<FormularyDrug[] | null>(null)
   const [labCatalog, setLabCatalog] = useState<LabTest[] | null>(null)
@@ -68,7 +92,8 @@ export function OrdersMedication() {
   /* the OPEN encounter's recorded weight (PR #83, encounter-scoped) —
      drives the structured-infusion absolute-rate preview; undefined =
      not recorded, handled honestly (no fabricated rate) */
-  const [weightKg, setWeightKg] = useState<number | undefined>(undefined)
+  const [weightOf, setWeightOf] = useState<{ pid: string; kg: number | undefined } | null>(null)
+  const weightKg = weightOf?.pid === patientId ? weightOf.kg : undefined
   const [modifyId, setModifyId] = useState<string | null>(null)
   const [discontinueId, setDiscontinueId] = useState<string | null>(null)
 
@@ -94,38 +119,51 @@ export function OrdersMedication() {
      own writes — it does NOT follow the ward. The chip states that plainly
      so a chart left open through a shift cannot pass for current. */
   const [chartAt, setChartAt] = useState<number | null>(null)
-  const refresh = useCallback(() => {
-    if (patientId) getPatientOrders(patientId).then(setOrders)
+  /* re-read one patient's orders (and the unit's pending list) — a refresh
+     for a patient no longer routed (a write that finished after a switch)
+     refreshes only the unit-wide pending list */
+  const refreshFor = useCallback((pid: string) => {
     getPendingOrders().then(setPendingAll)
+    if (!pid || routedRef.current !== pid) return
+    const seq = ++ordersSeq.current.started
+    getPatientOrders(pid).then(list => { acceptOrders(pid, seq, list) })
     setChartAt(Date.now())
-  }, [patientId])
+  }, [acceptOrders])
+  const refresh = useCallback(() => refreshFor(patientId), [patientId, refreshFor])
 
   useEffect(() => {
     if (!patientId) return
     let stale = false
-    setWeightKg(undefined)
     getEncounters({ patientId, status: 'open' })
-      .then(list => { if (!stale) setWeightKg(list[0]?.weightKg) })
+      .then(list => { if (!stale) setWeightOf({ pid: patientId, kg: list[0]?.weightKg }) })
       .catch(() => {})
-    setMissing(false)
     /* Phase 3 PR 1: IDENTITY ONLY from the real roster — this screen's
        body is already real; it no longer pulls the Stage-11 composite */
     getRosterPatient(patientId).then(res => {
       if (stale) return
       if (!res) {
         /* locked decision: explicit not-found — never another patient's data */
-        setPatient(null)
-        setOrders(null)
-        setMissing(true)
+        setRosterOf(null)
+        setOrdersOf(null)
+        setMissingOf(patientId)
         return
       }
-      setPatient(res)
+      setRosterOf({ pid: patientId, patient: res })
+      setMissingOf(null)
     })
     refresh()
     return () => { stale = true }
   }, [patientId, refresh])
 
   const orderById = (id: string | null) => orders?.find(o => o.orderId === id) ?? null
+
+  /* NURSING ROUNDS (contracts §3.6, §9.2): Done on a nursing order's
+     current round — one attempt per click, settled only from the server's
+     record; the authoritative read also refreshes this patient's list */
+  const nursingDone = useNursingDone({
+    actor: session.name, jobTitle: session.jobTitle, patientId, showToast,
+    onOrders: (pid, list) => { if (acceptOrders(pid, ++ordersSeq.current.started, list)) setChartAt(Date.now()) },
+  })
 
   const handleSign = (orderId: string) => {
     signOrder(orderId, session.name, session.jobTitle).then(o => {
@@ -169,6 +207,30 @@ export function OrdersMedication() {
       refresh()
       showToast(sign ? 'Order signed & active' : 'Order saved as pending', o?.summary ?? '')
     })
+  }
+
+  /* NEW NURSING ORDER (icu-update-nursing-patient-chart.md §2): category
+     Nursing, completed from Orders to Implement; `nursing: {}` = one-time,
+     { intervalMinutes } = repeating. Same create path and permissions as
+     every other order. The order is for the patient the FORM was showing
+     (its captured pid — Codex review of 72a7894), never whichever patient
+     is routed when the click lands or the answer returns; an answer after a
+     switch refreshes and names only that patient. */
+  const handleNursingOrder = async (pid: string, entry: NursingOrderEntry, sign: boolean): Promise<boolean> => {
+    const draft: NewOrderDraft = {
+      patientId: pid, category: 'Nursing', summary: entry.instructions, priority: entry.priority,
+      requiresImplementation: true,
+      nursing: entry.intervalMinutes === null ? {} : { intervalMinutes: entry.intervalMinutes },
+    }
+    const [o] = await createOrders([draft], session.name, sign, session.jobTitle)
+    refreshFor(pid)
+    const elsewhere = routedRef.current !== pid ? ` (patient ${o?.patientName || pid})` : ''
+    if (!o) {
+      showToast('Nursing order NOT created', `the server refused it or could not be reached — nothing was saved${elsewhere}`, 5000)
+      return false
+    }
+    showToast(sign ? 'Nursing order signed & active' : 'Nursing order saved as pending', `${o.summary}${elsewhere}`)
+    return true
   }
 
   /* Lab orders complete when a RESULT is documented against them (the
@@ -298,6 +360,10 @@ export function OrdersMedication() {
                   onModify={setModifyId}
                   onDiscontinue={setDiscontinueId}
                   onImplement={handleImplement}
+                  onNursingDone={nursingDone.done}
+                  onNursingRetry={nursingDone.retry}
+                  nursingBusy={nursingDone.busy}
+                  nursingNotices={nursingDone.notices}
                 />
               </div>
               <div className="omcolR">
@@ -313,6 +379,10 @@ export function OrdersMedication() {
                 )}
                 {labCatalog && canPrescribe && (
                   <LabOrderCard catalog={labCatalog} onOrder={handleLabOrder} />
+                )}
+                {canPrescribe && (
+                  /* keyed: a patient switch mounts a fresh, empty editor */
+                  <NursingOrderCard key={patient.patientId} patientId={patient.patientId} canSign={canSign} onCreate={handleNursingOrder} />
                 )}
                 {imagingStudies === null && canPrescribe && (
                   <NotYetAvailable what="The imaging study list" />

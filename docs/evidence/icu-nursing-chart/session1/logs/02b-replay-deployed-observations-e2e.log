@@ -1,0 +1,136 @@
+replaying deployed-observations-e2e.yml against http://localhost:8080: build=5eac7445fa8c3911717c936c054ae977097db780-local environment=staging
+
+== SKIP (uses actions/checkout@v4): Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objects)
+
+== STEP: ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+attempt 1: healthz environment=staging · expected=staging
+-- OK
+
+== REPLACED: Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+   local build identity: /healthz build 5eac7445fa8c3911717c936c054ae977097db780-local == 5eac7445fa8c3911717c936c054ae977097db780-local -> OK
+
+== STEP: Login as Consultant (SeniorDoctor), Specialist (Doctor), two nurses, Hospital Administrator, Receptionist, pharmacist
+sara.rahman: token issued
+liam.osei: token issued
+maya.chen: token issued
+priya.patel: token issued
+yusuf.karim: token issued
+huda.nasser: token issued
+samir.qassem: token issued
+-- OK
+
+== STEP: Catalog — unauth 401; authenticated read (+ CORS) carries the §1 taxonomy
+unauth catalog -> HTTP 401
+Access-Control-Allow-Origin: https://jaafer272007-design.github.io
+catalog: 8 groups / 57 types — §1 taxonomy shape verified
+-- OK
+
+== STEP: Enablement RBAC — nurse/Specialist 403; HARD CONSTRAINT: Hospital Administrator AND Receptionist 403; unauth 401
+devices group currently enabled=True — the RBAC probes attempt 'disable'
+NUR disable -> HTTP 403
+SPEC disable -> HTTP 403
+ADMIN disable -> HTTP 403
+RECEP disable -> HTTP 403
+unauth disable -> HTTP 401
+-- OK
+
+== STEP: Consultant toggles — 200 with token actor + audited event; replay 409; unknown group 404; RESTORE
+consultant toggled devices -> False | audited: disabled
+replay disable -> HTTP 409 (state conflict, not a silent no-op)
+unknown group -> HTTP 404
+restored devices to enabled=True
+-- OK
+
+== STEP: 🔴 CATALOGUE MANAGEMENT — the score-input LOCK: catalog flags EXACTLY the 12; every one refuses edit AND retire (409 LOCKED); derived 409; mutation RBAC every direction incl. the office Administrator
+scoreInput flags EXACTLY the verified 12: acvpu, fio2, gcs, gcs_total, hr, map, resp_support, rr, sbp, spo2, temp, urine_output
+score input rr: range edit -> 409 LOCKED · retire -> HTTP 409
+score input spo2: range edit -> 409 LOCKED · retire -> HTTP 409
+score input fio2: range edit -> 409 LOCKED · retire -> HTTP 409
+score input sbp: range edit -> 409 LOCKED · retire -> HTTP 409
+score input hr: range edit -> 409 LOCKED · retire -> HTTP 409
+score input temp: range edit -> 409 LOCKED · retire -> HTTP 409
+score input acvpu: range edit -> 409 LOCKED · retire -> HTTP 409
+score input resp_support: range edit -> 409 LOCKED · retire -> HTTP 409
+score input gcs: range edit -> 409 LOCKED · retire -> HTTP 409
+score input gcs_total: range edit -> 409 LOCKED · retire -> HTTP 409
+score input map: range edit -> 409 LOCKED · retire -> HTTP 409
+score input urine_output: range edit -> 409 LOCKED · retire -> HTTP 409
+rename hr -> HTTP 409
+derived net_balance edit -> HTTP 409
+seeded cvp rename -> HTTP 400
+NUR create -> HTTP 403 · edit -> HTTP 403
+SPEC create -> HTTP 403 · edit -> HTTP 403
+ADMIN create -> HTTP 403 · edit -> HTTP 403
+RECEP create -> HTTP 403 · edit -> HTTP 403
+PHARM create -> HTTP 403 · edit -> HTTP 403
+unauth create -> HTTP 401
+-- OK
+
+== STEP: Step 2 — admit THIS RUN's patient; nurse charts a timed ROUND (compound GCS, server-stamped time, manual provenance); consultant ad-hoc
+admitted P-1017 on ENC-1017 (bed B-16)
+pharmacist chart -> HTTP 403
+round of 4 charted: shared server-stamped clinicalTime, manual provenance, token actor
+ad-hoc CVP by the consultant (superset charts)
+-- OK
+
+== STEP: CATALOGUE MANAGEMENT — custom lifecycle: free-text add (hidden obs_ key) surfaces on charting; plausibility enforced; range edit audited; dup-name 409; retire -> new charting 409 while HISTORY keeps the record; reactivate guard
+custom type obs_c89b8d0e71eb — obs_ identity, Custom, NOT a score input, audited add
+duplicate active name -> HTTP 409
+custom type live in the vitals group of the catalogue read
+charted the custom observation: 75 cm by RN Maya Chen
+beyond plausibility (400 > max 300) -> HTTP 400
+range edit audited: critHigh: — → 90
+refLow 100 > refHigh 60 -> HTTP 400
+retired — audited
+charting the RETIRED type -> HTTP 409
+the charted record SURVIVES retirement (history keeps rendering)
+retired type still ON the catalogue read (active=false) — names resolve on history
+retire replay -> HTTP 409
+reactivated — chartable again
+left retired (run-unique name — staging accumulates only retired e2e rows, like the formulary runs)
+-- OK
+
+== STEP: Step 2 — NO BACK-DATING + catalogue validation + ROUND ATOMICITY + state-aware disabled-group probe
+payload claiming "clinicalTime":"2020-01-01 10:00" -> HTTP 400
+payload claiming "enteredAt":"2020-01-01 10:00:00" -> HTTP 400
+payload claiming "source":"device" -> HTTP 400
+payload claiming "recordedBy":"X" -> HTTP 400
+unknown typeCode -> HTTP 400
+DERIVED type -> HTTP 400
+out-of-range spo2 -> HTTP 400
+bad enum -> HTTP 400
+GCS missing component -> HTTP 400
+duplicate in round -> HTTP 400
+unknown patient -> HTTP 400
+mixed valid+invalid round -> HTTP 400
+rows before=6 after=6
+devices group is ENABLED on this deployment (operator choice) — asserting the 200 path instead
+-- OK
+
+== STEP: Step 2 — the §8 tiers live: self-correct without reason; other-clinician 403; Consultant reason-required; closed-encounter rule
+tier-1 self-correction: no reason, actor/original/new/time all on the record
+same-value correction -> HTTP 409
+NUR2 correcting another's entry -> HTTP 403
+SPEC correcting another's entry -> HTTP 403
+tier-2 correction: consultant actor + SeniorDoctor role + reason on the record
+absent id -> HTTP 404
+discharged ENC-1017
+charting on CLOSED encounter -> HTTP 409
+tier-2 correction on the CLOSED encounter -> HTTP 200
+-- OK
+
+== STEP: Step 4 — the bedside READ-SWAP live: a readmission projects HONEST NULLS (the closed stay never leaks); a charted round lights the roster via the F7 map (incl. the F6 etco2 top-up); a correction reaches the projection
+readmitted P-1017 on ENC-1018 (bed B-16)
+readmission: every projected vital NULL, rhythm '—' — the closed stay's observations do NOT leak
+roster projects the round: arterial sys/dia <- art_sbp/art_dbp, NIBP <- sbp/dbp, MAP charted, etco2 live (F6/F7)
+a correction reaches the bedside projection: hr effective 96 (amend-not-erase upstream)
+released ENC-1018
+-- OK
+
+== STEP: Failure-path cleanup — restore the devices group and release the encounter (runs on failure/cancel too)
+devices group already at its initial state (enabled=True)
+run custom observation already retired
+no open encounter remains for P-1017
+-- OK
+
+RESULT: all replayed steps passed

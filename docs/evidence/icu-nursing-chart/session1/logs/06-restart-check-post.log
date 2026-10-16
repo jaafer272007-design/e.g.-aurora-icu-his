@@ -1,0 +1,15 @@
+  PASS every order identical after the restart via the API (16 orders incl. legacy: completions, current rounds, history)
+  PASS stored nursing rows (NursingJson, history, status) byte-identical after the restart
+  PASS current round re-derived exactly: due 2026-10-16T00:17:03.421Z = completed 2026-10-16T00:16:03.421Z + 60 000 ms
+  PASS I&O views for admission A and the new admission B identical after the restart
+  PASS replay of the pre-restart attempt -> 200, nothing written (200)
+== counters continue (no duplicate keys)
+  PASS new order after the restart -> ORD-122 (> previous max 121)
+  PASS new I&O value after the restart -> OBS-1028 (> previous max 1027), bound to B
+  PASS B now shows the new output with its earlier intake; balance computed
+== round 2 opens exactly at completion 1 + interval
+  PASS round 2 before its due time -> 409 not due yet (409)
+  PASS round 2 completed after the restart; round 3 due = completion 2 + 60 000 ms (200)
+  PASS nursing Done wrote no administrations; the order is not on the MAR
+
+RESULT: 11 passed, 0 failed

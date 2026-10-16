@@ -1,0 +1,59 @@
+[1] FIRST DOSE open on signing: q1h signed 05:30 -> round 1 scheduled 06:00; documented at 05:40
+  PASS round 1 still scheduled 2026-10-05 06:00 (identity unchanged), firstDose=true
+  PASS 05:40: open — 20 min before its scheduled time
+  PASS 05:40: Given -> accepted
+  PASS round 2 due 2026-10-05 06:40 = the actual 05:40 + 1 h (rolling timer unchanged)
+  PASS 06:39:59.999, round 2: Given / Held / Refused refused by the mock
+  PASS 06:39:59.999, round 2: nothing written
+  PASS 06:39:59.999, round 2: locked until 2026-10-05 06:40 (hospital), no firstDose flag
+  PASS 06:40:00.000: round 2 open; Held -> accepted
+  PASS round 3 due 2026-10-05 07:40 = the held round's scheduled 06:40 + 1 h, locked
+
+[2] the owner's one-action example as a SUBSEQUENT round (unchanged): round 1 Given 06:05 -> round 2 locked until 07:05
+  PASS round 1 Given 06:05 -> round 2 due 07:05
+  PASS 06:05, straight after the Given: Given / Held / Refused refused by the mock
+  PASS 06:05, straight after the Given: nothing written
+  PASS 06:05, straight after the Given: locked until 2026-10-05 07:05 (hospital), no firstDose flag
+  PASS 06:40 (due-soon window): Given / Held / Refused refused by the mock
+  PASS 06:40 (due-soon window): nothing written
+  PASS 06:40 (due-soon window): locked until 2026-10-05 07:05 (hospital), no firstDose flag
+  PASS 07:04:59.999: Given / Held / Refused refused by the mock
+  PASS 07:04:59.999: nothing written
+  PASS 07:04:59.999: locked until 2026-10-05 07:05 (hospital), no firstDose flag
+  PASS 07:05:00.000: open; Refused -> accepted
+  PASS round 3 due 08:05, locked
+  PASS an already-due next round (08:10, from a late Given at 07:10) is open at once — no cooldown
+
+[3] once orders: the single dose is the first dose
+  PASS 10:30: the once dose (scheduled 2026-10-05 11:00) is open
+  PASS 10:30: Held -> accepted; nothing further
+  PASS a different attempt on it -> already documented
+
+[4] LEGACY order (a fact without a round): not a first dose — round 1 is its LegacyEntry slot, unchanged and locked
+  PASS round 1 = 2026-10-05 10:00 (the slot after the legacy fact's 09:00), no firstDose
+  PASS 09:30, the legacy order's round 1: Given / Held / Refused refused by the mock
+  PASS 09:30, the legacy order's round 1: nothing written
+  PASS 09:30, the legacy order's round 1: locked until 2026-10-05 10:00 (hospital), no firstDose flag
+
+[5] hospital midnight (unchanged): a subsequent q8h round due 00:00 sits on tomorrow's card, locked until 00:00
+  PASS 16:00: round 1 Given -> round 2 due 00:00 hospital
+  PASS 23:59:59: locked, on tomorrow's card
+  PASS 00:00:00: open
+
+[6] SAFE RETRY in the mock (mirrors the server): a resend of a recorded attempt changes nothing
+  PASS PRN: available as needed (no lock, no interval)
+  PASS PRN: Given with attempt x -> one fact
+  PASS PRN: attempt x resent -> the order returned, nothing written
+  PASS PRN: attempt x as Held -> refused, nothing written
+  PASS PRN: a new attempt y (a later intentional dose) -> a second fact
+  PASS continuous: available as needed (no lock, no interval)
+  PASS continuous: Given with attempt x -> one fact
+  PASS continuous: attempt x resent -> the order returned, nothing written
+  PASS continuous: attempt x as Held -> refused, nothing written
+  PASS continuous: a new attempt y (a later intentional dose) -> a second fact
+  PASS round 1's attempt resent after rounds 2-3 moved on -> the order returned (not "already documented"), nothing written
+  PASS after discontinuation: the recorded attempt resent -> the order returned, nothing written
+  PASS after discontinuation: a new attempt -> refused (not in force)
+  PASS deriveMarRows: fact rows carry their attemptId (the page's confirmation)
+
+RESULT 46 passed, 0 failed (device zone UTC)

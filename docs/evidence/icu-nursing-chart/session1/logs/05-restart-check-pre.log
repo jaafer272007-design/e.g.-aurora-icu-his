@@ -1,0 +1,6 @@
+  PASS repeating 1-minute nursing order signed on the NEW admission ENC-1022 (200)
+  PASS round 1 completed before the restart (200)
+  PASS pre-restart: round 2 is the current round
+snapshot: 16 orders (13 nursing), I&O A/B views, max ids {'order': 121, 'obs': 1027}
+
+RESULT: 3 passed, 0 failed

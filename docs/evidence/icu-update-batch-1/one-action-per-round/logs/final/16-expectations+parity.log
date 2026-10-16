@@ -1,0 +1,159 @@
+FAIL R2  client next 2026-09-30 07:05 expected 2026-09-30 07:50
+FAIL R2  client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 07:50', 'round': 3, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R2  client identity 2026-09-30T07:05~r2
+FAIL R2  client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 07:50', 'round': 3, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R2  ROW PARITY 2026-09-30 06:51 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'given', '2026-09-30 06:50', 2, None, None), ('2026-09-30T07:50~r3', '2026-09-30 07:50', 'scheduled', None, 3, '2026-09-30 06:50', 'given')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R2  ORDERS CHIP 2026-09-30 06:51 server 2026-09-30 07:50 chip 2026-09-30 07:05
+FAIL R6  client doc 2026-09-30T07:05~r2 2026-09-30 07:11 ok expected rejected
+FAIL R10 client next 2026-09-30 08:05 expected 2026-09-30 09:05
+FAIL R10 identity parity 2026-09-30T09:05~r4 2026-09-30T08:05~r3
+FAIL R10 client next 2026-09-30 09:05 expected 2026-09-30 10:05
+FAIL R10 client current {'adminId': '2026-09-30T09:05~r4', 'scheduledTime': '2026-09-30 09:05', 'status': 'scheduled', 'documentedTime': None, 'round': 4, 'timerFrom': '2026-09-30 08:05', 'timerRule': 'skipped'} expected {'current': '2026-09-30 10:05', 'round': 5, 'timerFrom': '2026-09-30 09:05', 'rule': 'skipped'}
+FAIL R10 client identity 2026-09-30T09:05~r4
+FAIL R10 client timerFrom {'adminId': '2026-09-30T09:05~r4', 'scheduledTime': '2026-09-30 09:05', 'status': 'scheduled', 'documentedTime': None, 'round': 4, 'timerFrom': '2026-09-30 08:05', 'timerRule': 'skipped'} {'current': '2026-09-30 10:05', 'round': 5, 'timerFrom': '2026-09-30 09:05', 'rule': 'skipped'}
+FAIL R10 ROW PARITY 2026-09-30 11:30 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 07:20', 2, None, None), ('FACT', '2026-09-30 08:05', 'refused', '2026-09-30 07:40', 3, None, None), ('FACT', '2026-09-30 09:05', 'held', '2026-09-30 09:05', 4, None, None), ('2026-09-30T10:05~r5', '2026-09-30 10:05', 'scheduled', None, 5, '2026-09-30 09:05', 'skipped')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 07:20', 2, None, None), ('FACT', '2026-09-30 08:05', 'held', '2026-09-30 09:05', 3, None, None), ('2026-09-30T09:05~r4', '2026-09-30 09:05', 'scheduled', None, 4, '2026-09-30 08:05', 'skipped')]
+FAIL R10 ORDERS CHIP 2026-09-30 11:30 server 2026-09-30 10:05 chip 2026-09-30 09:05
+FAIL R10 identity parity 2026-09-30T10:05~r5 2026-09-30T09:05~r4
+FAIL R10 client next 2026-09-30 10:05 expected 2026-09-30 11:05
+FAIL R10 client current {'adminId': '2026-09-30T10:05~r5', 'scheduledTime': '2026-09-30 10:05', 'status': 'scheduled', 'documentedTime': None, 'round': 5, 'timerFrom': '2026-09-30 09:05', 'timerRule': 'skipped'} expected {'current': '2026-09-30 11:05', 'round': 6}
+FAIL R10 client identity 2026-09-30T10:05~r5
+FAIL R10 ROW PARITY 2026-09-30 11:31 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 07:20', 2, None, None), ('FACT', '2026-09-30 08:05', 'refused', '2026-09-30 07:40', 3, None, None), ('FACT', '2026-09-30 09:05', 'held', '2026-09-30 09:05', 4, None, None), ('FACT', '2026-09-30 10:05', 'refused', '2026-09-30 11:30', 5, None, None), ('2026-09-30T11:05~r6', '2026-09-30 11:05', 'scheduled', None, 6, '2026-09-30 10:05', 'skipped')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 07:20', 2, None, None), ('FACT', '2026-09-30 08:05', 'held', '2026-09-30 09:05', 3, None, None), ('FACT', '2026-09-30 09:05', 'refused', '2026-09-30 11:30', 4, None, None), ('2026-09-30T10:05~r5', '2026-09-30 10:05', 'scheduled', None, 5, '2026-09-30 09:05', 'skipped')]
+FAIL R10 ORDERS CHIP 2026-09-30 11:31 server 2026-09-30 11:05 chip 2026-09-30 10:05
+FAIL R10 identity parity 2026-09-30T11:05~r6 2026-09-30T10:05~r5
+FAIL R11 client doc last 2026-09-30 06:06 ok expected rejected
+FAIL R11 client doc last 2026-09-30 06:07 ok expected rejected
+FAIL R12 client doc 2026-09-30T07:05~r2 2026-09-30 06:11 ok expected rejected
+FAIL R12 client next 2026-09-30 10:05 expected 2026-09-30 10:12
+FAIL R13 client doc 2026-09-30T06:00 2026-09-30 09:02 ok expected rejected
+FAIL R15 client doc 2026-09-30T07:05~r2 2026-09-30 06:11 ok expected rejected
+FAIL R19 client doc 2026-09-30T06:00 2026-09-30 06:05 ok expected rejected
+FAIL R19 client doc 2026-09-30T07:00~r2 2026-09-30 06:05 ok expected rejected
+FAIL R20 client next 2026-09-30 07:05 expected 2026-09-30 08:05
+FAIL R20 client audit note 2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time) expected to contain from the skipped dose's scheduled time
+FAIL R20 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 08:05', 'round': 3, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R20 client identity 2026-09-30T07:05~r2
+FAIL R20 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 08:05', 'round': 3, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R20 client rule {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 08:05', 'round': 3, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R20 ROW PARITY 2026-09-30 06:11 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:10', 2, None, None), ('2026-09-30T08:05~r3', '2026-09-30 08:05', 'scheduled', None, 3, '2026-09-30 07:05', 'skipped')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R20 ORDERS CHIP 2026-09-30 06:11 server 2026-09-30 08:05 chip 2026-09-30 07:05
+FAIL R20 identity parity 2026-09-30T08:05~r3 2026-09-30T07:05~r2
+FAIL R20 client next 2026-09-30 07:05 expected 2026-09-30 07:50
+FAIL R20 client audit note 2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time) expected to contain next round due 2026-09-30 07:50 (q1h from the actual administration time)
+FAIL R20 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R20 client identity 2026-09-30T07:05~r2
+FAIL R20 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R20 ROW PARITY 2026-09-30 06:51 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:10', 2, None, None), ('2026-09-30T07:50~r4', '2026-09-30 07:50', 'scheduled', None, 4, '2026-09-30 06:50', 'given'), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None)] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R20 ORDERS CHIP 2026-09-30 06:51 server 2026-09-30 07:50 chip 2026-09-30 07:05
+FAIL R20 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R20 client identity 2026-09-30T07:05~r2
+FAIL R20 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R20 ROW PARITY 2026-09-30 06:52 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:10', 2, None, None), ('2026-09-30T07:50~r4', '2026-09-30 07:50', 'scheduled', None, 4, '2026-09-30 06:50', 'given'), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None)] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R20 ORDERS CHIP 2026-09-30 06:52 server 2026-09-30 07:50 chip 2026-09-30 07:05
+FAIL R20 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given', 'dueCount': 1}
+FAIL R20 client identity 2026-09-30T07:05~r2
+FAIL R20 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given', 'dueCount': 1}
+FAIL R20 ROW PARITY 2026-09-30 07:30 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:10', 2, None, None), ('2026-09-30T07:50~r4', '2026-09-30 07:50', 'scheduled', None, 4, '2026-09-30 06:50', 'given'), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None)] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R20 ORDERS CHIP 2026-09-30 07:30 server 2026-09-30 07:50 chip 2026-09-30 07:05
+FAIL R20 identity parity 2026-09-30T07:50~r4 2026-09-30T07:05~r2
+FAIL R20 identity parity 2026-09-30T08:50~r5 2026-09-30T08:50~r3
+FAIL R20 client current {'adminId': '2026-09-30T10:30~r4', 'scheduledTime': '2026-09-30 10:30', 'status': 'scheduled', 'documentedTime': None, 'round': 4, 'timerFrom': '2026-09-30 09:30', 'timerRule': 'given'} expected {'current': '2026-09-30 10:30', 'round': 6, 'timerFrom': '2026-09-30 09:30', 'rule': 'given'}
+FAIL R20 client identity 2026-09-30T10:30~r4
+FAIL R20 ROW PARITY 2026-09-30 09:31 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:10', 2, None, None), ('FACT', '2026-09-30 07:50', 'given', '2026-09-30 07:50', 4, None, None), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None), ('FACT', '2026-09-30 08:50', 'given', '2026-09-30 09:30', 5, None, None), ('2026-09-30T10:30~r6', '2026-09-30 10:30', 'scheduled', None, 6, '2026-09-30 09:30', 'given')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'given', '2026-09-30 07:50', 2, None, None), ('FACT', '2026-09-30 08:50', 'given', '2026-09-30 09:30', 3, None, None), ('2026-09-30T10:30~r4', '2026-09-30 10:30', 'scheduled', None, 4, '2026-09-30 09:30', 'given')]
+FAIL R20 client current {'adminId': '2026-09-30T10:30~r4', 'scheduledTime': '2026-09-30 10:30', 'status': 'scheduled', 'documentedTime': None, 'round': 4, 'timerFrom': '2026-09-30 09:30', 'timerRule': 'given'} expected {'current': '2026-09-30 10:30', 'round': 6, 'timerFrom': '2026-09-30 09:30', 'rule': 'given'}
+FAIL R20 client identity 2026-09-30T10:30~r4
+FAIL R20 ROW PARITY 2026-10-01 03:00 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:10', 2, None, None), ('FACT', '2026-09-30 07:50', 'given', '2026-09-30 07:50', 4, None, None), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None), ('FACT', '2026-09-30 08:50', 'given', '2026-09-30 09:30', 5, None, None), ('2026-09-30T10:30~r6', '2026-09-30 10:30', 'scheduled', None, 6, '2026-09-30 09:30', 'given')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'given', '2026-09-30 07:50', 2, None, None), ('FACT', '2026-09-30 08:50', 'given', '2026-09-30 09:30', 3, None, None), ('2026-09-30T10:30~r4', '2026-09-30 10:30', 'scheduled', None, 4, '2026-09-30 09:30', 'given')]
+FAIL R21 client next 2026-09-30 07:05 expected 2026-09-30 08:05
+FAIL R21 client audit note 2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time) expected to contain from the skipped dose's scheduled time
+FAIL R21 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 08:05', 'round': 3, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R21 client identity 2026-09-30T07:05~r2
+FAIL R21 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 08:05', 'round': 3, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R21 client rule {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 08:05', 'round': 3, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R21 ROW PARITY 2026-09-30 06:11 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'refused', '2026-09-30 06:10', 2, None, None), ('2026-09-30T08:05~r3', '2026-09-30 08:05', 'scheduled', None, 3, '2026-09-30 07:05', 'skipped')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R21 ORDERS CHIP 2026-09-30 06:11 server 2026-09-30 08:05 chip 2026-09-30 07:05
+FAIL R21 identity parity 2026-09-30T08:05~r3 2026-09-30T07:05~r2
+FAIL R21 client next 2026-09-30 07:05 expected 2026-09-30 07:50
+FAIL R21 client audit note 2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time) expected to contain next round due 2026-09-30 07:50 (q1h from the actual administration time)
+FAIL R21 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R21 client identity 2026-09-30T07:05~r2
+FAIL R21 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R21 ROW PARITY 2026-09-30 06:51 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'refused', '2026-09-30 06:10', 2, None, None), ('2026-09-30T07:50~r4', '2026-09-30 07:50', 'scheduled', None, 4, '2026-09-30 06:50', 'given'), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None)] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R21 ORDERS CHIP 2026-09-30 06:51 server 2026-09-30 07:50 chip 2026-09-30 07:05
+FAIL R21 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R21 client identity 2026-09-30T07:05~r2
+FAIL R21 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R21 ROW PARITY 2026-09-30 06:52 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'refused', '2026-09-30 06:10', 2, None, None), ('2026-09-30T07:50~r4', '2026-09-30 07:50', 'scheduled', None, 4, '2026-09-30 06:50', 'given'), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None)] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R21 ORDERS CHIP 2026-09-30 06:52 server 2026-09-30 07:50 chip 2026-09-30 07:05
+FAIL R21 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given', 'dueCount': 1}
+FAIL R21 client identity 2026-09-30T07:05~r2
+FAIL R21 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given', 'dueCount': 1}
+FAIL R21 ROW PARITY 2026-09-30 07:30 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'refused', '2026-09-30 06:10', 2, None, None), ('2026-09-30T07:50~r4', '2026-09-30 07:50', 'scheduled', None, 4, '2026-09-30 06:50', 'given'), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None)] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R21 ORDERS CHIP 2026-09-30 07:30 server 2026-09-30 07:50 chip 2026-09-30 07:05
+FAIL R21 identity parity 2026-09-30T07:50~r4 2026-09-30T07:05~r2
+FAIL R21 identity parity 2026-09-30T08:50~r5 2026-09-30T08:50~r3
+FAIL R21 client current {'adminId': '2026-09-30T10:30~r4', 'scheduledTime': '2026-09-30 10:30', 'status': 'scheduled', 'documentedTime': None, 'round': 4, 'timerFrom': '2026-09-30 09:30', 'timerRule': 'given'} expected {'current': '2026-09-30 10:30', 'round': 6, 'timerFrom': '2026-09-30 09:30', 'rule': 'given'}
+FAIL R21 client identity 2026-09-30T10:30~r4
+FAIL R21 ROW PARITY 2026-09-30 09:31 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'refused', '2026-09-30 06:10', 2, None, None), ('FACT', '2026-09-30 07:50', 'given', '2026-09-30 07:50', 4, None, None), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None), ('FACT', '2026-09-30 08:50', 'given', '2026-09-30 09:30', 5, None, None), ('2026-09-30T10:30~r6', '2026-09-30 10:30', 'scheduled', None, 6, '2026-09-30 09:30', 'given')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'given', '2026-09-30 07:50', 2, None, None), ('FACT', '2026-09-30 08:50', 'given', '2026-09-30 09:30', 3, None, None), ('2026-09-30T10:30~r4', '2026-09-30 10:30', 'scheduled', None, 4, '2026-09-30 09:30', 'given')]
+FAIL R21 client current {'adminId': '2026-09-30T10:30~r4', 'scheduledTime': '2026-09-30 10:30', 'status': 'scheduled', 'documentedTime': None, 'round': 4, 'timerFrom': '2026-09-30 09:30', 'timerRule': 'given'} expected {'current': '2026-09-30 10:30', 'round': 6, 'timerFrom': '2026-09-30 09:30', 'rule': 'given'}
+FAIL R21 client identity 2026-09-30T10:30~r4
+FAIL R21 ROW PARITY 2026-10-01 03:00 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'refused', '2026-09-30 06:10', 2, None, None), ('FACT', '2026-09-30 07:50', 'given', '2026-09-30 07:50', 4, None, None), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None), ('FACT', '2026-09-30 08:50', 'given', '2026-09-30 09:30', 5, None, None), ('2026-09-30T10:30~r6', '2026-09-30 10:30', 'scheduled', None, 6, '2026-09-30 09:30', 'given')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'given', '2026-09-30 07:50', 2, None, None), ('FACT', '2026-09-30 08:50', 'given', '2026-09-30 09:30', 3, None, None), ('2026-09-30T10:30~r4', '2026-09-30 10:30', 'scheduled', None, 4, '2026-09-30 09:30', 'given')]
+FAIL R23 client next 2026-09-30 07:05 expected 2026-09-30 08:05
+FAIL R23 identity parity 2026-09-30T08:05~r3 2026-09-30T07:05~r2
+FAIL R23 client current {'adminId': '2026-09-30T07:50~r3', 'scheduledTime': '2026-09-30 07:50', 'status': 'scheduled', 'documentedTime': None, 'round': 3, 'timerFrom': '2026-09-30 06:50', 'timerRule': 'given'} expected {'current': '2026-09-30 07:50', 'round': 4, 'timerFrom': '2026-09-30 06:50', 'rule': 'given'}
+FAIL R23 client identity 2026-09-30T07:50~r3
+FAIL R23 ROW PARITY 2026-09-30 07:11 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:10', 2, None, None), ('2026-09-30T07:50~r4', '2026-09-30 07:50', 'scheduled', None, 4, '2026-09-30 06:50', 'given'), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:50', 3, None, None)] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'given', '2026-09-30 06:50', 2, None, None), ('2026-09-30T07:50~r3', '2026-09-30 07:50', 'scheduled', None, 3, '2026-09-30 06:50', 'given')]
+FAIL R24 client next 2026-09-30 07:05 expected 2026-09-30 08:05
+FAIL R24 identity parity 2026-09-30T08:05~r3 2026-09-30T07:05~r2
+FAIL R24 client next 2026-09-30 07:05 expected 2026-09-30 08:05
+FAIL R24 next identity 2026-09-30T08:05~r4 2026-09-30T07:05~r2 expected 2026-09-30T08:05~r4
+FAIL R24 client audit note 2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time) expected to contain timer unchanged — the skipped dose due 2026-09-30 07:05 already set it
+FAIL R24 client doc 2026-09-30T08:05~r3 2026-09-30 06:41 ok expected rejected
+FAIL R24 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 08:05', 'round': 4, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R24 client identity 2026-09-30T07:05~r2
+FAIL R24 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 08:05', 'round': 4, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R24 client rule {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 08:05', 'round': 4, 'timerFrom': '2026-09-30 07:05', 'rule': 'skipped'}
+FAIL R24 ROW PARITY 2026-09-30 06:42 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:30', 2, None, None), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:20', 3, None, None), ('2026-09-30T08:05~r4', '2026-09-30 08:05', 'scheduled', None, 4, '2026-09-30 07:05', 'skipped')] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R24 ORDERS CHIP 2026-09-30 06:42 server 2026-09-30 08:05 chip 2026-09-30 07:05
+FAIL R24 identity parity 2026-09-30T08:05~r4 2026-09-30T07:05~r2
+FAIL R24 client next 2026-09-30 07:05 expected 2026-09-30 08:00
+FAIL R24 client current {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} expected {'current': '2026-09-30 08:00', 'round': 5, 'timerFrom': '2026-09-30 07:00', 'rule': 'given'}
+FAIL R24 client identity 2026-09-30T07:05~r2
+FAIL R24 client timerFrom {'adminId': '2026-09-30T07:05~r2', 'scheduledTime': '2026-09-30 07:05', 'status': 'scheduled', 'documentedTime': None, 'round': 2, 'timerFrom': '2026-09-30 06:05', 'timerRule': 'given'} {'current': '2026-09-30 08:00', 'round': 5, 'timerFrom': '2026-09-30 07:00', 'rule': 'given'}
+FAIL R24 ROW PARITY 2026-09-30 07:01 
+ cs [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('FACT', '2026-09-30 07:05', 'held', '2026-09-30 06:30', 2, None, None), ('2026-09-30T08:00~r5', '2026-09-30 08:00', 'scheduled', None, 5, '2026-09-30 07:00', 'given'), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 06:20', 3, None, None), ('FACT', '2026-09-30 08:05', 'given', '2026-09-30 07:00', 4, None, None)] 
+ ts [('FACT', '2026-09-30 06:00', 'given', '2026-09-30 06:05', 1, None, None), ('2026-09-30T07:05~r2', '2026-09-30 07:05', 'scheduled', None, 2, '2026-09-30 06:05', 'given')]
+FAIL R24 ORDERS CHIP 2026-09-30 07:01 server 2026-09-30 08:00 chip 2026-09-30 07:05
+checks: 372 · failures: 122 · scenarios: 25

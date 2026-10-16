@@ -1,0 +1,25 @@
+SKIP  [0] Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objec
+SKIP  [1] ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+SKIP  [2] Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+PASS  [3] Login (doctor, nurse, pharmacist) + run-unique names
+      sara.rahman: token issued
+      maya.chen: token issued
+      samir.qassem: token issued
+FAIL(exit 1)  [4] Create the run drug + admit the run patient (self-sufficiency)
+      run drug e2e-odrug-local1790726828 created
+      Traceback (most recent call last):
+        File "<string>", line 1, in <module>
+      AssertionError: no free beds
+NOT RUN (earlier failure) [5] Unauthenticated order reads → 401
+NOT RUN (earlier failure) [6] Authenticated reads contain the seeded data (+ CORS)
+NOT RUN (earlier failure) [7] Malformed create payloads → 400, never persisted (validation live)
+NOT RUN (earlier failure) [8] Unparseable frequency 400; UNKNOWN drugId/testId 400 (formulary/catalogue AUTHOR
+NOT RUN (earlier failure) [9] NURSE token → 403 on ALL prescriber mutations (server-side RBAC)
+NOT RUN (earlier failure) [10] DOCTOR full lifecycle on THIS RUN's own orders (actor from token)
+NOT RUN (earlier failure) [11] FOUR-CODE RULE on the same order — replays → 409 naming the state; absent ids → 
+NOT RUN (earlier failure) [12] Implement is nurse-only, on THIS RUN's own order (doctor 403, nurse 200)
+NOT RUN (earlier failure) [13] SERVER-SIDE SAFETY — hard block never overridable; warn 409 → audited override; 
+PASS  [14] Cleanup — discharge the run encounter + deactivate the run drug (runs on failure/cancel to
+      deactivate e2e-odrug-local1790726828 -> HTTP 200
+      cleanup complete — no active run state remains
+SUITE FAILED

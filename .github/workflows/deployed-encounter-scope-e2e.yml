@@ -214,7 +214,8 @@ jobs:
             | MED="$MED" python3 -c '
           import json, sys, os, re
           sched = [r for r in json.load(sys.stdin) if r["orderId"] == os.environ["MED"] and r["status"] == "scheduled"]
-          assert sched and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", sched[0]["adminId"]), sched
+          # the current ROUND of a repeating order (the rolling timer, 2026-09-30)
+          assert sched and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}~r\d+", sched[0]["adminId"]), sched
           print(sched[0]["adminId"])')
           curl -sf -X POST -H "Authorization: Bearer $DOC" -H 'Content-Type: application/json' \
             -d '{"drafts":[{"patientId":"'$PID'","category":"Nursing","summary":"encounter-scope pending order","priority":"Routine"}],"sign":false}' \

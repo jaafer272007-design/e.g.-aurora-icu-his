@@ -1,0 +1,10 @@
+PASS ORD-132 q1h   status=active       server-earliest=2026-09-30 00:12 orders-chip=2026-09-30 00:12 print-cells=2=mar-facts=2
+PASS ORD-133 q8h   status=active       server-earliest=2026-09-30 07:40 orders-chip=2026-09-30 07:40 print-cells=1=mar-facts=1
+PASS ORD-134 q1h   status=active       server-earliest=2026-09-30 00:05 orders-chip=2026-09-30 00:05 print-cells=2=mar-facts=2
+PASS ORD-135 q1h   status=active       server-earliest=2026-09-30 02:00 orders-chip=2026-09-30 02:00 print-cells=3=mar-facts=3
+PASS ORD-136 q1h   status=active       server-earliest=2026-09-30 01:06 orders-chip=2026-09-30 01:06 print-cells=2=mar-facts=2
+PASS ORD-137 q4h   status=active       server-earliest=2026-09-30 03:05 orders-chip=2026-09-30 03:05 print-cells=1=mar-facts=1
+PASS ORD-138 once  status=completed    server-earliest=null orders-chip=null print-cells=1=mar-facts=1
+PASS ORD-139 q4h   status=active       server-earliest=null orders-chip=null print-cells=1=mar-facts=1
+Meds-Due count over the live MAR at 2026-09-30 00:06: 13 (MarCard aside + NurseWorkspace KPI use this same filter over these rows)
+AGREEMENT PASSED

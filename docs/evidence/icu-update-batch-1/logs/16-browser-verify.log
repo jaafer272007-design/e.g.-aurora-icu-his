@@ -1,0 +1,128 @@
+
+[1] desktop 1440×900 · doctor sara.rahman (Consultant)
+  PASS /beds: collapsed rail 64px, icons only (cols 64px 1098px 278px)
+  PASS /beds: hover → labeled 198px + footer (cols 198px 964px 278px)
+  PASS /beds: next column (MAIN) starts at the rail edge — content uses the freed space (64 → 198)
+  PASS /beds: bed-detail panel column (278px) preserved in both states
+  PASS /orders/P-1001: collapsed rail 64px, icons only (cols 64px 240px 1136px)
+  PASS /orders/P-1001: hover → labeled 198px + footer (cols 198px 240px 1002px)
+  PASS /orders/P-1001: next column (ptrail) starts at the rail edge — content uses the freed space (64 → 198)
+  PASS /orders/P-1001: patient rail column (240px) preserved in both states
+  PASS /labs/P-1001: collapsed rail 64px, icons only (cols 64px 240px 1136px)
+  PASS /labs/P-1001: hover → labeled 198px + footer (cols 198px 240px 1002px)
+  PASS /labs/P-1001: next column (ptrail) starts at the rail edge — content uses the freed space (64 → 198)
+  PASS /labs/P-1001: patient rail column (240px) preserved in both states
+  PASS /lab-entry/P-1001: collapsed rail 64px, icons only (cols 64px 240px 1136px)
+  PASS /lab-entry/P-1001: hover → labeled 198px + footer (cols 198px 240px 1002px)
+  PASS /lab-entry/P-1001: next column (ptrail) starts at the rail edge — content uses the freed space (64 → 198)
+  PASS /lab-entry/P-1001: patient rail column (240px) preserved in both states
+  PASS /doctor: collapsed rail 64px, icons only (cols 64px 1376px)
+  PASS /doctor: hover → labeled 198px + footer (cols 198px 1242px)
+  PASS /doctor: next column (MAIN) starts at the rail edge — content uses the freed space (64 → 198)
+
+[1b] pointer behaviour on /orders/P-1001
+  PASS fast crossing (40 ms inside) → stays collapsed
+  PASS resting inside → expands
+  PASS moving into the expanded (label) area → stays open
+  PASS brief exit past the edge and back within the close delay → no collapse/flicker
+  PASS leaving → collapses
+
+[1c] keyboard focus keeps it open; mouse-click focus does not pin it
+  PASS Tab onto a nav item (focus-visible) → expanded while the pointer is away
+  PASS Tab to the next item → still expanded
+  PASS focused item shows a visible focus ring (rgba(18, 95, 194, 0.4) 0px 0px 0px 3px…)
+  PASS focus leaves the sidebar with the pointer away → collapses
+  PASS after a mouse click + pointer away → collapsed (click focus never pins it); at /orders/P-1001
+
+[1d] expanding never remounts the page, loses drafts/scroll, or sends clinical requests
+  PASS main element is the same DOM node after 3 hover cycles + a focus cycle (no remount)
+  PASS new-order search draft preserved ("mero")
+  PASS main scrollTop preserved (260 → 260)
+  PASS no clinical writes during hover/focus (requests: none)
+
+[1e] patient context: the sidebar carries the viewed patient across sections
+  PASS Orders P-1003 → Labs & Imaging lands on /labs/P-1003
+  PASS active section indicated (aria-current) = Labs & Imaging
+
+[1f] reduced motion: no transition
+  PASS prefers-reduced-motion → .shell transition-duration 0s
+  PASS default motion → 0.16s
+
+[2] Orders — type × status filters (doctor, desktop 1440×900)
+  PASS type row: All types* · Medication · Laboratory · Imaging (labelled "Type")
+  PASS status tabs preserved: All 11 · Pending 2 · Active 7 · Completed 1 · Discontinued 1
+  PASS Medication: 9 rows, all MEDICATION
+  PASS Medication: status counts describe the type → All 9 · Pending 2 · Active 5 · Completed 1 · Discontinued 1
+  PASS Laboratory: 1 rows, all LAB
+  PASS Laboratory: status counts describe the type → All 1 · Pending 0 · Active 1 · Completed 0 · Discontinued 0
+  PASS Imaging: 0 rows, all IMAGING
+  PASS Imaging: status counts describe the type → All 0 · Pending 0 · Active 0 · Completed 0 · Discontinued 0
+  PASS Active + Laboratory → 1 rows, all active lab
+  PASS Completed + Imaging → 0 rows
+  PASS combined empty state: "No completed imaging orders for this patient."
+  PASS keyboard Space on "All types" → pressed; status selection (Completed) kept
+  PASS All + All types → all 11 orders (Nursing and every category included: MEDICATION, LAB, NURSING)
+  PASS rail → P-1004 (in-app, 15 rail patients): selection kept (Medication + Active), 4 rows all active medication; counts All 4 · Pending 0 · Active 4 · Completed 0 · Discontinued 0
+  PASS doctor actions present on unfiltered list: Sign, Modify, Discontinue, (1), (3), (2)
+  PASS 900px: type row fits/wraps without horizontal overflow (770px)
+
+[3] 1180×820 and 1000×800 — below the old icon-only breakpoint
+  PASS 1180px /orders/P-1001: 64 → 198 with labels (push, cols 64px 1116px → 198px 982px)
+  PASS 1180px /orders/P-1001: content follows the rail (64 → 198)
+  PASS 1180px /beds: 64 → 198 with labels (push, cols 64px 1116px → 198px 982px)
+  PASS 1180px /beds: content follows the rail (64 → 198)
+  PASS 1180px /lab-entry/P-1001: 64 → 198 with labels (push, cols 64px 240px 876px → 198px 240px 742px)
+  PASS 1180px /lab-entry/P-1001: content follows the rail (64 → 198)
+  PASS 1000px /orders/P-1001: 64 → 198 with labels (push, cols 64px 936px → 198px 802px)
+  PASS 1000px /orders/P-1001: content follows the rail (64 → 198)
+  PASS 1000px /beds: 64 → 198 with labels (push, cols 64px 936px → 198px 802px)
+  PASS 1000px /beds: content follows the rail (64 → 198)
+  PASS 1000px /lab-entry/P-1001: 64 → 198 with labels (push, cols 64px 240px 696px → 198px 240px 562px)
+  PASS 1000px /lab-entry/P-1001: content follows the rail (64 → 198)
+
+[4] short viewport 1280×480 — the nav scrolls, every permitted section reachable
+  PASS collapsed: nav scrolls (840 > 350) and the last item "Settings" scrolls into view
+  PASS expanded: nav scrolls (892 > 350) and the last item "Settings" scrolls into view
+
+[5] touch — iPhone-size 390×844 (hasTouch, isMobile) and tablet 1024×768
+  PASS phone390: tap toggle present, aria-expanded=false, collapsed
+  PASS phone390: toggle accessible name "Section menu"
+  PASS phone390: tapping a section icon navigates (/labs/P-1001), sidebar stays collapsed
+  PASS phone390: toggle → expanded, aria-expanded=true, no navigation
+  PASS phone390: narrow → overlay drawer (column stays 64px, content does not move)
+  PASS phone390: toggle again → collapsed
+  PASS phone390: tap outside the drawer closes it
+  PASS phone390: open drawer → tap a section → navigates to /timeline/P-1001, closed
+  PASS phone390: keyboard Enter on the toggle → aria-expanded=true
+  PASS phone390: Escape closes, focus returns to the toggle
+  PASS tablet1024: tap toggle present, aria-expanded=false, collapsed
+  PASS tablet1024: toggle accessible name "Section menu"
+  PASS tablet1024: tapping a section icon navigates (/labs), sidebar stays collapsed
+  PASS tablet1024: toggle → expanded, aria-expanded=true, no navigation
+  PASS tablet1024: room to push → column 198px, content follows
+  PASS tablet1024: toggle again → collapsed
+  PASS tablet1024: open drawer → tap a section → navigates to /timeline/P-1001, closed
+  PASS tablet1024: keyboard Enter on the toggle → aria-expanded=true
+  PASS tablet1024: Escape closes, focus returns to the toggle
+
+[6] navigation variants per role (desktop 1440×900, expanded)
+  PASS doctor (/workspace): 64 → 198, 17 items: Dashboard, ICU Beds, Observations, Orders & Meds, Labs & Imaging, Lab Entry, Timeline, Admissions, Discharges, Discharged Patients, Print Center, Lab Catalogue, Order Sets, Configuration, Alerts, Statistics, Settings
+  PASS doctor: no Reception / Awaiting Bed / AI Assistant
+  PASS nurse (/nurse): 64 → 198, 14 items: Dashboard, ICU Beds, Observations, Orders & Meds, Labs & Imaging, Lab Entry, Timeline, Admissions, Discharges, Discharged Patients, Print Center, Alerts, Statistics, Settings
+  PASS nurse: no Reception / Awaiting Bed / AI Assistant
+  PASS hospital-administrator (/admin): 64 → 198, 10 items: Dashboard, ICU Beds, Observations, Timeline, Admissions, Discharges, Print Center, Configuration, Statistics, Settings
+  PASS hospital-administrator: no Reception / Awaiting Bed / AI Assistant
+  PASS it-administrator (/admin/users): 64 → 198, 4 items: Dashboard, User Accounts, Backup & Recovery, Settings
+  PASS it-administrator: no Reception / Awaiting Bed / AI Assistant
+  PASS pharmacist (/beds): 64 → 198, 15 items: Dashboard, ICU Beds, Observations, Orders & Meds, Labs & Imaging, Timeline, Admissions, Discharges, Discharged Patients, Print Center, Formulary, Configuration, Alerts, Statistics, Settings
+  PASS pharmacist: no Reception / Awaiting Bed / AI Assistant
+  PASS lab-technician (/beds): 64 → 198, 15 items: Dashboard, ICU Beds, Observations, Orders & Meds, Labs & Imaging, Timeline, Admissions, Discharges, Discharged Patients, Print Center, Lab Catalogue, Configuration, Alerts, Statistics, Settings
+  PASS lab-technician: no Reception / Awaiting Bed / AI Assistant
+
+[7] re-timed MAR in the browser — synthetic P-1022
+  PASS nurse MAR shows the synthetic patient group (1)
+  PASS MAR marks re-timed doses (6 "↻ next dose re-timed")
+    orders next-dose chips: Synthetic A 000650 1 mg → next dose 00:12 · DUE | Synthetic C 000650 1 mg → next dose 00:05 · OVERDUE | Synthetic D 000650 1 mg → next dose 02:00 | Synthetic E 000650 1 mg → next dose 01:06 | Synthetic F 000650 1 mg → next dose 03:05 | Synthetic P 000650 1 mg → null
+  PASS Orders (Active + Medication) renders next-dose chips for the re-timed orders
+
+BROWSER VERIFY PASSED

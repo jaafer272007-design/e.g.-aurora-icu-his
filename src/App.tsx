@@ -34,6 +34,7 @@ import { RequireFullEdition } from './components/RequireFullEdition'
 import { EnvironmentBanner, EnvironmentGate } from './components/EnvironmentChrome'
 import { BackupHealthBanner } from './components/BackupHealthBanner'
 import { getSession, landingRouteOf } from './lib/session'
+import { NurseCareProvider } from './features/nurse-care/NurseCareProvider'
 
 /* Route map (all except /login require a session; each route also requires
    the listed permission — Stage 9 three-layer RBAC, see lib/session.ts)
@@ -84,6 +85,11 @@ export default function App() {
           routes so it overlays EVERY screen for whoever holds
           backup.status.view. */}
       <BackupHealthBanner />
+      {/* ONE nurse-care controller per tab (MAR documentation, nursing
+          rounds, the I&O save guard): inside the router, outside the
+          routes, so a save in flight and its lock survive moving between
+          /nurse and /patients/:id (contract §4) */}
+      <NurseCareProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/" element={<HomeRedirect />} />
@@ -160,6 +166,7 @@ export default function App() {
         <Route path="/ai/:patientId" element={<RequireSession permission="ai.view"><RequireAiAssistant><AiChat /></RequireAiAssistant></RequireSession>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </NurseCareProvider>
       </BrowserRouter>
       <EnvironmentBanner />
     </EnvironmentGate>

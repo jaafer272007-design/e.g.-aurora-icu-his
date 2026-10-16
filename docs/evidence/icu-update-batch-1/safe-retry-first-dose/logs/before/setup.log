@@ -1,0 +1,49 @@
+{
+ "pid": "P-1016",
+ "eid": "ENC-1016",
+ "run": "091934",
+ "setupAtUtc": "2026-10-05 09:19",
+ "orders": {
+  "PRNDELAY": {
+   "oid": "ORD-109",
+   "adminId": "prn"
+  },
+  "PRNOOO": {
+   "oid": "ORD-110",
+   "adminId": "prn"
+  },
+  "PRNLOST": {
+   "oid": "ORD-111",
+   "adminId": "prn"
+  },
+  "CONT": {
+   "oid": "ORD-112",
+   "adminId": "ondemand"
+  },
+  "FIRST": {
+   "oid": "ORD-113",
+   "adminId": "2026-10-05T10:00~r1",
+   "due": "2026-10-05 10:00",
+   "firstDose": null
+  },
+  "ONCE": {
+   "oid": "ORD-114",
+   "adminId": "2026-10-05T10:00",
+   "due": "2026-10-05 10:00",
+   "firstDose": null
+  },
+  "LOCK2": {
+   "oid": "ORD-115",
+   "adminId": "2026-10-05T09:49~r2",
+   "due": "2026-10-05 09:49",
+   "firstDose": null
+  },
+  "LEGACY": {
+   "oid": "ORD-116",
+   "adminId": "2026-10-05T10:00~r1",
+   "due": "2026-10-05 10:00",
+   "firstDose": null,
+   "legacySlot": "2026-10-05 09:00"
+  }
+ }
+}

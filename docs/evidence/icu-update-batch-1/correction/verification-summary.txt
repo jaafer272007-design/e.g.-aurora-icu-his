@@ -1,0 +1,53 @@
+Correction of draft PR #234 — verification summary (synthetic data only; the retired hosted service was never contacted)
+Source verified: f0c7d56 (the last source commit; later commits are docs only). Server under test: build b814788 (the
+same server/src as f0c7d56 — f0c7d56 changes one e2e workflow file only), staging bundle, APP_ENV=staging,
+AURORA_EDITION=icu, AI disabled, TZ=Asia/Baghdad (storage UTC), local PostgreSQL 16 (fresh DB aurora_rolling).
+
+1) BUILDS + ci.yml JOB STEPS on f0c7d56 — logs/final/SUMMARY.txt (every command + exit code)
+   exit=0  01-npm-build :: npm run build
+   exit=0  02-dotnet-build-release :: dotnet build server/AuroraIcu.Api.csproj -c Release
+   exit=0  03-ci-tsc-force :: npx tsc -b --force
+   exit=0  04-ci-vite-build :: npx vite build
+   exit=0  05-ci-reception-gate :: node scripts/reception-required-fields-gate.mjs
+   exit=0  06-ci-awaiting-bed-gate :: node scripts/awaiting-bed-gate.mjs
+   exit=0  07-ci-ai-section-gate :: node scripts/ai-section-gate.mjs
+   exit=0  08-ci-edition-gate :: node scripts/edition-gate.mjs
+   exit=0  09-ci-vite-env-allowlist :: bash <scratchpad>/ci-viteenv-gate.sh
+   exit=0  10-ci-dotnet-build :: dotnet build server --nologo
+   exit=0  11-ci-vocab-gate :: node scripts/vocab-registration-gate.mjs
+   exit=0  12-harness-cs-build :: dotnet build <scratchpad>/rollharness/RollHarness.csproj -c Release -o <scratchpad>/rollharness/out
+   exit=0  13-harness-cs-run :: bash -c dotnet <scratchpad>/rollharness/out/RollHarness.dll <scratchpad>/rollharness/scenarios.json > <scratchpad>/logs/rolling/final/harness-cs.json
+   exit=0  14-harness-ts-build :: /home/user/e.g.-aurora-icu-his/node_modules/.bin/esbuild <scratchpad>/rollts/harness.ts --bundle --platform=node --format=esm --outfile=<scratchpad>/rollts/harness.mjs --define:import.meta.env={"VITE_APP_ENV":"development"} --log-level=warning
+   exit=0  15-harness-ts-run :: bash -c TZ=UTC node <scratchpad>/rollts/harness.mjs <scratchpad>/rollharness/scenarios.json > <scratchpad>/logs/rolling/final/harness-ts.json
+   exit=0  16-expectations+parity :: python3 <scratchpad>/rollts/check.py <scratchpad>/rollharness/scenarios.json <scratchpad>/logs/rolling/final/harness-cs.json <scratchpad>/logs/rolling/final/harness-ts.json
+   warnings: the >500 kB chunk warning (vite) and 1 CS8602 in server/Core/Persistence/BootGuards.cs — both pre-existing.
+
+2) DETERMINISTIC CLOCKS — tools/rollharness (REAL server sources) + tools/rollts (REAL client modules)
+   19 scenarios with stated expectations: checks: 209 · failures: 0 · scenarios: 19  → schedules.txt
+
+3) REAL API + PostgreSQL — logs/api-check-rolling.log
+   RESULT: 35 passed, 0 failed · synthetic patient P-1016 · orders A=ORD-102 B=ORD-103 C=ORD-104 D=ORD-105 E=ORD-106 F=ORD-107 once=ORD-108 prn=ORD-109
+   (a first attempt aborted on the check's own backdating — therapy starts not aligned to the hour; fixed; its
+    leftover synthetic patient P-1015 was discharged through the API. That run's log was overwritten.)
+
+4) SYNCHRONIZED OVERLAPPING REQUESTS — logs/concurrency-check.log (this branch), logs/concurrency-check-reviewed-head.log
+   this branch:  RESULT: 28 passed, 0 failed
+   reviewed head 2d14aa0 (same harness, no lock): RESULT (reviewed head, no lock): 5 passed, 0 failed — the lost-write defect reproduced:
+   both nurses answered 200, one durable fact and one audit entry.
+
+5) EXISTING DEPLOYED SUITES replayed against localhost (tools/run-suite.py; steps 0-2 = checkout + the two
+   hosted-service gates, skipped in every suite)
+   deployed-mar-e2e:             9 pass / 0 fail   (SUITE PASSED)
+   deployed-orders-e2e:          12 pass / 0 fail   (SUITE PASSED)
+   deployed-encounter-scope-e2e: 12 pass / 0 fail   (SUITE PASSED) — step 4 (read-only ORD-113, a
+                                 hosted-staging data artefact) skipped with --skip=4. Earlier runs, kept: run1 (step 4 not
+                                 skipped → KeyError ORD-113), run2 (the suite pinned the old bare identity → fixed in
+                                 f0c7d56), run3 (my fix's comment broke the step's quoting → reworded).
+   deployed-assignments-e2e:     11 pass / 0 fail   (SUITE PASSED)
+
+6) BROWSER (Chromium, dark theme, device zone UTC) — logs/browser-rolling.log, screenshots/
+   RESULT: 12 passed, 0 failed
+
+NOT RUN HERE: ci.yml production-seed and installer-powershell jobs (GitHub runs them; the latter needs Windows
+PowerShell 5.1); the other deployed suites; SQLite-mode locking; non-Chromium browsers; touch hardware; the
+release gate (write exclusion during update validation + a failed-health rollback drill) — UNRESOLVED.

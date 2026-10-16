@@ -1,0 +1,38 @@
+[1] one card per prescription per hospital day; UTC date never used
+  PASS ORD-A: 3 rounds (UTC dated 2026-10-04) -> ONE card "Today · 2026-10-05" (3 rows)
+  PASS ORD-A rows in round order: 1,2,3
+  PASS same medication name, two prescriptions -> two cards (P-SYN|ORD-B1|2026-10-05 / P-SYN|ORD-B2|2026-10-05)
+[2] yesterday outstanding round: controls stay on yesterday; today references it
+  PASS ORD-C 2026-10-04 card: open, yesterday, holds the actionable round 2
+  PASS ORD-C today card: no rows, reference -> P-SYN|ORD-C|2026-10-04
+[3] tomorrow current round: its own open card + today reference
+  PASS ORD-D 2026-10-06 card: open, tomorrow, the current round only
+  PASS ORD-D today card: today's given dose + "next" reference
+[4] scheduled before hospital midnight, given after: stays on the earlier day, actual date shown
+  PASS ORD-E: the given round sits on 2026-10-04 (history, collapsed by default)
+  PASS ORD-E actual administration shown as "2026-10-05 00:20" (hospital; UTC was 2026-10-04 21:20)
+  PASS same-day stamp shows time only ("00:02")
+[5] PRN / on-demand: doses on their documentation day; availability on today
+  PASS ORD-F: 21:00 hospital dose on 10-04; 01:00 dose + availability on today (availability last)
+  PASS ORD-G: on-demand dose on 10-03; availability on today
+[6] undated legacy history -> Date unavailable, never a guessed date
+  PASS ORD-H: one "Date unavailable" card, 2 rows, collapsed
+  PASS legacy stamps pass through exactly as stored
+[7] history only, no actionable row -> no today card
+  PASS ORD-I: one collapsed 2026-10-02 card, no today card
+[8] nothing generated, nothing duplicated; due count unchanged
+  PASS every server row appears exactly once across cards (21/21); no generated rows
+  PASS actionable rows (controls) appear once each: 2026-10-05T22:30~r2, ondemand, prn, 2026-10-04T23:02~r3, 2026-10-05T03:20~r2, 2026-10-05T01:31~r2, 2026-10-05T02:00~r2, 2026-10-04T19:00~r2
+  PASS due count over rows = 2 (same predicate; cards do not change it: 15 cards)
+[9] ordering + expansion defaults
+  PASS open cards first, then history, then Date unavailable: ORD-D@2026-10-06* ORD-D@2026-10-05* ORD-C@2026-10-05* ORD-G@2026-10-05* ORD-F@2026-10-05* ORD-A@2026-10-05* ORD-E@2026-10-05* ORD-B1@2026-10-05* ORD-B2@2026-10-05* ORD-C@2026-10-04* ORD-F@2026-10-04 ORD-E@2026-10-04 ORD-G@2026-10-03 ORD-I@2026-10-02 ORD-H@—
+  PASS history newest first: 2026-10-04 2026-10-04 2026-10-03 2026-10-02
+  PASS every today card is open
+[10] hospital midnight rollover (23:59 -> 02:12 hospital; same rows)
+  PASS 23:59: ORD-C has only its today (10-04) card, controls inside
+  PASS 02:12: 10-04 is "yesterday" (still open, controls) + a new today card with the reference
+  PASS PRN availability follows today across midnight (10-04 -> 10-05)
+[11] stable keys across a poll (fresh row objects)
+  PASS 15 identical keys, identical order
+
+RESULT: 25 passed, 0 failed

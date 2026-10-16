@@ -1,0 +1,40 @@
+SKIP  [0] Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objec
+SKIP  [1] ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+SKIP  [2] Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+PASS  [3] Login as doctor and nurse
+      sara.rahman: token issued
+      maya.chen: token issued
+PASS  [4] Admit THIS RUN's patient (safety enforcement made the shared P-1001 untenable — accumulate
+      admitted P-1020 (ENC-1021) at B-08
+PASS  [5] Unauthenticated MAR read → 401
+      GET /mar (no token) -> HTTP 401
+PASS  [6] Both roles can READ the MAR; rows are facts + DATED derived instances (+ CORS)
+      Access-Control-Allow-Origin: https://jaafer272007-design.github.io
+      MAR rows: 12 · derived scheduled: 9 · documented facts: 3
+      doctor MAR read -> HTTP 200
+PASS  [7] Seed a signed med order for THIS RUN — NO stored schedule; the MAR derives its dated insta
+      created ORD-116 (no stored schedule — correct)
+      derived next instance: 2026-10-05T09:00~r1
+FAIL(exit 1)  [8] RBAC polarity — doctor 403 on administer, nurse 200; the NEXT instance appears (doses neve
+      doctor administer -> HTTP 403
+      Traceback (most recent call last):
+        File "<string>", line 2, in <module>
+        File "/usr/lib/python3.11/json/__init__.py", line 293, in load
+          return loads(fp.read(),
+                 ^^^^^^^^^^^^^^^^
+        File "/usr/lib/python3.11/json/__init__.py", line 346, in loads
+          return _default_decoder.decode(s)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        File "/usr/lib/python3.11/json/decoder.py", line 337, in decode
+          obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        File "/usr/lib/python3.11/json/decoder.py", line 355, in raw_decode
+          raise JSONDecodeError("Expecting value", s, err.value) from None
+      json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+NOT RUN (earlier failure) [9] Held requires a reason (validation live); with reason → 200 + persisted
+NOT RUN (earlier failure) [10] OVERDUE DELAY REASON (option a) — a 2h+ overdue dose cannot be given WITHOUT a r
+PASS  [11] Cleanup — discharge the run encounter (runs on failure/cancel too)
+      discharge ENC-1021 -> HTTP 200
+      encounters final: discharged
+      cleanup complete
+SUITE FAILED

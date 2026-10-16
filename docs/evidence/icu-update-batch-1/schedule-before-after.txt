@@ -1,0 +1,128 @@
+## S1 q1h owner example (06:00 given 06:05 -> 07:05; 07:05 given 07:12 -> 08:12)
+  read @ 2026-09-30 05:30
+    BEFORE: 2026-09-30 06:00 scheduled
+    AFTER : 2026-09-30 06:00 scheduled
+  document 2026-09-30T06:00 given @ 2026-09-30 06:05: BEFORE ok · AFTER ok(anchor 2026-09-30 06:05)
+  read @ 2026-09-30 06:06
+    BEFORE: 2026-09-30 06:00 given@06:05 | 2026-09-30 07:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:05↻ | 2026-09-30 07:05 scheduled
+  document 2026-09-30T07:05 given @ 2026-09-30 07:12: BEFORE 404 · AFTER ok(anchor 2026-09-30 07:12)
+  read @ 2026-09-30 07:13
+    BEFORE: 2026-09-30 06:00 given@06:05 | 2026-09-30 07:00 scheduled | 2026-09-30 08:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:05↻ | 2026-09-30 07:05 given@07:12↻ | 2026-09-30 08:12 scheduled
+  read @ 2026-09-30 10:00
+    BEFORE: 2026-09-30 06:00 given@06:05 | 2026-09-30 07:00 scheduled | 2026-09-30 08:00 scheduled | 2026-09-30 09:00 scheduled | 2026-09-30 10:00 scheduled | 2026-09-30 11:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:05↻ | 2026-09-30 07:05 given@07:12↻ | 2026-09-30 08:12 scheduled | 2026-09-30 09:12 scheduled | 2026-09-30 10:12 scheduled
+## S2 q8h late shift, on-time follow-up, across midnight and 2 days (horizon/aggregate)
+  document 2026-09-30T06:00 given @ 2026-09-30 06:40: BEFORE ok · AFTER ok(anchor 2026-09-30 06:40)
+  read @ 2026-09-30 06:41
+    BEFORE: 2026-09-30 06:00 given@06:40 | 2026-09-30 14:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:40↻ | 2026-09-30 14:40 scheduled
+  document 2026-09-30T14:40 given @ 2026-09-30 14:40: BEFORE 404 · AFTER ok
+  read @ 2026-09-30 14:41
+    BEFORE: 2026-09-30 06:00 given@06:40 | 2026-09-30 14:00 scheduled | 2026-09-30 22:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:40↻ | 2026-09-30 14:40 given@14:40 | 2026-09-30 22:40 scheduled
+  read @ 2026-10-01 01:00
+    BEFORE: 2026-09-30 06:00 given@06:40 | 2026-09-30 14:00 scheduled | 2026-09-30 22:00 scheduled | 2026-10-01 06:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:40↻ | 2026-09-30 14:40 given@14:40 | 2026-09-30 22:40 scheduled | 2026-10-01 06:40 scheduled
+  read @ 2026-10-02 07:00
+    BEFORE: 2026-09-30 06:00 given@06:40 | 2026-09-30 14:00 missed-earlier×3 | 2026-10-01 14:00 scheduled | 2026-10-01 22:00 scheduled | 2026-10-02 06:00 scheduled | 2026-10-02 14:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:40↻ | 2026-09-30 14:40 given@14:40 | 2026-09-30 22:40 missed-earlier×2 | 2026-10-01 14:40 scheduled | 2026-10-01 22:40 scheduled | 2026-10-02 06:40 scheduled | 2026-10-02 14:40 scheduled
+## S3 explicit actual time (06:03) documented later (06:40) -> next 07:03
+  document 2026-09-30T06:00 given @ 2026-09-30 06:40: BEFORE ok · AFTER ok(anchor 2026-09-30 06:03)
+  read @ 2026-09-30 06:41
+    BEFORE: 2026-09-30 06:00 given@06:03 | 2026-09-30 07:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:03↻ | 2026-09-30 07:03 scheduled
+## S5 long delay keeps intermediate misses (06:00 given 08:30 -> 07:00/08:00 stay missed, next 09:30); held 07:00 does not re-time
+  document 2026-09-30T06:00 given @ 2026-09-30 08:30: BEFORE ok · AFTER ok(anchor 2026-09-30 08:30)
+  read @ 2026-09-30 08:31
+    BEFORE: 2026-09-30 06:00 given@08:30 | 2026-09-30 07:00 scheduled | 2026-09-30 08:00 scheduled | 2026-09-30 09:00 scheduled
+    AFTER : 2026-09-30 06:00 given@08:30↻ | 2026-09-30 07:00 scheduled | 2026-09-30 08:00 scheduled | 2026-09-30 09:30 scheduled
+  document 2026-09-30T07:00 held @ 2026-09-30 08:35: BEFORE ok · AFTER ok
+  read @ 2026-09-30 08:36
+    BEFORE: 2026-09-30 06:00 given@08:30 | 2026-09-30 07:00 held@08:35 | 2026-09-30 08:00 scheduled | 2026-09-30 09:00 scheduled
+    AFTER : 2026-09-30 06:00 given@08:30↻ | 2026-09-30 07:00 held@08:35 | 2026-09-30 08:00 scheduled | 2026-09-30 09:30 scheduled
+## S6 older dose recorded later with backdated actual (06:20 < floor 07:05) never rewinds
+  document 2026-09-30T07:00 given @ 2026-09-30 07:05: BEFORE ok · AFTER ok(anchor 2026-09-30 07:05)
+  read @ 2026-09-30 07:06
+    BEFORE: 2026-09-30 06:00 scheduled | 2026-09-30 07:00 given@07:05 | 2026-09-30 08:00 scheduled
+    AFTER : 2026-09-30 06:00 scheduled | 2026-09-30 07:00 given@07:05↻ | 2026-09-30 08:05 scheduled
+  document 2026-09-30T06:00 given @ 2026-09-30 07:20: BEFORE ok · AFTER ok
+  read @ 2026-09-30 07:21
+    BEFORE: 2026-09-30 06:00 given@06:20 | 2026-09-30 07:00 given@07:05 | 2026-09-30 08:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:20 | 2026-09-30 07:00 given@07:05↻ | 2026-09-30 08:05 scheduled
+## S7 older dose given NOW (07:30 > floor 07:05) re-times forward (literal rule)
+  document 2026-09-30T07:00 given @ 2026-09-30 07:05: BEFORE ok · AFTER ok(anchor 2026-09-30 07:05)
+  document 2026-09-30T06:00 given @ 2026-09-30 07:30: BEFORE ok · AFTER ok(anchor 2026-09-30 07:30)
+  read @ 2026-09-30 07:31
+    BEFORE: 2026-09-30 06:00 given@07:30 | 2026-09-30 07:00 given@07:05 | 2026-09-30 08:00 scheduled
+    AFTER : 2026-09-30 06:00 given@07:30↻ | 2026-09-30 07:00 given@07:05↻ | 2026-09-30 08:30 scheduled
+## S8 stale browser posts superseded 07:00 after re-timing; 07:05 accepted
+  document 2026-09-30T06:00 given @ 2026-09-30 06:05: BEFORE ok · AFTER ok(anchor 2026-09-30 06:05)
+  document 2026-09-30T07:00 given @ 2026-09-30 06:50: BEFORE ok · AFTER 409-superseded(by 2026-09-30 06:05)
+  document 2026-09-30T07:05 given @ 2026-09-30 06:55: BEFORE 404 · AFTER ok
+  read @ 2026-09-30 06:56
+    BEFORE: 2026-09-30 06:00 given@06:05 | 2026-09-30 07:00 given@06:50 | 2026-09-30 08:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:05↻ | 2026-09-30 07:05 given@06:55 | 2026-09-30 08:05 scheduled
+## S9 duplicate submission of the same instance
+  document 2026-09-30T06:00 given @ 2026-09-30 06:05: BEFORE ok · AFTER ok(anchor 2026-09-30 06:05)
+  document 2026-09-30T06:00 given @ 2026-09-30 06:06: BEFORE 409-duplicate · AFTER 409-duplicate
+  read @ 2026-09-30 06:07
+    BEFORE: 2026-09-30 06:00 given@06:05 | 2026-09-30 07:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:05↻ | 2026-09-30 07:05 scheduled
+## S10 early and on-time given never re-time
+  document 2026-09-30T06:00 given @ 2026-09-30 05:50: BEFORE ok · AFTER ok
+  read @ 2026-09-30 05:51
+    BEFORE: 2026-09-30 06:00 given@05:50 | 2026-09-30 07:00 scheduled
+    AFTER : 2026-09-30 06:00 given@05:50 | 2026-09-30 07:00 scheduled
+  document 2026-09-30T07:00 given @ 2026-09-30 07:00: BEFORE ok · AFTER ok
+  read @ 2026-09-30 07:01
+    BEFORE: 2026-09-30 06:00 given@05:50 | 2026-09-30 07:00 given@07:00 | 2026-09-30 08:00 scheduled
+    AFTER : 2026-09-30 06:00 given@05:50 | 2026-09-30 07:00 given@07:00 | 2026-09-30 08:00 scheduled
+## S11 held and refused never re-time
+  document 2026-09-30T06:00 held @ 2026-09-30 06:30: BEFORE ok · AFTER ok
+  document 2026-09-30T07:00 refused @ 2026-09-30 07:20: BEFORE ok · AFTER ok
+  read @ 2026-09-30 07:21
+    BEFORE: 2026-09-30 06:00 held@06:30 | 2026-09-30 07:00 refused@07:20 | 2026-09-30 08:00 scheduled
+    AFTER : 2026-09-30 06:00 held@06:30 | 2026-09-30 07:00 refused@07:20 | 2026-09-30 08:00 scheduled
+## S12 once: late given never re-times
+  read @ 2026-09-30 06:10
+    BEFORE: 2026-09-30 06:00 scheduled
+    AFTER : 2026-09-30 06:00 scheduled
+  document 2026-09-30T06:00 given @ 2026-09-30 06:30: BEFORE ok · AFTER ok
+  read @ 2026-09-30 06:31
+    BEFORE: 2026-09-30 06:00 given@06:30
+    AFTER : 2026-09-30 06:00 given@06:30
+## S14 legacy late fact (no anchor) is never reinterpreted
+  read @ 2026-09-30 06:40
+    BEFORE: 2026-09-30 06:00 given@06:30 | 2026-09-30 07:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:30 | 2026-09-30 07:00 scheduled
+## S13 PRN: late/any given never re-times; availability stays
+  document prn given @ 2026-09-30 09:00: BEFORE ok · AFTER ok
+  read @ 2026-09-30 09:01
+    BEFORE: (prn) given@09:00 | (prn) scheduled
+    AFTER : (prn) given@09:00 | (prn) scheduled
+## S15 frequency modification q1h -> q4h after a re-timing: next = anchor + 4h
+  document 2026-09-30T06:00 given @ 2026-09-30 06:05: BEFORE ok · AFTER ok(anchor 2026-09-30 06:05)
+  modify frequency -> q4h
+  read @ 2026-09-30 06:11
+    BEFORE: 2026-09-30 06:00 given@06:05 | 2026-09-30 10:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:05↻ | 2026-09-30 10:05 scheduled
+## S16 tid (q8h) re-timed at 23:30 continues across midnight
+  document 2026-09-30T22:00 given @ 2026-09-30 23:30: BEFORE ok · AFTER ok(anchor 2026-09-30 23:30)
+  read @ 2026-10-01 00:15
+    BEFORE: 2026-09-30 22:00 given@23:30 | 2026-10-01 06:00 scheduled
+    AFTER : 2026-09-30 22:00 given@23:30↻ | 2026-10-01 07:30 scheduled
+  read @ 2026-10-01 16:00
+    BEFORE: 2026-09-30 22:00 given@23:30 | 2026-10-01 06:00 scheduled | 2026-10-01 14:00 scheduled | 2026-10-01 22:00 scheduled
+    AFTER : 2026-09-30 22:00 given@23:30↻ | 2026-10-01 07:30 scheduled | 2026-10-01 15:30 scheduled | 2026-10-01 23:30 scheduled
+## S17 daily late 3h (reason) -> next day at actual time
+  document 2026-09-30T06:00 given @ 2026-09-30 09:00: BEFORE ok · AFTER ok(anchor 2026-09-30 09:00)
+  read @ 2026-09-30 09:01
+    BEFORE: 2026-09-30 06:00 given@09:00 | 2026-10-01 06:00 scheduled
+    AFTER : 2026-09-30 06:00 given@09:00↻ | 2026-10-01 09:00 scheduled
+## S18 bid 10-minute delay -> 18:10
+  document 2026-09-30T06:00 given @ 2026-09-30 06:10: BEFORE ok · AFTER ok(anchor 2026-09-30 06:10)
+  read @ 2026-09-30 06:11
+    BEFORE: 2026-09-30 06:00 given@06:10 | 2026-09-30 18:00 scheduled
+    AFTER : 2026-09-30 06:00 given@06:10↻ | 2026-09-30 18:10 scheduled

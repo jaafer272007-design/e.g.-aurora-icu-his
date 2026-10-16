@@ -54,6 +54,13 @@ class OrderRow
     public string? AdministrationsJson { get; set; }
     public string HistoryJson { get; set; } = "[]";
     public string? StatusReason { get; set; }
+    /* NURSING ORDERS (icu-update-nursing-patient-chart.md §2): the repeat
+       interval and the append-only completed rounds of a nursing order
+       created through the New Nursing Order form — NursingRounds.cs.
+       NULL on every other order, including every nursing order created
+       before this change (legacy one-time). The current round is DERIVED
+       at read (ToDto), never stored. Additive nullable column. */
+    public string? NursingJson { get; set; }
 
     public static OrderRow FromDto(OrderDto d, int seq) => new()
     {
@@ -67,6 +74,7 @@ class OrderRow
         AdministrationsJson = d.Administrations is null ? null : JsonSerializer.Serialize(d.Administrations, JsonOpts.Web),
         HistoryJson = JsonSerializer.Serialize(d.History, JsonOpts.Web),
         StatusReason = d.StatusReason,
+        NursingJson = d.Nursing is null ? null : NursingRounds.Write(new(d.Nursing.IntervalMinutes, d.Nursing.Completions)),
     };
 
     public OrderDto ToDto() => new(
@@ -75,7 +83,7 @@ class OrderRow
         Priority, Status, OrderedBy, OrderedTime, RequiresImplementation,
         AdministrationsJson is null ? null : JsonSerializer.Deserialize<List<AdminDto>>(AdministrationsJson, JsonOpts.Web),
         JsonSerializer.Deserialize<List<OrderEventDto>>(HistoryJson, JsonOpts.Web)!,
-        StatusReason, TestId, StudyId, Region, Contrast);
+        StatusReason, TestId, StudyId, Region, Contrast, NursingRounds.ToWire(this));
 }
 
 /* wire contracts — mirror Order / MedicationDetails / MedAdministration /
@@ -85,7 +93,11 @@ record OrderDto(
     string Summary, MedicationDto? Medication, string Priority, string Status,
     string OrderedBy, string OrderedTime, bool? RequiresImplementation,
     List<AdminDto>? Administrations, List<OrderEventDto> History, string? StatusReason,
-    string? TestId = null, string? StudyId = null, string? Region = null, bool? Contrast = null);
+    string? TestId = null, string? StudyId = null, string? Region = null, bool? Contrast = null,
+    /* nursing orders: interval + completed rounds + the DERIVED current
+       round; absent (WhenWritingNull) on every order without NursingJson,
+       so legacy wire bytes are unchanged */
+    NursingOrderDto? Nursing = null);
 
 /* nested in create requests as well as responses/seeds — Disallow makes a
    typo'd medication field (e.g. "dosage") a 400 at binding time; the seed
@@ -118,8 +130,28 @@ record MedicationDto(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record InfusionDoseDto(double Value, string MassUnit, string TimeBasis);
 
+/* Round — THE ROLLING TIMER (owner's rule, 2026-09-30,
+   docs/design/mar-derived-schedule.md Amendment B): ADDITIVE, optional, set
+   ONLY on a fact that resolves a round of a repeating (interval) order —
+   the round's number (1, 2, 3 …). It marks the facts that drive the timer
+   (Given → actual time + interval; Held/Refused → scheduled time +
+   interval), so a fact documented before this rule (no Round) is never
+   reinterpreted and never starts a timer. Lives inside AdministrationsJson
+   (data, not schema — NO migration); WhenWritingNull keeps every existing
+   fact's bytes unchanged. (Amendment A's ScheduleAnchor was never released
+   and is gone.) */
+/* AttemptId — SAFE RETRY (2026-10-05, mar-derived-schedule.md ### F):
+   ADDITIVE, optional — the client's identity for ONE documentation
+   attempt (POST …/administrations body "attemptId"), stored on the fact it
+   created. A resend of the same attempt (a retry after no answer, or the
+   original request arriving late) finds it under the order lock and is
+   answered with the existing record — never a second fact or audit entry.
+   Lives inside AdministrationsJson (NO migration); WhenWritingNull keeps
+   every existing fact's bytes unchanged, and a fact without it is simply
+   never matched. */
 record AdminDto(string AdminId, string ScheduledTime, string Status,
-    string? DocumentedTime, string? DocumentedBy, string? Reason = null);
+    string? DocumentedTime, string? DocumentedBy, string? Reason = null,
+    int? Round = null, string? AttemptId = null);
 
 record OrderEventDto(string Time, string Actor, string Action, string? Detail);
 
@@ -136,7 +168,10 @@ record NewOrderDraftDto(
     string? Priority, bool? RequiresImplementation, string? TestId = null, string? StudyId = null,
     /* order-time imaging specifics (the corrected model): free-text body
        region + the single contrast checkbox — Imaging drafts only */
-    string? Region = null, bool? Contrast = null);
+    string? Region = null, bool? Contrast = null,
+    /* New Nursing Order form: { intervalMinutes? } — absent interval =
+       one-time; Nursing drafts only (OrderLogic.ValidateDraft) */
+    NursingDraftDto? Nursing = null);
 
 /* overrideJustification (safety enforcement): the audited acknowledgment
    that lets WARN-level safety findings (cross-reactivity, warn-severity

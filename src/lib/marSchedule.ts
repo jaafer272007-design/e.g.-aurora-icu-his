@@ -12,18 +12,23 @@ import { datedEpoch } from './time'
    from THERAPY START, not from the last documented dose; PRN derives from
    the last administration only; an unparseable frequency gets NO invented
    schedule. Used by the mock adapter's MAR derivation and the Orders
-   screen's next-dose chip. */
+   screen's next-dose chip.
+   [SUPERSEDED 2026-09-30 by the project owner — mar-derived-schedule.md
+   Amendment A: a GIVEN dose later than its scheduled instant on a
+   repeating order RE-TIMES the grid (next = actual + interval). Mirrors
+   the server's re-timing section in MarSchedule.cs exactly — the same
+   explicit scheduleAnchor metadata, the same floor rule, the same
+   segmented grid; see retimingState below.]
+   [SUPERSEDED AGAIN 2026-09-30 by the project owner — Amendment B: the
+   ROLLING TIMER. A repeating order has no grid: one current round, the
+   next due from the fact that resolved the last. Mirrors MarSchedule.cs's
+   rolling-timer section exactly; see currentRound below.] */
 
 export type ScheduleKind =
   | { kind: 'interval'; hours: number }
   | { kind: 'once' }
   | { kind: 'prn' }
   | { kind: 'underivable' }
-
-/** the render horizon's past window: undocumented instances of the last
- *  24 h render individually; older missed instances aggregate into one
- *  explicit summary row (never silently truncated) */
-export const PAST_WINDOW_HOURS = 24
 
 export function parseFrequency(m: MedicationDetails): ScheduleKind {
   if (m.prn) return { kind: 'prn' }
@@ -72,48 +77,120 @@ export function instanceStamp(ms: number): string {
 /** the documentable identity — the stamp's URL-safe "T" form */
 export const instanceIdentity = (ms: number): string => instanceStamp(ms).replace(' ', 'T')
 
-export interface DerivedInstances {
-  /** undocumented instances older than the past window — the explicit
-   *  remainder (count + oldest stamp), never silently truncated */
-  aggregatedMissed: number
-  oldestAggregatedMs: number | null
-  /** each undocumented instance in the window, plus the NEXT one after
-   *  now — doses never run out */
-  renderableMs: number[]
+/* ---------------- THE ROLLING TIMER (owner's rule, 2026-09-30) ----------------
+   The client mirror of MarSchedule.cs's rolling-timer section (Amendment B)
+   — read the server comment for the full rationale. In short: a repeating
+   order has ONE current round; the fact that resolves it carries `round`,
+   and the next round is due at TIMER + interval, where the timer instant
+   is the actual administration time of a GIVEN (early, on time or late)
+   and the scheduled time of a HELD/REFUSED round. Rounds are replayed in
+   order with ACTION chronology (a Given's actual time, a Held/Refused's
+   documenting time) kept apart from scheduled due identity: a Given no
+   older than every earlier action restarts the timer, even after a
+   Held/Refused left a later scheduled timer (corrected 2026-09-30); a
+   genuinely older backdated Given never rewinds it.
+   The clock never creates a round. Facts without `round` are legacy: shown
+   as stored, never timing anything; they only locate round 1 of an order
+   documented before this rule (legacyEntry). */
+
+export interface Round {
+  number: number
+  dueMs: number
+  /** what timed this round (null on round 1) */
+  timerFromMs: number | null
+  timerRule: 'given' | 'skipped' | null
 }
 
-/** every expected instance for an interval order, split per the horizon —
- *  pure arithmetic on the anchor grid (mirrors MarSchedule.IntervalInstances) */
-export function intervalInstances(
-  firstMs: number, hours: number, documentedStamps: Set<string>, nowMs: number,
-): DerivedInstances {
+/** the round's documentable identity "yyyy-MM-ddTHH:mm~r<n>" (mirrors MarSchedule.RoundIdentity) */
+export const roundIdentity = (r: Round): string => `${instanceIdentity(r.dueMs)}~r${r.number}`
+
+export function parseRoundIdentity(id: string): { dueMs: number; number: number } | null {
+  const m = /^([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}:[0-9]{2})~r([1-9][0-9]{0,8})$/.exec(id)
+  if (!m) return null
+  const due = datedEpoch(`${m[1]} ${m[2]}`)
+  return due === null ? null : { dueMs: due, number: Number(m[3]) }
+}
+
+/** a round-resolving fact's timer instant (mirrors MarSchedule.TimerInstant) */
+export const timerInstant = (a: MedAdministration): number | null =>
+  a.status === 'given' ? datedEpoch(a.documentedTime ?? '') : datedEpoch(a.scheduledTime)
+
+/** a round-resolving fact's action instant — its actual administration
+ *  time (Given) or documenting time (Held/Refused) (mirrors MarSchedule.ActionInstant) */
+export const actionInstant = (a: MedAdministration): number | null => datedEpoch(a.documentedTime ?? '')
+
+/** THE rule (mirrors MarSchedule.CurrentRound) — `facts` in recording
+ *  order; the resolving facts are replayed in round order */
+export function currentRound(firstMs: number, hours: number, facts: MedAdministration[], nowMs: number): Round {
   const step = hours * 3_600_000
-  const windowStart = nowMs - PAST_WINDOW_HOURS * 3_600_000
-  const k0 = firstMs >= windowStart ? 0 : Math.ceil((windowStart - firstMs) / step)
-  let aggregatedMissed = 0
-  let oldestAggregatedMs: number | null = null
-  for (let k = 0; k < k0; k++) {
-    const t = firstMs + k * step
-    if (documentedStamps.has(instanceStamp(t))) continue
-    aggregatedMissed++
-    oldestAggregatedMs ??= t
+  const resolved = facts.filter(a => a.round != null && isFact(a))
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => (x.a.round as number) - (y.a.round as number) || x.i - y.i)
+    .map(x => x.a)
+  let timer: number | null = null
+  let rule: Round['timerRule'] = null
+  let latestAction: number | null = null
+  for (const a of resolved) {
+    const t = timerInstant(a)
+    if (a.status === 'given') {
+      // a subsequent Given restarts the interval; an older backdated one never rewinds it
+      if (t !== null && (latestAction === null || t >= latestAction || timer === null || t > timer)) {
+        timer = t
+        rule = 'given'
+      }
+    } else if (t !== null) {
+      timer = t // the skipped round's scheduled time
+      rule = 'skipped'
+    }
+    const act = actionInstant(a)
+    if (act !== null && (latestAction === null || act > latestAction)) latestAction = act
   }
-  const renderableMs: number[] = []
-  for (let k = k0; ; k++) {
-    const t = firstMs + k * step
-    const documented = documentedStamps.has(instanceStamp(t))
-    if (t <= nowMs) { if (!documented) renderableMs.push(t); continue }
-    if (!documented) { renderableMs.push(t); break }
-  }
-  return { aggregatedMissed, oldestAggregatedMs, renderableMs }
+  const number = resolved.length === 0 ? 1 : Math.max(...resolved.map(a => a.round as number)) + 1
+  return timer === null
+    ? { number, dueMs: legacyEntry(firstMs, step, facts, nowMs), timerFromMs: null, timerRule: null }
+    : { number, dueMs: timer + step, timerFromMs: timer, timerRule: rule }
 }
 
-export const documentedStampsOf = (o: Order): Set<string> =>
-  new Set((o.administrations ?? []).filter(a => a.status !== 'scheduled').map(a => a.scheduledTime))
+/** LEGACY ACTIVATION — round 1 of an order whose facts all predate the
+ *  rule: the first therapy-start slot at or after the slot containing
+ *  the latest legacy fact's recorded time that no legacy fact documents
+ *  (the first dose when none) (mirrors MarSchedule.LegacyEntry) */
+export function legacyEntry(firstMs: number, step: number, facts: MedAdministration[], nowMs: number): number {
+  const legacy = facts.filter(a => a.round == null && isFact(a))
+  let latest: number | null = null
+  for (const a of legacy) {
+    const t = stampEpoch(a.documentedTime, nowMs) ?? stampEpoch(a.scheduledTime, nowMs)
+    if (t !== null && (latest === null || t > latest)) latest = t
+  }
+  if (latest === null) return firstMs
+  const documented = new Set(legacy.map(a => stampEpoch(a.scheduledTime, nowMs)).filter((t): t is number => t !== null))
+  let slot = latest <= firstMs ? firstMs : firstMs + Math.floor((latest - firstMs) / step) * step
+  while (documented.has(slot)) slot += step // bounded by the legacy facts
+  return slot
+}
 
-/** the Orders screen's "next dose" — the earliest underivable-free expected
- *  instance still awaiting documentation (dated stamp), or null when the
- *  order has no derivable grid / is not in force */
+/** ONE ACTION PER ROUND (owner's correction, 2026-10-05; mirrors
+ *  MarSchedule.NotYetDue): a scheduled dose — a repeating order's current
+ *  round or a 'once' dose — is documentable (given, held or refused) from
+ *  its EXACT scheduled instant, never before. The due-soon window is a
+ *  reminder only; PRN/on-demand doses have no scheduled instant. */
+export const documentableAt = (dueMs: number, nowMs: number): boolean => nowMs >= dueMs
+
+/** THE FIRST DOSE (owner's decision, 2026-10-05 — ### F; mirrors
+ *  MarSchedule.IsFirstDose): an order with no documented administration is
+ *  at its first dose, which is available immediately after signing (round 1
+ *  / the 'once' dose) — exempt from documentableAt. Recorded doses,
+ *  legacy facts included, end the exemption; nothing is re-derived. */
+export const isFirstDose = (administrations: MedAdministration[] | undefined): boolean =>
+  !(administrations ?? []).some(isFact)
+
+/** the refusal wording for a dose opened too early (mirrors the server's) */
+export const notYetDueMessage = (dueMs: number): string =>
+  `is not due until ${instanceStamp(dueMs)} — one action per dose round: it can be documented (given, held or refused) from its scheduled time, not before`
+
+/** the Orders screen's "next dose" — the current round's due stamp (a
+ *  repeating order) or the single expected dose (once), or null when the
+ *  order has no derivable schedule / is not in force */
 export function nextExpectedDose(o: Order, nowMs: number): string | null {
   if (!o.medication || o.status !== 'active' || o.medication.prn) return null
   const kind = parseFrequency(o.medication)
@@ -121,13 +198,10 @@ export function nextExpectedDose(o: Order, nowMs: number): string | null {
   const anchor = therapyStartEpoch(o, nowMs)
   if (anchor === null) return null
   const first = firstDoseEpoch(anchor)
-  const documented = documentedStampsOf(o)
+  const facts = (o.administrations ?? []).filter(isFact)
   if (kind.kind === 'once')
-    return documented.has(instanceStamp(first)) ? null : instanceStamp(first)
-  const { aggregatedMissed, oldestAggregatedMs, renderableMs } =
-    intervalInstances(first, kind.hours, documented, nowMs)
-  if (aggregatedMissed > 0 && oldestAggregatedMs !== null) return instanceStamp(oldestAggregatedMs)
-  return renderableMs.length ? instanceStamp(renderableMs[0]) : null
+    return facts.some(a => a.scheduledTime === instanceStamp(first)) ? null : instanceStamp(first)
+  return instanceStamp(currentRound(first, kind.hours, facts, nowMs).dueMs)
 }
 
 /** a stored administration row that is a FACT (the retired stub's

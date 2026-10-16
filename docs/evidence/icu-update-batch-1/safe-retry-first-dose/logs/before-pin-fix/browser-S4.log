@@ -1,0 +1,9 @@
+setup P-1024 at 2026-10-05 09:34 UTC; browser device zone UTC; scenarios: S4
+
+[S4] DEVICE CLOCK 3 MIN AHEAD (PRN): the delayed original is still pending when Retry saving's pinned minute is refused
+  FAIL Retry saving: the pinned minute (2026-10-05 09:37, 3 min ahead) was refused 400, then the ORIGINAL request was re-sent exactly: [{"action":"given","administeredAt":"2026-10-05 09:37","attemptId":"db846c3818909ce12fb614833f898cad"}]
+  FAIL "Saved — confirmed", never "not saved" (toasts: ["Save not confirmed","Documentation NOT saved"])
+  the page said NOT saved and reopened the dose -> the nurse documents it again, as told
+  FAIL the original arrived at +21 s (HTTP 200): 2 fact(s), 2 audit entries for one dose — exactly one
+
+RESULT 0 passed, 3 failed

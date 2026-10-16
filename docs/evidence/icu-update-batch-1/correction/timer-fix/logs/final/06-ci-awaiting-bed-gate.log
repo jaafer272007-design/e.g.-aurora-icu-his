@@ -1,0 +1,1 @@
+confirmed: awaiting-bed calls assignBed (never transfer) over the bedless=true read; /awaiting-bed costs beds.assign; BedChip + print layout keep their explicit bedless renderings (SOURCE check: this does not exercise the screen)

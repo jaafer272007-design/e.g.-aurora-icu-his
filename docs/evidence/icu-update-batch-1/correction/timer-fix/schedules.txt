@@ -1,0 +1,128 @@
+Schedules for the timer-correction scenarios R20-R25 (tools/rollharness/scenarios.json),
+rendered from the deterministic harness over the REAL server sources (tools/render-schedules.py).
+[ ] marks the one current round. The client (mock adapter + marSchedule.ts) output is row-for-row
+identical: logs/final/16-expectations+parity.log. Rows sort by due minute, so a resolved round whose
+due is later than the new current round prints after it; the round tags keep them apart.
+All times UTC wire stamps (synthetic q1h order signed 2026-09-30 05:20, round 1 due 06:00).
+
+=== THIS BRANCH (fix commit 9633899; verified at eb616f9) ===
+
+## R20 CODEX REPRO (Held): 06:00 given 06:05 -> 07:05; 07:05 Held EARLY at 06:10 -> 08:05; next Given EARLY at 06:50 -> 07:50 (not 08:05); then on time 07:50 -> 08:50; late 09:30 -> 10:30; stable across refresh + next day  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 06:10: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  read @ 09-30 06:11:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | [09-30 08:05 round 3](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r3 @ 09-30 06:50: ok -> next round 09-30 07:50 [2026-09-30T07:50~r4]   (as expected)
+  read @ 09-30 06:51:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | [09-30 07:50 round 4](timed from given 09-30 06:50) | 09-30 08:05 given@09-30 06:50 r3
+  read @ 09-30 06:52:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | [09-30 07:50 round 4](timed from given 09-30 06:50) | 09-30 08:05 given@09-30 06:50 r3
+  read @ 09-30 07:30:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | [09-30 07:50 round 4](timed from given 09-30 06:50) | 09-30 08:05 given@09-30 06:50 r3
+  given   2026-09-30T07:50~r4 @ 09-30 07:50: ok -> next round 09-30 08:50 [2026-09-30T08:50~r5]   (as expected)
+  given   2026-09-30T08:50~r5 @ 09-30 09:30: ok -> next round 09-30 10:30 [2026-09-30T10:30~r6]   (as expected)
+  read @ 09-30 09:31:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | 09-30 07:50 given@09-30 07:50 r4 | 09-30 08:05 given@09-30 06:50 r3 | 09-30 08:50 given@09-30 09:30 r5 | [09-30 10:30 round 6](timed from given 09-30 09:30)
+  read @ 10-01 03:00:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | 09-30 07:50 given@09-30 07:50 r4 | 09-30 08:05 given@09-30 06:50 r3 | 09-30 08:50 given@09-30 09:30 r5 | [09-30 10:30 round 6](timed from given 09-30 09:30)
+
+## R21 CODEX REPRO (Refused): 06:00 given 06:05 -> 07:05; 07:05 Refused EARLY at 06:10 -> 08:05; next Given EARLY at 06:50 -> 07:50 (not 08:05); then on time 07:50 -> 08:50; late 09:30 -> 10:30; stable across refresh + next day  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  refused 2026-09-30T07:05~r2 @ 09-30 06:10: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  read @ 09-30 06:11:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | [09-30 08:05 round 3](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r3 @ 09-30 06:50: ok -> next round 09-30 07:50 [2026-09-30T07:50~r4]   (as expected)
+  read @ 09-30 06:51:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | [09-30 07:50 round 4](timed from given 09-30 06:50) | 09-30 08:05 given@09-30 06:50 r3
+  read @ 09-30 06:52:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | [09-30 07:50 round 4](timed from given 09-30 06:50) | 09-30 08:05 given@09-30 06:50 r3
+  read @ 09-30 07:30:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | [09-30 07:50 round 4](timed from given 09-30 06:50) | 09-30 08:05 given@09-30 06:50 r3
+  given   2026-09-30T07:50~r4 @ 09-30 07:50: ok -> next round 09-30 08:50 [2026-09-30T08:50~r5]   (as expected)
+  given   2026-09-30T08:50~r5 @ 09-30 09:30: ok -> next round 09-30 10:30 [2026-09-30T10:30~r6]   (as expected)
+  read @ 09-30 09:31:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | 09-30 07:50 given@09-30 07:50 r4 | 09-30 08:05 given@09-30 06:50 r3 | 09-30 08:50 given@09-30 09:30 r5 | [09-30 10:30 round 6](timed from given 09-30 09:30)
+  read @ 10-01 03:00:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | 09-30 07:50 given@09-30 07:50 r4 | 09-30 08:05 given@09-30 06:50 r3 | 09-30 08:50 given@09-30 09:30 r5 | [09-30 10:30 round 6](timed from given 09-30 09:30)
+
+## R22 Held ON TIME then Given ON TIME; Refused LATE then Given LATE (reason): each Given restarts from its actual time, each skip from its own due  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 07:05: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  given   2026-09-30T08:05~r3 @ 09-30 08:05: ok -> next round 09-30 09:05 [2026-09-30T09:05~r4]   (as expected)
+  refused 2026-09-30T09:05~r4 @ 09-30 09:40: ok -> next round 09-30 10:05 [2026-09-30T10:05~r5]   (as expected)
+  read @ 09-30 09:41:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 07:05 r2 | 09-30 08:05 given@09-30 08:05 r3 | 09-30 09:05 refused@09-30 09:40 r4 | [09-30 10:05 round 5](timed from skipped slot 09-30 09:05)
+  given   2026-09-30T10:05~r5 @ 09-30 12:30: 400-reason-required   (as expected)
+  given   2026-09-30T10:05~r5 @ 09-30 12:30: ok -> next round 09-30 13:30 [2026-09-30T13:30~r6]   (as expected)
+  read @ 09-30 12:31:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 07:05 r2 | 09-30 08:05 given@09-30 08:05 r3 | 09-30 09:05 refused@09-30 09:40 r4 | 09-30 10:05 given@09-30 12:30 r5 | [09-30 13:30 round 6](timed from given 09-30 12:30)
+
+## R23 after a Held: actual time 06:50 supplied, documented later at 07:10 -> next 07:50 from the ACTUAL time (not 07:10, not the skipped 08:05)  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 06:10: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  given   2026-09-30T08:05~r3 @ 09-30 07:10 (actual 09-30 06:50): ok -> next round 09-30 07:50 [2026-09-30T07:50~r4]   (as expected)
+  read @ 09-30 07:11:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | [09-30 07:50 round 4](timed from given 09-30 06:50) | 09-30 08:05 given@09-30 06:50 r3
+
+## R24 GENUINE older backdating after a Held: Held at 06:30 (skipped 07:05 -> 08:05); a Given backdated to 06:20 (older than the Held action) never rewinds -> 08:05 stays, round 4 shares 08:05 with round 3 and stays distinct; a later real Given at 07:00 restarts -> 08:00  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 06:30: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  given   2026-09-30T08:05~r3 @ 09-30 06:40 (actual 09-30 06:20): ok -> next round 09-30 08:05 [2026-09-30T08:05~r4]   (as expected)
+  given   2026-09-30T08:05~r3 @ 09-30 06:41: 409-resolved   (as expected)
+  read @ 09-30 06:42:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:30 r2 | 09-30 08:05 given@09-30 06:20 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r4 @ 09-30 07:00: ok -> next round 09-30 08:00 [2026-09-30T08:00~r5]   (as expected)
+  read @ 09-30 07:01:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:30 r2 | [09-30 08:00 round 5](timed from given 09-30 07:00) | 09-30 08:05 given@09-30 06:20 r3 | 09-30 08:05 given@09-30 07:00 r4
+
+## R25 older backdated Given that is LATER than the skipped timer moves it FORWARD only: Held LATE at 09:00 (07:05 -> 08:05, overdue); Given documented 09:10 at actual 08:30 -> 09:30  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 09:00: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  read @ 09-30 09:01:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 09:00 r2 | [09-30 08:05 round 3](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r3 @ 09-30 09:10 (actual 09-30 08:30): ok -> next round 09-30 09:30 [2026-09-30T09:30~r4]   (as expected)
+  read @ 09-30 09:11:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 09:00 r2 | 09-30 08:05 given@09-30 08:30 r3 | [09-30 09:30 round 4](timed from given 09-30 08:30)
+
+
+=== CONTRAST: the reviewed head 87358f2, same scenarios (the defect: the skipped 07:05/08:05 timer
+    swallows the subsequent Given; "(expected ...)" marks each wrong next round) ===
+
+## R20 CODEX REPRO (Held): 06:00 given 06:05 -> 07:05; 07:05 Held EARLY at 06:10 -> 08:05; next Given EARLY at 06:50 -> 07:50 (not 08:05); then on time 07:50 -> 08:50; late 09:30 -> 10:30; stable across refresh + next day  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 06:10: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  read @ 09-30 06:11:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | [09-30 08:05 round 3](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r3 @ 09-30 06:50: ok -> next round 09-30 08:05 [2026-09-30T08:05~r4]   (EXPECTED ok 2026-09-30 07:50)
+  read @ 09-30 06:51:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+  read @ 09-30 06:52:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+  read @ 09-30 07:30:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r4 @ 09-30 07:50: ok -> next round 09-30 08:50 [2026-09-30T08:50~r5]   (as expected)
+  given   2026-09-30T08:50~r5 @ 09-30 09:30: ok -> next round 09-30 10:30 [2026-09-30T10:30~r6]   (as expected)
+  read @ 09-30 09:31:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | 09-30 08:05 given@09-30 07:50 r4 | 09-30 08:50 given@09-30 09:30 r5 | [09-30 10:30 round 6](timed from given 09-30 09:30)
+  read @ 10-01 03:00:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | 09-30 08:05 given@09-30 07:50 r4 | 09-30 08:50 given@09-30 09:30 r5 | [09-30 10:30 round 6](timed from given 09-30 09:30)
+
+## R21 CODEX REPRO (Refused): 06:00 given 06:05 -> 07:05; 07:05 Refused EARLY at 06:10 -> 08:05; next Given EARLY at 06:50 -> 07:50 (not 08:05); then on time 07:50 -> 08:50; late 09:30 -> 10:30; stable across refresh + next day  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  refused 2026-09-30T07:05~r2 @ 09-30 06:10: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  read @ 09-30 06:11:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | [09-30 08:05 round 3](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r3 @ 09-30 06:50: ok -> next round 09-30 08:05 [2026-09-30T08:05~r4]   (EXPECTED ok 2026-09-30 07:50)
+  read @ 09-30 06:51:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+  read @ 09-30 06:52:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+  read @ 09-30 07:30:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r4 @ 09-30 07:50: ok -> next round 09-30 08:50 [2026-09-30T08:50~r5]   (as expected)
+  given   2026-09-30T08:50~r5 @ 09-30 09:30: ok -> next round 09-30 10:30 [2026-09-30T10:30~r6]   (as expected)
+  read @ 09-30 09:31:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | 09-30 08:05 given@09-30 07:50 r4 | 09-30 08:50 given@09-30 09:30 r5 | [09-30 10:30 round 6](timed from given 09-30 09:30)
+  read @ 10-01 03:00:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 refused@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | 09-30 08:05 given@09-30 07:50 r4 | 09-30 08:50 given@09-30 09:30 r5 | [09-30 10:30 round 6](timed from given 09-30 09:30)
+
+## R22 Held ON TIME then Given ON TIME; Refused LATE then Given LATE (reason): each Given restarts from its actual time, each skip from its own due  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 07:05: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  given   2026-09-30T08:05~r3 @ 09-30 08:05: ok -> next round 09-30 09:05 [2026-09-30T09:05~r4]   (as expected)
+  refused 2026-09-30T09:05~r4 @ 09-30 09:40: ok -> next round 09-30 10:05 [2026-09-30T10:05~r5]   (as expected)
+  read @ 09-30 09:41:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 07:05 r2 | 09-30 08:05 given@09-30 08:05 r3 | 09-30 09:05 refused@09-30 09:40 r4 | [09-30 10:05 round 5](timed from skipped slot 09-30 09:05)
+  given   2026-09-30T10:05~r5 @ 09-30 12:30: 400-reason-required   (as expected)
+  given   2026-09-30T10:05~r5 @ 09-30 12:30: ok -> next round 09-30 13:30 [2026-09-30T13:30~r6]   (as expected)
+  read @ 09-30 12:31:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 07:05 r2 | 09-30 08:05 given@09-30 08:05 r3 | 09-30 09:05 refused@09-30 09:40 r4 | 09-30 10:05 given@09-30 12:30 r5 | [09-30 13:30 round 6](timed from given 09-30 12:30)
+
+## R23 after a Held: actual time 06:50 supplied, documented later at 07:10 -> next 07:50 from the ACTUAL time (not 07:10, not the skipped 08:05)  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 06:10: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  given   2026-09-30T08:05~r3 @ 09-30 07:10 (actual 09-30 06:50): ok -> next round 09-30 08:05 [2026-09-30T08:05~r4]   (EXPECTED ok 2026-09-30 07:50)
+  read @ 09-30 07:11:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:10 r2 | 09-30 08:05 given@09-30 06:50 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+
+## R24 GENUINE older backdating after a Held: Held at 06:30 (skipped 07:05 -> 08:05); a Given backdated to 06:20 (older than the Held action) never rewinds -> 08:05 stays, round 4 shares 08:05 with round 3 and stays distinct; a later real Given at 07:00 restarts -> 08:00  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 06:30: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  given   2026-09-30T08:05~r3 @ 09-30 06:40 (actual 09-30 06:20): ok -> next round 09-30 08:05 [2026-09-30T08:05~r4]   (as expected)
+  given   2026-09-30T08:05~r3 @ 09-30 06:41: 409-resolved   (as expected)
+  read @ 09-30 06:42:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:30 r2 | 09-30 08:05 given@09-30 06:20 r3 | [09-30 08:05 round 4](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r4 @ 09-30 07:00: ok -> next round 09-30 08:05 [2026-09-30T08:05~r5]   (EXPECTED ok 2026-09-30 08:00)
+  read @ 09-30 07:01:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 06:30 r2 | 09-30 08:05 given@09-30 06:20 r3 | 09-30 08:05 given@09-30 07:00 r4 | [09-30 08:05 round 5](timed from skipped slot 09-30 07:05)
+
+## R25 older backdated Given that is LATER than the skipped timer moves it FORWARD only: Held LATE at 09:00 (07:05 -> 08:05, overdue); Given documented 09:10 at actual 08:30 -> 09:30  (q1h; signed 09-30 05:20)
+  given   2026-09-30T06:00~r1 @ 09-30 06:05: ok -> next round 09-30 07:05 [2026-09-30T07:05~r2]   (as expected)
+  held    2026-09-30T07:05~r2 @ 09-30 09:00: ok -> next round 09-30 08:05 [2026-09-30T08:05~r3]   (as expected)
+  read @ 09-30 09:01:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 09:00 r2 | [09-30 08:05 round 3](timed from skipped slot 09-30 07:05)
+  given   2026-09-30T08:05~r3 @ 09-30 09:10 (actual 09-30 08:30): ok -> next round 09-30 09:30 [2026-09-30T09:30~r4]   (as expected)
+  read @ 09-30 09:11:  09-30 06:00 given@09-30 06:05 r1 | 09-30 07:05 held@09-30 09:00 r2 | 09-30 08:05 given@09-30 08:30 r3 | [09-30 09:30 round 4](timed from given 09-30 08:30)

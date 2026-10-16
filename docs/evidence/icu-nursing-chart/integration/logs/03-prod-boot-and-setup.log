@@ -1,0 +1,26 @@
+{"status":"ok","service":"aurora-icu-api","phase":"stage10-phase3","build":"4f1009de6271c461d385bf60c6934ec4d1a431cd-local","environment":"production","aiAssistant":"disabled","edition":"icu"}
+  PASS server reports environment=production (4f1009de6271c461d385bf60c6934ec4d1a431cd-local)
+  PASS clean production database (no patients)
+  PASS AddOrderNursingSchedule applied from empty by the assembled server
+  PASS production reference seed carries both I&O snapshot types
+  PASS Consultant omar.synthetic created individually (200: )
+  PASS Staff Nurse noor.synthetic created individually (200: )
+  PASS Charge Nurse lina.synthetic created individually (200: )
+  PASS Clinical Pharmacist rami.synthetic created individually (200: )
+  PASS Respiratory Therapist huda.synthetic created individually (200: )
+  PASS Physiotherapist sami.synthetic created individually (200: )
+  PASS Receptionist dana.synthetic created individually (200: )
+  PASS pharmacist reactivates starter drug vancomycin (200: )
+  PASS pharmacist reactivates starter drug paracetamol (200: )
+  PASS admitted Alpha (200: P-1001)
+  PASS admitted Bravo (200: P-1002)
+  PASS admitted Charlie (200: P-1003)
+  PASS admitted Delta (200: P-1004)
+  PASS admitted Echo (200: P-1005)
+  PASS medication orders signed (ORD-101, ORD-102)
+  PASS pending repeating order has no current round
+  PASS legacy-style task orders carry no nursing data
+  PASS every signed nursing order opens round 1 on signing
+  PASS doctor charted interval fluids + vitals for P1 (200: 9)
+
+RESULT: 23 passed, 0 failed

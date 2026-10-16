@@ -1,0 +1,78 @@
+probe over ff08a52d07645ef5e07e67b7271468775e8f7062 (worktree clean)
+[R1] PRN Given: original held (no answer) -> retry refused 403 before the order lock -> empty read -> delayed original
+  PASS R1: no answer -> unconfirmed
+  PASS R1: the retry carried the SAME attempt id
+  PASS R1: a refused retry does not by itself settle the attempt (got 'unconfirmed')
+  PASS R1: the actual refusal reason is shown (notice 'Retry refused — Insufficient permissions. Your original given documentation may already be on the record; checking.')
+  PASS R1: a 403 is not labelled as an expired session
+  PASS R1: the wording never advises giving the medication again
+  PASS R1: the record has no fact yet (the original is still held)
+  PASS R1: after the authoritative EMPTY read the order is still locked, unconfirmed (got 'unconfirmed')
+  PASS R1: the SAME attempt is still stored for the nurse
+  PASS R1: a Given click while unresolved sends nothing (sent 0 new request(s))
+  PASS R1: the commit alone unlocks nothing — only a read that shows it (got 'unconfirmed')
+  PASS R1: exactly ONE fact on the record (got 1: 723191f436d5d7d9d3153f6c00c2e6c2)
+  PASS R1: it is the original attempt's fact
+  PASS R1: unlocked only once confirmed from the record
+  PASS R1: the stored attempt is gone once confirmed
+  PASS R1: no stale refusal notice left on the row after confirmation (got '')
+     … an intentional later PRN Given is a NEW attempt (documented again on purpose)
+  PASS R1: the later deliberate Given records a second fact with its own attempt id
+[R2] PRN Given: original held -> retry refused CLIENT-SIDE (the shipped adapter's permission check, no status)
+  PASS R2: the retry reached the shipped adapter with the same attempt id
+  PASS R2: a client-side refusal does not settle the attempt (got 'unconfirmed')
+  PASS R2: the actual reason is shown (notice 'Retry refused — Insufficient permissions. Your original given documentation may already be on the record; checking.')
+  PASS R2: the record has no fact yet (the original is still held)
+  PASS R2: after the authoritative EMPTY read the order is still locked, unconfirmed (got 'unconfirmed')
+  PASS R2: the SAME attempt is still stored for the nurse
+  PASS R2: a Given click while unresolved sends nothing (sent 0 new request(s))
+  PASS R2: the commit alone unlocks nothing — only a read that shows it (got 'unconfirmed')
+  PASS R2: exactly ONE fact on the record (got 1: b0f3757be5d7285654d74218d2663acd)
+  PASS R2: it is the original attempt's fact
+  PASS R2: unlocked only once confirmed from the record
+  PASS R2: the stored attempt is gone once confirmed
+  PASS R2: no stale refusal notice left on the row after confirmation (got '')
+[R3] the pinned-minute fallback: pinned retry 400 -> the ORIGINAL body re-sent -> refused 403
+  PASS R3: retry pinned the documented minute; the 400 fallback re-sent the original body (same attempt id)
+  PASS R3: the fallback's refusal does not settle the unresolved original (got 'unconfirmed')
+  PASS R3: the record has no fact yet (the original is still held)
+  PASS R3: after the authoritative EMPTY read the order is still locked, unconfirmed (got 'unconfirmed')
+  PASS R3: the SAME attempt is still stored for the nurse
+  PASS R3: a Given click while unresolved sends nothing (sent 0 new request(s))
+  PASS R3: the commit alone unlocks nothing — only a read that shows it (got 'unconfirmed')
+  PASS R3: exactly ONE fact on the record (got 1: 2919b0c74c51babad7672258b2eb3c16)
+  PASS R3: it is the original attempt's fact
+  PASS R3: unlocked only once confirmed from the record
+  PASS R3: the stored attempt is gone once confirmed
+  PASS R3: no stale refusal notice left on the row after confirmation (got '')
+[R4] sign-out while the refused retry is in flight; another nurse's stored attempt stays isolated
+  PASS R4: the retry is in flight
+  PASS R4: B sees only B's own unresolved attempt
+  PASS R4: A's unresolved attempt is still stored under A after the refused retry
+  PASS R4: B's stored attempt and lock are untouched
+  PASS R4: A's attempt is restored, unconfirmed (got 'unconfirmed')
+  PASS R4: the record has no fact yet (the original is still held)
+  PASS R4: after the authoritative EMPTY read the order is still locked, unconfirmed (got 'unconfirmed')
+  PASS R4: the SAME attempt is still stored for the nurse
+  PASS R4: a Given click while unresolved sends nothing (sent 0 new request(s))
+  PASS R4: the commit alone unlocks nothing — only a read that shows it (got 'unconfirmed')
+  PASS R4: exactly ONE fact on the record (got 1: cfa7a553b2e5319bb303b3e61715b2d3)
+  PASS R4: it is the original attempt's fact
+  PASS R4: unlocked only once confirmed from the record
+  PASS R4: the stored attempt is gone once confirmed
+  PASS R4: no stale refusal notice left on the row after confirmation (got '')
+[R5] controls: a 401 retry stays locked (as before); a FIRST-send refusal still settles
+  PASS R5: 401 retry -> unconfirmed, told to sign in again
+  PASS R5: the record has no fact yet (the original is still held)
+  PASS R5: after the authoritative EMPTY read the order is still locked, unconfirmed (got 'unconfirmed')
+  PASS R5: the SAME attempt is still stored for the nurse
+  PASS R5: a Given click while unresolved sends nothing (sent 0 new request(s))
+  PASS R5: the commit alone unlocks nothing — only a read that shows it (got 'unconfirmed')
+  PASS R5: exactly ONE fact on the record (got 1: c25b74cacc58e1629b37715f0fd3bd9c)
+  PASS R5: it is the original attempt's fact
+  PASS R5: unlocked only once confirmed from the record
+  PASS R5: the stored attempt is gone once confirmed
+  PASS R5: no stale refusal notice left on the row after confirmation (got '')
+  PASS R5: a refused FIRST send is definitive: settled, "Not recorded" (got 'none', 'Not recorded — order 'ORD-PRB7' is discontinued — it is not in force, no dose is available from it')
+  PASS R5: nothing recorded
+RESULT 70 passed, 0 failed

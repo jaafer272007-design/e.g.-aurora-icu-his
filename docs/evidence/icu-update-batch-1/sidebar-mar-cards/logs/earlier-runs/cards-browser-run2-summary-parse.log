@@ -1,0 +1,69 @@
+setup: P-1035 · hospital today 2026-10-05 (yesterday 2026-10-04, tomorrow 2026-10-06) · hospital midnight = 2026-10-04 21:00 UTC · device zone UTC
+
+[S1] stationary pointer across Orders -> Lab Entry -> Observations -> Orders (desktop 1440, dark)
+  PASS hover opens the rail (width 198px)
+  PASS Lab Entry: new page's sidebar open at full width 198px with the pointer resting on its label (x=150), no movement for 600 ms
+  PASS Observations: new page's sidebar open at full width 198px with the pointer resting on its label (x=150), no movement for 600 ms
+  PASS Orders & Meds: new page's sidebar open at full width 198px with the pointer resting on its label (x=150), no movement for 600 ms
+  PASS pointer leaves to the content -> collapses after the close delay (width 64px)
+  PASS hover intent kept: a 40 ms crossing of the rail never opens it
+  PASS keyboard focus inside the sidebar opens it (pointer outside)
+  PASS focus leaving the sidebar collapses it
+
+[S2] sign-out clears the shared hover (pointer resting on a label through sign-out and sign-in)
+  PASS hover-open before sign-out, pointer on the Orders label
+  PASS after sign-out + sign-in (keyboard only, pointer unmoved at x=150) the new sidebar is COLLAPSED (64px): the hover was cleared
+  PASS ordinary hover still opens it afterwards
+
+[S3] narrow screen (700 px): hover opens the OVERLAY drawer; it survives a section change under the pointer
+  PASS drawer overlays (width 198px, content stays at x=0)
+  PASS after the section change the drawer is still open under the pointer
+  PASS pointer out -> drawer closes
+
+[S4] touch (390x844, hasTouch/isMobile): the tap toggle only; hover state never applies
+  PASS toggle present, collapsed
+  PASS tap toggle opens the drawer
+  PASS tapping a section navigates and the new sidebar starts closed
+
+[M1] grouping on the live MAR (nurse, desktop 1440, dark)
+  PASS ORD-172: three rounds (UTC date 2026-10-04) in ONE card "Today · 2026-10-05" — the hospital date, not the device/UTC date
+  PASS header carries drug, dose, route · frequency once ("Cards A 232115 1 mgIV · q1h"); the round rows do not repeat it
+  PASS ORD-173: same medication name, separate prescription -> its own card
+  PASS held round labelled "held · documented <time>" (not an administration time)
+  PASS ORD-174: yesterday's outstanding round keeps its controls in the yesterday card; today's card only references it ("Round 1 scheduled 2026-10-04 21:00 is still outstanding — document it on that day's card. …")
+  PASS ORD-175: current round scheduled tomorrow -> open tomorrow card with the controls; today's card has today's dose + a "Next" reference
+  PASS ORD-176: the 23:00 round given 00:20 stays in the yesterday card (collapsed history, "1 given"); round 2 acts on today
+  PASS ORD-177 PRN: yesterday's dose in a collapsed card; today's dose + availability (one control group) today
+  PASS ORD-178 on-demand: yesterday's dose collapsed; availability today
+  PASS ORD-179: undated legacy history -> "Date unavailable", collapsed, last
+  PASS control groups on the page for this patient = actionable server rows = 7 (none duplicated)
+  FAIL rows in open cards + rows counted by collapsed cards = server rows = 17 (nothing generated, nothing lost)
+  PASS MAR due count "9 due · administer & document only" = the existing predicate over the server rows (9) — not a card count
+  PASS the reference button moves focus to the referenced yesterday card
+
+[M2] historical expansion survives polling (stable card keys)
+  PASS expanded: the round scheduled 23:00 shows its actual administration WITH its date ("given at 2026-10-05 00:20") and the delay reason
+  PASS Date unavailable rows show the legacy stamps exactly as stored
+  PASS after 1 poll refresh(es) of /api/icu/mar: both opened history cards stay open; untouched history stays collapsed
+
+[M3] screenshots + rendered contrast (dark)
+  PASS dark: 29 new text elements, lowest 4.71:1 ("IV · q1h" #mar-P-1035-ORD-172-2026-10-05 .mdhead .mroute, #mar-P-1035-ORD-174-2026-10-05 .mdhead .mroute, #mar-P-1035-ORD-175-2026-10-05 .mdhead .mroute, #mar-P-1035-ORD-176-2026-10-04 .mdhead .mroute, #mar-P-1035-ORD-177-2026-10-04 .mdhead .mroute, #mar-P-1035-ORD-177-2026-10-05 .mdhead .mroute)
+
+[M4] hospital midnight rollover on the page (browser clock moved to 23:59:30 hospital; shared useNow tick)
+  PASS 23:59:30: ORD-175's current round is on "Tomorrow · 2026-10-06"; PRN availability on 2026-10-05
+  PASS 00:00:35: the same card is now "Today · 2026-10-06", controls inside, no reference
+  PASS PRN availability moved to today's (2026-10-06) card; 2026-10-05's PRN card became collapsed history
+  PASS ORD-174's outstanding 2026-10-04 round keeps its controls on its own (still open) card; a NEW today (2026-10-06) card references it
+
+[M5] light theme + narrow layout
+  PASS light theme active
+  PASS light: 29 new text elements, lowest 5.75:1 ("Today · 2026-10-05" #mar-P-1035-ORD-172-2026-10-05 .mddate, #mar-P-1035-ORD-174-2026-10-05 .mddate, #mar-P-1035-ORD-175-2026-10-05 .mddate, #mar-P-1035-ORD-176-2026-10-04 .mddate, #mar-P-1035-ORD-177-2026-10-04 .mddate, #mar-P-1035-ORD-177-2026-10-05 .mddate)
+  PASS 390 px: no MAR element overflows (0); the three controls fit, ≥36 px tall (page overflow 82px comes from the pre-existing I&O totals row, not the MAR)
+
+[M6] actions keep their original orderId + adminId; the MAR refreshes from the server
+  PASS Given on ORD-172 posted to /api/icu/mar/ORD-172/administrations/2026-10-05T00:05~r3 (the server row's own adminId)
+  PASS after the server refresh: the same today card holds rounds 1–3 + the new current round 4
+  PASS yesterday's overdue round: the existing delay-reason dialog, posted to /api/icu/mar/ORD-174/administrations/2026-10-04T18:00~r1 with reason + administeredAt 2026-10-04 23:22 (UTC wire)
+  PASS after the refresh: 2026-10-04's card is completed history (collapsed, "1 given"); today's card now holds round 2 with the controls, no reference
+
+RESULT: 45 passed, 1 failed

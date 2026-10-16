@@ -1,0 +1,23 @@
+SKIP  [0] Check out the dispatched ref (FULL history — the gate resolves the DEPLOYED commit's objec
+SKIP  [1] ENVIRONMENT GATE — a data-writing suite may only run against its declared target
+SKIP  [2] Warm up + require the deployed build's SERVER CONTENT to equal this ref's
+PASS  [3] Login as doctor and nurse
+      sara.rahman: token issued
+      maya.chen: token issued
+FAIL(exit 1)  [4] ORD-113 was neutralized by the audited backfill (read-only; re-asserting every run IS the 
+      Traceback (most recent call last):
+        File "<stdin>", line 4, in <module>
+      KeyError: 'ORD-113'
+NOT RUN (earlier failure) [5] Clinical initiation on a patient with NO open encounter → 409 Conflict (chokepoi
+NOT RUN (earlier failure) [6] encounterId is STRICTLY SERVER-DERIVED — supplying it in a mutation payload fail
+NOT RUN (earlier failure) [7] Admit THIS RUN's patient (unique MRN, dynamic free bed)
+NOT RUN (earlier failure) [8] Create signed med order + pending order — BOTH scoped to the open encounter
+NOT RUN (earlier failure) [9] MAR serves the order's doses while the encounter is open
+NOT RUN (earlier failure) [10] Discharge → the cascade discontinues BOTH orders in the same transaction (audite
+NOT RUN (earlier failure) [11] sign/modify/implement on the CLOSED encounter → 409 at the guard (live since the
+NOT RUN (earlier failure) [12] MAR drops the discharged encounter's rows; documenting a dose → 409 at the choke
+NOT RUN (earlier failure) [13] Readmit by patientId (the typed MRN is RETIRED) → same patient, same MRN, NEW en
+NOT RUN (earlier failure) [14] Final discharge — the cascade closes out the readmission's order too (second cas
+PASS  [15] Failure-path cleanup — release THIS run's encounters (runs on failure/cancel too)
+      no patient was admitted by this run — nothing to release
+SUITE FAILED

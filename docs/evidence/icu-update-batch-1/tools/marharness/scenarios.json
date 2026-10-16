@@ -1,0 +1,356 @@
+[
+ {
+  "name": "S1 q1h owner example (06:00 given 06:05 -> 07:05; 07:05 given 07:12 -> 08:12)",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "read": "2026-09-30 05:30"
+   },
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:05"
+   },
+   {
+    "read": "2026-09-30 06:06"
+   },
+   {
+    "doc": "2026-09-30T07:05",
+    "action": "given",
+    "at": "2026-09-30 07:12"
+   },
+   {
+    "read": "2026-09-30 07:13"
+   },
+   {
+    "read": "2026-09-30 10:00"
+   }
+  ]
+ },
+ {
+  "name": "S2 q8h late shift, on-time follow-up, across midnight and 2 days (horizon/aggregate)",
+  "frequency": "q8h",
+  "signed": "2026-09-30 05:10",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:40"
+   },
+   {
+    "read": "2026-09-30 06:41"
+   },
+   {
+    "doc": "2026-09-30T14:40",
+    "action": "given",
+    "at": "2026-09-30 14:40"
+   },
+   {
+    "read": "2026-09-30 14:41"
+   },
+   {
+    "read": "2026-10-01 01:00"
+   },
+   {
+    "read": "2026-10-02 07:00"
+   }
+  ]
+ },
+ {
+  "name": "S3 explicit actual time (06:03) documented later (06:40) -> next 07:03",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:40",
+    "administeredAt": "2026-09-30 06:03"
+   },
+   {
+    "read": "2026-09-30 06:41"
+   }
+  ]
+ },
+ {
+  "name": "S5 long delay keeps intermediate misses (06:00 given 08:30 -> 07:00/08:00 stay missed, next 09:30); held 07:00 does not re-time",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 08:30",
+    "reason": "patient in CT"
+   },
+   {
+    "read": "2026-09-30 08:31"
+   },
+   {
+    "doc": "2026-09-30T07:00",
+    "action": "held",
+    "at": "2026-09-30 08:35",
+    "reason": "superseded by late 06:00 dose"
+   },
+   {
+    "read": "2026-09-30 08:36"
+   }
+  ]
+ },
+ {
+  "name": "S6 older dose recorded later with backdated actual (06:20 < floor 07:05) never rewinds",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T07:00",
+    "action": "given",
+    "at": "2026-09-30 07:05"
+   },
+   {
+    "read": "2026-09-30 07:06"
+   },
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 07:20",
+    "administeredAt": "2026-09-30 06:20"
+   },
+   {
+    "read": "2026-09-30 07:21"
+   }
+  ]
+ },
+ {
+  "name": "S7 older dose given NOW (07:30 > floor 07:05) re-times forward (literal rule)",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T07:00",
+    "action": "given",
+    "at": "2026-09-30 07:05"
+   },
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 07:30"
+   },
+   {
+    "read": "2026-09-30 07:31"
+   }
+  ]
+ },
+ {
+  "name": "S8 stale browser posts superseded 07:00 after re-timing; 07:05 accepted",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:05"
+   },
+   {
+    "doc": "2026-09-30T07:00",
+    "action": "given",
+    "at": "2026-09-30 06:50"
+   },
+   {
+    "doc": "2026-09-30T07:05",
+    "action": "given",
+    "at": "2026-09-30 06:55"
+   },
+   {
+    "read": "2026-09-30 06:56"
+   }
+  ]
+ },
+ {
+  "name": "S9 duplicate submission of the same instance",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:05"
+   },
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:06"
+   },
+   {
+    "read": "2026-09-30 06:07"
+   }
+  ]
+ },
+ {
+  "name": "S10 early and on-time given never re-time",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 05:50"
+   },
+   {
+    "read": "2026-09-30 05:51"
+   },
+   {
+    "doc": "2026-09-30T07:00",
+    "action": "given",
+    "at": "2026-09-30 07:00"
+   },
+   {
+    "read": "2026-09-30 07:01"
+   }
+  ]
+ },
+ {
+  "name": "S11 held and refused never re-time",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "held",
+    "at": "2026-09-30 06:30",
+    "reason": "SBP 82"
+   },
+   {
+    "doc": "2026-09-30T07:00",
+    "action": "refused",
+    "at": "2026-09-30 07:20",
+    "reason": "declined"
+   },
+   {
+    "read": "2026-09-30 07:21"
+   }
+  ]
+ },
+ {
+  "name": "S12 once: late given never re-times",
+  "frequency": "once",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "read": "2026-09-30 06:10"
+   },
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:30"
+   },
+   {
+    "read": "2026-09-30 06:31"
+   }
+  ]
+ },
+ {
+  "name": "S14 legacy late fact (no anchor) is never reinterpreted",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "legacyFacts": [
+   {
+    "adminId": "ADM-LEG1",
+    "scheduledTime": "2026-09-30 06:00",
+    "status": "given",
+    "documentedTime": "2026-09-30 06:30",
+    "documentedBy": "Legacy Nurse"
+   }
+  ],
+  "steps": [
+   {
+    "read": "2026-09-30 06:40"
+   }
+  ]
+ },
+ {
+  "name": "S13 PRN: late/any given never re-times; availability stays",
+  "frequency": "q4h",
+  "prn": true,
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "prn",
+    "action": "given",
+    "at": "2026-09-30 09:00"
+   },
+   {
+    "read": "2026-09-30 09:01"
+   }
+  ]
+ },
+ {
+  "name": "S15 frequency modification q1h -> q4h after a re-timing: next = anchor + 4h",
+  "frequency": "q1h",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:05"
+   },
+   {
+    "modify": "q4h",
+    "at": "2026-09-30 06:10"
+   },
+   {
+    "read": "2026-09-30 06:11"
+   }
+  ]
+ },
+ {
+  "name": "S16 tid (q8h) re-timed at 23:30 continues across midnight",
+  "frequency": "tid",
+  "signed": "2026-09-30 21:10",
+  "steps": [
+   {
+    "doc": "2026-09-30T22:00",
+    "action": "given",
+    "at": "2026-09-30 23:30"
+   },
+   {
+    "read": "2026-10-01 00:15"
+   },
+   {
+    "read": "2026-10-01 16:00"
+   }
+  ]
+ },
+ {
+  "name": "S17 daily late 3h (reason) -> next day at actual time",
+  "frequency": "daily",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 09:00",
+    "reason": "NPO for procedure"
+   },
+   {
+    "read": "2026-09-30 09:01"
+   }
+  ]
+ },
+ {
+  "name": "S18 bid 10-minute delay -> 18:10",
+  "frequency": "bid",
+  "signed": "2026-09-30 05:20",
+  "steps": [
+   {
+    "doc": "2026-09-30T06:00",
+    "action": "given",
+    "at": "2026-09-30 06:10"
+   },
+   {
+    "read": "2026-09-30 06:11"
+   }
+  ]
+ }
+]

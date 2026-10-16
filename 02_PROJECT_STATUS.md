@@ -1,7 +1,90 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-09-07 (later) · current through AURORA SHIPS FROM LOCAL
-VERIFICATION — the ship gate's live-instance proof now comes from the appliance
+**Last updated: 2026-10-16 · current through THE TWO APPROVAL CORRECTIONS on
+draft PR #234 (Codex review of `72a7894`; same branch; source commits `8a0cadc`
+and `ff08a52`; pushed for review only — no merge, no installer, no hospital
+access or hospital deployment; the push republishes the STAGING frontend to
+GitHub Pages; local synthetic verification, not release acceptance): a refused
+MAR retry of an unresolved attempt no longer reopens the dose (it stays
+unconfirmed until the record settles it — two facts for one PRN dose were
+possible); the New Nursing Order draft and its submission belong to the patient
+they are shown for, and Orders & Medication shows and refreshes only the routed
+patient's identity and orders — the record below. Prior (2026-10-16, latest):
+THE ICU NURSING ORDERS + NURSE
+PATIENT CHART UPDATE, ASSEMBLED on draft PR #234 (Session 1's integration of the
+three sessions' branches on the same branch, from the reviewed head `2fc317c`;
+last code commit `4f1009d`; pushed for review only — no merge, no installer, no
+hospital access or deployment; local synthetic verification, not release
+acceptance): one-time and repeating nursing orders with exact full-interval
+rounds and safe retry from both Done entry points; the nurse's patient chart
+(no SOFA/NEWS2) carrying the shared MAR + persisted I&O panel; two integration
+corrections (data-age chips converted to the hospital clock once; no invented
+nursing OVERDUE deadline); the combined acceptance on a same-origin production
+pairing against real PostgreSQL; one PRE-EXISTING defect recorded (restricted
+roles' chart reads); this update RUNS A MIGRATION (`migrationWillRun` true) and
+the update-write/rollback release gate stays UNRESOLVED — the record below.
+Prior (2026-10-05, latest): THE OWNER'S DECISIONS + SAFE RETRY on
+draft PR #234 (same branch, from Codex-verified `d66c6cf`; pushed for review only —
+no merge, no installer, no hospital deployment): continuous stays available when
+needed and PRN as needed (no interval); an order's first dose is open on signing,
+once orders included, while every later round keeps the scheduled-time lock and
+legacy orders keep their schedules; an unanswered MAR save is settled only from
+the record (an attemptId stored on the fact, deduplicated by the server under the
+order lock) — never by elapsed time — with stale reads discarded and Retry saving
+re-sending the same attempt; the update-write/rollback release gate stays
+UNRESOLVED — the record below. Prior (2026-10-05, latest): THE OWNER'S ONE-ACTION-PER-ROUND
+CORRECTION on draft PR #234 (same branch, from Codex-verified `dacab4e`; pushed
+for review only — no merge, no installer, no hospital deployment): a scheduled
+dose (a repeating order's current round, a `once` dose) can be documented —
+Given, Held or Refused — from its exact scheduled time, never before: refused
+409 by the server inside the order lock with nothing written, shown locked on
+the MAR card with when it opens, mirrored by the mock adapter; immediate
+submission protection on every MAR action, visible refusals, uncertain outcomes
+settled by a fresh server read before any retry; the rolling timer unchanged;
+continuous and PRN documentation intervals UNRESOLVED (no prescription source
+exists — proposals recorded); the update-write/rollback release gate stays
+UNRESOLVED — the record below. Prior (2026-10-04, latest): TWO OWNER-APPROVED REFINEMENTS on
+draft PR #234 (same branch; after Codex's review passed at `def08a9`; pushed for
+review only — no merge, no installer, no hospital deployment): the section
+sidebar now stays expanded across section changes under a resting pointer (small
+in-memory shared hover, reconciled with the real pointer position, cleared on
+sign-out); and the Nurse Workspace MAR shows one card per prescription per
+hospital day (presentation only — same rows, actions, dialog and due count; no
+API or data change); the update-write/rollback release gate stays UNRESOLVED —
+the record below. Prior (2026-09-30, latest): THE ROLLING-TIMER CORRECTION after
+Codex's review of draft PR #234 at `87358f2` (same branch;
+pushed for review only — no merge, no installer, no hospital deployment): a
+Given after a Held/Refused round now restarts the timer from its actual
+administration time (the "latest timer instant" rule let a skipped round's later
+scheduled time swallow it — q1h 06:05 given, 07:05 held at 06:10, next given at
+06:50 stayed due 08:05 instead of 07:50); action chronology is kept apart from
+scheduled due identity, so a genuinely older backdated Given still never rewinds
+the timer; Held/Refused, the one current round, identities, 409/404s, row locks
+and stored data unchanged; the update-write/rollback release gate stays
+UNRESOLVED — the record below. Prior (2026-09-30, later): THE FIRST ICU UPDATE
+BATCH, CORRECTED after Codex's review of draft PR #234 (same branch; pushed for
+review only — no merge, no installer: the owner deferred the update EXE because
+the hospital wants more changes): the owner's ROLLING TIMER replaces the batch's
+late-only re-timing (one current round per repeating medication; Given → next
+due = actual time + interval, early, on time or late; Held/Refused → the
+skipped round's scheduled time + interval; the clock never creates a round;
+additive `round` metadata, no migration; legacy orders enter without
+reinterpretation); every order mutation now runs under a PostgreSQL row lock
+(atomic documentation — the lost-write defect was reproduced on the reviewed
+head and is gone); and the batch record's rollback sentence is corrected, with
+an UNRESOLVED release gate recorded (write exclusion during update validation +
+a failed-health rollback drill with round-bearing facts) — the record below.
+Prior (2026-09-30): THE FIRST ICU UPDATE BATCH — three owner-requested changes
+built on `claude/amazing-hopper-nwzw1x` (base `f0bf464`) and HELD LOCALLY for
+Codex review (not pushed, no PR, no installer): an order-type filter row on the
+Orders list (AND with the status tabs); a late GIVEN dose re-timing the next
+repeating dose from its actual administration time (supersedes the MAR design's
+"a late dose does NOT shift the schedule" — explicit `scheduleAnchor` metadata,
+no migration, existing facts never reinterpreted); and the collapsible section
+sidebar (icon rail that expands on hover / keyboard focus, tap toggle on touch,
+shared `--nav-col` so content takes the freed space) — the record below. Prior
+(2026-09-07, later): AURORA
+SHIPS FROM LOCAL VERIFICATION — the ship gate's live-instance proof now comes from the appliance
 CI (real image, real PostgreSQL) instead of a hosted staging URL, so no cloud
 service stands between this system and a hospital; the 16 clinical suites
 cannot dispatch without a hosted instance and are `disabled` with the gate
@@ -49,6 +132,969 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-10-16 · THE TWO APPROVAL CORRECTIONS ON THE ICU UPDATE — MAR REFUSED
+RETRY + NEW NURSING ORDER DRAFT SCOPE (Session 1; Codex review of `72a7894`, last
+source `4f1009d`; same branch `claude/amazing-hopper-nwzw1x`, draft PR #234;
+branch push for review only — no merge, `main` unchanged, no installer or EXE, no
+hospital access, migration or hospital deployment; the push republishes the
+STAGING frontend to GitHub Pages via `deploy-pages.yml`, which is not hospital or
+deployed acceptance; synthetic data only).**
+Evidence: `docs/evidence/icu-nursing-chart/approval-fixes/README.md`; contract §12.
+
+1. **`8a0cadc` — MAR: a refused retry of an unconfirmed attempt no longer
+   settles it.** Inherited from the pre-extraction page and present at both
+   administration entry points: a PRN / on-demand Given with no answer, retried
+   with the same attempt id and refused with 403 (or by the client-side
+   permission check, or after the pinned-minute fallback), was marked settled;
+   the next empty server read reopened the controls; a new attempt could be
+   documented and the held original committed too — two facts for one dose.
+   Now a refused RETRY (any refusal; it can precede the server's order lock and
+   attempt lookup) leaves the attempt unconfirmed with its stored copy and only
+   the record settles it, as for the nursing rounds (Amendment 1 §9.2); the
+   sign-out path (`settleOrphan`) follows the same rule; the actual reason is
+   shown (a 401 keeps its existing toast; every refused retry leaves a "Retry
+   refused" notice, cleared on confirmation); first-send refusals, replay, the
+   pinned fallback, the rolling timer and the medication exceptions unchanged.
+2. **`ff08a52` — Orders & Medication: the New Nursing Order draft is scoped to
+   its patient.** A draft typed on patient A survived a patient-rail switch to B
+   with Pending / Sign & order enabled and would have been created for B; A's
+   header and orders stayed on screen until B's reads landed; an A read or an A
+   write's refresh could land on B. Now the editor is keyed by the displayed
+   patient and submits that patient's id; an in-flight A submission keeps A and
+   cannot clear B's draft or refresh B; identity, orders, not-found and weight
+   are held with the patient they were read for and shown only while it is
+   routed; order reads land only for the routed patient, in start order. No API,
+   RBAC or schedule rule changed.
+3. **Verification** (last source commit **`ff08a52`**; later commits are
+   docs/evidence only, product-source equality checked):
+   - builds + `ci.yml` gates once on a clean `ff08a52` worktree — all exit 0;
+     server source identical to `72a7894`;
+   - a focused probe of the REAL MAR controller over the shipped mock store
+     (controlled transport, not a server test): unchanged controller 36/70 —
+     the defect (403, client-side refusal, pinned-fallback refusal and
+     sign-out-in-flight each end with two facts or a deleted stored attempt;
+     the 401 control holds); corrected 70/70, probe unchanged;
+   - Session 3's controller harness 74/74; Session 3's MAR safe-retry browser
+     suite replayed once on the corrected staging bundle against real
+     ASP.NET + PostgreSQL, 41/41 (first dose, stale reads, the pinned fallback,
+     reload, intentional later PRN / continuous documentation);
+   - ONE disposable same-origin PRODUCTION pairing (synthetic accounts, shipped
+     role profiles, nothing granted): the pre-fix bundle first reproduced both
+     defects on the real server (18/34 — two MAR facts in the database; A's
+     draft live under B; A's late read and A's create answer replacing B's
+     list and clearing B's draft); after swapping in the corrected bundle and
+     restarting on the same database, 34/34: a real 403 refusal before the
+     order lock on the retry (the retry carried a disposable Receptionist's
+     token), real empty reads, the dose locked at the chart and the Nurse
+     Workspace, the held original delivered late, exactly ONE fact in
+     `Orders.AdministrationsJson` (the original attempt), unlocked only on
+     confirmation; a clean editor on every switch, held A reads and a held A
+     create answer leaving B's header, list and draft intact, exactly one
+     order created, for A.
+   - The 110-check combined integration suite was not rerun (its 401 retry
+     assertion still matches the unchanged 401 toast).
+4. **Still open:** the update-write / failed-health rollback release gate
+   (UNRESOLVED, migration-bearing); the pre-existing restricted-role chart
+   reads (Physiotherapist / Receptionist charts get 403 + the access overlay —
+   recorded separately in the assembly record below and contract §11.3, not
+   changed here); a consequence of fix 1 by design — an unresolved PRN attempt
+   whose retries are all refused stays locked for that nurse in that tab until
+   its fact appears (an absent fact is not proof).
+
+**2026-10-16 · THE ICU NURSING ORDERS + NURSE PATIENT CHART UPDATE — ASSEMBLED
+AND VERIFIED (Session 1 integration; same branch `claude/amazing-hopper-nwzw1x`,
+draft PR #234, from the reviewed head `2fc317c`; branch push for review only — no
+merge, `main` unchanged at `f0bf464`, no installer or EXE, no hospital access or
+migration, no deployment; synthetic data only; not release or hospital
+acceptance).**
+*[Correction, 2026-10-16 (approval round): "no deployment" above is unqualified
+and wrong as written. The push of `72a7894` ran `.github/workflows/deploy-pages.yml`,
+which builds the STAGING frontend (`VITE_APP_ENV=staging`) and published it to
+GitHub Pages (workflow run 38888888397, `actions/deploy-pages@v4`, success) — as
+every push of this open-PR branch does. That is a staging preview publication:
+nothing was deployed to a hospital, and it is not hospital or deployed
+acceptance.]*
+DESIGN FIRST: the owner's design is committed verbatim as
+`docs/design/icu-update-nursing-patient-chart.md`, with the frozen contracts in
+`docs/design/icu-update-nursing-patient-chart-contracts.md` (Amendments 1 and 2,
+and the integration record §11). Three sessions built against those contracts;
+Session 1 assembled them.
+
+1. **Assembly** (merge commits, branch history kept):
+   - `7845d26` Session 1 — nursing orders + the shared backend (`2fb4eb8`,
+     product `5eac744`): one-time / repeating nursing orders (1 min – 48 h),
+     rounds in millisecond stamps, next due = recorded completion + the full
+     interval, safe replay by `attemptId`, the Orders & Medication Done entry
+     point and New Nursing Order form, the I&O snapshot catalogue types and the
+     admission-bound I&O write (`expectedEncounterId`), migration
+     `20261015232419_AddOrderNursingSchedule`.
+   - `4fbddc5` Session 2 — the patient chart (`c88b3dc`, product `5315769`):
+     the nurse's chart has no SOFA/NEWS2 and carries the shared care panel
+     (Session 2's committed insertion — no stand-in).
+   - `0cc9264` Session 3 — nurse workflows + shared patient care (`681198a`,
+     product `9e87e5b`): one MAR / nursing / I&O controller per tab
+     (`NurseCareProvider`), the patient-chart MAR + I&O panel, Orders to
+     Implement on the round contract, the persisted I&O panel replacing the
+     demo worksheet.
+2. **Two integration corrections**, each its own commit:
+   - `0f56e8a` — data-age chips converted the last-read time to the hospital
+     clock twice (`displayStamp(localStamp(at))`: a UTC+3 hospital read three
+     hours ahead). One conversion now (contract §11.1).
+   - `4f1009d` — Session 3's invented 30-minute nursing OVERDUE label removed:
+     DUE from the round's exact due instant, UPCOMING before it, a late round
+     stays DUE with "N min since due" as a fact; counts = actionable rounds;
+     unlock, repeating behaviour and every medication threshold unchanged
+     (contract §11.2).
+   - Last code commit: **`4f1009d`**. Later commits are docs/evidence only;
+     product-source equality with `4f1009d` was verified, not re-run.
+3. **Compatibility / release notes for this update:**
+   - **A migration runs** (`AddOrderNursingSchedule`: one nullable `text`
+     column, `Orders.NursingJson`). Existing rows are untouched (Session 1's
+     in-place upgrade check: every pre-existing order and catalogue row
+     byte-identical). **So the updater's `migrationWillRun` is TRUE for this
+     update** — unlike the first batch's JSON-only changes.
+   - **I&O uses the existing observations API** — no new endpoint: two new
+     catalogue types (`io_current_intake_ml`, `io_current_output_ml`, seeded in
+     the production reference seed and topped up on upgrade), and an optional
+     `expectedEncounterId` on `POST /api/icu/observations` (I&O saves always
+     send it; other callers may; a mismatch is 409 with nothing written).
+   - **Implement** (`POST /api/icu/orders/{id}/implement`) gains the additive
+     `{ roundId, attemptId }` body; the empty request still completes a
+     one-time / legacy order; an absent order is 404 before any body problem
+     (Amendment 2, keeps `deployed-orders-e2e.yml`'s FOUR-CODE probe).
+   - Client and server ship together (an older server refuses the new bodies).
+4. **⚠️ The release gate stays UNRESOLVED.** `aurora-update.ps1` still starts
+   the new service before its health check with no clinical-write barrier.
+   With `migrationWillRun` true, a failed-health rollback restores the
+   pre-update database, so anything documented during the validation window
+   (MAR facts, nursing completions, I&O) would be **discarded** — a nurse's
+   recorded dose disappearing is the same double-dose hazard by another route.
+   Still needed before release: write exclusion during update validation, and a
+   failed-health rollback drill (now migration-bearing, with round-bearing MAR
+   facts, nursing completions and I&O written in the window). Nothing here
+   builds or tests that gate.
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-nursing-chart/integration/`).** All on the committed source
+`4f1009d`, run once.
+- **Builds and CI gates:** `tsc -b --force`, `vite build`, the production and
+  staging bundles, the `VITE_APP_ENV` allow-list gate, the five `ci.yml` node
+  gates and `dotnet build -c Release` all exit 0 (only the existing CS8602
+  warning). `git diff 5eac744 4f1009d -- server` is empty, so Session 1's
+  server/API evidence stands (nursing 63/63, I&O 25/25, in-place upgrade 15/15,
+  restart, deployed orders/observations suites replayed).
+- **Extracted controllers:** Session 3's controller harness on the assembled
+  tree **74/74**; the MAR safe-retry / first-dose / rolling-timer browser
+  scenarios against the assembled server + PostgreSQL **41/41**.
+- **Combined acceptance on a same-origin PRODUCTION pairing** (the assembled
+  server serving its own production bundle, `APP_ENV=production`, a fresh
+  disposable database, seven synthetic accounts through their forced first-login
+  changes, shipped role profiles — nothing granted): setup **23/23**, main
+  **110/110**, the Orders & Medication entry point (Session 1's unchanged
+  `ui-check.mjs`) **38/38**, after a server restart **8/8**. Every nursing
+  completion, MAR documentation and I&O read/write reached the real server and
+  database; controlled transport only (read delays, response loss, 401
+  injection). Covered:
+  - DataAge on an Asia/Baghdad hospital with the browser in
+    America/Los_Angeles, 24h and 12h (chips + tooltips); nursing times and
+    refusal stamps to the second in both;
+  - workspace Done: DUE with "N min since due", no OVERDUE, counts = actionable;
+    pending → signed; minutes/hours; double click → one request; legacy empty
+    request; exact unlock **3 ms** after the due instant; an unresolved attempt
+    kept through a reload and a 401 retry, then the delayed original confirmed
+    from the record with exactly one completion; a Done after discharge → 409,
+    nothing written;
+  - the nurse chart: MAR + I&O, no SOFA/NEWS2; one pending MAR attempt kept
+    across chart ⇄ workspace navigation, patient switches, a reload and
+    re-authentication as the same nurse, never shown to another nurse; one fact;
+  - I&O: 500 then 200 shows 200, zero, missing, one- and both-value saves,
+    response loss (never resent), 401, effective amendments, the doctor's fluid
+    strip and SOFA/NEWS2 byte-identical after 7 snapshots, the stale admission-A
+    form refused 409 after readmission B with nothing written in either, B
+    blank, identical after restart;
+  - switching with delayed reads (nurse and doctor), restricted roles, dark and
+    light, 390 px (the care panel fits; page overflow 0 px on the nurse chart,
+    the workspace and the doctor chart);
+  - compact API: 6 simultaneous copies of one attempt → one completion; 4
+    competing attempts → one 200 + three 409; 404 before 400; 400 / 403 / 409.
+
+**Defect found, PRE-EXISTING and unresolved:** a Physiotherapist (no
+`orders.view`) or a Receptionist (no `orders.view` / `results.view`) opening a
+patient chart in production gets 403 on the chart's orders (and labs) reads —
+from `usePatientScores` and `getPatientDetail`, which read them for every role —
+and the access refusal replaces the chart. The same reads are on `main`
+`f0bf464`; the pre-integration head `2fc317c` reproduces it. This update's own
+composites (I&O, MAR panel, nursing queue) make no reads for those roles. Not
+changed: no permission was granted, and the fix needs the owner's decision on
+what SOFA/NEWS2 show to a role that may not read orders or labs.
+
+**Observation, not changed:** right after a completion a lock line's countdown
+can read one minute high for up to 30 s (the 30 s render tick, as on the MAR
+card); the stated opening time and the unlock are exact.
+
+**Not verified / limitations:** local and synthetic only (Linux PostgreSQL, not
+the Windows appliance; no installer, hospital migration or deployed suite);
+Chromium only; real clocks; the data-age "D-n" form not exercised; transport
+control is Playwright routing (held requests delivered by the harness); a
+process restart, not a reboot; the `ci.yml` production-seed job (docker) not
+replayed locally. **Not hospital or deployed acceptance.**
+
+
+**2026-10-05 · THE OWNER'S DECISIONS + SAFE RETRY (follow-up on the one-action
+correction; same branch `claude/amazing-hopper-nwzw1x`, from Codex-verified
+`d66c6cf`; branch pushes for review only — no merge, `main` unchanged, no
+installer or EXE, no hospital access; synthetic data only).**
+DESIGN FIRST: the request is committed verbatim, alone, as
+`docs/design/icu-update-mar-safe-retry-first-dose.md`. The rules are MAR design
+**### F**, an append. ### E's three open questions and its uncertain-save
+settlement keep their text, each with a dated DECIDED / SUPERSEDED note. The
+record below (2026-10-05 · ONE ACTION PER MEDICATION ROUND) carries the same
+notes.
+
+1. **The owner's decisions.**
+   - **Continuous:** documentation stays available when needed; no recording
+     interval is added.
+   - **PRN:** stays as needed; its hidden stored frequency is not a minimum
+     interval.
+   - **First dose:** available immediately after signing, `once` orders
+     included (`MarSchedule.IsFirstDose`, which means no documented
+     administration on the order). Every later round keeps the
+     scheduled-time lock.
+   - **Nothing is re-derived:** round 1 keeps its due minute (the next full
+     hour) and its identity, so history, identities and day cards are
+     unchanged.
+   - **Legacy orders:** an order carrying a LEGACY fact is not at its first
+     dose. Its `LegacyEntry` round 1 keeps its slot and its lock, so no
+     schedule is silently reset.
+   - **Protection:** submission and safe-retry protection cover every
+     medication type.
+2. **SAFE RETRY — the uncertain-save settlement corrected.** Codex reproduced
+   two failures of the former 15 s rule, and both were reproduced first on
+   the pre-change build in the browser: a late original commit, and a stale
+   settlement read. Each produced two facts for one dose.
+   - **Server:** every documentation may carry an `attemptId`, stored on its
+     fact. Under the existing order lock, before any state check, a resend of
+     a recorded attempt is answered with the existing record: no fact, no
+     audit entry. The same id with different documentation is 409. This is
+     the deduplication PRN and on-demand doses lacked.
+   - **Page:** an unanswered save stays **unconfirmed** until the record
+     settles it, either through a fact carrying the attempt id, or through the
+     same round documented by another fact. Elapsed time plus an absent fact
+     proves nothing.
+   - **Stale reads:** discarded whole (display and verdict). An answered save
+     is held until a read started after the answer is applied.
+   - **Retry saving:** re-sends the same attempt. A retried on-time Given
+     carries its documented minute. If that pinned minute is refused (400,
+     e.g. a device clock ahead), the original request is re-sent exactly.
+     That was found in self-review and reproduced with the device clock
+     3 min ahead.
+   - **Reload:** unconfirmed attempts survive a reload (`sessionStorage`,
+     this tab and nurse).
+   - **Wording:** about saving the documentation, never about giving the
+     dose again. A later documentation is a new attempt.
+3. **Additive contract** (all inside existing JSON, no migration;
+   `WhenWritingNull` keeps existing bytes):
+   - `attemptId` on the request body, the stored fact and the MAR fact row;
+   - `firstDose: true` on a first-dose row.
+   - A request without `attemptId` behaves exactly as before.
+   - A server older than this change refuses a body carrying `attemptId`
+     (400). The appliance ships client and server together.
+4. **Unchanged:** the rolling timer, every subsequent round's lock and its
+   exact unlock, overdue delay reasons, backdating protection (the
+   `administeredAt` window now runs after the safe-retry match, otherwise
+   identical), row locks, daily cards, hospital dates, midnight references,
+   sidebar and filters.
+
+   **The release gate stays UNRESOLVED:** write exclusion during update
+   validation, plus a failed-health rollback drill with round-bearing facts.
+5. **Tests:** `deployed-mar-e2e.yml` documents the run order's first dose
+   again (as before the one-action rule), asserts the NEXT round 409 with
+   nothing written, and adds a PRN safe-retry leg.
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-update-batch-1/safe-retry-first-dose/`).**
+Final steps run once on the committed source `303ae8c`; all 32 exit 0.
+- **Builds and CI:** `npm run build`, `dotnet build -c Release` and the
+  `ci.yml` frontend + server steps all exit 0 (only the existing CS8602
+  warning).
+- **Rolling-timer replay:** 25 scenarios, **372 checks, 0 failures**.
+- **Grouping harness:** 25/25.
+- **Client/mock mirror on a fake clock:** **46/46** under UTC and under
+  America/Los_Angeles. It covers the first dose open 20 min early with
+  round 2 locked until actual + 1 h; the owner's 06:05 → 07:05 example as a
+  subsequent round (07:04:59.999 refused, 07:05:00.000 open); once; legacy;
+  midnight; and attempt replays.
+- **Real API + PostgreSQL:** **29/29**, plus the previous round's check as a
+  superseding copy, **40/40** (only the new once order's expectation
+  changed).
+  - First dose 33 min early → 200; the next round 409 with nothing written.
+  - Legacy round 1 unchanged and 409.
+  - Replays → 200 with the row byte-identical (PRN, on-demand, round, once,
+    after discontinuation).
+  - **6 concurrent copies of one attempt → 1 fact, 1 audit entry.**
+- **Deployed suites replayed locally:** MAR (updated), assignments and
+  encounter-scope all pass.
+- **Browser, controlled transport against the real page:** **41/41**.
+  - First dose / once open; subsequent and legacy rounds locked.
+  - Delayed original (+21 s) with Retry saving, and without it → **1 fact,
+    1 audit entry**.
+  - Stale read discarded → **1 fact**.
+  - Lost original kept unconfirmed across a reload, then one retry request
+    → recorded at its documented minute.
+  - Device clock 3 min ahead → pinned retry 400, original re-sent → **1
+    fact**.
+  - Every PRN/continuous case ends with an intentional later Given → a
+    second fact (a new attempt).
+  - Contrast ≥ 6.09:1.
+- **Reproduced first:** on the build of `d66c6cf`, S1/S2 → **1 passed, 8
+  failed**, with 2 facts for one dose in each case. On `cbf74cd`, S4 →
+  **0/3**, 2 facts.
+
+**Not verified / limitations:**
+- Chromium only, and real time rather than a faked server clock.
+- Reload persistence is per tab and per nurse (`sessionStorage`); another
+  device documenting a PRN dose again is a new attempt.
+- The 390 px page scroll comes from the I&O card's totals row. It predates
+  this change and was flagged separately.
+  *[Superseded 2026-10-16: the demo I&O worksheet is replaced by the persisted
+  I&O panel; at 390 px the Nurse Workspace and the nurse chart have 0 px
+  page-level overflow — the integration record above.]*
+- The deployed suites were replayed locally only.
+
+**2026-10-05 · ONE ACTION PER MEDICATION ROUND (the owner's correction; same
+branch `claude/amazing-hopper-nwzw1x`, from Codex-verified `dacab4e`; branch
+pushes for review only — no merge, `main` unchanged, no installer or EXE, no
+hospital access; synthetic data only).**
+DESIGN FIRST: the request is committed verbatim, alone, as
+`docs/design/icu-update-mar-one-action-per-round.md`. The rule is MAR design
+**### E**, a pure append.
+
+1. **The rule.** A scheduled dose (a repeating order's current round, or a
+   `once` dose) can be documented (Given, Held or Refused) from its **exact
+   scheduled time**, never before. After a round is documented, the next round
+   is shown locked until its own time, so recording a dose never opens another
+   round at once.
+   - An already-due next round stays open; no cooldown is added.
+   - The 30-minute due-soon window is a reminder only: such a round reads
+     DUE SOON and stays locked.
+   - **Server:** `MarSchedule.NotYetDue`, inside the existing order lock,
+     against the freshly derived round and the server clock. Before the
+     scheduled time the answer is 409 and nothing is appended or audited. The
+     resolved/stale/duplicate 409s are unchanged.
+   - **Client mirror:** `marSchedule.documentableAt`, `marDays.isEligibleNow` /
+     `unlocksAt`. The mock adapter refuses the same way and now returns its
+     refusal wording.
+2. **The MAR card.** A current round that is not open yet shows Given / Held /
+   Refused disabled, with "Opens HH:mm (in N min) — one action per round". An
+   exact-time wake-up opens them without a reload. "Current" and "open now"
+   are now separate questions.
+3. **Submission protection.** One documentation per order at a time.
+   - An immediate ref guard, plus controls disabled through the save and the
+     authoritative refresh.
+   - The dialog's confirm fires once; the 2nd/3rd clicks of a multi-click are
+     ignored.
+   - Refusals are shown with the server's reason, in hospital time, in a toast
+     and on the row. `documentAdministration` now returns ok / rejected /
+     uncertain. Before, a refusal was a silent `null`, and an unanswered
+     request fell through to the mock store.
+   - An uncertain outcome locks the order until a fresh server read settles it
+     ("confirmed", or "not recorded" only from a read started ≥ 15 s after the
+     failure).
+     *[SUPERSEDED 2026-10-05 — the record above (SAFE RETRY): the 15 s
+     "not recorded" verdict recorded one dose twice when the original
+     committed later; an unanswered save now settles only from the record.]*
+   - MAR reads apply in the order they started.
+4. **Unchanged:** the rolling timer (Amendments B/C), overdue delay reasons,
+   backdating protection, round identities, row locks, daily cards, hospital
+   dates, midnight references, history, sidebar, filters, the printed MAR, and
+   the wire format and stored data.
+
+   **The release gate stays UNRESOLVED:** write exclusion during update
+   validation, plus a failed-health rollback drill with round-bearing facts.
+*[DECIDED 2026-10-05 by the owner — the record above: continuous stays
+available when needed, PRN as needed (no interval), the first dose is open
+on signing. Item 5 is kept as written.]*
+5. **UNRESOLVED — continuous and PRN (no source exists; nothing invented).**
+   These rows have no scheduled time, so the rule cannot apply to them.
+   - **The owner's screenshot** (continuous Insulin (Actrapid) 2.5 U/h, three
+     Given at the same minute): repeated clicks now record one dose per
+     multi-click. A deliberate later click still records another dose.
+   - **Continuous:** no field on the medication order, its structured infusion
+     dose (a rate), the formulary or the order sets defines a next
+     documentation round. The only "q1h" is free text about glucose checks.
+     Proposed: a prescriber-set documentation interval on continuous-infusion
+     orders, inside `MedicationJson` (no migration), driving a rolling "rate
+     check" round through the same gate.
+   - **PRN:** a PRN order stores a frequency that is never shown or used.
+     Whether it is a minimum interval is the owner's decision.
+   - **First doses:** round 1 and a `once` dose fall at the next full hour
+     after signing (the existing first-dose rule), so they are locked until
+     then. A documentable-on-signing first dose would be a first-dose rule
+     change, also the owner's decision.
+6. **Tests that allowed early documentation, updated:**
+   - `deployed-mar-e2e.yml`: a run-created round 1 is now asserted 409 with
+     nothing written; the positive, replay and held legs use a run-created
+     PRN order.
+   - `deployed-assignments-e2e.yml`: the removed nurse documents a PRN dose.
+   - The timer replay's TS harness got a superseding copy (see verification).
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-update-batch-1/one-action-per-round/`).** Final steps run
+once on the committed source `d32a7ad`:
+- **Builds and CI:** `npm run build`, `dotnet build -c Release` and the
+  `ci.yml` frontend + server steps all exit 0.
+- **Rolling-timer replay:** 25 scenarios, **372 checks, 0 failures**, through
+  a superseding TS harness. The original read the mock's new refusal string
+  as success, and 12 of its steps document a round early, which was legal on
+  2026-09-30. Those steps are now loaded as stored pre-gate facts on both
+  sides. The first run's 122 client-side mismatches are kept.
+- **Grouping harness:** 25/25.
+- **One-action fake-clock harness:** 36/36 under UTC and under
+  America/Los_Angeles. It includes the owner's literal 06:05 → 07:05 example,
+  07:04:59.999 refused and 07:05:00.000 open, hospital midnight, and once
+  orders.
+- **Real API + PostgreSQL:** 41/41.
+  - Early Given/Held/Refused → 409, with stored facts and audit
+    byte-identical.
+  - 6 concurrent early requests → all 409.
+  - 4 s before due → 409; at due + 1 s, 5 concurrent mixed requests → exactly
+    one 200.
+  - Stale page; an already-due next round open; once orders.
+  - PRN/continuous ungated (stated).
+- **Deployed suites replayed locally:** MAR, assignments and encounter-scope
+  all pass. The unmodified MAR suite fails at exactly its old early leg.
+- **Browser on the live stack:** 60/60.
+  - A DUE SOON round is locked with "Opens HH:mm", stays locked through a poll,
+    and opens by itself 46 ms after its time.
+  - 5 + 3 rapid mixed clicks → one request; a dialog double-confirm → one
+    request.
+  - Uncertain outcomes: recorded → confirmed; not recorded → locked for
+    ≥ 15 s, then reopened.
+  - A stale page shows its refusal in hospital time.
+  - The continuous insulin row records one dose per real multi-click.
+  - Lock text ≥ 6.36:1 contrast.
+- **Process note:** the browser steps ran twice, because the verification
+  script was edited while running. The first run also exited 0; the kept log
+  is the second run's. This is stated in the evidence README.
+
+**Not verified:**
+- Chromium only.
+- No faked server clock: midnight and the exact boundary are covered by the
+  client harness; the server was tested 4 s before and 1 s after a real due
+  time.
+- Browser/server clock skew can refuse a click at the due second once (it is
+  shown, and a moment later it succeeds).
+- The deployed suites were replayed locally, not against a hosted target.
+- The earlier concurrency suite was not re-run; the row lock is unchanged and
+  is exercised by the API check's bursts.
+
+**2026-10-04 · THE SIDEBAR KEEPS ITS HOVER ACROSS SECTIONS; THE NURSE MAR AS
+DAILY PRESCRIPTION CARDS (owner-approved refinements; same branch
+`claude/amazing-hopper-nwzw1x`, from Codex-reviewed `def08a9`; branch pushes for
+review only — no merge, `main` unchanged, no installer or EXE, no hospital
+access; synthetic data only).**
+DESIGN FIRST: the request is committed verbatim, alone, as
+`docs/design/icu-update-sidebar-mar-daily-cards.md`. The MAR presentation
+rule is MAR design **### D**, a pure append.
+
+1. **The sidebar stays expanded across sections.** Each section mounts its
+   own `NavSidebar`, so a hover held in component state was lost on every
+   navigation: the rail snapped shut under a pointer that had not moved.
+   - **Shared state:** a small in-memory module, `lib/navHover.ts`, records
+     whether mouse hover opened the sidebar and the last mouse position. It is
+     never stored, and `signOut()` clears it.
+   - **On mount:** a new sidebar restores the open state, then checks the real
+     pointer position against its open layout, so the label area beyond the
+     icon rail counts. If the pointer is elsewhere, the sidebar closes after
+     the usual close delay.
+   - **Unchanged:** keyboard-focus expansion, the touch toggle, the
+     narrow-screen drawer, hover intent, permissions, routes and patient
+     context. No page was restructured.
+2. **The Nurse Workspace MAR: one card per prescription per hospital day**
+   (`MarCard.tsx` + the pure `marDays.ts`). Presentation only: the same rows,
+   the same controls bound to each row's `orderId` + `adminId`, the same
+   reason/time dialog, the same server refresh, and the same due-count
+   predicate.
+   - **Day of each row:**
+     - a scheduled round belongs to its scheduled day;
+     - a PRN or on-demand dose belongs to its documentation day;
+     - the availability row belongs to today;
+     - undated legacy facts go under "Date unavailable".
+
+     Days are always computed on the hospital clock (`localYmd` /
+     `localDayNumber` over `datedEpoch`).
+   - **Expansion:** today and any card holding the actionable row stay open.
+     History is collapsed, newest first, and the nurse's choices are kept by a
+     stable key across polls.
+   - **Today's card:** created at hospital midnight for every prescription
+     with an actionable row. When that row is on another day (yesterday's
+     outstanding round, tomorrow's current round), the card shows a reference
+     to it, never a second set of controls.
+3. **Unchanged:**
+   - the rolling timer;
+   - overdue-reason and backdating validation, round identities, row locks,
+     and stale/duplicate handling;
+   - the Orders type/status filters;
+   - the printed MAR;
+   - the server: no API, schema, migration, wire-format or stored-record
+     change.
+
+   **The release gate stays UNRESOLVED:** write exclusion during update
+   validation, plus a failed-health rollback drill with round-bearing facts.
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-update-batch-1/sidebar-mar-cards/`).**
+- **Final source.** On `e6a9d48` (source `fc7ad99`), `npm run build`,
+  `dotnet build -c Release` and the `ci.yml` frontend + server steps all exit
+  0. The chunk warning and the `BootGuards.cs` CS8602 are pre-existing.
+- **Rolling-timer harness:** 372 checks, 0 failures.
+- **Grouping harness** (real client modules, hospital Asia/Baghdad): **25/25**,
+  identical with the device zone at UTC, UTC−7 and UTC+14.
+- **Browser on the live stack** (server `fc7ad99`, PostgreSQL 16, server zone
+  Asia/Baghdad, browser zone UTC; one synthetic patient made through the
+  API): **46/46**. The run happened at 02:2x hospital time, when the UTC date
+  was still the previous day. It covered:
+  - **sidebar, mouse:** pointer resting on labels beyond the rail through
+    Orders → Lab Entry → Observations → Orders (open at full width); exit
+    collapses; hover intent; keyboard focus;
+  - **sidebar, other modes:** the 700 px overlay drawer surviving a section
+    change; the touch toggle; sign-out clearing the hover;
+  - **MAR grouping:** one card for three rounds whose UTC date differs; the
+    same drug as two prescriptions; yesterday's outstanding round keeping its
+    controls, with today's reference; tomorrow's current round; 23:00 due /
+    00:20 given staying on the earlier day with its actual date; PRN and
+    on-demand days; Date unavailable;
+  - **MAR integrity:** controls = actionable rows; no generated rows; the due
+    count unchanged; historical expansion surviving a poll;
+  - **midnight:** hospital midnight rollover with the browser clock moved;
+  - **actions:** each posted to the server row's own `adminId`, then the
+    server refresh;
+  - **readability:** new text at ≥ 4.52:1 (dark) and ≥ 5.75:1 (light) against
+    the rendered background; no MAR overflow at 390 px.
+- **Earlier failed runs.** Four were test-side fixes and are kept: two wrong
+  expectations, a non-discriminating sign-out pointer position, summary
+  parsing, and the screenshot capture. The fourth run passed 46/46, but its
+  screenshots predate the chevron CSS fix.
+
+**Not verified / observed, stated:**
+- browsers other than Chromium, and real touch hardware;
+- a real hospital midnight (the rollover was driven by the browser clock and
+  the harness);
+- the `production-seed` / `installer-powershell` CI jobs (GitHub runs them);
+- the release gate.
+
+Observed, pre-existing, not changed:
+- At 390 px the page overflows horizontally because of the I&O card's totals
+  row (`.iototals`), not the MAR.
+- Seeded demo orders that were never documented now show today's card
+  pointing at an outstanding round from days ago. This is the owner-approved
+  legacy entry rule (2026-09-30).
+
+**2026-09-30 (latest) · THE ROLLING TIMER CORRECTED AFTER CODEX'S REVIEW OF
+`87358f2` — A GIVEN AFTER HELD/REFUSED RESTARTS THE TIMER (same branch
+`claude/amazing-hopper-nwzw1x`; branch pushes for review only — no merge,
+`main` unchanged, no installer or EXE, no hospital access; synthetic data
+only).**
+Codex exercised the client scheduler and mock adapter, confirmed all four CI
+jobs green on `87358f2`, and reproduced one defect. DESIGN FIRST: the follow-up
+is committed verbatim, alone, as
+`docs/design/icu-update-batch-1-timer-correction.md`; the rule correction is
+MAR design **### C**, a pure append correcting Amendment B point 5.
+
+1. **The defect.** `MarSchedule.CurrentRound` / `currentRound` took the LATEST
+   timer instant across resolved rounds, mixing a Given's actual time with a
+   Held/Refused round's scheduled time. q1h: round 1 (06:00) given 06:05 →
+   07:05; round 2 held (or refused) early at 06:10 → 08:05; round 3 given early
+   at 06:50 stayed due **08:05** (`timerRule=skipped`, `timerFrom=07:05`)
+   instead of **07:50**. The Orders next-dose chip, the printed MAR's next due
+   and the Meds-Due count followed it.
+2. **The fix** (server `MarSchedule.CurrentRound`, client
+   `lib/marSchedule.ts` `currentRound` — the mock adapter, Orders chip,
+   printed MAR and counts all call it). The resolved rounds are replayed in
+   round order with ACTION chronology kept apart from the scheduled timer. The
+   action instant is a Given's actual administration time, or a
+   Held/Refused's documenting time. A Given no older than every earlier
+   action restarts the timer: next due = actual time + interval, early, on
+   time or late, after a Held/Refused too. A genuinely OLDER backdated Given
+   resolves its round but never rewinds the timer; it can only move it
+   forward. Held/Refused still advance from the skipped round's own due + the
+   interval. The audit detail now names which timer stayed in force ("the
+   administration at …" / "the skipped dose due …").
+3. **Unchanged:**
+   - one current round, round identities, and the duplicate/stale 409 and 404
+     paths;
+   - the delay-reason rule, the actual-time validations, and once/PRN/
+     underivable regimens;
+   - the order row locks (no diff in `OrderLogic`, `OrdersApi`, `AdtApi`, or
+     MarApi's lock lines);
+   - stored data: no new field, no migration, and no stored fact is
+     reinterpreted (the rule reads the same `round`, `status`,
+     `scheduledTime`, `documentedTime`).
+4. **Legacy entry (the owner answered the open question):** an active
+   repeating order with no recorded administrations keeps its original first
+   due, even days overdue. It is never reset to now and never resolved
+   automatically. That is the existing behaviour, so there is no code change.
+5. **The release gate is unchanged and UNRESOLVED:**
+   - write exclusion during update validation;
+   - a failed-health rollback drill with round-bearing facts;
+   - until then the update is forward-only once a round is documented.
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-update-batch-1/correction/timer-fix/`).**
+- **Final source.** On `eb616f9`, `npm run build`, `dotnet build -c Release`
+  and the `ci.yml` frontend + server steps all exit 0. The chunk warning and
+  the `BootGuards.cs` CS8602 are pre-existing.
+- **Deterministic harness.** Six new scenarios (R20–R25), 25 in total, run
+  through the real server sources and the real client modules: **372 checks,
+  0 failures**, server = client row for row. The new scenarios cover:
+  - the reproduced sequence with Held and with Refused, then early, on-time
+    and late Givens;
+  - repeated refreshes and a next-day read returning the same round identity;
+  - the Meds-Due count;
+  - an actual time given separately from a later documenting time;
+  - genuine older backdating (no rewind, distinct `~r4` at the same minute);
+  - an older backdated Given later than the skipped timer (forward only);
+  - the mock's audit note.
+
+  The same scenarios on the reviewed head's sources fail 77 checks, all in
+  R20/R21/R23/R24, e.g. "next 08:05, expected 07:50" and "due count 0,
+  expected 1".
+- **Real API + PostgreSQL 16** (server zone Asia/Baghdad, storage UTC):
+  **49/49**. The DB was touched only to backdate synthetic therapy starts. The
+  run covered:
+  - Held and Refused, each early, late then on time, and late then late;
+  - the reproduced case: a Given at an actual time that was supplied
+    separately and documented later, next due = actual + 1 h;
+  - genuine older backdating: timer kept, audit names it, distinct identity,
+    then a subsequent Given restarts;
+  - three refreshes returning the same current round, and the stale identity
+    → 409;
+  - a fresh read of the stored facts: rounds, statuses, slots, documenting
+    times and reasons;
+  - every history event stating its round and next due;
+  - the real client modules over this server's data: the Orders next-dose
+    chip and printed "next dose due" = the MAR current round, printed cells
+    carry the stored rounds, and the Meds-Due count.
+
+  The same script against a server built from `87358f2` fails 6 checks: its
+  current rounds stay at the skipped due.
+- **Not re-run.** This patch does not touch the lock, rendering, sidebar or
+  filter paths, so these were not repeated: the concurrency campaign (28/28
+  on the prior record), the browser pass, and the replayed deployed suites.
+
+**2026-09-30 (later) · THE FIRST BATCH, CORRECTED AFTER CODEX'S REVIEW OF DRAFT
+PR #234 — THE OWNER'S ROLLING TIMER, ATOMIC DOCUMENTATION, THE ROLLBACK
+STATEMENT CORRECTED (same branch `claude/amazing-hopper-nwzw1x`; reviewed head
+`2d14aa0`; branch pushes for review only — no merge, `main` unchanged, no
+installer or EXE (the owner deferred it: the hospital wants more changes), no
+hospital access; synthetic data only).**
+Codex inspected the diff and the evidence, exercised the client scheduler, and
+confirmed CI green on `2d14aa0`; its findings are the three items below.
+DESIGN FIRST: the correction prompt is committed verbatim, alone, as
+`docs/design/icu-update-batch-1-correction.md` (sha256 `302d29bb…`, 9,060
+bytes; it carries the owner's words and the owner-confirmed Held/Refused rule).
+The MAR supersession is `docs/design/mar-derived-schedule.md` **Amendment B**, a
+pure append (109 added, 0 removed) superseding Amendment A.
+
+1. **ATOMIC DOCUMENTATION** (Codex: the documentation endpoint read, validated,
+   appended, rewrote `AdministrationsJson` + `HistoryJson` and saved with no
+   concurrency protection — two overlapping submissions could both succeed
+   and lose a fact, an audit entry or the schedule decision).
+   `OrderLogic.LockOrder` opens the request's transaction and takes the order
+   ROW LOCK (`SELECT … FOR UPDATE`) BEFORE the order is read; the whole
+   read → validate → append → timer → audit → save commits together. Applied
+   to MAR documentation and every competing mutation of an order: sign,
+   modify, discontinue, implement, and the discharge cascade
+   (`LockEncounterOrders` — the encounter's orders, one statement, `OrderId`
+   order). A competing request waits, then validates against the fresh facts,
+   so the existing 409s (already documented / order not in force / encounter
+   closed) answer it; different orders never wait on each other.
+   **Compatibility: no schema or model change, no migration** — so the
+   updater's `migrationWillRun` stays false for this update (see item 3). The
+   SQLite demo mode has no row locks; its `BeginTransaction` is `BEGIN
+   IMMEDIATE` (SQLite's single write lock), which serializes the same paths
+   (stated, not separately tested — production is PostgreSQL).
+2. **THE ROLLING TIMER** — the owner, 2026-09-30: *"basically the timer of the
+   next round will start after the first has been given (not something
+   fixed)"*. Supersedes the batch's late-only re-timing, its unchanged
+   early-Given rule and its continuing fixed-grid future/missed rounds (item 2
+   of the record below). Server-authoritative in `MarSchedule.CurrentRound`,
+   the ONE rule shared by `GET /api/icu/mar` and the write endpoint; mirrored
+   in `lib/marSchedule.ts` (`currentRound`), the mock adapter, the Orders
+   next-dose chip, the MAR card and the printed MAR.
+   - **One current round** per active repeating medication. Round 1 is the
+     first dose (the next full hour after therapy start — unchanged). A GIVEN
+     makes the next round due at its actual administration time + the
+     interval, whether early, on time or late (q1h: 06:00 given 06:05 → 07:05;
+     that round given 08:30 → 09:30; given early 06:50 → 07:50; on time 07:05 →
+     08:05). HELD/REFUSED (owner-confirmed): the skipped round's SCHEDULED time
+     + the interval (07:05 held at 07:20 → 08:05); a next due already in the
+     past is simply overdue — never skipped, paused or auto-documented. The
+     timer in force is the LATEST resolving instant by actual chronology, so a
+     backdated older actual time never rewinds it. Frequency modification
+     applies the current interval to that timer.
+     *[CORRECTED 2026-09-30 (latest), after Codex's review of `87358f2`: the
+     "LATEST resolving instant" rule let a Held/Refused round's scheduled time
+     override a subsequent actual Given (06:05 given, 07:05 held at 06:10,
+     next given 06:50 → stayed 08:05, should be 07:50). A subsequent Given now
+     restarts the timer from its actual time; only a genuinely older backdated
+     Given is kept from rewinding it — the 2026-09-30 (latest) record and MAR
+     design ### C.]*
+   - **The clock never creates a round**: an unresolved round stays the one
+     current round as it turns due, then overdue, across refreshes, midnight
+     and days — no generated missed rows, no future rounds; the 24 h horizon
+     no longer applies to it (it remains only the bound on an entered actual
+     time).
+   - **Identity** `yyyy-MM-ddTHH:mm~r<n>` (due minute + round number): stable
+     across refreshes (facts + order only, never the clock) and distinct even
+     when two rounds, or a round and a stored fact, share a due minute. A
+     resolved round → 409 naming who documented it; the current round with a
+     different due minute (frequency changed) → 409; anything else → 404.
+   - **Metadata and compatibility:** each round-resolving fact carries
+     `round` — additive, optional JSON inside `AdministrationsJson`, **no
+     migration**; `WhenWritingNull` keeps every existing fact's bytes
+     unchanged (verified). Amendment A's `scheduleAnchor` was never released
+     (#234 unmerged, never installed) and is removed, not carried.
+   - **Legacy activation** (orders documented before the update): a fact
+     without `round` is shown exactly as stored and never drives the timer, so
+     no old late (or early) event starts one. Round 1 of such an order is ONE
+     slot, computed from stored facts only: the first therapy-start slot at or
+     after the slot containing its latest legacy fact's recorded time that no
+     legacy fact documents (the first dose if it has none). The approved
+     compatibility case holds (a stored 07:00 slot given 06:50 leaves the 06:00
+     slot current; given 06:55 → next 07:55). The clock-derived missed rows the
+     old grid displayed were never stored and are not reproduced.
+   - **Unchanged:** once, PRN, underivable/continuous; the 2 h delay-reason
+     rule judged at the documenting moment; the actual-time entry
+     validations; RBAC, encounter scope, #110 completion, discontinue.
+   - `deployed-mar-e2e` and `deployed-encounter-scope-e2e` pinned the old bare
+     dated identity; both now accept the round form (found by replaying them).
+3. **THE ROLLBACK STATEMENT CORRECTED.** The record below said *"The
+   installer's automatic rollback happens before any new fact can exist"*.
+   That is unsupported. `aurora-update.ps1` starts the new service and only
+   then polls `/healthz` for the new build stamp (120 s by default, 600 s on a
+   skipped-release hop); the inspected script has no clinical-write barrier,
+   so the new build can accept documentation during that window. On a failed
+   health check it restores `server.prev`, and restores the database ONLY when
+   `migrationWillRun` (package migration head ≠ database head) — false for
+   this update, whose data change is JSON-only. **So round-bearing facts
+   written before a failed-health rollback stay in the database under the old
+   build.** The downgrade risk, stated accurately: an older build reads such a
+   fact as an ordinary dated fact whose slot is generally not on its
+   therapy-start grid — it shows the fact AND its own grid instance(s) beside
+   it as due/overdue (a given round can read as a missed dose: a double-dose
+   hazard); it drops `round` whenever it rewrites that order's
+   administrations; and on re-upgrade those orders re-enter through legacy
+   activation. **Release gate — UNRESOLVED, recorded, nothing built:** (a)
+   write exclusion (or an accounted-for rollback) during update validation,
+   and (b) a failed-health rollback drill on a real install with
+   round-bearing facts present. No existing staging or CI test proves this
+   gate. Installer changes and the EXE stay deferred. Until the gate is met,
+   treat the update as forward-only once any round has been documented.
+   *[2026-10-16 note: the assembled nursing-orders / nurse-chart update adds
+   migration `AddOrderNursingSchedule`, so for the update as now assembled
+   `migrationWillRun` is TRUE and a failed-health rollback restores the
+   pre-update database — documentation written during validation would be
+   discarded instead of surviving. The gate is still UNRESOLVED and still
+   needs the write barrier and a (now migration-bearing) rollback drill — the
+   2026-10-16 record above. Text above kept as recorded.]*
+
+**Verification (local; the retired hosted service was never contacted;
+synthetic data only). Evidence, logs, screenshots and tools:
+`docs/evidence/icu-update-batch-1/correction/`.** On the final source
+(`f0c7d56`): `npm run build`, `dotnet build -c Release`, and the `ci.yml`
+frontend + server job steps (tsc `--force`, vite build, the four structural
+gates, the `VITE_APP_ENV` allow-list, `dotnet build`, the vocab gate) all exit
+0 (the >500 kB chunk warning and 1 CS8602 in `BootGuards.cs` are
+pre-existing). **Deterministic clocks:** 19 scenarios with stated expected
+outcomes, run through the REAL server sources (`MarLogic.MarRowsFor` +
+`MarSchedule.CurrentRound`) and the REAL client modules (mock adapter + Orders
+chip) — **209 checks, 0 failures**, server = client row-for-row and chip =
+current round in every read. **Real API + PostgreSQL 16** (published server +
+staging bundle, `APP_ENV=staging`, `AURORA_EDITION=icu`, AI off, server zone
+Asia/Baghdad, storage UTC; the DB touched only to backdate synthetic therapy
+starts and insert legacy facts): **35/35** timer checks (a first attempt
+aborted on the check's own backdating, not aligned to the hour; fixed, and its
+leftover synthetic patient discharged). **Synchronized overlap** (a separate
+psql session holds the order's row lock, two requests are released together by
+a barrier and verified parked on it, then the lock is released): **28/28** on
+this branch — same round (one 200, one 409, one fact, one audit entry, timer
+from the winner), PRN (both 200, both durable), Given vs Held, Given vs
+discontinue and vs frequency change (each ordering forced), independent orders
+not blocked, Given vs the discharge cascade (both orderings); the SAME harness
+on the reviewed head `2d14aa0` reproduced the defect (**5/5**: both nurses told
+200, one durable fact and one audit entry). **Suites replayed locally**:
+`deployed-mar-e2e` 9/9, `deployed-orders-e2e` 12/12, `deployed-encounter-scope-e2e`
+12/12 (its read-only ORD-113 step asserts a hosted-staging data artefact and was
+skipped, stated), `deployed-assignments-e2e` 11/11 (three hosted-gate steps
+skipped in each). **Browser** (Chromium, dark theme, device zone UTC):
+**12/12** — MAR, Orders chip and printed MAR show the current rounds, what timed
+them and the actual time on Asia/Baghdad from UTC storage; due counts agree;
+the type-filter row (lowest 4.89:1) and the expanded sidebar (lowest 7.46:1)
+measured readable against their rendered backgrounds.
+
+**Not verified here, stated:** the `production-seed` and
+`installer-powershell` CI jobs (GitHub runs them on the push; the latter needs
+Windows PowerShell 5.1); the other deployed suites; the SQLite demo path's
+locking; browsers other than Chromium; real touch hardware; the new MAR notes
+in the light theme (its token was checked, not screenshotted); the release
+gate above.
+
+**Observed, pre-existing, NOT changed (the separately excluded timestamp
+class):** the printed MAR's slot line (`pd-mar-slot`) shows the raw UTC wire
+stamp beside actual times shown in the hospital zone; `displayStamp`'s
+`D--1 HH:mm` for next-day stamps; the mock adapter's bare-`HH:mm` stamps in its
+other mutators (its documentation fact is now stamped on the UTC wire, as the
+server stamps it, because that fact times the next round).
+
+**2026-09-30 · THE FIRST ICU UPDATE BATCH — ORDER-TYPE FILTERS, LATE-DOSE
+RE-TIMING, THE COLLAPSIBLE SECTION SIDEBAR (owner-requested via the Codex
+planning handoff; branch `claude/amazing-hopper-nwzw1x`, base `f0bf464`, which
+equals the verified `main` — the only commit after the hospital's protected
+setup 1.3.0 at `2c92e91` is the shipping-ledger line. Local commits held for
+Codex review: NOT pushed, no PR, no installer, no hospital access, no live
+migration; synthetic data only).**
+DESIGN FIRST (03, "a design is recorded before it is built"): the handoff text
+is committed verbatim, alone, as `docs/design/icu-update-batch-1.md` (sha256
+`3f36a27e…`, 10,926 bytes; provenance stated in its commit — it relays the
+owner's requests and was not diffed against any separate owner-authored file,
+none being supplied). The MAR supersession is `docs/design/mar-derived-schedule.md`
+**Amendment A**, a pure append (87 added, 0 removed; the approved 234-line
+byte range hashes identical before and after).
+
+1. **ORDER-TYPE FILTERS** (`OrderListCard.tsx`, `OrdersMedication.css`). A
+   second, labelled row under the unchanged status tabs: All types / Medication
+   / Laboratory (category `Lab`) / Imaging, combined by AND. All types (the
+   default) includes Nursing and every category. Status counts are computed
+   over the selected type, and the empty state names the combination ("No
+   completed imaging orders for this patient."). Native toggle buttons
+   (`aria-pressed`) in a labelled group; the selection survives an in-app
+   patient switch and applies to the new patient. Sorting, histories, the
+   next-dose chip, permissions and every action are untouched.
+2. **LATE-DOSE RE-TIMING** — the owner's rule, dated 2026-09-30: on an active
+   repeating (interval) medication, a dose documented GIVEN whose actual
+   administration time is later than its scheduled time moves the next
+   repeating dose to actual + interval (q1h due 06:00 given 06:05 → 07:05,
+   08:05; the 07:05 given 07:12 → 08:12). Server-authoritative
+   (`MarSchedule.cs` re-timing section, `MarApi.cs`), mirrored in
+   `lib/marSchedule.ts`, the mock adapter and the Orders next-dose chip; the
+   MAR row and the printed MAR cell mark a re-timed dose.
+   *[SUPERSEDED 2026-09-30 (later) by the owner — the ROLLING TIMER (MAR
+   Amendment B; the correction record above): every Given, early, on time or
+   late, times the next round; Held/Refused time it from the skipped slot;
+   there is no grid, no missed or future rounds, and `scheduleAnchor` is
+   replaced by `round`. This item stays as what was built and verified then.]*
+   - **The additive data change and its compatibility:** `AdminDto` gains an
+     optional `ScheduleAnchor` inside `AdministrationsJson` — data, not
+     schema: **no EF migration**, nothing to squash, no seed change. Absent
+     fields serialize absent (`WhenWritingNull`), so every existing fact's
+     bytes are unchanged (verified: a pre-update fact's bytes survive a later
+     documentation on the same order). Only a fact stamped with the anchor
+     re-times, so **installing the update re-times no existing order** — a
+     pre-update late administration is never reinterpreted. **Downgrade
+     caveat (recorded, not engineered around):** a build older than this one
+     ignores the field when reading and DROPS it when it rewrites that order's
+     facts (any documentation or discontinue); after re-timed doses exist, a
+     downgrade therefore shows those orders on the therapy-start grid again
+     (their re-timed facts sit beside "missed" original instances). The
+     installer's automatic rollback happens before any new fact can exist, so
+     this concerns only a deliberate later downgrade — treat the update as
+     forward-only once re-timed doses have been documented.
+     *[CORRECTED 2026-09-30 (later), Codex review of #234: the rollback
+     sentence above is UNSUPPORTED — the updater starts the new build before
+     its health check, with no write barrier, and restores the database only
+     when a migration ran (not for this JSON-only change). See item 3 of the
+     correction record above and its unresolved release gate.]*
+   - **Which late GIVEN re-times — the floor rule** (one predicate, used by
+     the write endpoint to decide and by the read side to replay facts in
+     recording order): actual later than its own slot AND later than every
+     earlier fact's dated slot and every earlier effective anchor. So an
+     older dose recorded later never rewinds a newer schedule (the history
+     says "schedule not re-timed: a later dose is already documented"), and
+     no documented instance ever falls off the grid.
+   - **The grid:** therapy-start points until the first re-timing instant,
+     then anchor + k·interval per re-timing; the last segment is unbounded.
+     Instances missed BEFORE a re-timing instant stay missed (never marked
+     given, never erased); those at or after it are superseded — a second
+     browser posting one gets **409** naming the re-timing; a duplicate stays
+     409; a never-instance stays 404. Render horizon and the missed summary
+     are unchanged.
+   - **Unchanged:** held/refused, on-time/early GIVEN, once, PRN and
+     underivable regimens never re-time; OVERDUE shows immediately and the
+     delay reason is still required only beyond 2 h, judged against the
+     documenting moment (an explicit earlier actual time cannot dodge it; a
+     5-minute delay needs no reason but re-times); #110 completion, discontinue,
+     encounter scope, `meds.administer` RBAC.
+3. **COLLAPSIBLE SECTION SIDEBAR** (`NavSidebar.tsx/.css`, `tokens.css`, 22
+   page shell definitions). A ~64px icon rail that expands to the existing
+   labelled width (198px; Backup & Recovery keeps 220px) while a mouse pointer
+   is over it (90 ms hover intent; 180 ms close delay > the 160 ms column
+   transition, so the moving edge cannot flicker) or keyboard focus is inside
+   it (focus-visible only — a click never pins it open). Touch / no-hover
+   devices get a labelled tap toggle (`aria-expanded`); a tap on a section
+   just navigates. Every shell names its nav column `var(--nav-col)`, driven
+   by `.shell:has(> .nav-sidebar.nav-open)`, so the main content takes the
+   freed space; the old ≤1180px icon-only rule is replaced by the expanded
+   state (labels open below 1180px when there is room). Below 760px (or an
+   engine without `:has`) the open sidebar overlays as a dismissible drawer.
+   Patient rails, the bed-detail panel, page-scroll modes, routes,
+   permissions, active states, patient-context links, edition/AI gates and
+   the footer information are unchanged; reduced motion removes the
+   transition.
+
+**Verification (local — the retired hosted service was never contacted).
+Evidence and full logs: the session scratchpad's `logs/final/` (SUMMARY.txt
+lists every command + exit code) and `shots-final/`.** On the final source:
+`npm run build` exit 0 (the >500 kB chunk warning is pre-existing);
+`dotnet build -c Release` exit 0 (1 pre-existing CS8602 warning,
+`BootGuards.cs`, untouched). Deterministic clocks: a harness compiling the
+REAL server sources (`MarLogic.MarRowsFor` + the `MarSchedule` helpers) and
+one bundling the REAL client modules (the mock adapter's write + read and the
+Orders chip, fake clock) ran 17 scenarios — q1h owner example, q8h across
+midnight and two days with the horizon aggregate, explicit actual time vs
+later documentation, long delay keeping intermediate misses, no-rewind,
+stale-instance 409, duplicate, early/on-time, held/refused, once, PRN, legacy
+fact, frequency modification, tid across midnight, daily, bid — **server and
+client parity 0 mismatches**, and the Orders chip equals the server's
+earliest outstanding instance in every read; before/after schedules (base
+`f0bf464` vs this branch) are rendered to `schedule-before-after.txt`. Real
+API + PostgreSQL 16 (published server + staging bundle, `APP_ENV=staging`,
+`AURORA_EDITION=icu`, AI off; orders created/documented only through the
+endpoints — the DB touched only to backdate a synthetic order's signed event
+and to insert one legacy fact): **33/33** re-timing checks (run crossing
+midnight), the existing `deployed-mar-e2e` (9/9 run steps) and
+`deployed-orders-e2e` (12/12) suites replayed locally (their three
+hosted-service gate steps skipped, stated), and an agreement check over the
+live snapshot — server MAR = Orders chip = printed MAR cells for all 8
+medication orders; the Meds-Due KPI equals the MAR card's count. Browser
+(Chromium, local stack): **101/101** checks — collapse/expand, pointer
+entry/exit, movement into the expanded area, the edge race, keyboard focus,
+touch emulation (390×844 overlay drawer, 1024×768 push), 1180/1000 px, a
+480 px-tall viewport, no remount / draft / scroll loss / request during
+expansion, patient context, reduced motion, the type × status filters, and
+six roles' navigation (no Reception, Awaiting Bed or AI anywhere) — plus a
+23-screen sweep and MAR/print screenshots.
+*[Evidence location, added with the review push (2026-09-30): the scratchpad
+paths above were container-local and are gone with the container; the logs,
+before/after schedules, screenshots and harness sources are published in
+`docs/evidence/icu-update-batch-1/` (its own final commit — review evidence,
+droppable before merge).]*
+
+**Not verified here, stated:** the 16 deployed suites against a hosted
+instance (retired) — only MAR and Orders were replayed locally; no Windows /
+protected installer build (instructed); Chromium only (no Edge, Firefox or
+Safari engine); touch by emulation, not hardware; light theme screenshots only.
+
+**Observed, pre-existing, NOT changed (out of this batch's scope):**
+`displayStamp` renders a future-day stamp as `D--1 HH:mm` (seen on next-dose
+chips after midnight — the separate timestamp class); the mock adapter's
+bare-`HH:mm` stamps (same class); `AdministrationsJson` is a read-modify-write
+with no concurrency token, so two truly simultaneous documentations on one
+order can lose one (the re-timing decision shares that window).
+*[FIXED 2026-09-30 (later): every order mutation now runs under the order's
+PostgreSQL row lock — item 1 of the correction record above; the lost write
+was reproduced on `2d14aa0` and is gone.]*
 
 **2026-09-07 (later) · AURORA SHIPS FROM LOCAL VERIFICATION — THE SHIP GATE NO
 LONGER NEEDS A CLOUD SERVICE TO EXIST (owner decision; branch
@@ -12801,6 +13847,12 @@ which now derives instead of reading stored slots).
 - **A late dose never shifts the schedule**: the grid derives from
   therapy start, never from the last documented dose (asserted: after a
   late give, remaining instances stay anchor+k·interval).
+  *[SUPERSEDED 2026-09-30 by the project owner — `docs/design/
+  mar-derived-schedule.md` Amendment A: a GIVEN dose later than its
+  scheduled time on a repeating order now re-times the next repeating dose
+  (actual administration time + interval), carried by an explicit
+  `scheduleAnchor` on the new fact. The line above is kept as the record of
+  what was built and asserted then; see the 2026-09-30 record at the top.]*
 - **PRN derives from the last administration only**: a standing
   availability row (`prn`), facts appended on demand — it never runs out
   either (the old model consumed the single PRN row).

@@ -1,0 +1,64 @@
+clock (server wire, UTC): now=2026-09-30 11:16  run=111637
+admitted synthetic P-1032 (ENC-1033) at B-16
+N = 2026-09-30 11:16 (server wire, UTC; the server runs TZ=Asia/Baghdad)
+
+[phase 1] round 1 given (actual N-x, documented N); round 2 Held/Refused at N
+  PASS A Held EARLY (the reproduced case): round 2 due 2026-09-30 11:21 held at 2026-09-30 11:16 -> round 3 due 2026-09-30 12:21 = skipped due + 1 h (rule skipped, from 2026-09-30 11:21)
+  PASS B Refused EARLY (the reproduced case): round 2 due 2026-09-30 11:21 refused at 2026-09-30 11:16 -> round 3 due 2026-09-30 12:21 = skipped due + 1 h (rule skipped, from 2026-09-30 11:21)
+  PASS E Held EARLY, then a genuinely older backdated Given: round 2 due 2026-09-30 11:21 held at 2026-09-30 11:16 -> round 3 due 2026-09-30 12:21 = skipped due + 1 h (rule skipped, from 2026-09-30 11:21)
+  PASS C Held LATE, then Given ON TIME: round 2 due 2026-09-30 10:16 held at 2026-09-30 11:16 -> round 3 due 2026-09-30 11:16 = skipped due + 1 h (rule skipped, from 2026-09-30 10:16)
+  PASS G Refused LATE, then Given ON TIME: round 2 due 2026-09-30 10:16 refused at 2026-09-30 11:16 -> round 3 due 2026-09-30 11:16 = skipped due + 1 h (rule skipped, from 2026-09-30 10:16)
+  PASS D Held LATE, then Given LATE: round 2 due 2026-09-30 08:46 held at 2026-09-30 11:16 -> round 3 due 2026-09-30 09:46 = skipped due + 1 h (rule skipped, from 2026-09-30 08:46)
+  PASS J Refused LATE, then Given LATE: round 2 due 2026-09-30 08:46 refused at 2026-09-30 11:16 -> round 3 due 2026-09-30 09:46 = skipped due + 1 h (rule skipped, from 2026-09-30 08:46)
+  PASS A audit (held): "2026-09-30 11:21 dose held at 2026-09-30 11:16 — round 2; next round due 2026-09-30 12:21 (q1h from the skipped dose's scheduled time) — synthetic: held (Held EARLY (the reproduced case))"
+
+[phase 2] documenting minute N2 = 2026-09-30 11:18
+  PASS A round 3 (due 2026-09-30 12:21) given EARLY, actual 2026-09-30 11:17 documented 2026-09-30 11:18 -> round 4 due 2026-09-30 12:17 = ACTUAL + 1 h (the defect kept 2026-09-30 12:21; rule given, from 2026-09-30 11:17)
+  PASS A audit: actual and documenting times separate, next due from the actual time: "2026-09-30 12:21 dose given at 2026-09-30 11:17 (documented 2026-09-30 11:18) — round 3; next round due 2026-09-30 12:17 (q1h from the actual administration time)"
+  PASS A repeated refresh x3: identical current round 2026-09-30T12:17~r4
+  PASS A stale round-3 identity after the Given -> 409 (dose round 3 (due 2026-09-30 12:21) was already documented as given by RN Maya C)
+  PASS B (refused) round 3 (due 2026-09-30 12:21) given EARLY at 2026-09-30 11:18 -> round 4 due 2026-09-30 12:18 = actual + 1 h (rule given)
+  PASS E round 3 given BACKDATED to 2026-09-30 11:06 (older than the Held action 2026-09-30 11:16): timer NOT rewound, round 4 due 2026-09-30 12:21 (same minute as round 3, distinct identity 2026-09-30T12:21~r4)
+  PASS E audit names the timer kept: " due 2026-09-30 12:21 (q1h timer unchanged — the skipped dose due 2026-09-30 11:21 already set it; an older time never rewinds it)"
+  PASS E round 4 then given at 2026-09-30 11:18 (a subsequent Given) -> round 5 due 2026-09-30 12:18
+  PASS C (held late) round 3 due 2026-09-30 11:16 given ON TIME (actual 11:16, documented 11:18) -> round 4 due 2026-09-30 12:16
+  PASS G (refused late) round 3 due 2026-09-30 11:16 given ON TIME (actual 11:16, documented 11:18) -> round 4 due 2026-09-30 12:16
+  PASS D (held late) round 3 due 2026-09-30 09:46 given LATE at 2026-09-30 11:18 (1 h 32 m, under the 2 h reason rule) -> round 4 due 2026-09-30 12:18
+  PASS J (refused late) round 3 due 2026-09-30 09:46 given LATE at 2026-09-30 11:18 (1 h 32 m, under the 2 h reason rule) -> round 4 due 2026-09-30 12:18
+
+[fresh read of the stored facts + history]
+  PASS A facts: rounds [1, 2, 3] statuses ['given', 'held', 'given']; held keeps slot 2026-09-30 11:21, documented 2026-09-30 11:16, reason kept
+  PASS A history: 3 documentation events, each stating its round and next due
+  PASS B facts: rounds [1, 2, 3] statuses ['given', 'refused', 'given']; refused keeps slot 2026-09-30 11:21, documented 2026-09-30 11:16, reason kept
+  PASS B history: 3 documentation events, each stating its round and next due
+  PASS E facts: rounds [1, 2, 3, 4] statuses ['given', 'held', 'given', 'given']; held keeps slot 2026-09-30 11:21, documented 2026-09-30 11:16, reason kept
+  PASS E history: 4 documentation events, each stating its round and next due
+  PASS C facts: rounds [1, 2, 3] statuses ['given', 'held', 'given']; held keeps slot 2026-09-30 10:16, documented 2026-09-30 11:16, reason kept
+  PASS C history: 3 documentation events, each stating its round and next due
+  PASS G facts: rounds [1, 2, 3] statuses ['given', 'refused', 'given']; refused keeps slot 2026-09-30 10:16, documented 2026-09-30 11:16, reason kept
+  PASS G history: 3 documentation events, each stating its round and next due
+  PASS D facts: rounds [1, 2, 3] statuses ['given', 'held', 'given']; held keeps slot 2026-09-30 08:46, documented 2026-09-30 11:16, reason kept
+  PASS D history: 3 documentation events, each stating its round and next due
+  PASS J facts: rounds [1, 2, 3] statuses ['given', 'refused', 'given']; refused keeps slot 2026-09-30 08:46, documented 2026-09-30 11:16, reason kept
+  PASS J history: 3 documentation events, each stating its round and next due
+
+[Orders next-dose / printed MAR next-due / Meds-Due count: the real client modules over this server's data]
+  PASS A Orders next-dose / print "next dose due" 2026-09-30 12:17 == MAR current round 2026-09-30 12:17
+  PASS A print cells carry the stored rounds [1, 2, 3]
+  PASS B Orders next-dose / print "next dose due" 2026-09-30 12:18 == MAR current round 2026-09-30 12:18
+  PASS B print cells carry the stored rounds [1, 2, 3]
+  PASS E Orders next-dose / print "next dose due" 2026-09-30 12:18 == MAR current round 2026-09-30 12:18
+  PASS E print cells carry the stored rounds [1, 2, 3, 4]
+  PASS C Orders next-dose / print "next dose due" 2026-09-30 12:16 == MAR current round 2026-09-30 12:16
+  PASS C print cells carry the stored rounds [1, 2, 3]
+  PASS G Orders next-dose / print "next dose due" 2026-09-30 12:16 == MAR current round 2026-09-30 12:16
+  PASS G print cells carry the stored rounds [1, 2, 3]
+  PASS D Orders next-dose / print "next dose due" 2026-09-30 12:18 == MAR current round 2026-09-30 12:18
+  PASS D print cells carry the stored rounds [1, 2, 3]
+  PASS J Orders next-dose / print "next dose due" 2026-09-30 12:18 == MAR current round 2026-09-30 12:18
+  PASS J print cells carry the stored rounds [1, 2, 3]
+  PASS Meds-Due count over these orders = 0 (one row per order at most; rows [])
+
+cleanup: synthetic P-1032 discharged -> 200
+
+RESULT: 49 passed, 0 failed

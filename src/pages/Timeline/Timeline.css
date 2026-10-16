@@ -1,6 +1,6 @@
 /* Clinical Timeline — Screen 7. Read-only aggregated feed; follows
    docs/design-system.md and reuses the shared components. */
-.tm .shell{display:grid;grid-template-columns:198px 240px 1fr;min-height:0}
+.tm .shell{display:grid;grid-template-columns:var(--nav-col) 240px 1fr;min-height:0}
 .tm main{min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
 
 /* ===== feed card ===== */
@@ -62,7 +62,7 @@
 .tm .tmclear:hover,.tm .tmclear:focus-visible{background:rgba(var(--blue-rgb),.18)}
 
 @media(max-width:1180px){
- .tm .shell{grid-template-columns:64px 1fr}
+ .tm .shell{grid-template-columns:var(--nav-col) 1fr}
  .tm .ptrail{display:none}
  .tm.app-frame{height:auto;overflow:visible}
  .tm main{overflow:visible}

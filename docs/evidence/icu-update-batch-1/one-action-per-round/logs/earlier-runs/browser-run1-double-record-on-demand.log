@@ -1,0 +1,69 @@
+setup P-1021: LOCK round 2 due 2026-10-05 08:16 UTC = 11:16 hospital; browser device zone UTC
+
+[1] LOCK: before its scheduled time the current round is shown, all three actions disabled, with when they open
+  PASS round 2 (round 2): Given/Held/Refused disabled [true,true,true]
+  PASS lock line: "🔒 Opens 11:16 (in 4 min) — one action per round"
+  PASS state label "DUE SOON" — the 30-min reminder, not permission
+  PASS the disabled buttons are described by the lock line (aria-describedby)
+  PASS after a poll refresh (1 MAR read): still locked
+  PASS scripted clicks on the locked buttons: no request, no dialog
+  … waiting for 11:16 hospital (179 s)
+  PASS 1.5 s before 11:16: still disabled
+  PASS the controls opened by themselves 43 ms after 11:16 (no reload, no click)
+  PASS the lock line is gone once open
+  PASS 5 + 3 rapid clicks -> exactly ONE request (given)
+  PASS no reason dialog left open (a same-frame Held/Refused click is closed with its round)
+  PASS after the save + refresh: round 3 locked — "🔒 Opens 12:16 (in 1 h 00 min) — one action per round" — recording the dose opened no future round
+  PASS server: 2 facts (round 1 setup + ONE round-2 Given)
+
+[2] RAPID: an open round, mixed clicks in one task -> one request
+  PASS requests: 1 (given)
+  PASS no dialog left open
+  PASS server: one new fact; round 3 locked
+
+[3] DIALOG: Held -> reason -> double-click confirm -> one request
+  PASS double-click confirm -> 1 request; server: one Held fact with its reason
+
+[4] UNCERTAIN, recorded: the request reaches the server, the answer is lost -> settled by a fresh read as RECORDED
+  PASS toasts: "Checking the record" then "Documented — confirmed"
+  PASS server: exactly one new fact; the page shows round 3, locked — no blind retry
+
+[5] UNCERTAIN, not recorded: the request never arrives -> locked while checking, then reported NOT recorded and reopened
+  PASS while unsettled: all disabled — "Checking the record — the controls reopen once the server confirms"
+  PASS 8 s later: still locked (a NOT-recorded verdict needs a read ≥ 15 s after the failure)
+  PASS after 15 s: "Dose NOT recorded"; the round reopens with the notice "Not recorded — the server did not answer and has no record of it; document it again if it is still needed."
+  PASS server: nothing was recorded; one request was sent
+  PASS documenting it again after the verdict -> recorded once
+
+[6] STALE page: another station documents the round while this page still shows it
+  PASS the other station documents round 2 (API) -> 200
+  PASS this page still shows round 2 open (stale view)
+  PASS refusal shown in HOSPITAL time: "Syn Stale 081237 · Synthetic Oneaction Browser081237: dose round 2 (due 2026-10-05 11:11) was already documented as give"
+  PASS refreshed: round 3 locked, with the notice "🔒 Opens 12:16 (in 1 h 00 min) — one action per roundNot recorded — dose round 2 (due 2026…"
+  PASS server: only the other station's fact
+
+[7] CONTINUOUS Insulin (Actrapid) 2.5 U/h — the owner's screenshot
+  PASS ON DEMAND row, open (no schedule): {"groups":1,"disabled":[false,false,false],"round":null,"label":"ON DEMAND","lock":null,"time":"—","kind":"on demand"}
+  FAIL 4 rapid Given clicks -> 2 request, 2 fact (the screenshot's three same-minute Givens cannot come from repeated clicks any more)
+  PASS UNRESOLVED, by design of this change: after the save the ON DEMAND controls are open again — no prescription field defines a next documentation round for a continuous infusion
+
+[8] readability (rendered contrast, dark)
+  PASS dark 🔒 Opens 12:11 (in 55 min) — o… 6.49:1
+  PASS dark 🔒 Opens 12:16 (in 1 h 00 min)… 6.49:1
+  PASS dark 🔒 Opens 12:16 (in 1 h 00 min)… 6.72:1
+  PASS dark 🔒 Opens 12:16 (in 1 h 00 min)… 6.72:1
+  FAIL dark 🔒 Opens 12:16 (in 1 h 00 min)… 1.25:1
+  PASS dark 🔒 Opens 12:16 (in 1 h 00 min)… 6.77:1
+  PASS dark Not recorded — dose round 2 (d… 5.81:1
+
+[9] light theme + 390 px
+  PASS light theme active
+  PASS light 🔒 Opens 12:11 (in 55 min) — o… 6.59:1
+  PASS light 🔒 Opens 12:16 (in 1 h 00 min)… 6.41:1
+  PASS light 🔒 Opens 12:16 (in 1 h 00 min)… 6.36:1
+  PASS light 🔒 Opens 12:16 (in 1 h 00 min)… 6.36:1
+  PASS light 🔒 Opens 12:16 (in 1 h 00 min)… 6.36:1
+  PASS light 🔒 Opens 12:16 (in 1 h 00 min)… 6.36:1
+  PASS 390 px: no horizontal overflow inside this patient's MAR cards
+
+RESULT 45 passed, 2 failed

@@ -139,6 +139,25 @@ select option,select optgroup{background:var(--optbg);color:var(--text)}
    content as before. */
 .app-frame .shell{grid-auto-rows:minmax(0,1fr)}
 
+/* THE SECTION SIDEBAR'S COLUMN — shared sizing for the collapsible
+   sidebar (owner's request, 2026-09-30; components/NavSidebar.tsx). Every
+   screen's .shell grid names its nav column var(--nav-col) instead of a
+   literal 198px/64px, so the column FOLLOWS the sidebar: the collapsed
+   icon rail (--nav-w-rail) by default, the labeled width (--nav-w-full —
+   the existing 198px; a screen whose sidebar was wider overrides it on
+   its own .shell) while the sidebar is open. The main content therefore
+   takes the space the collapsed rail frees, and nothing floats over it.
+   Below 760px there is no room to push the content, so the column stays
+   the rail and the open sidebar overlays it as an explicit drawer
+   (NavSidebar.css .nav-overlay — the same 760px lives in NavSidebar.tsx
+   OVERLAY_QUERY). The column change is pure CSS: opening the sidebar
+   re-renders no page. Reduced motion: the global rule below removes the
+   transition. */
+:root{--nav-w-rail:64px;--nav-w-full:198px}
+.app-frame .shell{--nav-col:var(--nav-w-rail);transition:grid-template-columns .16s ease}
+.app-frame .shell:has(> .nav-sidebar.nav-open){--nav-col:var(--nav-w-full)}
+@media(max-width:760px){.app-frame .shell:has(> .nav-sidebar.nav-open){--nav-col:var(--nav-w-rail)}}
+
 /* shared keyframes */
 @keyframes blink{50%{opacity:.4}}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}

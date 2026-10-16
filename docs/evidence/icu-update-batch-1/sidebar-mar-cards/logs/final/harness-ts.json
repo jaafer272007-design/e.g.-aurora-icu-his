@@ -1,0 +1,2360 @@
+[
+  {
+    "name": "R1 owner example: 06:00 given 06:05 -> 07:05; unresolved while the clock advances; 07:05 given 08:30 -> 09:30",
+    "steps": [
+      {
+        "read": "2026-09-30 05:30",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00~r1",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 06:00",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 08:30",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:05~r2",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 07:05",
+        "dueCount": 1
+      },
+      {
+        "read": "2026-09-30 08:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:05~r2",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 07:05",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 08:30",
+        "result": "ok",
+        "next": "2026-09-30 09:30",
+        "nextId": "2026-09-30T09:30~r3",
+        "note": "2026-09-30 07:05 dose given at 2026-09-30 08:30 — round 2; next round due 2026-09-30 09:30 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 09:40",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 08:30",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T09:30~r3",
+            "scheduledTime": "2026-09-30 09:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 08:30",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 09:30",
+        "dueCount": 1
+      }
+    ]
+  },
+  {
+    "name": "R2 early Given: the 07:05 round given at 06:50 -> 07:50",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 06:50",
+        "result": "ok",
+        "next": "2026-09-30 07:50",
+        "nextId": "2026-09-30T07:50~r3",
+        "note": "2026-09-30 07:05 dose given at 2026-09-30 06:50 — round 2; next round due 2026-09-30 07:50 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 06:51",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r3",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 07:50",
+        "dueCount": 0
+      }
+    ]
+  },
+  {
+    "name": "R3 on-time Given: the 07:05 round given at 07:05 -> 08:05",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 07:05",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3",
+        "note": "2026-09-30 07:05 dose given at 2026-09-30 07:05 — round 2; next round due 2026-09-30 08:05 (q1h from the actual administration time)"
+      }
+    ]
+  },
+  {
+    "name": "R4 q8h unresolved across midnight and two days stays the ONE current round and stays documentable; given with reason -> actual + 8h",
+    "steps": [
+      {
+        "read": "2026-09-30 03:00",
+        "rows": [
+          {
+            "adminId": "2026-09-29T22:00~r1",
+            "scheduledTime": "2026-09-29 22:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-29 22:00",
+        "dueCount": 1
+      },
+      {
+        "read": "2026-10-01 12:00",
+        "rows": [
+          {
+            "adminId": "2026-09-29T22:00~r1",
+            "scheduledTime": "2026-09-29 22:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-29 22:00",
+        "dueCount": 1
+      },
+      {
+        "read": "2026-10-02 12:00",
+        "rows": [
+          {
+            "adminId": "2026-09-29T22:00~r1",
+            "scheduledTime": "2026-09-29 22:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-29 22:00",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": null,
+        "action": "given",
+        "at": "2026-10-02 12:04",
+        "result": "server-only",
+        "next": null,
+        "nextId": null
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-29T22:00~r1",
+        "action": "given",
+        "at": "2026-10-02 12:05",
+        "result": "ok",
+        "next": "2026-10-02 20:05",
+        "nextId": "2026-10-02T20:05~r2",
+        "note": "2026-09-29 22:00 dose given at 2026-10-02 12:05 — round 1; next round due 2026-10-02 20:05 (q8h from the actual administration time) — synthetic: off the unit"
+      },
+      {
+        "read": "2026-10-02 21:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-29 22:00",
+            "status": "given",
+            "documentedTime": "2026-10-02 12:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-10-02T20:05~r2",
+            "scheduledTime": "2026-10-02 20:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-10-02 12:05",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-10-02 20:05",
+        "dueCount": 1
+      }
+    ]
+  },
+  {
+    "name": "R5 explicit actual time 06:03 documented later at 06:40 -> next 07:03",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:40",
+        "result": "ok",
+        "next": "2026-09-30 07:03",
+        "nextId": "2026-09-30T07:03~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:03 — round 1; next round due 2026-09-30 07:03 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 06:41",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:03",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:03~r2",
+            "scheduledTime": "2026-09-30 07:03",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:03",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 07:03",
+        "dueCount": 1
+      }
+    ]
+  },
+  {
+    "name": "R6 older backdated actual (06:00 < timer 06:05) never rewinds; round 3 shares 07:05 with round 2 and stays distinct",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 07:10",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r3",
+        "note": "2026-09-30 07:05 dose given at 2026-09-30 06:00 — round 2; next round due 2026-09-30 07:05 (q1h timer unchanged — the administration at 2026-09-30 06:05 already set it; an older time never rewinds it)"
+      },
+      {
+        "doc": "2026-09-30T07:05~r2",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 07:11",
+        "result": "rejected",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r3",
+        "note": null
+      },
+      {
+        "read": "2026-09-30 07:12",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:00",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:05~r3",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 07:05",
+        "dueCount": 1
+      }
+    ]
+  },
+  {
+    "name": "R7 legacy compatibility (approved case): stored 07:00 slot given 06:50, outstanding 06:00 slot given 06:55 -> 07:55",
+    "steps": [
+      {
+        "read": "2026-09-30 06:52",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00~r1",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 06:00",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:55",
+        "result": "ok",
+        "next": "2026-09-30 07:55",
+        "nextId": "2026-09-30T07:55~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:55 — round 1; next round due 2026-09-30 07:55 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 06:56",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:55",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:55~r2",
+            "scheduledTime": "2026-09-30 07:55",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:55",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 07:55",
+        "dueCount": 0
+      }
+    ]
+  },
+  {
+    "name": "R8 legacy LATE fact never starts a timer: q8h 02:00 slot given 04:30 (stored) -> round 1 is the grid's 10:00, not 12:30",
+    "steps": [
+      {
+        "read": "2026-09-30 05:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 02:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 04:30",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:00~r1",
+            "scheduledTime": "2026-09-30 10:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 10:00",
+        "dueCount": 0
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T10:00~r1",
+        "action": "given",
+        "at": "2026-09-30 10:10",
+        "result": "ok",
+        "next": "2026-09-30 18:10",
+        "nextId": "2026-09-30T18:10~r2",
+        "note": "2026-09-30 10:00 dose given at 2026-09-30 10:10 — round 1; next round due 2026-09-30 18:10 (q8h from the actual administration time)"
+      }
+    ]
+  },
+  {
+    "name": "R9 legacy active order never documented (signed 3 days ago): round 1 is the first dose; held -> slot + 8h, still overdue; given -> actual + 8h",
+    "steps": [
+      {
+        "read": "2026-09-30 09:00",
+        "rows": [
+          {
+            "adminId": "2026-09-27T06:00~r1",
+            "scheduledTime": "2026-09-27 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-27 06:00",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-27T06:00~r1",
+        "action": "held",
+        "at": "2026-09-30 09:05",
+        "result": "ok",
+        "next": "2026-09-27 14:00",
+        "nextId": "2026-09-27T14:00~r2",
+        "note": "2026-09-27 06:00 dose held at 2026-09-30 09:05 — round 1; next round due 2026-09-27 14:00 (q8h from the skipped dose's scheduled time) — synthetic: not given, order under review"
+      },
+      {
+        "read": "2026-09-30 09:06",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-27 06:00",
+            "status": "held",
+            "documentedTime": "2026-09-30 09:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-27T14:00~r2",
+            "scheduledTime": "2026-09-27 14:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-27 06:00",
+            "timerRule": "skipped"
+          }
+        ],
+        "nextDose": "2026-09-27 14:00",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-27T14:00~r2",
+        "action": "given",
+        "at": "2026-09-30 09:10",
+        "result": "ok",
+        "next": "2026-09-30 17:10",
+        "nextId": "2026-09-30T17:10~r3",
+        "note": "2026-09-27 14:00 dose given at 2026-09-30 09:10 — round 2; next round due 2026-09-30 17:10 (q8h from the actual administration time) — synthetic: resumed"
+      }
+    ]
+  },
+  {
+    "name": "R10 Held/Refused time from the skipped slot (late, early, on time, late again); a past next due is overdue, never skipped",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "held",
+        "at": "2026-09-30 07:20",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3",
+        "note": "2026-09-30 07:05 dose held at 2026-09-30 07:20 — round 2; next round due 2026-09-30 08:05 (q1h from the skipped dose's scheduled time) — synthetic: SBP 82"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r3",
+        "action": "refused",
+        "at": "2026-09-30 07:40",
+        "result": "ok",
+        "next": "2026-09-30 09:05",
+        "nextId": "2026-09-30T09:05~r4",
+        "note": "2026-09-30 08:05 dose refused at 2026-09-30 07:40 — round 3; next round due 2026-09-30 09:05 (q1h from the skipped dose's scheduled time) — synthetic: patient declined"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T09:05~r4",
+        "action": "held",
+        "at": "2026-09-30 09:05",
+        "result": "ok",
+        "next": "2026-09-30 10:05",
+        "nextId": "2026-09-30T10:05~r5",
+        "note": "2026-09-30 09:05 dose held at 2026-09-30 09:05 — round 4; next round due 2026-09-30 10:05 (q1h from the skipped dose's scheduled time) — synthetic: NPO"
+      },
+      {
+        "read": "2026-09-30 11:30",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 07:20",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 07:40",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 09:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 09:05",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:05~r5",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 5,
+            "timerFrom": "2026-09-30 09:05",
+            "timerRule": "skipped"
+          }
+        ],
+        "nextDose": "2026-09-30 10:05",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T10:05~r5",
+        "action": "refused",
+        "at": "2026-09-30 11:30",
+        "result": "ok",
+        "next": "2026-09-30 11:05",
+        "nextId": "2026-09-30T11:05~r6",
+        "note": "2026-09-30 10:05 dose refused at 2026-09-30 11:30 — round 5; next round due 2026-09-30 11:05 (q1h from the skipped dose's scheduled time) — synthetic: declined again"
+      },
+      {
+        "read": "2026-09-30 11:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 07:20",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 07:40",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 09:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 09:05",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 11:30",
+            "round": 5,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T11:05~r6",
+            "scheduledTime": "2026-09-30 11:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 6,
+            "timerFrom": "2026-09-30 10:05",
+            "timerRule": "skipped"
+          }
+        ],
+        "nextDose": "2026-09-30 11:05",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T11:05~r6",
+        "action": "given",
+        "at": "2026-09-30 11:35",
+        "result": "ok",
+        "next": "2026-09-30 12:35",
+        "nextId": "2026-09-30T12:35~r7",
+        "note": "2026-09-30 11:05 dose given at 2026-09-30 11:35 — round 6; next round due 2026-09-30 12:35 (q1h from the actual administration time)"
+      }
+    ]
+  },
+  {
+    "name": "R11 same-round duplicate and a stale Held after a competing Given -> 409",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "last",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:06",
+        "result": "rejected",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": null
+      },
+      {
+        "doc": "last",
+        "id": "2026-09-30T06:00~r1",
+        "action": "held",
+        "at": "2026-09-30 06:07",
+        "result": "rejected",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": null
+      },
+      {
+        "read": "2026-09-30 06:08",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:05~r2",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 07:05",
+        "dueCount": 0
+      }
+    ]
+  },
+  {
+    "name": "R12 frequency modification q1h -> q4h: timer 06:05 + 4h = 10:05; the stale 07:05 identity -> 409",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "modify": "q4h"
+      },
+      {
+        "read": "2026-09-30 06:10",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:05~r2",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 06:05",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 10:05",
+        "dueCount": 0
+      },
+      {
+        "doc": "2026-09-30T07:05~r2",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 06:11",
+        "result": "rejected",
+        "next": "2026-09-30 10:05",
+        "nextId": "2026-09-30T10:05~r2",
+        "note": null
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T10:05~r2",
+        "action": "given",
+        "at": "2026-09-30 06:12",
+        "result": "ok",
+        "next": "2026-09-30 10:12",
+        "nextId": "2026-09-30T10:12~r3",
+        "note": "2026-09-30 10:05 dose given at 2026-09-30 06:12 — round 2; next round due 2026-09-30 10:12 (q4h from the actual administration time)"
+      }
+    ]
+  },
+  {
+    "name": "R13 once: unchanged (late given completes; duplicate 409)",
+    "steps": [
+      {
+        "read": "2026-09-30 05:30",
+        "rows": [
+          {
+            "adminId": "2026-09-30T06:00",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 06:00",
+        "dueCount": 1
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "id": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 09:00",
+        "result": "ok",
+        "next": null,
+        "nextId": null,
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 09:00 — synthetic: pharmacy delay"
+      },
+      {
+        "read": "2026-09-30 09:01",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:00",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": null,
+        "dueCount": 0
+      },
+      {
+        "doc": "2026-09-30T06:00",
+        "id": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 09:02",
+        "result": "rejected",
+        "next": null,
+        "nextId": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "name": "R14 PRN: unchanged (every given is a fact; availability stays)",
+    "steps": [
+      {
+        "doc": "prn",
+        "id": "prn",
+        "action": "given",
+        "at": "2026-09-30 09:00",
+        "result": "ok",
+        "next": null,
+        "nextId": null,
+        "note": "PRN dose given at 2026-09-30 09:00"
+      },
+      {
+        "doc": "prn",
+        "id": "prn",
+        "action": "given",
+        "at": "2026-09-30 09:05",
+        "result": "ok",
+        "next": null,
+        "nextId": null,
+        "note": "PRN dose given at 2026-09-30 09:05"
+      },
+      {
+        "read": "2026-09-30 09:06",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:00",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:05",
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "prn",
+            "scheduledTime": "",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": null,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": null,
+        "dueCount": 0
+      }
+    ]
+  },
+  {
+    "name": "R15 discontinued order: facts stay, no current round, documenting -> 409",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "discontinue": true
+      },
+      {
+        "read": "2026-09-30 06:10",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": null,
+        "dueCount": 0
+      },
+      {
+        "doc": "2026-09-30T07:05~r2",
+        "id": "2026-09-30T07:05~r2",
+        "action": "given",
+        "at": "2026-09-30 06:11",
+        "result": "rejected",
+        "next": null,
+        "nextId": null,
+        "note": null
+      }
+    ]
+  },
+  {
+    "name": "R16 daily given 3h late (reason) -> next day at the actual time",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:00~r1",
+        "action": "given",
+        "at": "2026-09-30 11:00",
+        "result": "ok",
+        "next": "2026-10-01 11:00",
+        "nextId": "2026-10-01T11:00~r2",
+        "note": "2026-09-30 08:00 dose given at 2026-09-30 11:00 — round 1; next round due 2026-10-01 11:00 (daily from the actual administration time) — synthetic: off the unit"
+      }
+    ]
+  },
+  {
+    "name": "R17 bid given 10 minutes late -> 18:10",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:10",
+        "result": "ok",
+        "next": "2026-09-30 18:10",
+        "nextId": "2026-09-30T18:10~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:10 — round 1; next round due 2026-09-30 18:10 (bid from the actual administration time)"
+      }
+    ]
+  },
+  {
+    "name": "R18 tid given 23:30 -> next day 07:30 (midnight)",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T22:00~r1",
+        "action": "given",
+        "at": "2026-09-30 23:30",
+        "result": "ok",
+        "next": "2026-10-01 07:30",
+        "nextId": "2026-10-01T07:30~r2",
+        "note": "2026-09-30 22:00 dose given at 2026-09-30 23:30 — round 1; next round due 2026-10-01 07:30 (tid from the actual administration time)"
+      },
+      {
+        "read": "2026-10-01 00:30",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 22:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 23:30",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-10-01T07:30~r2",
+            "scheduledTime": "2026-10-01 07:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 2,
+            "timerFrom": "2026-09-30 23:30",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-10-01 07:30",
+        "dueCount": 0
+      }
+    ]
+  },
+  {
+    "name": "R19 a bare grid identity or a future round on a repeating order -> 404",
+    "steps": [
+      {
+        "doc": "2026-09-30T06:00",
+        "id": "2026-09-30T06:00",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "rejected",
+        "next": "2026-09-30 06:00",
+        "nextId": "2026-09-30T06:00~r1",
+        "note": null
+      },
+      {
+        "doc": "2026-09-30T07:00~r2",
+        "id": "2026-09-30T07:00~r2",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "rejected",
+        "next": "2026-09-30 06:00",
+        "nextId": "2026-09-30T06:00~r1",
+        "note": null
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:06",
+        "result": "ok",
+        "next": "2026-09-30 07:06",
+        "nextId": "2026-09-30T07:06~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:06 — round 1; next round due 2026-09-30 07:06 (q1h from the actual administration time)"
+      }
+    ]
+  },
+  {
+    "name": "R20 CODEX REPRO (Held): 06:00 given 06:05 -> 07:05; 07:05 Held EARLY at 06:10 -> 08:05; next Given EARLY at 06:50 -> 07:50 (not 08:05); then on time 07:50 -> 08:50; late 09:30 -> 10:30; stable across refresh + next day",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "held",
+        "at": "2026-09-30 06:10",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3",
+        "note": "2026-09-30 07:05 dose held at 2026-09-30 06:10 — round 2; next round due 2026-09-30 08:05 (q1h from the skipped dose's scheduled time) — synthetic: held early"
+      },
+      {
+        "read": "2026-09-30 06:11",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T08:05~r3",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 07:05",
+            "timerRule": "skipped"
+          }
+        ],
+        "nextDose": "2026-09-30 08:05",
+        "dueCount": 0
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r3",
+        "action": "given",
+        "at": "2026-09-30 06:50",
+        "result": "ok",
+        "next": "2026-09-30 07:50",
+        "nextId": "2026-09-30T07:50~r4",
+        "note": "2026-09-30 08:05 dose given at 2026-09-30 06:50 — round 3; next round due 2026-09-30 07:50 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 06:51",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r4",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:50",
+        "dueCount": 0
+      },
+      {
+        "read": "2026-09-30 06:52",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r4",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:50",
+        "dueCount": 0
+      },
+      {
+        "read": "2026-09-30 07:30",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r4",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:50",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:50~r4",
+        "action": "given",
+        "at": "2026-09-30 07:50",
+        "result": "ok",
+        "next": "2026-09-30 08:50",
+        "nextId": "2026-09-30T08:50~r5",
+        "note": "2026-09-30 07:50 dose given at 2026-09-30 07:50 — round 4; next round due 2026-09-30 08:50 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:50~r5",
+        "action": "given",
+        "at": "2026-09-30 09:30",
+        "result": "ok",
+        "next": "2026-09-30 10:30",
+        "nextId": "2026-09-30T10:30~r6",
+        "note": "2026-09-30 08:50 dose given at 2026-09-30 09:30 — round 5; next round due 2026-09-30 10:30 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 09:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:50",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:50",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:30",
+            "round": 5,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:30~r6",
+            "scheduledTime": "2026-09-30 10:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 6,
+            "timerFrom": "2026-09-30 09:30",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 10:30",
+        "dueCount": 0
+      },
+      {
+        "read": "2026-10-01 03:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:50",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:50",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:30",
+            "round": 5,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:30~r6",
+            "scheduledTime": "2026-09-30 10:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 6,
+            "timerFrom": "2026-09-30 09:30",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 10:30",
+        "dueCount": 1
+      }
+    ]
+  },
+  {
+    "name": "R21 CODEX REPRO (Refused): 06:00 given 06:05 -> 07:05; 07:05 Refused EARLY at 06:10 -> 08:05; next Given EARLY at 06:50 -> 07:50 (not 08:05); then on time 07:50 -> 08:50; late 09:30 -> 10:30; stable across refresh + next day",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "refused",
+        "at": "2026-09-30 06:10",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3",
+        "note": "2026-09-30 07:05 dose refused at 2026-09-30 06:10 — round 2; next round due 2026-09-30 08:05 (q1h from the skipped dose's scheduled time) — synthetic: refused early"
+      },
+      {
+        "read": "2026-09-30 06:11",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T08:05~r3",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 07:05",
+            "timerRule": "skipped"
+          }
+        ],
+        "nextDose": "2026-09-30 08:05",
+        "dueCount": 0
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r3",
+        "action": "given",
+        "at": "2026-09-30 06:50",
+        "result": "ok",
+        "next": "2026-09-30 07:50",
+        "nextId": "2026-09-30T07:50~r4",
+        "note": "2026-09-30 08:05 dose given at 2026-09-30 06:50 — round 3; next round due 2026-09-30 07:50 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 06:51",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r4",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:50",
+        "dueCount": 0
+      },
+      {
+        "read": "2026-09-30 06:52",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r4",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:50",
+        "dueCount": 0
+      },
+      {
+        "read": "2026-09-30 07:30",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r4",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:50",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:50~r4",
+        "action": "given",
+        "at": "2026-09-30 07:50",
+        "result": "ok",
+        "next": "2026-09-30 08:50",
+        "nextId": "2026-09-30T08:50~r5",
+        "note": "2026-09-30 07:50 dose given at 2026-09-30 07:50 — round 4; next round due 2026-09-30 08:50 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:50~r5",
+        "action": "given",
+        "at": "2026-09-30 09:30",
+        "result": "ok",
+        "next": "2026-09-30 10:30",
+        "nextId": "2026-09-30T10:30~r6",
+        "note": "2026-09-30 08:50 dose given at 2026-09-30 09:30 — round 5; next round due 2026-09-30 10:30 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 09:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:50",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:50",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:30",
+            "round": 5,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:30~r6",
+            "scheduledTime": "2026-09-30 10:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 6,
+            "timerFrom": "2026-09-30 09:30",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 10:30",
+        "dueCount": 0
+      },
+      {
+        "read": "2026-10-01 03:00",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:50",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:50",
+            "status": "given",
+            "documentedTime": "2026-09-30 09:30",
+            "round": 5,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:30~r6",
+            "scheduledTime": "2026-09-30 10:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 6,
+            "timerFrom": "2026-09-30 09:30",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 10:30",
+        "dueCount": 1
+      }
+    ]
+  },
+  {
+    "name": "R22 Held ON TIME then Given ON TIME; Refused LATE then Given LATE (reason): each Given restarts from its actual time, each skip from its own due",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "held",
+        "at": "2026-09-30 07:05",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3",
+        "note": "2026-09-30 07:05 dose held at 2026-09-30 07:05 — round 2; next round due 2026-09-30 08:05 (q1h from the skipped dose's scheduled time) — synthetic: held on time"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r3",
+        "action": "given",
+        "at": "2026-09-30 08:05",
+        "result": "ok",
+        "next": "2026-09-30 09:05",
+        "nextId": "2026-09-30T09:05~r4",
+        "note": "2026-09-30 08:05 dose given at 2026-09-30 08:05 — round 3; next round due 2026-09-30 09:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T09:05~r4",
+        "action": "refused",
+        "at": "2026-09-30 09:40",
+        "result": "ok",
+        "next": "2026-09-30 10:05",
+        "nextId": "2026-09-30T10:05~r5",
+        "note": "2026-09-30 09:05 dose refused at 2026-09-30 09:40 — round 4; next round due 2026-09-30 10:05 (q1h from the skipped dose's scheduled time) — synthetic: refused late"
+      },
+      {
+        "read": "2026-09-30 09:41",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 07:05",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 08:05",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 09:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 09:40",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T10:05~r5",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 5,
+            "timerFrom": "2026-09-30 09:05",
+            "timerRule": "skipped"
+          }
+        ],
+        "nextDose": "2026-09-30 10:05",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": null,
+        "action": "given",
+        "at": "2026-09-30 12:30",
+        "result": "server-only",
+        "next": null,
+        "nextId": null
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T10:05~r5",
+        "action": "given",
+        "at": "2026-09-30 12:30",
+        "result": "ok",
+        "next": "2026-09-30 13:30",
+        "nextId": "2026-09-30T13:30~r6",
+        "note": "2026-09-30 10:05 dose given at 2026-09-30 12:30 — round 5; next round due 2026-09-30 13:30 (q1h from the actual administration time) — synthetic: delayed for procedure"
+      },
+      {
+        "read": "2026-09-30 12:31",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 07:05",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 08:05",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 09:05",
+            "status": "refused",
+            "documentedTime": "2026-09-30 09:40",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 10:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 12:30",
+            "round": 5,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T13:30~r6",
+            "scheduledTime": "2026-09-30 13:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 6,
+            "timerFrom": "2026-09-30 12:30",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 13:30",
+        "dueCount": 0
+      }
+    ]
+  },
+  {
+    "name": "R23 after a Held: actual time 06:50 supplied, documented later at 07:10 -> next 07:50 from the ACTUAL time (not 07:10, not the skipped 08:05)",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "held",
+        "at": "2026-09-30 06:10",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3",
+        "note": "2026-09-30 07:05 dose held at 2026-09-30 06:10 — round 2; next round due 2026-09-30 08:05 (q1h from the skipped dose's scheduled time) — synthetic: held early"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r3",
+        "action": "given",
+        "at": "2026-09-30 07:10",
+        "result": "ok",
+        "next": "2026-09-30 07:50",
+        "nextId": "2026-09-30T07:50~r4",
+        "note": "2026-09-30 08:05 dose given at 2026-09-30 06:50 — round 3; next round due 2026-09-30 07:50 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 07:11",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:10",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T07:50~r4",
+            "scheduledTime": "2026-09-30 07:50",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 06:50",
+            "timerRule": "given"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:50",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 07:50",
+        "dueCount": 0
+      }
+    ]
+  },
+  {
+    "name": "R24 GENUINE older backdating after a Held: Held at 06:30 (skipped 07:05 -> 08:05); a Given backdated to 06:20 (older than the Held action) never rewinds -> 08:05 stays, round 4 shares 08:05 with round 3 and stays distinct; a later real Given at 07:00 restarts -> 08:00",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "held",
+        "at": "2026-09-30 06:30",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3",
+        "note": "2026-09-30 07:05 dose held at 2026-09-30 06:30 — round 2; next round due 2026-09-30 08:05 (q1h from the skipped dose's scheduled time) — synthetic: held early"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r3",
+        "action": "given",
+        "at": "2026-09-30 06:40",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r4",
+        "note": "2026-09-30 08:05 dose given at 2026-09-30 06:20 — round 3; next round due 2026-09-30 08:05 (q1h timer unchanged — the skipped dose due 2026-09-30 07:05 already set it; an older time never rewinds it)"
+      },
+      {
+        "doc": "2026-09-30T08:05~r3",
+        "id": "2026-09-30T08:05~r3",
+        "action": "given",
+        "at": "2026-09-30 06:41",
+        "result": "rejected",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r4",
+        "note": null
+      },
+      {
+        "read": "2026-09-30 06:42",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:30",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:20",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T08:05~r4",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 07:05",
+            "timerRule": "skipped"
+          }
+        ],
+        "nextDose": "2026-09-30 08:05",
+        "dueCount": 0
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r4",
+        "action": "given",
+        "at": "2026-09-30 07:00",
+        "result": "ok",
+        "next": "2026-09-30 08:00",
+        "nextId": "2026-09-30T08:00~r5",
+        "note": "2026-09-30 08:05 dose given at 2026-09-30 07:00 — round 4; next round due 2026-09-30 08:00 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 07:01",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 06:30",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T08:00~r5",
+            "scheduledTime": "2026-09-30 08:00",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 5,
+            "timerFrom": "2026-09-30 07:00",
+            "timerRule": "given"
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:20",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 07:00",
+            "round": 4,
+            "timerFrom": null,
+            "timerRule": null
+          }
+        ],
+        "nextDose": "2026-09-30 08:00",
+        "dueCount": 0
+      }
+    ]
+  },
+  {
+    "name": "R25 older backdated Given that is LATER than the skipped timer moves it FORWARD only: Held LATE at 09:00 (07:05 -> 08:05, overdue); Given documented 09:10 at actual 08:30 -> 09:30",
+    "steps": [
+      {
+        "doc": "current",
+        "id": "2026-09-30T06:00~r1",
+        "action": "given",
+        "at": "2026-09-30 06:05",
+        "result": "ok",
+        "next": "2026-09-30 07:05",
+        "nextId": "2026-09-30T07:05~r2",
+        "note": "2026-09-30 06:00 dose given at 2026-09-30 06:05 — round 1; next round due 2026-09-30 07:05 (q1h from the actual administration time)"
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T07:05~r2",
+        "action": "held",
+        "at": "2026-09-30 09:00",
+        "result": "ok",
+        "next": "2026-09-30 08:05",
+        "nextId": "2026-09-30T08:05~r3",
+        "note": "2026-09-30 07:05 dose held at 2026-09-30 09:00 — round 2; next round due 2026-09-30 08:05 (q1h from the skipped dose's scheduled time) — synthetic: held late"
+      },
+      {
+        "read": "2026-09-30 09:01",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 09:00",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T08:05~r3",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 3,
+            "timerFrom": "2026-09-30 07:05",
+            "timerRule": "skipped"
+          }
+        ],
+        "nextDose": "2026-09-30 08:05",
+        "dueCount": 1
+      },
+      {
+        "doc": "current",
+        "id": "2026-09-30T08:05~r3",
+        "action": "given",
+        "at": "2026-09-30 09:10",
+        "result": "ok",
+        "next": "2026-09-30 09:30",
+        "nextId": "2026-09-30T09:30~r4",
+        "note": "2026-09-30 08:05 dose given at 2026-09-30 08:30 — round 3; next round due 2026-09-30 09:30 (q1h from the actual administration time)"
+      },
+      {
+        "read": "2026-09-30 09:11",
+        "rows": [
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 06:00",
+            "status": "given",
+            "documentedTime": "2026-09-30 06:05",
+            "round": 1,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 07:05",
+            "status": "held",
+            "documentedTime": "2026-09-30 09:00",
+            "round": 2,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "FACT",
+            "scheduledTime": "2026-09-30 08:05",
+            "status": "given",
+            "documentedTime": "2026-09-30 08:30",
+            "round": 3,
+            "timerFrom": null,
+            "timerRule": null
+          },
+          {
+            "adminId": "2026-09-30T09:30~r4",
+            "scheduledTime": "2026-09-30 09:30",
+            "status": "scheduled",
+            "documentedTime": null,
+            "round": 4,
+            "timerFrom": "2026-09-30 08:30",
+            "timerRule": "given"
+          }
+        ],
+        "nextDose": "2026-09-30 09:30",
+        "dueCount": 1
+      }
+    ]
+  }
+]

@@ -1414,6 +1414,11 @@ static class AdtApi
                     return ApiError.StateConflict(
                         $"disposition '{disposition}' ({dispo.Label}) is retired — it cannot be newly recorded; reactivate it or select an active entry");
             }
+            /* the ORDER WRITE LOCK for every order the cascade below may
+               touch, taken BEFORE anything is read: a dose being documented
+               on one of them commits first (or waits and then sees the
+               closed encounter) — never a lost fact or audit entry */
+            using var tx = Aurora.Core.Orders.OrderLogic.LockEncounterOrders(db, encounterId);
             var enc = db.Encounters.FirstOrDefault(e => e.EncounterId == encounterId);
             if (enc is null) return ApiError.NotFound();
             if (enc.Status == "discharged")
@@ -1446,6 +1451,7 @@ static class AdtApi
                worklist by construction; removal rows on the closed
                encounter simply become history (restored-never-deleted). */
             db.SaveChanges();
+            tx.Commit();
             var name = db.AdtPatients.AsNoTracking().First(p => p.PatientId == enc.PatientId).DisplayName;
             return Results.Json(enc.ToDto(name), JsonOpts.Web);
         }).RequireAuthorization();

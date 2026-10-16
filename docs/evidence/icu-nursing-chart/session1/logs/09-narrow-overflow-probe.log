@@ -1,0 +1,2 @@
+doctor Orders page at 390 px: overflow 58 px with this branch's UI, 58 px with it removed; widest content: div. (447px), div.app-frame.om (447px), div.shell (447px)
+nurse Orders page at 390 px: overflow 0 px with this branch's UI, 0 px with it removed; widest content: 

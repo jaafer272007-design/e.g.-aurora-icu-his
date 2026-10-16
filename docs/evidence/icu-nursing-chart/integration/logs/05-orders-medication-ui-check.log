@@ -1,0 +1,46 @@
+== doctor: New Nursing Order + Nursing filter
+  PASS instructions empty -> Pending and Sign & order disabled
+  PASS ONE-TIME is the default schedule
+  PASS one-time order created + signed through the form (ORD-115; Urgent; round 1 open)
+  PASS the form resets after a successful create
+  PASS interval 0 minutes refused in the form (hint, aria-invalid, buttons disabled)
+  PASS interval 49 hours refused in the form (hint, aria-invalid, buttons disabled)
+  PASS interval 2.5 hours refused in the form (hint, aria-invalid, buttons disabled)
+  PASS interval 2881 minutes refused in the form (hint, aria-invalid, buttons disabled)
+  PASS interval 48 hours accepted
+  PASS interval 1 minute accepted
+  PASS repeating 1-minute order created + signed (ORD-116)
+  PASS Pending repeating order (every 2 h; no current round) (ORD-117)
+  PASS Nursing filter: 4 rows, all NURSING (API: 4 nursing orders)
+  PASS the doctor has no Done control (orders.implement is nursing)
+== nurse: Done, exact unlock
+  PASS the nurse has no order form
+  PASS one-time row: "One-time · round 1 due … · OPEN"
+  PASS one-time row control reads "✓ Done · round 1"
+  PASS one-time Done -> completed, one completion by the signed-in nurse
+  PASS round 2 due = completion 1 (2026-10-16T10:36:58.050Z) + 60 000 ms
+  PASS the control shows "Opens 13:37:58", disabled
+  PASS still locked 400 ms before the due instant
+  PASS unlocked without a reload 3 ms after the due instant, measured in the page (never before)
+== nurse: controlled transport — held original, expired-session retry, original commits
+  PASS no answer -> "Not confirmed" with ↻ Retry saving
+  PASS the server holds no round-2 completion yet (the original is in flight)
+  PASS after the 5 s authoritative re-check: still Not confirmed (an absent completion is not proof)
+  PASS the retry re-sent the SAME { roundId, attemptId } (2026-10-16T10:37:58.050Z~r2 / a16057f6c801e085a7cb8c1c4722c6f8)
+  PASS the 401 retry is shown: "Not confirmed — your session has expired — sign in again, then retry saving."
+  PASS after the refused retry the save is STILL unconfirmed (Retry offered, no new Done)
+  PASS the 401 retry wrote nothing
+  PASS the held ORIGINAL reaches the server late and commits (200)
+  PASS the page confirmed it from the authoritative read (notice cleared, Retry gone)
+  PASS exactly ONE round-2 completion (the original); round 3 current
+  PASS confirmed 4862 ms after the original committed (5 s re-check); the row is back to "Opens 13:39:05"
+== nurse: a legacy order keeps ✓ Implement
+  PASS legacy ORD-111: ✓ Implement, no nursing line, no Done
+  PASS legacy Implement (the empty request) still completes it; no nursing data invented
+  PASS no nursing order is on the MAR
+== screenshots: dark, narrow
+  PASS dark and light themes both rendered (device preference)
+  PASS narrow 390 px: nothing in the New Nursing Order card overflows (max 0 px)
+  info: page-level horizontal overflow at 390 px = 58 px; outermost overflowing elements: none
+
+RESULT: 38 passed, 0 failed

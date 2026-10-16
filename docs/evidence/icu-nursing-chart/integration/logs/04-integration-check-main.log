@@ -1,0 +1,126 @@
+== D: hospital clock (Asia/Baghdad, UTC+3) on a device in America/Los_Angeles; 24h then 12h
+  PASS the browser device zone is America/Los_Angeles (UTC-7) — not the hospital zone
+  PASS the display clock was primed from the server: Asia/Baghdad
+  PASS 24h workspace: "Lists Live · 13:32" = hospital time (not the device's 03:32, not the old double-converted 16:32); tooltip carries the same time
+  PASS 24h workspace: "I&O Live · 13:32" = hospital time (not the device's 03:32, not the old double-converted 16:32); tooltip carries the same time
+  PASS workspace carries the two live chips (Lists, I&O)
+  PASS nursing due time to the second, hospital clock, 24h: "Due 13:32:00" (due 2026-10-16T10:32:00.000Z)
+  PASS 24h: refusal stamp to the second in hospital time "2026-10-16 13:32:33" (server 2026-10-16T10:32:33.033Z) — "Not recorded — round 1 of order 'ORD-106' was already completed by RN Lina Synthetic at 2026-10-16 13:32:33 — it is not …"
+  PASS 24h locked round: "🔒 Opens 14:32:33 (in 1 h 01 min) — completion time + interval"
+  PASS 12-hour preference set through Settings
+  PASS 12h workspace: "Lists Live · 1:32 PM" = hospital time (not the device's 3:32 AM, not the old double-converted 4:32 PM); tooltip carries the same time
+  PASS 12h workspace: "I&O Live · 1:32 PM" = hospital time (not the device's 3:32 AM, not the old double-converted 4:32 PM); tooltip carries the same time
+  PASS nursing due time to the second, 12h: "Due 1:32:00 PM"
+  PASS 12h locked round to the second: "🔒 Opens 2:32:33 PM (in 1 h 00 min) — completion time + interval"
+  PASS 12h (full-date stamps stay yyyy-MM-dd HH:mm:ss): refusal stamp to the second in hospital time "2026-10-16 13:32:34" (server 2026-10-16T10:32:34.083Z) — "Not recorded — round 1 of order 'ORD-107' was already completed by RN Lina Synthetic at 2026-10-16 13:32:34 — it is not …"
+  PASS 12h chart: "As of 1:32 PM" = hospital time (not the device's 3:32 AM, not the old double-converted 4:32 PM); tooltip carries the same time
+  PASS 12h chart: "MAR Live · 1:32 PM" = hospital time (not the device's 3:32 AM, not the old double-converted 4:32 PM); tooltip carries the same time
+  PASS 12h chart: "I&O Live · 1:32 PM" = hospital time (not the device's 3:32 AM, not the old double-converted 4:32 PM); tooltip carries the same time
+  PASS 12h chart: "As of 1:32 PM" = hospital time (not the device's 3:32 AM, not the old double-converted 4:32 PM); tooltip carries the same time
+  PASS chart chips (chart read, MAR, I&O, imaging) all on the hospital clock in 12h
+== W: workspace DUE/UPCOMING (no invented deadline), duplicate clicks, legacy, exact unlock, pending->signed, held original + reload + 401 retry, discharge
+  PASS a late one-time round stays DUE with the elapsed time as a fact: "Due 13:32:00 (1 min since due)"
+  PASS no OVERDUE label anywhere (states: DUE, UPCOMING)
+  PASS Orders Due KPI = actionable rounds = 7 (card: "7 due now · 2 upcoming")
+  PASS the PENDING order is not in the queue
+  PASS interval shown in minutes / hours
+  PASS double click -> exactly ONE implement request (1)
+  PASS late one-time Done recorded once (due 2026-10-16T10:32:00.000Z, done 2026-10-16T10:33:03.411Z); the order left the queue
+  PASS legacy-style order: Done sends the empty request (null), completes it, invents no nursing data
+  PASS round 2 due = completion (2026-10-16T10:33:03.808Z) + 60 000 ms exactly
+  PASS before its instant: UPCOMING, Done disabled, "🔒 Opens 13:34:03 (in 2 min) — completion time + interval"
+  PASS still locked 400 ms before the due instant
+  PASS Done enabled 3 ms after the due instant, measured in the page (never before; no reload)
+  PASS the opened round reads DUE
+  PASS a pending order, once signed, shows round 1 DUE (every 2 h)
+  PASS no answer -> "⚠ Not confirmed", Done locked, Retry offered
+  PASS the server holds no completion yet (the original is in flight)
+  PASS after a RELOAD: the same attempt is restored, still unconfirmed and locked
+  PASS after the 5 s authoritative re-check: still unconfirmed (an absent completion is not proof)
+  PASS the retry re-sent the SAME { roundId, attemptId } (2026-10-16T10:32:00.000Z~r1 / 6eba20b2e74561357ca8027476520db9)
+  PASS the real server answered the retry 401 -> the attempt STAYS unresolved (warning + Retry, no new Done)
+  PASS the 401 retry wrote nothing
+  PASS the held ORIGINAL reaches the real server late and commits (200)
+  PASS confirmed from the authoritative read: warning cleared, exactly ONE completion (the original)
+  PASS late Done: round 2 due = the recorded completion + 30 min (2026-10-16T11:04:12.136Z), not the old due time + 30 min
+  PASS Done after discharge -> 409 from the real server, nothing written; row notice: "Not recorded — encounter 'ENC-1005' is not open — implementing an order is not permitted: new care cannot be initiated on a closed episode"; toast: "Done NOT recorded Echo: wound check (one-time) · Synthetic Integration Echo: encounter 'ENC-1005' is not open — implementing an order is not permitted: new care cannot be initiated on a closed episode"
+  PASS the discharged patient's order leaves the queue (record: discontinued)
+  PASS workspace: no page errors, no 403 responses (none)
+== C: nurse chart (MAR + I&O, no SOFA/NEWS2); the same unconfirmed MAR attempt across chart/workspace, switches, reload, re-auth
+  PASS doctor chart: SOFA + NEWS2 shown, no nurse care panel; fluid strip "Fluid balance · 24 h (charted interval fluids) +650 mL"
+  PASS nurse chart: this patient's MAR (Vancomycin only) + I&O
+  PASS nurse chart: no SOFA, no NEWS2
+  PASS chart: double click -> ONE request; no answer -> "⚠ Not confirmed — your given documentation (13:34) may already be save…", controls locked
+  PASS workspace (navigated, no reload): the SAME attempt is unconfirmed and locked; another patient's dose is unaffected
+  PASS patient switch to Bravo: only Bravo's MAR, no foreign warning, its dose open
+  PASS back on Alpha: the same attempt is still unconfirmed
+  PASS after a RELOAD and the 5 s re-check: still unconfirmed (restored from this tab's store)
+  PASS sign out + sign in as the SAME nurse: the attempt is restored, unconfirmed
+  PASS a DIFFERENT nurse in the same tab never sees Noor's unconfirmed attempt
+  PASS the MAR retry re-sent the SAME attempt (a7fa2c4a06275a5e7c13c740cc2e90bb)
+  PASS the real server answered the retry 401 -> still unconfirmed; nothing written
+  PASS the held ORIGINAL MAR documentation reaches the real server late and commits (200)
+  PASS confirmed from the authoritative MAR read: exactly ONE given fact (the original); the row shows "given at …"
+== I: I&O adapters — 500 then 200, zero, missing, one/both values, response loss, 401, amendments, scores untouched, A->B stale form
+  PASS new admission: Not recorded / Not recorded / balance — (needs both); empty history
+  PASS one-value save: ONE entry, bound to the admission (ENC-1001); output stays Not recorded, no balance
+  PASS 500 then 200 shows 200; both stay in the history (newest first)
+  PASS zero output is a value: balance +200 mL
+  PASS both values in ONE save: 300 / 120, balance +180 mL
+  PASS response lost after the real server committed: "Not confirmed", sent once, the re-read shows 350 mL from the record
+  PASS 401 from the real server: "Not saved — session expired", nothing written, typed value kept
+  PASS amendments: current intake = effective 360 (charted 350); the amended OLDEST (500 -> 550) stays history; balance +240 (6 history rows)
+  PASS after 7 I&O snapshots: the doctor's fluid strip ("Fluid balance · 24 h (charted interval fluids) +650 mL"), SOFA and NEWS2 are byte-identical
+  PASS workspace I&O (patient selector = Alpha): the same values as the chart
+  PASS workspace I&O switched to Bravo: Bravo's own (blank) record, nothing of Alpha
+  PASS admission A ENC-1004 discharged, the same patient readmitted as B ENC-1006
+  PASS the stale save was sent bound to A and the real server answered 409 (409)
+  PASS the typed values were cleared and the nurse is told why
+  PASS nothing written in B; A unchanged (its one entry, 400 mL)
+  PASS admission B starts blank
+  PASS nurse chart/workspace tab: no page errors, no 403 responses (none)
+== S: a switch while the previous patient's reads are delayed never renders the previous patient
+  PASS nurse: Alpha's delayed reads landed after the switch to Bravo — nothing of Alpha rendered (Bedside, MAR, I&O are Bravo's)
+  PASS doctor: Alpha's delayed reads landed after the switch to Bravo — nothing of Alpha rendered (Bedside, fluid strip are Bravo's)
+== P: restricted roles on the chart — no forbidden background reads through composite adapters
+  PASS Clinical Pharmacist (landing /beds): no 403 from this update's composites (I&O, MAR, nursing queue — none read: I&O 0, MAR/queue 0), no nurse care panel; other 403: none
+  PASS Clinical Pharmacist: full chart (no overlay), cards {"care":false,"sofa":true,"news2":true,"meds":true,"labs":true,"imaging":true}
+  PASS Clinical Pharmacist: Orders & Medication view-only — no Done/Implement control, no 403
+  PASS Clinical Pharmacist: the Nurse Workspace does not open (no meds.administer) -> /nurse
+  PASS Clinical Pharmacist: no MAR / queue / I&O reads attempted from /nurse
+  PASS Respiratory Therapist (landing /beds): no 403 from this update's composites (I&O, MAR, nursing queue — none read: I&O 0, MAR/queue 0), no nurse care panel; other 403: none
+  PASS Respiratory Therapist: full chart (no overlay), cards {"care":false,"sofa":true,"news2":true,"meds":true,"labs":true,"imaging":true}
+  PASS Respiratory Therapist: Orders & Medication view-only — no Done/Implement control, no 403
+  PASS Respiratory Therapist: the Nurse Workspace does not open (no meds.administer) -> /nurse
+  PASS Respiratory Therapist: no MAR / queue / I&O reads attempted from /nurse
+  PASS Physiotherapist (landing /beds): no 403 from this update's composites (I&O, MAR, nursing queue — none read: I&O 0, MAR/queue 0), no nurse care panel; other 403: none
+  info: Physiotherapist: PRE-EXISTING forbidden reads GET /api/icu/orders?patientId=P-1001 (x2) -> overlay "YOU DON'T HAVE ACCESS TO THIS AREA"; cards {"care":false,"sofa":false,"news2":false,"meds":false,"labs":false,"imaging":false}
+  PASS Physiotherapist: the Nurse Workspace does not open (no meds.administer) -> /nurse
+  PASS Physiotherapist: no MAR / queue / I&O reads attempted from /nurse
+  PASS Receptionist (landing /admin): no 403 from this update's composites (I&O, MAR, nursing queue — none read: I&O 0, MAR/queue 0), no nurse care panel; other 403: none
+  info: Receptionist: PRE-EXISTING forbidden reads GET /api/icu/results/labs?patientId=P-1001, GET /api/icu/orders?patientId=P-1001 (x4) -> overlay "YOU DON'T HAVE ACCESS TO THIS AREA"; cards {"care":false,"sofa":false,"news2":false,"meds":false,"labs":false,"imaging":false}
+  PASS Receptionist: the Nurse Workspace does not open (no meds.administer) -> /nurse
+  PASS Receptionist: no MAR / queue / I&O reads attempted from /nurse
+== T: dark/light; 390 px (the care panel fits)
+  PASS 390 px nurse chart: the care panel fits (panel 378/390 px, max inner overflow 0 px)
+  info: 14-nurse-chart-390: page-level horizontal overflow 0 px; outermost overflowing elements: div.tle, div.tle, div.tle, div.tle, div.tle, div.tle
+  PASS 390 px workspace: MAR, Orders to Implement and I&O cards fit (max inner overflow 0 px)
+  info: 15-workspace-390: page-level horizontal overflow 0 px; outermost overflowing elements: small., small., small., small.
+  info: 16-doctor-chart-390: page-level horizontal overflow 0 px; outermost overflowing elements: div.tle, div.tle, div.tle, div.tle, div.tle, div.tle
+  PASS 02-doctor-chart-dark: dark theme rendered (device preference)
+  PASS 04-nurse-chart-dark: dark theme rendered (device preference)
+  PASS 06-nurse-workspace-dark: dark theme rendered (device preference)
+  PASS light theme rendered for the light-preference contexts
+== A: same-attempt concurrency, competing attempts, error conventions (real server)
+  PASS 6 simultaneous copies of ONE attempt -> all 200, exactly ONE completion (200,200,200,200,200,200)
+  PASS 4 competing attempts on one round -> one 200, three 409, one completion (200,409,409,409)
+  PASS early round -> 409 "round 2 of order 'ORD-113' is not due yet — it opens at 2026-10-16T10:41:50.728Z"
+  PASS stale round, new attempt -> 409 "round 1 of order 'ORD-113' was already completed by RN Noor Synthetic at 2026-10-16T10:36:…"
+  PASS absent order with an invalid body -> 404 before any 400 (Amendment 2) (404)
+  PASS shape errors -> 400 (attemptId without roundId: 400; minute-form roundId: 400)
+  PASS doctor (no orders.implement) -> 403 (403)
+  PASS completing a discharged admission's order -> 409 (409: encounter 'ENC-1005' is not open — implementing an order is not permitted: new care cannot be initiated on a closed episode)
+  PASS pharmacist I&O write -> 403, nothing written (403)
+  info: state snapshot written for the restart phase (13 orders, 7 I&O rows)
+
+RESULT: 110 passed, 0 failed

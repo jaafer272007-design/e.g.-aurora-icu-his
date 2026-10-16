@@ -1,0 +1,87 @@
+PASS  doctor: combined card has Bedside / Ventilator / Hemodynamics groups
+PASS  doctor: every reading label appears once (no duplicate CVP etc.)
+PASS  doctor: CVP shown exactly once
+PASS  doctor: 10 bedside + 12 ventilator + 5 hemodynamic readings
+PASS  doctor: retired cards absent (#vent, #hemo, twin, alerts, goals)
+PASS  doctor: no retired titles in the chart
+PASS  doctor: HR latest real value 101 with time · source
+PASS  doctor: amended Temp shows the effective value 38.1
+PASS  doctor: ventilator values carry time + source
+PASS  doctor: set vs measured kept separate (TV Set 450 / TV Exhaled 430)
+PASS  doctor: driving pressure derived at the shared timepoint (24 − 8 = 16)
+PASS  doctor: unique hemodynamics kept (CO 5.1, latest Urine Output 60)
+PASS  doctor: I&O manual snapshots never on the observations card
+PASS  doctor: 24 h fluid-balance strip kept (500 in − 160 out = +340 mL)
+PASS  doctor: observation time is shown on the hospital clock (Asia/Baghdad), not raw UTC
+PASS  doctor: NEWS2 score chips present
+PASS  doctor: NEWS2 legend present
+PASS  doctor: SOFA and NEWS2 cards present
+PASS  doctor: Active Medication Orders = the 5 active prescriptions
+PASS  doctor: two Alphamycin orders stay two rows
+PASS  doctor: pending / discontinued / completed / nursing / other-patient rows excluded
+PASS  doctor: continuous, scheduled and PRN groups with dose · route · frequency
+PASS  doctor: no pump rate / trend fabricated on medication rows
+PASS  doctor: Laboratory Results title
+PASS  doctor: imaging newest first, 4 shown of 5
+PASS  doctor: imaging status, flag, impression, acknowledgement shown
+PASS  doctor: "Show all" reveals the 5th study
+PASS  doctor: findings open by keyboard (Enter) with aria-expanded
+PASS  doctor: imaging link opens the existing results screen for this patient
+PASS  doctor: compact Weight & Height keeps values + derived + scope
+PASS  doctor: Weight & Height is compact (< 50% of the prep card area)
+PASS  doctor: Weight & Height correction control kept
+PASS  doctor: Weight & Height history kept (2 events)
+PASS  doctor: header unit stat "Critical Alerts" kept
+PASS  doctor: scores still read the encounter-scoped chart (SOFA input unchanged)
+PASS  nurse: no SOFA / NEWS2 cards
+PASS  nurse: no score chips on observations
+PASS  nurse: no SOFA / NEWS2 wording anywhere in the chart
+PASS  nurse: observations still visible (HR 101)
+PASS  nurse: same 27 readings as the doctor
+PASS  nurse: no score fan-out (no encounter-scoped observation read)
+PASS  nurse: Laboratory Results in the right column
+PASS  nurse: medication slot holds the read-only summary until the care panel is handed off
+PASS  nurse: imaging + weight/height present
+PASS  Respiratory Therapist: cards follow existing permissions {"scores":true,"meds":true,"labs":true,"imaging":true}
+PASS  Physiotherapist: cards follow existing permissions {"scores":true,"meds":false,"labs":true,"imaging":true}
+PASS  Clinical Pharmacist: cards follow existing permissions {"scores":true,"meds":true,"labs":true,"imaging":true}
+PASS  Receptionist: cards follow existing permissions {"scores":true,"meds":false,"labs":false,"imaging":false}
+PASS  Consultant: right after switching, none of A's rows are on screen
+PASS  Consultant: after A's late answers land, B's chart shows only B's data
+PASS  Consultant: B's observations (HR 66), not A's
+PASS  Consultant: B's driving pressure not derived (Pplat/PEEP at different times)
+PASS  Consultant: header shows B
+PASS  Staff Nurse: right after switching, none of A's rows are on screen
+PASS  Staff Nurse: after A's late answers land, B's chart shows only B's data
+PASS  Staff Nurse: B's observations (HR 66), not A's
+PASS  Staff Nurse: B's driving pressure not derived (Pplat/PEEP at different times)
+PASS  Staff Nurse: header shows B
+PASS  W&H: switching closes the previous patient's editor
+PASS  W&H: B shows B's own values (64 kg)
+PASS  W&H: returning to A does not restore the typed value
+PASS  W&H: a save answering after the switch never paints A onto B
+PASS  W&H: the write itself targeted A's encounter
+PASS  errors (dev bundle): observations card says the record could not be read
+PASS  empty: real empty medication list
+PASS  empty: real empty imaging list
+PASS  empty: groups with no value fold to one line with a toggle
+PASS  keyboard: Tab reaches a "Show readings" toggle
+PASS  keyboard: Enter expands the folded group (aria-expanded=true)
+PASS  keyboard: Space folds it again
+PASS  keyboard: focused toggle shows the focus ring
+PASS  discharged: chart still redirects to the history record
+PASS  doctor dark 1600px: theme applied, no horizontal overflow
+PASS  doctor dark 1024px: theme applied, no horizontal overflow
+PASS  doctor dark 390px: theme applied, no horizontal overflow
+PASS  doctor light 1600px: theme applied, no horizontal overflow
+PASS  doctor light 1024px: theme applied, no horizontal overflow
+PASS  doctor light 390px: theme applied, no horizontal overflow
+PASS  nurse dark 1600px: theme applied, no horizontal overflow
+PASS  nurse dark 1024px: theme applied, no horizontal overflow
+PASS  nurse dark 390px: theme applied, no horizontal overflow
+PASS  nurse light 1600px: theme applied, no horizontal overflow
+PASS  nurse light 1024px: theme applied, no horizontal overflow
+PASS  nurse light 390px: theme applied, no horizontal overflow
+
+84 passed, 0 failed
+exit 0

@@ -1,0 +1,34 @@
+final verification — HEAD 5c8091885093ba3466b4173d6b451457cd5b689f — 2026-09-30 00:05:49 UTC
+exit=0  01-npm-build :: npm run build
+exit=0  02-dotnet-build :: dotnet build server/AuroraIcu.Api.csproj -c Release
+exit=0  03-harness-cs-build :: dotnet build /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/marharness/MarHarness.csproj -c Release -o /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/marharness/out
+exit=0  04-harness-cs-run :: bash -c dotnet /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/marharness/out/MarHarness.dll /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/marharness/scenarios.json > /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/harness-cs.json
+exit=0  05-harness-ts-build :: /home/user/e.g.-aurora-icu-his/node_modules/.bin/esbuild /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/tsharness/harness.ts --bundle --platform=node --format=esm --outfile=/tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/tsharness/harness.mjs --define:import.meta.env={"VITE_APP_ENV":"development"} --log-level=warning
+exit=0  06-harness-ts-run :: bash -c TZ=UTC node /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/tsharness/harness.mjs /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/marharness/scenarios.json > /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/harness-ts.json
+exit=0  07-parity :: python3 /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/tsharness/compare.py /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/harness-cs.json /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/harness-ts.json
+exit=0  08-before-after :: bash -c dotnet /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/marharness-before/out/MarHarnessBefore.dll /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/marharness/scenarios.json > /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/harness-before.json && python3 /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/tsharness/beforeafter.py /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/harness-before.json /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/harness-cs.json > /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/schedule-before-after.txt
+exit=0  09-vite-staging :: bash -c rm -rf /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/fe-dist && VITE_APP_ENV=staging npx vite build --outDir /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/fe-dist
+exit=0  10-dotnet-publish :: bash -c rm -rf /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/app && cd server && dotnet publish -c Release -o /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/app /p:UseAppHost=false && cp -r /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/fe-dist /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/app/wwwroot
+exit=0  11-suite-mar-e2e :: python3 /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/run-suite.py .github/workflows/deployed-mar-e2e.yml
+exit=1  12-suite-orders-e2e :: python3 /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/run-suite.py .github/workflows/deployed-orders-e2e.yml
+exit=0  13-api-check :: python3 /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/api-check.py /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/agreement-snapshot.json
+exit=0  14-agreement :: bash -c cd /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/tsharness && TZ=UTC node agree.mjs /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/agreement-snapshot.json
+exit=0  15-api-check-keep :: python3 /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/api-check.py /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/logs/final/agreement-snapshot-keep.json keep
+exit=1  12b-suite-orders-e2e-rerun (runner fix: unique GITHUB_RUN_ID; 12 failed on a drugId collision with the earlier local run) :: python3 run-suite.py deployed-orders-e2e.yml
+exit=0  12c-suite-orders-e2e-rerun (after discharging the earlier kept synthetic P-1019 — 12b found no free bed) :: python3 run-suite.py deployed-orders-e2e.yml
+exit=0  16-browser-verify :: node verify.cjs /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/shots-final P-1022
+exit=0  17-browser-sweep :: node sweep.cjs
+exit=0  18-browser-mar-print :: node mar-shots.cjs /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/shots-final P-1022
+--- after the docs-only commit 53b8733 (source unchanged since 5c80918):
+exit=0  19-npm-build-final :: npm run build
+exit=0  20-dotnet-build-final :: dotnet build server/AuroraIcu.Api.csproj -c Release
+--- ci.yml frontend + server job steps, run locally on 53b8733:
+exit=0  21-ci-tsc-force :: npx tsc -b --force
+exit=0  22-ci-vite-build :: npx vite build
+exit=0  23-ci-reception-required-fields-gate :: node scripts/reception-required-fields-gate.mjs
+exit=0  23-ci-awaiting-bed-gate :: node scripts/awaiting-bed-gate.mjs
+exit=0  23-ci-ai-section-gate :: node scripts/ai-section-gate.mjs
+exit=0  23-ci-edition-gate :: node scripts/edition-gate.mjs
+exit=0  24-ci-vite-env-allowlist :: bash -e -o pipefail /tmp/claude-0/-home-user-e-g--aurora-icu-his/c677fc5a-2628-5760-a6c5-a453bbda3723/scratchpad/ci-viteenv-gate.sh
+exit=0  25-ci-dotnet-build :: dotnet build server --nologo
+exit=0  26-ci-vocab-registration-gate :: node scripts/vocab-registration-gate.mjs

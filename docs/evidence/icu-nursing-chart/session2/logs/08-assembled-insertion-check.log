@@ -1,0 +1,22 @@
+assembled disposable tree 1a1acaeac8ec5251e7ef5e0a2f291b01fd2aa8c8 = Session 2 5315769 + merge origin/claude/icu-nursing-chart-backend 2fb4eb8 + merge origin/claude/icu-nursing-chart-nurse-workflows 681198a (never pushed)
+--- npx tsc -b --force (assembled tree)
+exit 0
+--- node tools/panel-real-check.cjs http://localhost:5177 (assembled dev bundle; synthetic API honours typeCode)
+PASS  nurse: the real PatientNurseCarePanel is mounted in the medication slot
+PASS  nurse: it receives the routed patient (data-patient = P-1001)
+PASS  nurse: it shows this patient's MAR group header
+PASS  nurse: the temporary summary card is gone from the nurse chart
+PASS  nurse: slot directly after the observations row
+PASS  nurse: score hiding unchanged (no SOFA/NEWS2 card, no score chip)
+PASS  nurse: other chart cards unchanged
+PASS  switch: in the switching render the panel is absent or already B
+PASS  switch: after A's late answers land, the panel is B's
+PASS  switch: no A identity or A I&O values inside B's panel
+PASS  switch: B's panel shows B's own empty MAR and "Not recorded" I&O
+PASS  switch back: the panel follows to A
+PASS  Consultant: no care panel; summary/scores as before {"panel":false,"slot":false,"meds":true,"scores":true}
+PASS  Respiratory Therapist: no care panel; summary/scores as before {"panel":false,"slot":false,"meds":true,"scores":true}
+PASS  Physiotherapist: no care panel; summary/scores as before {"panel":false,"slot":false,"meds":false,"scores":true}
+
+15 passed, 0 failed
+exit 0

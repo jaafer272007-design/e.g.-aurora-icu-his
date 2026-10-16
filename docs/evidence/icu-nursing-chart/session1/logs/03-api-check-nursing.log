@@ -1,0 +1,76 @@
+admitted synthetic P-1018 (ENC-1019)
+== create validation (400, nothing created)
+  PASS nursing on a Medication draft -> 400 (400: drafts[0]: only a Nursing order may carry a nursing schedule (nursing))
+  PASS nursing without requiresImplementation -> 400 (400: drafts[0]: a nursing schedule requires requiresImplementation true — its rounds are completed from Orders to Implement)
+  PASS interval 0 -> 400 (400: drafts[0].nursing.intervalMinutes must be a whole number of minutes from 1 to 2880 (1 minute through 48 hours))
+  PASS interval 2881 (48 h + 1 min) -> 400 (400: drafts[0].nursing.intervalMinutes must be a whole number of minutes from 1 to 2880 (1 minute through 48 hours))
+  PASS interval 1.5 -> 400 (400: None)
+  PASS blank instructions -> 400 (400: drafts[0] requires a summary (non-medication order), a medication object, or a catalogue study (studyId))
+  PASS missing instructions -> 400 (400: drafts[0] requires a summary (non-medication order), a medication object, or a catalogue study (studyId))
+  PASS unknown nursing field -> 400 (400: None)
+  PASS no order created by any invalid draft
+  PASS bounds 1 and 2880 accepted; pending -> no current round
+== pending -> signed: round 1 open on signing
+  PASS completing a PENDING repeating order -> 409 (409)
+  PASS empty request on a repeating order -> 400 (400)
+  PASS signed -> round 1 due at the signing minute, nursing stamp form (2026-10-16T00:14:00.000Z~r1)
+== the acceptance example: Done at :59.9xx, 1-minute interval -> next round at the next :59.9xx
+  sent 2026-10-16T00:14:59.881159  recorded 2026-10-16T00:14:59.889Z  next due 2026-10-16T00:15:59.889Z
+  PASS Done -> 200, order stays active, round 2 current
+  PASS completedTime is the server clock at completion (ms precision, within the request)
+  PASS next due = completion + exactly 60 000 ms (60000 ms)
+  PASS round 2 opens at :59.889 of the next minute — not at :00 (minute truncation gone)
+  PASS round identity = due (ms) + ~r2
+  PASS round 2 at due - 40 ms -> 409 not due yet (409)
+  PASS the early request wrote nothing (row byte-identical)
+  PASS round 2 at due + 3 ms -> 200 (200)
+== stale / double completion
+  PASS round 2 again with a NEW attempt -> 409 already completed (409)
+  PASS round 2 again with the SAME attempt -> 200 replay, row byte-identical
+  PASS same attempt, different round -> 409, nothing written (409)
+== concurrency
+  PASS 6 concurrent copies of ONE attempt -> 6 x 200, exactly 1 completion
+  PASS ... and exactly 1 history entry
+  PASS 5 concurrent DIFFERENT attempts on one round -> one 200, four 409, 1 completion
+== late completion creates no extra round; hours interval
+  PASS signed 10 min ago (1-minute interval) -> still round 1 only (no clock-created rounds): 2026-10-16T00:06:00.000Z~r1
+  PASS late completion -> round 2 due at completion + 1 min (not on the old grid)
+  PASS 120-minute order -> next due completion + exactly 2 h
+== one-time nursing orders (new form)
+  PASS one-time + round contract -> completed once, completion recorded, no current round
+  PASS replay of the completing attempt -> 200, byte-identical
+  PASS another attempt on a completed one-time order -> 409 (409)
+  PASS one-time + empty request -> completed, completion recorded without attempt
+== safe replay after discontinuation and after discharge
+  PASS discontinued -> no current round
+  PASS replay of the recorded attempt after discontinuation -> 200, nothing written
+  PASS a new attempt after discontinuation -> 409 (409)
+  PASS implementation queue lists the active repeating order with round 2 (locked until due)
+  PASS no nursing order carries medication administrations (Done never writes AdministrationsJson)
+  PASS nursing orders never appear on the MAR
+  PASS patient discharged (200)
+  PASS discharge discontinued the repeating order; no current round
+  PASS replay of the recorded attempt after discharge -> 200, nothing written
+  PASS a new attempt after discharge -> 409, encounter not open (409)
+  PASS the implementation queue no longer lists it
+== request shape and RBAC
+  PASS roundId without attemptId -> 400 (400)
+  PASS attemptId without roundId -> 400 (400)
+  PASS attemptId too short -> 400 (400)
+  PASS attemptId bad chars -> 400 (400)
+  PASS roundId in the minute form -> 400 (400)
+  PASS unknown field -> 400 (400)
+  PASS malformed JSON -> 400 (400)
+  PASS {} on a repeating order = the empty request -> 400 (400)
+  PASS doctor token -> 403 (403)
+  PASS pharmacist token -> 403 (403)
+  PASS absent order (authorised nurse) -> 404 (404)
+  PASS absent order + {"reason":"x"} (the deployed suite probe) -> 404 (404)
+  PASS absent order + malformed JSON -> 404 (404)
+  PASS absent order + half a round contract -> 404 (404)
+  PASS existing order + {"reason":"x"} -> 400 unknown field (400)
+  PASS the malformed-roundId refusal names the millisecond form (400)
+  PASS none of the refused requests wrote a completion
+  PASS shape patient discharged (bed freed; its order discontinued) (200)
+
+RESULT: 63 passed, 0 failed

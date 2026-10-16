@@ -1,29 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './NurseWorkspace.css'
 import { AppHeader, type KpiSpec } from '../../components/AppHeader'
 import { NavSidebar } from '../../components/NavSidebar'
-import { Toast, useToast } from '../../components/Toast'
-import { displayStamp, dueStateFor, nowHm, useNow } from '../../lib/time'
-import { IconCheck, IconPencil, IconUsers } from '../../components/icons'
-import {
-  completeImplementation, documentAdministration, getImplementationQueue, getIoEntries,
-  getHandoffEntries, getMarRows, getNurseWorklist, getNursingTasks, recordIoEntry, toggleNursingTask, writeHandoff,
-} from '../../lib/api'
-import type {
-  AdministrationAction, AssignedPatient, IoEntry, IoKind, MarRow, MineWorklist, NursingTask, Order,
-  HandoffEntry,
-} from '../../lib/api/types'
+import { dueStateFor, useNow } from '../../lib/time'
+import { IconPencil, IconUsers } from '../../components/icons'
+import { getHandoffEntries, getNurseWorklist, writeHandoff } from '../../lib/api'
+import type { AdministrationAction, AssignedPatient, MineWorklist, HandoffEntry } from '../../lib/api/types'
 import { getSession, initialsOf, profileOf } from '../../lib/session'
 import { DataAge } from '../../components/DataAge'
 import { usePollTick } from '../../hooks/useLive'
+import { MarCard } from '../../features/nurse-care/MarCard'
+import { useMarView, useNurseCare, useNursingQueue } from '../../features/nurse-care/NurseCareProvider'
 import { AssignedPatientsCard } from './AssignedPatientsCard'
-import { MarCard } from './MarCard'
-import { OrdersCard } from './OrdersCard'
-import { TasksCard } from './TasksCard'
+import { OrdersCard, implementCounts } from './OrdersCard'
 import { IoCard } from './IoCard'
 import { SbarCard, type SbarNote } from './SbarCard'
 
-
+/* [ICU nursing/patient-chart update, 2026-10-15 — Session 3] The MAR's
+   documentation logic (attempts, locks, settlement, safe retry, the read
+   sequence, the 5 s recheck) moved UNCHANGED into the shared controller
+   (src/features/nurse-care/marController.ts), mounted once per tab by
+   NurseCareProvider so the patient chart documents through the same locks
+   and a save in flight survives navigation. Orders to Implement follows the
+   nursing ROUND contract (nursingController.ts); the Nursing Tasks card, its
+   Tasks Open counter and the demo-only I&O worksheet are removed — I&O is the
+   shared, persisted latest-values panel. */
 
 /** Screen 4 — Nurse Workspace. RBAC (locked decision): administer + document
  *  only. No order origination anywhere on this screen. MAR and Orders to
@@ -31,20 +32,13 @@ import { SbarCard, type SbarNote } from './SbarCard'
 export function NurseWorkspace() {
   /* behind RequireSession(meds.administer) — session is present */
   const session = getSession()!
-  const { toast, showToast } = useToast()
+  const { showToast } = useNurseCare()
   /* the OPT-OUT worklist (Assignment Simplification): every nurse covers
      every patient by default — the list is ALL open patients minus this
      nurse's carved removals. No setup needed; no Unassigned panel exists
      (the server refuses removing the last covering nurse, so an
      uncovered patient is impossible, not merely visible). */
   const [worklist, setWorklist] = useState<{ mine: MineWorklist; patients: AssignedPatient[] } | null>(null)
-  const [mar, setMar] = useState<MarRow[] | null>(null)
-  const [orders, setOrders] = useState<Order[] | null>(null)
-  const [implementedIds, setImplementedIds] = useState<Set<string>>(new Set())
-  /* undefined = loading · null = NOT A DOMAIN YET (production honest-empty,
-     Phase 3 PR 1) · value = data */
-  const [tasks, setTasks] = useState<NursingTask[] | null | undefined>(undefined)
-  const [io, setIo] = useState<IoEntry[] | null | undefined>(undefined)
   /* the SBAR handoff series per selected patient — REAL data from the
      append-only store (undefined = loading, null = unreachable). The
      old page-local Record<pid, note> that silently discarded every
@@ -61,71 +55,36 @@ export function NurseWorkspace() {
 
   /* LIVE (step 2): the assigned-patient worklist, its MAR rows and the
      implementation queue re-read on the shared poll tick — a dose given or
-     an order placed at another station shows here without a reload. */
+     an order placed at another station shows here without a reload. The
+     MAR and queue reads (and their settlement) run in the shared
+     controllers, scoped to this worklist. */
   const tick = usePollTick()
   const [listAt, setListAt] = useState<number | null>(null)
   useEffect(() => {
     getNurseWorklist(session.name, session.jobTitle).then(w => {
       setWorklist(w)
       setListAt(Date.now())
-      const ids = w.patients.map(p => p.patientId)
-      getMarRows(ids).then(setMar)
-      getImplementationQueue(ids).then(setOrders)
-      if (ids[0]) loadHandoffs(ids[0])
+      const first = w.patients[0]?.patientId
+      if (first) loadHandoffs(first)
     })
-    getNursingTasks().then(setTasks)
-    getIoEntries().then(setIo)
   }, [session.name, session.jobTitle, tick])
 
   const patients = worklist?.patients ?? []
+  const ids = useMemo(() => (worklist ? worklist.patients.map(p => p.patientId) : null), [worklist])
   const patientName = (patientId: string) => patients.find(p => p.patientId === patientId)?.name ?? patientId
 
-  /* MAR: documentation APPENDS an administration fact on the canonical
-     order (derived schedule — nothing stored is consumed), so the honest
-     next state is a fresh derivation: re-fetch rather than patch rows */
+  /* MAR — the shared controller (locks per order, global across screens) */
+  const mar = useMarView(ids, tick)
   const documentMar = (orderId: string, adminId: string, action: AdministrationAction, reason?: string, administeredAt?: string) => {
-    const row = mar?.find(r => r.orderId === orderId && r.adminId === adminId)
-    documentAdministration(orderId, adminId, action, session.name, session.jobTitle, reason, administeredAt).then(updated => {
-      if (!updated) return
-      const facts = updated.administrations?.filter(a => a.status === action) ?? []
-      const fact = facts[facts.length - 1]
-      getMarRows(patients.map(p => p.patientId)).then(setMar)
-      if (row) showToast('Documented', `${row.medication} — ${action} ${displayStamp(fact?.documentedTime) || nowHm()} · ${patientName(row.patientId)}`)
-    })
+    const row = mar.rows?.find(r => r.orderId === orderId && r.adminId === adminId)
+    if (row) mar.document(row, action, `${row.medication} · ${patientName(row.patientId)}`, reason, administeredAt)
   }
 
+  /* Orders to Implement — nursing rounds (round identity + attempt id) */
+  const queue = useNursingQueue(ids, tick)
   const completeOrder = (orderId: string) => {
-    const order = orders?.find(o => o.orderId === orderId)
-    completeImplementation(orderId, session.name, session.jobTitle).then(updated => {
-      if (!updated) return
-      setImplementedIds(prev => new Set(prev).add(orderId))
-      if (order) showToast('Order implemented', `${order.priority} · ${patientName(order.patientId)} · ${nowHm()}`)
-    })
-  }
-
-  /* both write to the nursing store via the service layer (not page-local
-     state) so derived views — e.g. the Timeline — see them */
-  const toggleTask = (taskId: string) => {
-    toggleNursingTask(taskId, session.name, session.jobTitle).then(updated => {
-      if (!updated) return
-      setTasks(prev => prev && prev.map(t => (t.taskId === taskId ? updated : t)))
-    }).catch((e: Error) => {
-      /* the SBAR lesson: a write that stores nothing must be SEEN to
-         fail — a rejected action the nurse reads, never a silent no-op
-         and never the full-screen overlay */
-      showToast('Task NOT recorded', e.message)
-    })
-  }
-
-  const recordIo = (patientId: string, kind: IoKind, category: string, volumeMl: number) => {
-    recordIoEntry({ patientId, kind, category, volumeMl }, session.jobTitle).then(entry => {
-      if (!entry) return
-      setIo(prev => prev && [...prev, entry])
-      showToast('I&O recorded', `${kind === 'intake' ? '+' : '−'}${volumeMl} mL ${category} · ${patientName(patientId)} · ${entry.time}`)
-    }).catch((e: Error) => {
-      /* same SBAR lesson as toggleTask above: visibly refused */
-      showToast('I&O NOT recorded', e.message)
-    })
+    const o = queue.orders?.find(x => x.orderId === orderId)
+    if (o) queue.done(o, `${o.summary} · ${patientName(o.patientId)}`)
   }
 
   /* append ONE immutable entry — the toast fires only on the server's
@@ -147,11 +106,11 @@ export function NurseWorkspace() {
   }
 
   const now = useNow()
-  const medsDue = mar?.filter(
+  const medsDue = mar.rows?.filter(
     r => r.status === 'scheduled' && !r.prn && dueStateFor(r.scheduledTime, now) !== 'upcoming',
   ).length
-  const ordersPending = orders ? orders.filter(o => !implementedIds.has(o.orderId)).length : undefined
-  const tasksOpen = tasks ? tasks.filter(t => !t.done).length : undefined
+  /* actionable work only — an upcoming round is not due work */
+  const ordersDue = queue.orders ? implementCounts(queue.orders, now.getTime()).due : undefined
 
   const kpis: KpiSpec[] = [
     { icon: <IconUsers size={14} stroke="var(--blue)" />, iconBg: 'rgba(var(--blue-rgb),.15)', value: worklist ? patients.length : '—', label: 'My Patients' },
@@ -160,8 +119,7 @@ export function NurseWorkspace() {
       iconBg: 'rgba(var(--cyan-rgb),.13)', value: medsDue ?? '—', label: 'Meds Due',
       valueStyle: medsDue ? { color: 'var(--amber)' } : undefined,
     },
-    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: ordersPending ?? '—', label: 'Orders to Impl.' },
-    { icon: <IconCheck size={14} stroke="var(--green)" strokeWidth={2} />, iconBg: 'rgba(var(--green-rgb),.13)', value: tasksOpen ?? '—', label: 'Tasks Open' },
+    { icon: <IconPencil size={14} stroke="var(--amber)" />, iconBg: 'rgba(var(--amber-rgb),.14)', value: ordersDue ?? '—', label: 'Orders Due' },
   ]
 
   return (
@@ -181,17 +139,15 @@ export function NurseWorkspace() {
         <main>
           <div className="col">
             {worklist && <AssignedPatientsCard patients={patients} />}
-            {mar && worklist && <MarCard rows={mar} patients={patients} onDocument={documentMar} />}
-            {io !== undefined && worklist && <IoCard entries={io} patients={patients} onRecord={recordIo} />}
+            {mar.rows && worklist && <MarCard rows={mar.rows} patients={patients} busy={mar.busy} notices={mar.notices} onDocument={documentMar} onRetry={mar.retry} />}
+            {worklist && <IoCard patients={patients} />}
           </div>
           <div className="col">
-            {orders && <OrdersCard orders={orders} completedIds={implementedIds} onComplete={completeOrder} />}
-            {tasks !== undefined && <TasksCard tasks={tasks} onToggle={toggleTask} />}
+            {queue.orders && <OrdersCard orders={queue.orders} busy={queue.busy} notices={queue.notices} onDone={o => completeOrder(o.orderId)} onRetry={queue.retry} />}
             {worklist && <SbarCard patients={patients} entriesByPatient={handoffs} busy={handoffBusy} onSelect={loadHandoffs} onSave={saveSbar} />}
           </div>
         </main>
       </div>
-      <Toast state={toast} accent="green" />
     </div>
   )
 }

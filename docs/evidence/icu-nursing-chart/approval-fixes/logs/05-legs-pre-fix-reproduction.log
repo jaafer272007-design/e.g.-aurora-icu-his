@@ -1,0 +1,50 @@
+# approval legs (pre-fix) against http://localhost:8080: {"status":"ok","service":"aurora-icu-api","phase":"stage10-phase3","build":"ff08a52-local","environment":"production","aiAssistant":"disabled","edition":"icu"}
+# bundle served: PRE-FIX reviewed head 72a7894 (reproduction: FAIL lines are the defects); patients A=P-1001 B=P-1002
+== M: PRN Given unanswered -> Retry refused 403 by the real server (RBAC, before the order lock) -> real empty reads -> the original lands late
+  PASS the doctor's PRN paracetamol for A is active (ORD-103)
+  PASS first Given: no answer -> "Not confirmed", controls locked
+  PASS Retry saving sent the SAME attempt (4a14309b3bba1f4f35ea4884d5644bf7); the real server refused it 403 "Insufficient permissions"
+  info: a MAR read started after the refusal was answered 200 by the real server
+  PASS the real record: no fact yet (the original is still held)
+  FAIL after a real empty authoritative read: still "Not confirmed" (row: "— PRN available as required PRN ✓ Given ⊘ Held ✕ Refused Not saved — Insufficient permissions")
+  FAIL Given / Held / Refused stay disabled
+  FAIL the SAME attempt is still stored for the nurse (this tab)
+  PASS the actual refusal reason is shown, never "session expired", never "give again" ("Not saved — Insufficient permissions")
+  FAIL Nurse Workspace (navigated, no reload): the same attempt is unconfirmed and locked there too
+  PASS 390 px: no horizontal page overflow with the refusal notice (0px)
+  info: the page reopened the dose after the refused retry -> the nurse documents it again, as the controls allow
+  PASS the held ORIGINAL reaches the real server late (nurse's own token) and commits (200)
+  FAIL the real record holds exactly ONE fact (2: given/3c6c96ab6a3f908fd614270032d77658, given/4a14309b3bba1f4f35ea4884d5644bf7)
+  FAIL it is the original attempt
+  FAIL confirmed from the record: "Saved — confirmed", controls reopen, no stale notice, nothing left stored
+  FAIL the page sent exactly the original + its one retry — no new attempt (3 requests; answers 403,200)
+  PASS no page error, no overlay
+  info: cleanup: the doctor discontinued ORD-103 (200)
+== N1: A's typed draft (Urgent, repeat 30 min) and a patient-rail switch to B — no order is written
+  PASS A: a complete draft enables Sign & order
+  info: first sample after the switch: {"url":"/orders/P-1002","bar":"Synthetic Approval Bravo","editor":{"instr":"APPROVAL PROBE — PATIENT A ONLY — DO NOT SIGN (pre-fix)","priority":"Urgent","oneTime":"false","every":1,"pending":true,"sign":true}}
+  FAIL during the switch: no A display with an enabled submit under B's route, no A draft
+  FAIL B: a clean one-time / Routine editor, submit disabled ({"instr":"APPROVAL PROBE — PATIENT A ONLY — DO NOT SIGN (pre-fix)","priority":"Urgent","oneTime":"false","every":1,"pending":true,"sign":true})
+  FAIL B: A's draft text appears nowhere on B's page (text or any field value)
+  PASS B: submit enables only with B's own valid input
+  FAIL back on A: no A draft revived ({"instr":"","priority":"Urgent","oneTime":"false","every":1,"pending":false,"sign":false})
+  PASS the real record: no order carries the probe text (nothing was written)
+== N2: A's order + roster reads held, released after B is shown with its own draft
+  info: A routed, its reads held: {"url":"/orders/P-1001","bar":"Synthetic Approval Bravo","editor":{"instr":"","priority":"Urgent","oneTime":"false","every":1,"pending":false,"sign":false}}
+  FAIL while A's reads are held: no B display (header / list / enabled editor) under A's route
+  info: held: http://localhost:8080/api/icu/patients | http://localhost:8080/api/icu/orders?patientId=P-1001
+  info: released after 441 ms (under the client's 8 s read timeout)
+  PASS after A's late reads: still B's header (Synthetic Approval Bravo)
+  FAIL after A's late reads: still B's order list (no Alpha order)
+  PASS after A's late reads: B's draft is intact ("Bravo draft kept while A's reads land (pre-fix)")
+== N3: A's real create committed, its answer held while B is shown and gets its own draft
+  PASS the real server created A's order (200, ORD-104); the page has no answer yet
+  info: A's answer released 337 ms after the click
+  info: toast: "Nursing order signed & active APPROVAL A in-flight create (pre-fix)"
+  PASS after A's answer: still B's header
+  FAIL after A's answer: B's draft is not cleared or replaced ("")
+  FAIL after A's answer: B's list is not refreshed with A's orders
+  PASS the real record: exactly one "APPROVAL A in-flight create (pre-fix)" order, for A (ORD-104); none on B; B's draft never sent
+  PASS back on A: its new order is listed; its editor is empty
+  PASS no page error, no overlay
+RESULT 18 passed, 16 failed

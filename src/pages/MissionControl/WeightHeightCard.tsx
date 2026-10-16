@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card } from '../../components/Card'
 import { getEncounters, getPatientIdentity, updateEncounterMeasurements } from '../../lib/api'
 import type { Encounter, Sex } from '../../lib/api/types'
@@ -22,9 +22,18 @@ import { getSession, hasPermission } from '../../lib/session'
  *  selectors — it also supplies the sex Devine needs): in pure
  *  mock/offline mode the card renders nothing — there is no mock store
  *  behind this domain, and inventing one would fabricate clinical data.
- *  The measurements themselves come from the patient's OPEN encounter. */
+ *  The measurements themselves come from the patient's OPEN encounter.
+ *
+ *  COMPACT (ICU update 2026-10-15, owner's plan §3): the same values, the
+ *  same entry/correction controls and the same history, in one dense
+ *  block — weight and height first, the derived values on one line, the
+ *  admission scope and the derivation rule in a single footnote. */
 export function WeightHeightCard({ patientId }: { patientId: string }) {
   const session = getSession()
+  /* the patient on screen NOW — a save that answers after a switch must
+     not paint the previous patient's encounter onto this chart */
+  const current = useRef(patientId)
+  current.current = patientId
   const canMeasure = session != null && hasPermission(session.jobTitle, 'patients.measure')
 
   const [sex, setSex] = useState<Sex | null>(null)
@@ -43,6 +52,9 @@ export function WeightHeightCard({ patientId }: { patientId: string }) {
     setEditing(false)
     setShowHistory(false)
     setErr(null)
+    setWInput('')
+    setHInput('')
+    setBusy(false)
     if (!patientId) return
     /* identity is the real-server gate + the sex for Devine; the open
        encounter carries this admission's measurements */
@@ -90,7 +102,9 @@ export function WeightHeightCard({ patientId }: { patientId: string }) {
       return
     }
     setBusy(true)
+    const forPatient = patientId
     const res = await updateEncounterMeasurements(enc.encounterId, draft)
+    if (current.current !== forPatient) return
     setBusy(false)
     if (res.kind === 'ok') {
       setEnc(res.data)
@@ -115,25 +129,21 @@ export function WeightHeightCard({ patientId }: { patientId: string }) {
         ? <button className="whedit" onClick={() => (editing ? setEditing(false) : openEditor())}>{editing ? 'Cancel' : hasAny ? '✎ Correct' : '+ Add'}</button>
         : 'this admission · kg / cm'}
     >
-      <div className="whvals">
-        <div className="whv"><span className="k">Weight</span>{val(enc.weightKg, 'kg')}</div>
-        <div className="whv"><span className="k">Height</span>{val(enc.heightCm, 'cm')}</div>
-        <div className="whv"><span className="k">BMI</span>{derivedBmi != null ? <b className="num">{derivedBmi} <i>kg/m²</i></b> : <span className="whmissing">—</span>}</div>
-        <div className="whv"><span className="k">IBW · Devine</span>{derivedIbw != null ? <b className="num">{derivedIbw} <i>kg</i></b> : <span className="whmissing">—</span>}</div>
-        <div className="whv"><span className="k">BSA · Mosteller</span>{derivedBsa != null ? <b className="num">{derivedBsa} <i>m²</i></b> : <span className="whmissing">—</span>}</div>
-      </div>
+      <dl className="whvals">
+        <div className="whv whmain"><dt className="k">Weight</dt><dd>{val(enc.weightKg, 'kg')}</dd></div>
+        <div className="whv whmain"><dt className="k">Height</dt><dd>{val(enc.heightCm, 'cm')}</dd></div>
+      </dl>
+      <dl className="whvals whderived">
+        <div className="whv"><dt className="k">BMI</dt><dd>{derivedBmi != null ? <b className="num">{derivedBmi} <i>kg/m²</i></b> : <span className="whmissing">—</span>}</dd></div>
+        <div className="whv"><dt className="k">IBW · Devine</dt><dd>{derivedIbw != null ? <b className="num">{derivedIbw} <i>kg</i></b> : <span className="whmissing">—</span>}</dd></div>
+        <div className="whv"><dt className="k">BSA · Mosteller</dt><dd>{derivedBsa != null ? <b className="num">{derivedBsa} <i>m²</i></b> : <span className="whmissing">—</span>}</dd></div>
+      </dl>
 
       <div className="whscope">
-        Recorded for THIS admission ({enc.encounterId}) — each encounter keeps its own
-        weight/height; a re-admission starts fresh.
+        This admission only ({enc.encounterId}) — a re-admission starts fresh.
+        {(derivedBmi == null || derivedBsa == null) && <> BMI / BSA stay blank until both weight and height are recorded (never fabricated).</>}
+        {derivedIbw == null && <> IBW (Devine) needs a recorded height ≥ 152.4 cm.</>}
       </div>
-
-      {(derivedBmi == null || derivedBsa == null) && (
-        <div className="whnote">
-          BMI / BSA derive from weight + height at render — they stay blank until both are
-          recorded (never fabricated). {derivedIbw == null && 'IBW (Devine) needs a recorded height ≥ 152.4 cm.'}
-        </div>
-      )}
 
       {editing && (
         <div className="wheditor">

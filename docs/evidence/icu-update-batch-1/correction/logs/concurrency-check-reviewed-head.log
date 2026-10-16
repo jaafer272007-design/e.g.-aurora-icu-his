@@ -1,0 +1,15 @@
+server http://localhost:8081 · db aurora_reviewed · reviewed head 2d14aa0, no lock: expect the defect · now 2026-09-30 01:17
+admitted synthetic P-1015 (ENC-1015)
+
+[1] the SAME current round: two nurses document Given at the same moment
+  PASS same round: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 200 | 200
+  PASS OLD: both nurses were told success: [200, 200]
+  PASS OLD: DEFECT reproduced — 2 successes but 1 durable fact and 1 audit entry (one nurse's documentation silently lost)
+
+[2] PRN: two valid distinct facts documented at the same moment — BOTH must stay durable
+  PASS PRN pair: while the row lock is held, requests in flight = [True, True] (expected [True, True])
+    responses: 200 | 200
+  PASS OLD: DEFECT reproduced — 2 successes, durable facts 1, audit entries 1
+
+RESULT (reviewed head, no lock): 5 passed, 0 failed

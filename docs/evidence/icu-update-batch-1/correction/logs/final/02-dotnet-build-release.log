@@ -1,0 +1,12 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+/home/user/e.g.-aurora-icu-his/server/Core/Persistence/BootGuards.cs(103,13): warning CS8602: Dereference of a possibly null reference. [/home/user/e.g.-aurora-icu-his/server/AuroraIcu.Api.csproj]
+  AuroraIcu.Api -> /home/user/e.g.-aurora-icu-his/server/bin/Release/net8.0/AuroraIcu.Api.dll
+
+Build succeeded.
+
+/home/user/e.g.-aurora-icu-his/server/Core/Persistence/BootGuards.cs(103,13): warning CS8602: Dereference of a possibly null reference. [/home/user/e.g.-aurora-icu-his/server/AuroraIcu.Api.csproj]
+    1 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:03.86

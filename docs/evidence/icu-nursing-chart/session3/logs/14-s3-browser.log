@@ -1,0 +1,93 @@
+setup: A P-1023 (ENC-1024, B-08) · B P-1024 (ENC-1025, B-16) · orders {"X1":"ORD-132","X2":"ORD-133","K1":"ORD-134","B1":"ORD-135"}
+
+[W] Nurse Workspace: Nursing Tasks and Tasks Open removed; Orders to Implement + handoff kept
+  PASS no "Nursing Tasks" card, no "Tasks Open" KPI, no task rows (cards: My Patients · Medication Administration Record · Intake & Output · Orders to Implement · Shift Handoff · SBAR)
+  PASS Orders to Implement, Shift Handoff, MAR and I&O present
+  PASS the demo worksheet (category select, intake/output toggle, shift-total rows) is gone
+
+[R] Orders to Implement — nursing rounds (contract simulator)
+  PASS future round visible, Done locked: "Round 2 · Next due 05:17:24 (in 1 h 50 min)" · "🔒 Opens 05:17:24 (in 1 h 50 min) — completion time + interval"
+  PASS counts split due vs upcoming: "7 due now · 1 upcoming"
+  PASS one-time order: round 1 open on signing
+  PASS double click -> 1 request {roundId, attemptId}; completed once; left the list
+  PASS legacy order: the existing empty request (no body), completed
+  … repeating every 1 min: Done, then the exact unlock (completion time + interval)
+  PASS round 2 locked: "Round 2 · Next due 03:28:25 (in 2 min)" (due 2026-10-16T00:28:25.760Z)
+  PASS Done stayed disabled through the last 300 ms and opened 7 ms after the due instant (no reload)
+  PASS round 2 completed; round 3 shown — the order is never suppressed
+  … no answer, then a 401 retry, then the original commits (Amendment 1 §9.2)
+  PASS in flight: "Saving…"
+  PASS after /nurse -> chart -> /nurse: still saving, Done locked ("Saving…")
+  PASS the answer completed into the shared controller: round 1 done, toast shown
+  PASS no answer (it did commit): unconfirmed with Retry saving — "⚠ Not confirmed — your Done may already be saved; checking the record. Retry sav…"
+  PASS settled CONFIRMED from the authoritative per-patient read; 1 completion with the attempt id
+  PASS the retry re-sent the identical { roundId, attemptId }
+  PASS refused retry (401): still unconfirmed — "⚠ Not confirmed — your Done may already be saved; checking the record. Retry saving (sends…"
+  PASS the original committed -> confirmed; exactly one completion
+
+[X] MAR across routes and patients (real server): one controller, locks and attempts survive navigation
+  PASS chart A: no answer -> "Not confirmed" + Retry saving, controls locked
+  PASS Nurse Workspace (SPA navigation): the same order shows the same unconfirmed lock
+  PASS scripted clicks on the locked row in the workspace: no second request
+  PASS chart B shows only B's medication cards
+  the original request reaches the server now (from chart B) -> HTTP 200
+  PASS settled CONFIRMED while chart B was showing (the read covered A); exactly 1 fact with the attempt id
+  PASS back on chart A: the PRN row is open again (no stale lock)
+  … a SAVING request when the nurse leaves the chart
+  PASS saving on chart A: "Saving…"
+  PASS workspace: the same save shows "Saving…", controls locked
+  PASS answered into the controller on the workspace; 1 fact, 1 request; the row reopened after the read
+  … reload during an unconfirmed save (same tab): restored, retried with the same id
+  PASS after a reload: restored as unconfirmed
+  PASS Retry saving sent the stored attempt id: the 2nd (deliberate) dose recorded once
+
+[P] patient switch: the chart panel clears at once and never shows the previous patient
+  PASS 93 samples over 4 s: never a row of A on B's chart; B's rows arrived (first at sample 33)
+
+[I] I&O — latest manually entered values (contract simulator on the real encounters)
+  PASS new admission: CURRENT INTAKE Not recorded | CURRENT OUTPUT Not recorded | BALANCE — needs both current values
+  PASS 500 intake: CURRENT INTAKE 500 mL 03:29 · RN Maya Chen | CURRENT OUTPUT Not recorded | BALANCE — needs both current values
+  PASS zero output is a value; balance appears: CURRENT INTAKE 500 mL 03:29 · RN Maya Chen | CURRENT OUTPUT 0 mL 03:29 · RN Maya Chen | BALANCE +500 mL intake − output
+  PASS double click Save -> 1 request
+  PASS 500 then 200 shows 200; history keeps both (3 entries, newest first: "INTAKE 200 mL 2026-10-16 03:29 · RN Maya Chen")
+  PASS every I&O write carries only io_current_* codes and the loaded admission; every I&O read asks only for those codes (no interval fluid codes)
+  … refused and unanswered saves
+  PASS refused: values kept in the form, current value unchanged ("Not saved — synthetic refusal: the value is outside 0–20000 mL.")
+  PASS no answer: "not confirmed — check the history"; values kept; nothing resent (5 posts)
+  … amendment and midnight
+  PASS the amended value is current (CURRENT INTAKE 250 mL 03:29 · RN Maya Chen · amended); history shows "amended 200 → 250 mL by RN Charge Nurse · 2026-10-16 03:29 —…"
+  PASS an output entered yesterday is still the current output (no midnight reset): CURRENT OUTPUT 0 mL D-1 01:29 · RN Maya Chen
+  … the Nurse Workspace shows the same panel for the chosen patient
+  PASS workspace (A selected): CURRENT INTAKE 250 mL 03:29 · RN Maya Chen · amended | CURRENT OUTPUT 0 mL D-1 01:29 · RN Maya Chen | BALANCE +250 mL intake − output
+  PASS switching to B: none of A's values shown
+  … discharge + readmission while values are typed: the stale save is 409, nothing lands in either admission
+  discharge ENC-1024 -> 200; readmission -> 200 ENC-1026
+  PASS 409, nothing written; typed values cleared: "Not saved — the patient's current admission is not ENC-1024 — nothing was recorded. The patient's admission ha…"
+  PASS the new admission ENC-1026 starts blank: CURRENT INTAKE Not recorded | CURRENT OUTPUT Not recorded | BALANCE — needs both current values
+  PASS the previous admission's snapshots are kept under ENC-1024 (3)
+
+[K] keyboard operation
+  PASS Enter opens the reason dialog (focus marReason); Tab reaches "⊘ Hold dose"; Enter documents it
+  PASS I&O: type intake, Tab, type output, Enter -> one save with both values
+  PASS Orders to Implement: Space on Done completes the round; Enter opens its completion history
+
+[Q] permissions: the same panel for a doctor (no meds.administer) and a pharmacist (no observations.record)
+  PASS doctor: MAR cards shown read-only (1 cards, 0 controls, "0 due · view onlyMAR Live · 06")
+  PASS doctor: I&O entry available (observations.record)
+  PASS pharmacist: MAR cards shown read-only (1 cards, 0 controls, "0 due · view onlyMAR Live · 06")
+  PASS pharmacist: I&O entry hidden — "View only"
+
+[V] light/dark and narrow layouts
+  PASS dark 1440px chart: given 1112 px, nothing in the panel extends past it (none)
+  PASS dark 1440px workspace: MAR, I&O and Orders cards fit (888,888,1424 ≤ 1440)
+  PASS dark 390px chart: given 358 px, nothing in the panel extends past it (none) [the chart grid itself is 732 px at this viewport — Session 2's layout]
+  PASS dark 390px workspace: MAR, I&O and Orders cards fit (374,374,374 ≤ 390)
+  PASS light 1440px chart: given 1112 px, nothing in the panel extends past it (none)
+  PASS light 1440px workspace: MAR, I&O and Orders cards fit (888,888,1424 ≤ 1440)
+  PASS light 390px chart: given 358 px, nothing in the panel extends past it (none) [the chart grid itself is 732 px at this viewport — Session 2's layout]
+  PASS light 390px workspace: MAR, I&O and Orders cards fit (374,374,374 ≤ 390)
+  PASS no page errors ()
+
+RESULT: 62 passed, 0 failed
+cleanup: discharge ENC-1026 -> 200
+cleanup: discharge ENC-1025 -> 200
