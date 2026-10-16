@@ -1,16 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Card } from '../../components/Card'
 import { IconFlask } from '../../components/icons'
 import type { Labs } from '../../lib/api/types'
 import { tokenRgba, useThemeVersion } from '../../hooks/useCanvasTheme'
 
-export function LabsCard({ labs }: { labs: Labs }) {
+/* LABORATORY RESULTS (renamed from "Laboratory Trends", ICU update
+   2026-10-15, owner's plan §3) — the same derived panels, latest values
+   and trend chart as before, plus a link to the full results screen. The
+   caller gates it on results.view (the server's gate on the lab read). */
+export function LabsCard({ labs, patientId }: { labs: Labs; patientId: string }) {
+  const navigate = useNavigate()
   const [tab, setTab] = useState(labs.panels[0]?.name ?? 'CBC')
   const [hover, setHover] = useState<number | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const themeV = useThemeVersion() // canvas colours re-resolve on theme change
   const panel = labs.panels.find(p => p.name === tab) ?? labs.panels[0]
   const times = labs.drawTimes
+  /* a trend needs a series with two or more points (a panel drawn once has
+     none) — without one the chart would plot NaN axes, so it is not drawn
+     and the latest values below stand alone */
+  const hasTrend = !!panel && times.length >= 2 && panel.series.some(s => s.points.length >= 2)
 
   const draw = useCallback(() => {
     const cv = canvasRef.current
@@ -97,14 +107,15 @@ export function LabsCard({ labs }: { labs: Labs }) {
 
   if (!labs.panels.length) {
     return (
-      <Card id="labs" icon={<IconFlask size={15} stroke="var(--blue)" />} title="Laboratory Trends" aside="from results store">
+      <Card id="labs" icon={<IconFlask size={15} stroke="var(--blue)" />} title="Laboratory Results" aside="from results store">
         <div className="labempty">No lab results on file for this patient yet.</div>
+        <div className="cardfoot"><span /><button className="obclink" onClick={() => navigate(`/labs/${patientId}`)}>Labs &amp; Imaging →</button></div>
       </Card>
     )
   }
 
   return (
-    <Card id="labs" icon={<IconFlask size={15} stroke="var(--blue)" />} title="Laboratory Trends" aside="Recent draws · tap a series">
+    <Card id="labs" icon={<IconFlask size={15} stroke="var(--blue)" />} title="Laboratory Results" aside="Recent draws · tap a series">
       <div className="tabs" role="tablist">
         {labs.panels.map(p => (
           <button key={p.name} role="tab" aria-selected={p.name === tab} className={`tab${p.name === tab ? ' on' : ''}`} onClick={() => setTab(p.name)}>
@@ -112,13 +123,18 @@ export function LabsCard({ labs }: { labs: Labs }) {
           </button>
         ))}
       </div>
-      <canvas id="labChart" ref={canvasRef} onMouseMove={onMove} onMouseLeave={() => setHover(null)} />
-      <div className="legend">
-        {panel.series.map(s => <span key={s.label} className="lg"><i style={{ background: s.color }} />{s.label}</span>)}
-      </div>
+      {hasTrend ? (<>
+        <canvas id="labChart" ref={canvasRef} onMouseMove={onMove} onMouseLeave={() => setHover(null)} />
+        <div className="legend">
+          {panel.series.map(s => <span key={s.label} className="lg"><i style={{ background: s.color }} />{s.label}</span>)}
+        </div>
+      </>) : (
+        <div className="labnotrend">No trend for {panel.name} yet — fewer than two draws of this panel. Latest values below.</div>
+      )}
       <div className="labvals">
         {panel.results.map(v => <span key={v.analyte} className={`lv ${v.flag}`}>{v.analyte} <b>{v.value}</b></span>)}
       </div>
+      <div className="cardfoot"><span /><button className="obclink" onClick={() => navigate(`/labs/${patientId}`)}>Labs &amp; Imaging →</button></div>
     </Card>
   )
 }
