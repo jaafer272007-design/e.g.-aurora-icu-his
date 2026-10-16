@@ -261,6 +261,9 @@ no `claude/icu-nursing-chart-nurse-workflows` branch.
    Asia/Baghdad, the clock read 03:02 while every "As of" chip read 06:02. This reproduces
    identically on `05e92e2`, so it is pre-existing. `src/components/**` is read-only for
    Session 2.
+   *[Integration note, 2026-10-16: fixed by Session 1 in `0f56e8a` (one conversion: `displayStamp`
+   of the UTC wire form) and verified on the production pairing — see
+   `../integration/README.md`.]*
 2. **Contract request: optional pruning of now-unread `getPatientDetail` work**
    (`src/lib/api/index.ts`). The chart no longer reads `ventilator`, `hemodynamics`,
    `infusions` or `goals`. In production `getPatientDetail` still makes a `getPatientOrders`

@@ -616,3 +616,48 @@ The check order becomes:
 
 Unknown fields on an existing order are still 400; "no body, an empty body, or `{}`" is still the
 empty request. Only the order in which the verdicts are reported changes.
+
+## 11. Integration record — 2026-10-16 (Session 1 assembly on draft PR #234)
+
+*Appended; §1–§10 above are unchanged text. Where this section conflicts with them, **this section
+wins**. No shared TypeScript signature, wire field, server rule or stored shape changes.*
+
+The three sessions' branches are merged into `claude/amazing-hopper-nwzw1x` (merge commits
+`7845d26` Session 1 backend `2fb4eb8` / product `5eac744`, `4fbddc5` Session 2 patient chart
+`c88b3dc` / product `5315769`, `0cc9264` Session 3 nurse workflows `681198a` / product `9e87e5b`);
+the assembled source uses Session 1's shared API exports, nursing helpers, admission-bound I&O
+adapter and server, and Session 2's committed `PatientNurseCarePanel` insertion — no stand-in or
+harness-only insertion ships. Two corrections were applied on top, each in its own commit:
+
+### 11.1 Data-age chips convert to the hospital clock once (`0f56e8a`)
+
+`src/components/DataAge.tsx` rendered `displayStamp(localStamp(at))`. `localStamp` already yields
+hospital wall time and `displayStamp` converts again, so a UTC+3 hospital read three hours ahead
+(reported by Sessions 2 and 3). It now hands `displayStamp` the UTC wire form of `at` — one
+conversion, 12h/24h per preference, "D-n" for an earlier hospital day. Verified on the production
+pairing with the device in America/Los_Angeles and the hospital in Asia/Baghdad, 24h and 12h (chips
+and tooltips); nursing times stay to the second in both preferences, and server refusal stamps read
+`yyyy-MM-dd HH:mm:ss` hospital time in both (full-date stamps are 24h by the app's existing
+`displayFullStamp` convention; short times follow the preference).
+
+### 11.2 Nursing rounds have no OVERDUE state (`4f1009d`; supersedes Session 3's 30-minute cutoff)
+
+Session 3 labelled an open nursing round OVERDUE 30 minutes after its due instant, borrowing the
+MAR's due-soon constant. No source defines a nursing deadline, so the label is removed: a round is
+**DUE** from its exact due instant (open, or a legacy one-time order), **UPCOMING** before it, and a
+late round stays DUE and actionable with the elapsed time shown as a fact ("Due 13:13:00 (7 min
+since due)"); recorded due and completion times stay on the row and in its completion history. The
+header and KPI count actionable (DUE) rounds; the exact unlock timer, repeating behaviour and every
+medication threshold (DUE SOON, the 120-minute late-dose reason) are unchanged.
+
+### 11.3 Recorded, not changed
+
+- **Pre-existing:** restricted roles cannot open a patient chart in production. A Physiotherapist
+  (no `orders.view`) or Receptionist (no `orders.view` / `results.view`) gets 403 on the chart's
+  orders (and labs) reads — `usePatientScores` and `getPatientDetail` read them for every role — and
+  the access refusal replaces the chart. Identical on `main` `f0bf464` and reproduced on `2fc317c`;
+  this update's composites (I&O, MAR panel, nursing queue) make no reads for those roles. Needs an
+  owner decision on what SOFA/NEWS2 show to such roles; no permission was granted. Evidence:
+  `docs/evidence/icu-nursing-chart/integration/README.md` §5.
+- Session 2's request to prune `getPatientDetail`'s now-unused orders read is not taken here (it
+  belongs with the fix above).

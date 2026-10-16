@@ -89,6 +89,10 @@ A refused retry (401 included) keeps it unconfirmed with the reason (Amendment 1
 `settleNursingAttempt` over `getPatientOrdersAuthoritative` settles it. Legacy one-time orders keep
 the existing empty request.
 
+*[Integration note, 2026-10-16: the 30-minute OVERDUE label is removed in `4f1009d` (contract
+§11.2) — a late round stays DUE with the elapsed time shown ("N min since due"); no nursing
+deadline exists. Text above kept as handed off.]*
+
 **One shared MAR implementation** (`marController.ts`, `NurseCareProvider.tsx`). The page-local
 logic moved without a rule change: attempts/ids, saving/settling/unconfirmed, settlement only from
 authoritative reads applied in start order (older reads discarded whole), pinned-minute retry with
@@ -184,6 +188,7 @@ empty pill in tall element captures (screenshot mechanics, not page state).
    +3 h (e.g. "Live · 06:11" at 03:11 — the existing "Lists" chip in the Nurse Workspace shows the
    same). `src/components/**` is read-only for Sessions 2/3; reported to Session 1. Likely fix:
    `formatHm(localStamp(at).slice(11))` (or `displayStamp` of the UTC wire form).
+   *[Integration note, 2026-10-16: fixed in `0f56e8a` (`displayStamp` of the UTC wire form).]*
 2. **Chart grid at 390 px** — see §2 (Session 2's layout).
 3. **Engineering choices for review:** OVERDUE after 30 min past due for nursing rounds (the MAR's
    due-soon constant; actionable throughout); the KPI label "Orders Due" counts due-now work; a
@@ -192,6 +197,7 @@ empty pill in tall element captures (screenshot mechanics, not page state).
    it settles when the record shows the order no longer active, and a one-time order cannot
    complete twice); outcome toasts are shown while a nurse-care screen is mounted (the per-order
    notice stays either way).
+   *[Integration note, 2026-10-16: the OVERDUE choice is withdrawn — `4f1009d`, contract §11.2.]*
 4. No contract change is requested.
 
 ## 7. Reproduce

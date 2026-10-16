@@ -1,6 +1,19 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-10-05 · current through THE OWNER'S DECISIONS + SAFE RETRY on
+**Last updated: 2026-10-16 · current through THE ICU NURSING ORDERS + NURSE
+PATIENT CHART UPDATE, ASSEMBLED on draft PR #234 (Session 1's integration of the
+three sessions' branches on the same branch, from the reviewed head `2fc317c`;
+last code commit `4f1009d`; pushed for review only — no merge, no installer, no
+hospital access or deployment; local synthetic verification, not release
+acceptance): one-time and repeating nursing orders with exact full-interval
+rounds and safe retry from both Done entry points; the nurse's patient chart
+(no SOFA/NEWS2) carrying the shared MAR + persisted I&O panel; two integration
+corrections (data-age chips converted to the hospital clock once; no invented
+nursing OVERDUE deadline); the combined acceptance on a same-origin production
+pairing against real PostgreSQL; one PRE-EXISTING defect recorded (restricted
+roles' chart reads); this update RUNS A MIGRATION (`migrationWillRun` true) and
+the update-write/rollback release gate stays UNRESOLVED — the record below.
+Prior (2026-10-05, latest): THE OWNER'S DECISIONS + SAFE RETRY on
 draft PR #234 (same branch, from Codex-verified `d66c6cf`; pushed for review only —
 no merge, no installer, no hospital deployment): continuous stays available when
 needed and PRN as needed (no interval); an order's first dose is open on signing,
@@ -109,6 +122,138 @@ After: 21,958 → 11,177 lines; `## Current Status` and `## PR history` each
 appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
+
+**2026-10-16 · THE ICU NURSING ORDERS + NURSE PATIENT CHART UPDATE — ASSEMBLED
+AND VERIFIED (Session 1 integration; same branch `claude/amazing-hopper-nwzw1x`,
+draft PR #234, from the reviewed head `2fc317c`; branch push for review only — no
+merge, `main` unchanged at `f0bf464`, no installer or EXE, no hospital access or
+migration, no deployment; synthetic data only; not release or hospital
+acceptance).**
+DESIGN FIRST: the owner's design is committed verbatim as
+`docs/design/icu-update-nursing-patient-chart.md`, with the frozen contracts in
+`docs/design/icu-update-nursing-patient-chart-contracts.md` (Amendments 1 and 2,
+and the integration record §11). Three sessions built against those contracts;
+Session 1 assembled them.
+
+1. **Assembly** (merge commits, branch history kept):
+   - `7845d26` Session 1 — nursing orders + the shared backend (`2fb4eb8`,
+     product `5eac744`): one-time / repeating nursing orders (1 min – 48 h),
+     rounds in millisecond stamps, next due = recorded completion + the full
+     interval, safe replay by `attemptId`, the Orders & Medication Done entry
+     point and New Nursing Order form, the I&O snapshot catalogue types and the
+     admission-bound I&O write (`expectedEncounterId`), migration
+     `20261015232419_AddOrderNursingSchedule`.
+   - `4fbddc5` Session 2 — the patient chart (`c88b3dc`, product `5315769`):
+     the nurse's chart has no SOFA/NEWS2 and carries the shared care panel
+     (Session 2's committed insertion — no stand-in).
+   - `0cc9264` Session 3 — nurse workflows + shared patient care (`681198a`,
+     product `9e87e5b`): one MAR / nursing / I&O controller per tab
+     (`NurseCareProvider`), the patient-chart MAR + I&O panel, Orders to
+     Implement on the round contract, the persisted I&O panel replacing the
+     demo worksheet.
+2. **Two integration corrections**, each its own commit:
+   - `0f56e8a` — data-age chips converted the last-read time to the hospital
+     clock twice (`displayStamp(localStamp(at))`: a UTC+3 hospital read three
+     hours ahead). One conversion now (contract §11.1).
+   - `4f1009d` — Session 3's invented 30-minute nursing OVERDUE label removed:
+     DUE from the round's exact due instant, UPCOMING before it, a late round
+     stays DUE with "N min since due" as a fact; counts = actionable rounds;
+     unlock, repeating behaviour and every medication threshold unchanged
+     (contract §11.2).
+   - Last code commit: **`4f1009d`**. Later commits are docs/evidence only;
+     product-source equality with `4f1009d` was verified, not re-run.
+3. **Compatibility / release notes for this update:**
+   - **A migration runs** (`AddOrderNursingSchedule`: one nullable `text`
+     column, `Orders.NursingJson`). Existing rows are untouched (Session 1's
+     in-place upgrade check: every pre-existing order and catalogue row
+     byte-identical). **So the updater's `migrationWillRun` is TRUE for this
+     update** — unlike the first batch's JSON-only changes.
+   - **I&O uses the existing observations API** — no new endpoint: two new
+     catalogue types (`io_current_intake_ml`, `io_current_output_ml`, seeded in
+     the production reference seed and topped up on upgrade), and an optional
+     `expectedEncounterId` on `POST /api/icu/observations` (I&O saves always
+     send it; other callers may; a mismatch is 409 with nothing written).
+   - **Implement** (`POST /api/icu/orders/{id}/implement`) gains the additive
+     `{ roundId, attemptId }` body; the empty request still completes a
+     one-time / legacy order; an absent order is 404 before any body problem
+     (Amendment 2, keeps `deployed-orders-e2e.yml`'s FOUR-CODE probe).
+   - Client and server ship together (an older server refuses the new bodies).
+4. **⚠️ The release gate stays UNRESOLVED.** `aurora-update.ps1` still starts
+   the new service before its health check with no clinical-write barrier.
+   With `migrationWillRun` true, a failed-health rollback restores the
+   pre-update database, so anything documented during the validation window
+   (MAR facts, nursing completions, I&O) would be **discarded** — a nurse's
+   recorded dose disappearing is the same double-dose hazard by another route.
+   Still needed before release: write exclusion during update validation, and a
+   failed-health rollback drill (now migration-bearing, with round-bearing MAR
+   facts, nursing completions and I&O written in the window). Nothing here
+   builds or tests that gate.
+
+**Verification (local, synthetic; evidence:
+`docs/evidence/icu-nursing-chart/integration/`).** All on the committed source
+`4f1009d`, run once.
+- **Builds and CI gates:** `tsc -b --force`, `vite build`, the production and
+  staging bundles, the `VITE_APP_ENV` allow-list gate, the five `ci.yml` node
+  gates and `dotnet build -c Release` all exit 0 (only the existing CS8602
+  warning). `git diff 5eac744 4f1009d -- server` is empty, so Session 1's
+  server/API evidence stands (nursing 63/63, I&O 25/25, in-place upgrade 15/15,
+  restart, deployed orders/observations suites replayed).
+- **Extracted controllers:** Session 3's controller harness on the assembled
+  tree **74/74**; the MAR safe-retry / first-dose / rolling-timer browser
+  scenarios against the assembled server + PostgreSQL **41/41**.
+- **Combined acceptance on a same-origin PRODUCTION pairing** (the assembled
+  server serving its own production bundle, `APP_ENV=production`, a fresh
+  disposable database, seven synthetic accounts through their forced first-login
+  changes, shipped role profiles — nothing granted): setup **23/23**, main
+  **110/110**, the Orders & Medication entry point (Session 1's unchanged
+  `ui-check.mjs`) **38/38**, after a server restart **8/8**. Every nursing
+  completion, MAR documentation and I&O read/write reached the real server and
+  database; controlled transport only (read delays, response loss, 401
+  injection). Covered:
+  - DataAge on an Asia/Baghdad hospital with the browser in
+    America/Los_Angeles, 24h and 12h (chips + tooltips); nursing times and
+    refusal stamps to the second in both;
+  - workspace Done: DUE with "N min since due", no OVERDUE, counts = actionable;
+    pending → signed; minutes/hours; double click → one request; legacy empty
+    request; exact unlock **3 ms** after the due instant; an unresolved attempt
+    kept through a reload and a 401 retry, then the delayed original confirmed
+    from the record with exactly one completion; a Done after discharge → 409,
+    nothing written;
+  - the nurse chart: MAR + I&O, no SOFA/NEWS2; one pending MAR attempt kept
+    across chart ⇄ workspace navigation, patient switches, a reload and
+    re-authentication as the same nurse, never shown to another nurse; one fact;
+  - I&O: 500 then 200 shows 200, zero, missing, one- and both-value saves,
+    response loss (never resent), 401, effective amendments, the doctor's fluid
+    strip and SOFA/NEWS2 byte-identical after 7 snapshots, the stale admission-A
+    form refused 409 after readmission B with nothing written in either, B
+    blank, identical after restart;
+  - switching with delayed reads (nurse and doctor), restricted roles, dark and
+    light, 390 px (the care panel fits; page overflow 0 px on the nurse chart,
+    the workspace and the doctor chart);
+  - compact API: 6 simultaneous copies of one attempt → one completion; 4
+    competing attempts → one 200 + three 409; 404 before 400; 400 / 403 / 409.
+
+**Defect found, PRE-EXISTING and unresolved:** a Physiotherapist (no
+`orders.view`) or a Receptionist (no `orders.view` / `results.view`) opening a
+patient chart in production gets 403 on the chart's orders (and labs) reads —
+from `usePatientScores` and `getPatientDetail`, which read them for every role —
+and the access refusal replaces the chart. The same reads are on `main`
+`f0bf464`; the pre-integration head `2fc317c` reproduces it. This update's own
+composites (I&O, MAR panel, nursing queue) make no reads for those roles. Not
+changed: no permission was granted, and the fix needs the owner's decision on
+what SOFA/NEWS2 show to a role that may not read orders or labs.
+
+**Observation, not changed:** right after a completion a lock line's countdown
+can read one minute high for up to 30 s (the 30 s render tick, as on the MAR
+card); the stated opening time and the unlock are exact.
+
+**Not verified / limitations:** local and synthetic only (Linux PostgreSQL, not
+the Windows appliance; no installer, hospital migration or deployed suite);
+Chromium only; real clocks; the data-age "D-n" form not exercised; transport
+control is Playwright routing (held requests delivered by the harness); a
+process restart, not a reboot; the `ci.yml` production-seed job (docker) not
+replayed locally. **Not hospital or deployed acceptance.**
+
 
 **2026-10-05 · THE OWNER'S DECISIONS + SAFE RETRY (follow-up on the one-action
 correction; same branch `claude/amazing-hopper-nwzw1x`, from Codex-verified
@@ -226,6 +371,9 @@ Final steps run once on the committed source `303ae8c`; all 32 exit 0.
   device documenting a PRN dose again is a new attempt.
 - The 390 px page scroll comes from the I&O card's totals row. It predates
   this change and was flagged separately.
+  *[Superseded 2026-10-16: the demo I&O worksheet is replaced by the persisted
+  I&O panel; at 390 px the Nurse Workspace and the nurse chart have 0 px
+  page-level overflow — the integration record above.]*
 - The deployed suites were replayed locally only.
 
 **2026-10-05 · ONE ACTION PER MEDICATION ROUND (the owner's correction; same
@@ -658,6 +806,13 @@ pure append (109 added, 0 removed) superseding Amendment A.
    round-bearing facts present. No existing staging or CI test proves this
    gate. Installer changes and the EXE stay deferred. Until the gate is met,
    treat the update as forward-only once any round has been documented.
+   *[2026-10-16 note: the assembled nursing-orders / nurse-chart update adds
+   migration `AddOrderNursingSchedule`, so for the update as now assembled
+   `migrationWillRun` is TRUE and a failed-health rollback restores the
+   pre-update database — documentation written during validation would be
+   discarded instead of surviving. The gate is still UNRESOLVED and still
+   needs the write barrier and a (now migration-bearing) rollback drill — the
+   2026-10-16 record above. Text above kept as recorded.]*
 
 **Verification (local; the retired hosted service was never contacted;
 synthetic data only). Evidence, logs, screenshots and tools:
