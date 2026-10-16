@@ -7,7 +7,7 @@
 import type {
   ActionQueuesResponse, AdministrationAction, AdmitDraft, AdmitResponse, AdtBed, AiQueryResponse, AssignedPatient, Assignment, AttendingOption, WardDoctorOption, CorrectIdentityDraft, BedsResponse, Consult, CorrectImagingDraft, CorrectLabDraft, CodeStatusEntry, CoverageRow, CoverageStaff, CreateBedDraft, CreateDrugDraft, CreateImagingStudyDraft, CreateLabTestDraft, CreateUserDraft, DerivedUnitSummary, DispositionCode, DocumentCustomLabDraft, DocumentLabDraft, EditDrugDraft, EditHospitalIdentityDraft, EditImagingStudyDraft, EditLabTestDraft, EditUserDraft, Encounter, FormularyDrug, HospitalIdentity, HospitalIdentityWithHistory, LabTest, MatchPatientDraft, MatchPatientResponse, PatientSearchResponse, MeasureDraft, OrderSetItemTemplate,
   DocumentImagingDraft, FormularyEvent, HandoffEntry, ImagingStudy, InteractionRule, IoEntry, LabDraw, Labs, Infusion, MarRow, MedicationDetails,
-  NewIoEntry, NewObservationEntry, NewOrderDraft, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType, Order, OrderSetDef,
+  NewIoEntry, NewObservationEntry, NewOrderDraft, NursingImplementRequest, NursingTask, ObsCatalogGroup, ObsEntryValue, Observation, ObservationType, Order, OrderSetDef,
   ImagingStudyDef, Patient, PatientDetailResponse, PatientIdentity, PatientSummary, ResultInboxItem,
   MineWorklist, Removal, RosterRecordDto, RoundingPatient, TimelineEvent, UnitSummaryResponse, UserAccount,
   DispositionEntry, FrequencyEntry, IsolationTypeEntry, ShiftEntry,
@@ -30,8 +30,12 @@ import { CODE_STATUSES, DISPOSITION_ENTRIES, FREQUENCY_ENTRIES, HOSPITAL_IDENTIT
 import { LAB_CATALOG } from './data/catalog'
 import {
   allOrders, applyAdministration, applyDiscontinue, applyImplementation, applyModify,
-  applySign, deriveMarRows, insertOrder,
+  applyNursingImplementation, applySign, deriveMarRows, insertOrder,
 } from './data/orders'
+import {
+  IO_INTAKE_TYPE, IO_OUTPUT_TYPE, deriveIoView, ioDraftProblem,
+  type IoRead, type IoSnapshotDraft, type IoWriteResult,
+} from './ioSnapshots'
 import {
   applyAcknowledgeImaging, applyAcknowledgeLab, applyUnacknowledgeImaging, applyUnacknowledgeLab,
   deriveMissionControlLabs, deriveResultInbox,
@@ -1292,6 +1296,17 @@ export async function getPatientOrders(patientId: string): Promise<Order[]> {
   throw apiUnavailable('orders')
 }
 
+/** the per-patient order read that SETTLES a nursing completion (contracts
+ *  §9.2): the server's own rows — completed and discontinued orders
+ *  included — or null when the server cannot be read (a mock fallback would
+ *  settle nothing). In mock mode (no API configured) the mock store is the
+ *  record. */
+export async function getPatientOrdersAuthoritative(patientId: string): Promise<Order[] | null> {
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null)
+    return respond(allOrders().filter(o => o.patientId === patientId), 120)
+  return apiGet<Order[]>(`/api/icu/orders?patientId=${encodeURIComponent(patientId)}`, 'orders')
+}
+
 /** GET /api/icu/orders?status=pending — signature queue (REAL; mock fallback). */
 export async function getPendingOrders(): Promise<Order[]> {
   const real = await apiGet<Order[]>('/api/icu/orders?status=pending', 'orders')
@@ -1399,6 +1414,62 @@ export async function completeImplementation(orderId: string, actor: string, job
   if (r.kind === 'denied') return null
   if (import.meta.env.VITE_APP_ENV !== 'production') return respond(applyImplementation(orderId, actor), 120)
   throw apiUnavailable('implement order')
+}
+
+/** POST /api/icu/orders/:orderId/implement with the NURSING ROUND contract
+ *  (contracts §3.4, Amendment 1 §9): `request` = { roundId, attemptId }
+ *  completes the order's CURRENT round — required for a repeating order;
+ *  omitted = the existing empty request (one-time orders). One attemptId per
+ *  deliberate Done; a retry re-sends the same pair, which the server answers
+ *  with the existing record if either copy already landed.
+ *  THREE OUTCOMES (the MAR's): ok — recorded; rejected — the server answered
+ *  with a refusal (its precise {error}, stamps in the nursing form — localise
+ *  with localizeNursingStamps); uncertain — no answer / a server error: the
+ *  completion MAY be recorded. A refusal of a RETRY does not settle an
+ *  unresolved attempt (§9.2) — the caller settles from
+ *  getPatientOrdersAuthoritative + settleNursingAttempt.
+ *  Mock mode and a tokenless dev session (401) apply the same rules to the
+ *  mock store; in production a 401 is a refusal ("sign in again"). */
+export type NursingWriteResult =
+  | { kind: 'ok'; order: Order }
+  /** status: the HTTP status of a server refusal (absent for a client-side one) */
+  | { kind: 'rejected'; error: string; status?: number }
+  | { kind: 'uncertain'; error: string }
+
+export async function implementNursingOrder(
+  orderId: string, actor: string, jobTitle: JobTitle, request?: NursingImplementRequest,
+): Promise<NursingWriteResult> {
+  if (!hasPermission(jobTitle, 'orders.implement'))
+    return respond({ kind: 'rejected', error: 'Insufficient permissions — implementation is a nursing action' }, 120)
+  const mock = (): Promise<NursingWriteResult> => {
+    const r = applyNursingImplementation(orderId, actor, request)
+    return respond(typeof r === 'string' ? { kind: 'rejected', error: r } : { kind: 'ok', order: r }, 120)
+  }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null) return mock()
+  await clockReady
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}/api/icu/orders/${encodeURIComponent(orderId)}/implement`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { ...authHeaders(), ...(request ? { 'Content-Type': 'application/json' } : {}) },
+      ...(request ? { body: JSON.stringify({ roundId: request.roundId, attemptId: request.attemptId }) } : {}),
+    })
+    clearTimeout(timer)
+    if (res.ok) return { kind: 'ok', order: (await res.json()) as Order }
+    if (res.status === 401) {
+      if (import.meta.env.VITE_APP_ENV !== 'production') return mock()
+      return { kind: 'rejected', error: 'your session has expired — sign in again', status: 401 }
+    }
+    if (res.status >= 500) return { kind: 'uncertain', error: `the server failed (${res.status})` }
+    const err = (await res.json().catch(() => null)) as { error?: string } | null
+    console.info(`[aurora] nursing implementation API rejected the action (${res.status})`)
+    return { kind: 'rejected', error: err?.error ?? `rejected (${res.status})`, status: res.status }
+  } catch {
+    console.info('[aurora] nursing implementation API did not answer — outcome uncertain')
+    return { kind: 'uncertain', error: 'the server did not answer' }
+  }
 }
 
 /** POST /api/icu/mar/:orderId/administrations/:adminId — document a dose
@@ -2444,6 +2515,78 @@ export function correctObservation(observationId: string, value: ObsEntryValue, 
     `/api/icu/observations/${encodeURIComponent(observationId)}/correct`,
     'observation correction',
     { value, ...(reason !== undefined && reason.trim() !== '' ? { reason } : {}) })
+}
+
+/* ---- Intake & Output MANUAL SNAPSHOTS (contracts §5, Amendment 1 §9.3) ----
+   Two observation types through the observations API above — no I&O store,
+   no mock, no demo fallback: a clinical value is the server's or it is
+   visibly unavailable. Scoped to the patient's OPEN admission. */
+export {
+  IO_INTAKE_TYPE, IO_OUTPUT_TYPE, IO_SNAPSHOT_TYPE_CODES, IO_SNAPSHOT_MAX_ML, deriveIoView, ioDraftProblem,
+} from './ioSnapshots'
+export type { IoRead, IoSnapshot, IoSnapshotDraft, IoSnapshotKind, IoView, IoWriteResult } from './ioSnapshots'
+
+/** the patient's current I&O: the open admission (REAL-ONLY encounter read —
+ *  never the mock encounter fallback), then one observation read per type.
+ *  `unavailable` when unreachable, refused or in mock mode. */
+export async function getIoSnapshots(patientId: string): Promise<IoRead> {
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null)
+    return { kind: 'unavailable', error: 'Intake & Output needs the live server — nothing is simulated', forbidden: false }
+  const unavailable = (): IoRead => lastReadWasForbidden
+    ? { kind: 'unavailable', error: 'your role cannot read this patient\'s Intake & Output', forbidden: true }
+    : { kind: 'unavailable', error: 'the server is not reachable — Intake & Output could not be read', forbidden: false }
+  const encs = await apiGet<Encounter[]>(
+    `/api/icu/adt/encounters?patientId=${encodeURIComponent(patientId)}&status=open`, 'ADT encounters')
+  if (encs === null) return unavailable()
+  const enc = encs.find(e => e.patientId === patientId && e.status === 'open')
+  if (!enc) return { kind: 'no-open-encounter' }
+  const read = (typeCode: string) => apiGet<Observation[]>(
+    `/api/icu/observations?patientId=${encodeURIComponent(patientId)}`
+    + `&encounterId=${encodeURIComponent(enc.encounterId)}&typeCode=${encodeURIComponent(typeCode)}`, 'I&O')
+  const [intake, output] = await Promise.all([read(IO_INTAKE_TYPE), read(IO_OUTPUT_TYPE)])
+  if (intake === null || output === null) return unavailable()
+  return { kind: 'ok', view: deriveIoView(patientId, enc.encounterId, [...intake, ...output]) }
+}
+
+/** POST /api/icu/observations — one I&O save (both values = ONE request, one
+ *  clinical time), bound to the admission the form showed: `encounterId` is
+ *  the loaded IoView's, sent as expectedEncounterId — the server writes
+ *  nothing (409) when that is no longer the patient's open admission.
+ *  REAL-ONLY. `uncertain` = no answer: re-read, never resend automatically. */
+export async function recordIoSnapshot(
+  patientId: string, encounterId: string, draft: IoSnapshotDraft, jobTitle: JobTitle,
+): Promise<IoWriteResult> {
+  if (!hasPermission(jobTitle, 'observations.record'))
+    return { kind: 'rejected', error: 'Insufficient permissions — your role cannot chart observations' }
+  const problem = ioDraftProblem(draft)
+  if (problem) return { kind: 'rejected', error: problem }
+  if (import.meta.env.VITE_APP_ENV !== 'production' && runtimeApiBase === null)
+    return { kind: 'rejected', error: 'Intake & Output needs the live server — nothing was recorded' }
+  const entries = [
+    ...(draft.intakeMl !== undefined ? [{ typeCode: IO_INTAKE_TYPE, value: draft.intakeMl }] : []),
+    ...(draft.outputMl !== undefined ? [{ typeCode: IO_OUTPUT_TYPE, value: draft.outputMl }] : []),
+  ]
+  await clockReady
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), API_TIMEOUT_MS)
+    const res = await fetch(`${API_BASE}/api/icu/observations`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patientId, entries, expectedEncounterId: encounterId }),
+    })
+    clearTimeout(timer)
+    if (res.ok) return { kind: 'ok', observations: (await res.json()) as Observation[] }
+    if (res.status === 401) return { kind: 'rejected', error: 'your session has expired — sign in again; nothing was recorded', status: 401 }
+    if (res.status >= 500) return { kind: 'uncertain', error: `the server failed (${res.status})` }
+    const err = (await res.json().catch(() => null)) as { error?: string } | null
+    console.info(`[aurora] I&O charting API rejected the action (${res.status})`)
+    return { kind: 'rejected', error: err?.error ?? `rejected (${res.status})`, status: res.status }
+  } catch {
+    console.info('[aurora] I&O charting API did not answer — outcome uncertain')
+    return { kind: 'uncertain', error: 'the server did not answer' }
+  }
 }
 
 /* ---------------- Backup & Disaster Recovery (the hard go-live gate) ----------------

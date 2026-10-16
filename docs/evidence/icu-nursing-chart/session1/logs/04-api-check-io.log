@@ -1,0 +1,33 @@
+  PASS catalogue serves both types (nursing group, mL, not score inputs)
+  PASS the derived fluid totals do not take the snapshot types as inputs
+admitted synthetic P-1020 (ENC-1021)
+  PASS new admission: both Not recorded, no balance, empty history
+== admission binding (writes nothing on refusal)
+  PASS I&O without expectedEncounterId -> 400, nothing written (400)
+  PASS I&O with a wrong expectedEncounterId -> 409, nothing written (409)
+  PASS blank expectedEncounterId -> 400 (400)
+== replacement 500 -> 200, explicit zero, balance
+  PASS intake 500 charted (server-stamped, manual, recorder from the token)
+  PASS intake 500 shown; output Not recorded; no balance with one value missing
+  PASS entering 200 after 500 displays 200; 500 stays in history (newest first)
+  PASS explicit zero output is a value (not missing): balance 200 - 0 = 200
+  PASS both values in one save share one clinical time; balance 300 - 120 = 180
+== shape, range, permission, existing callers
+  PASS 20001 mL -> 400, nothing written (400)
+  PASS -1 mL -> 400, nothing written (400)
+  PASS pharmacist (no observations.record) -> 403 (403)
+  PASS an existing caller (hr, no expectedEncounterId) -> 200, unchanged
+  PASS any caller MAY send the check: hr with a wrong expectedEncounterId -> 409 (409)
+== amendments: effective value; an amended older snapshot never becomes current
+  PASS self-correction 300 -> 310: current 310 (original 300 kept), balance 190
+  PASS amending the OLDEST snapshot (500 -> 550) leaves the latest (310) current; history shows effective values
+== discharge + readmission: the stale form for A cannot chart into B
+  PASS A discharged (200)
+  PASS same patient readmitted as B (ENC-1022)
+  PASS the stale save (expected A) -> 409 naming A and B (409)
+  PASS nothing created in B, nothing added to A
+  PASS admission B starts blank (Not recorded)
+  PASS admission A's values and full history (5 snapshots) unchanged under A
+  PASS a save bound to B -> 200; B shows only its own value
+
+RESULT: 25 passed, 0 failed

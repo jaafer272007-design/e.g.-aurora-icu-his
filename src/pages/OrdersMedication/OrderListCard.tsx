@@ -1,10 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card } from '../../components/Card'
 import { Badge, type BadgeColor } from '../../components/Badge'
 import { displayStamp, dueStateFor, useNow } from '../../lib/time'
 import { formatInfusionDose, formatNormalised } from '../../lib/infusion'
 import { nextExpectedDose } from '../../lib/marSchedule'
+import {
+  displayNursingTime, formatNursingInterval, lastNursingCompletion, nursingRoundState,
+} from '../../lib/nursingRounds'
 import type { Order, OrderPriority, OrderStatus } from '../../lib/api/types'
+import type { NursingDoneBusy } from './useNursingDone'
 
 const PRIORITY_COLOR: Record<OrderPriority, BadgeColor> = { STAT: 'red', Urgent: 'amber', Routine: 'blue' }
 const CATEGORY_COLOR: Record<string, BadgeColor> = { Medication: 'green', Lab: 'blue', Imaging: 'blue', Nursing: 'amber' }
@@ -22,13 +26,15 @@ const FILTERS: FilterKey[] = ['all', 'pending', 'active', 'completed', 'disconti
 /* ORDER-TYPE FILTER (owner's request, 2026-09-30 — docs/design/
    icu-update-batch-1.md §1): a second, separately labeled row that
    combines with the status tabs by AND. "All types" is every category,
-   Nursing included; Laboratory is category 'Lab'. */
-type TypeKey = 'all' | 'Medication' | 'Lab' | 'Imaging'
+   Nursing included; Laboratory is category 'Lab'. Nursing added
+   2026-10-15 (icu-update-nursing-patient-chart.md §2). */
+type TypeKey = 'all' | 'Medication' | 'Lab' | 'Imaging' | 'Nursing'
 const TYPE_FILTERS: { key: TypeKey; label: string; noun: string }[] = [
   { key: 'all', label: 'All types', noun: '' },
   { key: 'Medication', label: 'Medication', noun: 'medication ' },
   { key: 'Lab', label: 'Laboratory', noun: 'laboratory ' },
   { key: 'Imaging', label: 'Imaging', noun: 'imaging ' },
+  { key: 'Nursing', label: 'Nursing', noun: 'nursing ' },
 ]
 
 interface OrderListCardProps {
@@ -41,7 +47,14 @@ interface OrderListCardProps {
   onSign: (orderId: string) => void
   onModify: (orderId: string) => void
   onDiscontinue: (orderId: string) => void
+  /** the legacy empty-request implement (orders without nursing rounds) */
   onImplement: (orderId: string) => void
+  /** NURSING ROUNDS: Done on an order's open current round, the retry of an
+   *  unconfirmed completion, and their per-order state */
+  onNursingDone: (order: Order) => void
+  onNursingRetry: (orderId: string) => void
+  nursingBusy: ReadonlyMap<string, NursingDoneBusy>
+  nursingNotices: Record<string, string>
 }
 
 /** an order the implement action completes: an active TASK order flagged
@@ -54,8 +67,24 @@ const implementable = (o: Order) =>
 /** Full per-patient order list with status + type filters, audit history, and
  *  doctor RBAC actions (sign / modify / discontinue) plus the nursing
  *  implement action on task orders. */
-export function OrderListCard({ orders, canManage, canImplement, onSign, onModify, onDiscontinue, onImplement }: OrderListCardProps) {
+export function OrderListCard({
+  orders, canManage, canImplement, onSign, onModify, onDiscontinue, onImplement,
+  onNursingDone, onNursingRetry, nursingBusy, nursingNotices,
+}: OrderListCardProps) {
   const now = useNow()
+  /* EXACT UNLOCK: a locked nursing round opens at its due instant to the
+     millisecond — a timer re-renders then, without a reload */
+  const [, setWake] = useState(0)
+  useEffect(() => {
+    const t = Date.now()
+    const next = orders
+      .map(o => nursingRoundState(o, t))
+      .flatMap(st => (st.kind === 'locked' ? [st.dueMs] : []))
+      .sort((a, b) => a - b)[0]
+    if (next === undefined) return
+    const id = window.setTimeout(() => setWake(w => w + 1), Math.min(next - t + 1, 2_147_000_000))
+    return () => window.clearTimeout(id)
+  })
   const [filter, setFilter] = useState<FilterKey>('all')
   const [typeFilter, setTypeFilter] = useState<TypeKey>('all')
   const [openHistory, setOpenHistory] = useState<Set<string>>(new Set())
@@ -139,6 +168,8 @@ export function OrderListCard({ orders, canManage, canImplement, onSign, onModif
                   ordered) · normalised {formatNormalised(o.medication.infusion)}
                 </div>
               )}
+              {o.nursing && <NursingLine order={o} nowMs={Date.now()} />}
+              {nursingNotices[o.orderId] && <div className="oonursenote" role="status">{nursingNotices[o.orderId]}</div>}
               {o.status === 'discontinued' && o.statusReason && (
                 <div className="ooreason">⛔ Discontinued: {o.statusReason}</div>
               )}
@@ -152,9 +183,31 @@ export function OrderListCard({ orders, canManage, canImplement, onSign, onModif
                 {canManage && (o.status === 'pending' || o.status === 'active') && (
                   <button className="oab dc" onClick={() => onDiscontinue(o.orderId)} aria-label={`Discontinue order ${o.orderId}`}>⊘ Discontinue</button>
                 )}
-                {canImplement && implementable(o) && (
+                {canImplement && implementable(o) && !o.nursing && (
                   <button className="oab impl" onClick={() => onImplement(o.orderId)} aria-label={`Implement order ${o.orderId}`}>✓ Implement</button>
                 )}
+                {canImplement && implementable(o) && o.nursing && (() => {
+                  const st = nursingRoundState(o, Date.now())
+                  const b = nursingBusy.get(o.orderId)
+                  if (st.kind === 'legacy' || st.kind === 'inactive') return null
+                  if (b) return (
+                    <>
+                      <button className="oab impl" disabled aria-label={`Completing round ${st.round.number} of order ${o.orderId}`}>
+                        {b.phase === 'saving' ? 'Saving…' : b.phase === 'checking' ? 'Checking…' : 'Not confirmed'}
+                      </button>
+                      {b.phase === 'unconfirmed' && (
+                        <button className="oab impl" onClick={() => onNursingRetry(o.orderId)} aria-label={`Retry saving the completion of order ${o.orderId}`}>↻ Retry saving</button>
+                      )}
+                    </>
+                  )
+                  return st.kind === 'open' ? (
+                    <button className="oab impl" onClick={() => onNursingDone(o)} aria-label={`Done: round ${st.round.number} of order ${o.orderId}`}>✓ Done · round {st.round.number}</button>
+                  ) : (
+                    <button className="oab impl" disabled aria-label={`Round ${st.round.number} of order ${o.orderId} opens at ${displayNursingTime(st.round.dueTime)}`}>
+                      Opens {displayNursingTime(st.round.dueTime)}
+                    </button>
+                  )
+                })()}
                 <button
                   className="oab hist" aria-expanded={historyOpen}
                   onClick={() => toggleHistory(o.orderId)}
@@ -178,5 +231,26 @@ export function OrderListCard({ orders, canManage, canImplement, onSign, onModif
         })}
       </div>
     </Card>
+  )
+}
+
+/** a nursing order's schedule and round state: one-time / repeat interval,
+ *  the current round's due time (open, overdue or opening), the last
+ *  completion. Times are hospital clock, to the second (§9.1). */
+function NursingLine({ order, nowMs }: { order: Order; nowMs: number }) {
+  const n = order.nursing!
+  const st = nursingRoundState(order, nowMs)
+  const last = lastNursingCompletion(order)
+  return (
+    <div className="oonurse num">
+      <span>{n.intervalMinutes === undefined ? 'One-time' : `Repeats ${formatNursingInterval(n.intervalMinutes)}`}</span>
+      {(st.kind === 'open' || st.kind === 'locked') && (
+        <span className={`oonext ${st.kind === 'locked' ? 'oo-upcoming' : 'oo-due'}`}>
+          round {st.round.number} {st.kind === 'locked' ? 'opens' : 'due'} {displayNursingTime(st.round.dueTime)}
+          {st.kind === 'open' ? ' · OPEN' : ''}
+        </span>
+      )}
+      {last && <span>last done {displayNursingTime(last.completedTime)} · {last.completedBy}</span>}
+    </div>
   )
 }

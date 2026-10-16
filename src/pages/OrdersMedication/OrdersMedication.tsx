@@ -26,6 +26,8 @@ import { NewOrderCard } from './NewOrderCard'
 import { OrderSetsCard } from './OrderSetsCard'
 import { LabOrderCard } from './LabOrderCard'
 import { ImagingOrderCard } from './ImagingOrderCard'
+import { NursingOrderCard, type NursingOrderEntry } from './NursingOrderCard'
+import { useNursingDone } from './useNursingDone'
 import { NotYetAvailable } from '../../components/NotYetAvailable'
 import { DiscontinueDialog, ModifyDialog } from './OrderDialogs'
 
@@ -127,6 +129,14 @@ export function OrdersMedication() {
 
   const orderById = (id: string | null) => orders?.find(o => o.orderId === id) ?? null
 
+  /* NURSING ROUNDS (contracts §3.6, §9.2): Done on a nursing order's
+     current round — one attempt per click, settled only from the server's
+     record; the authoritative read also refreshes this patient's list */
+  const nursingDone = useNursingDone({
+    actor: session.name, jobTitle: session.jobTitle, patientId, showToast,
+    onOrders: (pid, list) => { if (pid === patientId) { setOrders(list); setChartAt(Date.now()) } },
+  })
+
   const handleSign = (orderId: string) => {
     signOrder(orderId, session.name, session.jobTitle).then(o => {
       if (!o) return
@@ -169,6 +179,26 @@ export function OrdersMedication() {
       refresh()
       showToast(sign ? 'Order signed & active' : 'Order saved as pending', o?.summary ?? '')
     })
+  }
+
+  /* NEW NURSING ORDER (icu-update-nursing-patient-chart.md §2): category
+     Nursing, completed from Orders to Implement; `nursing: {}` = one-time,
+     { intervalMinutes } = repeating. Same create path and permissions as
+     every other order. */
+  const handleNursingOrder = async (entry: NursingOrderEntry, sign: boolean): Promise<boolean> => {
+    const draft: NewOrderDraft = {
+      patientId, category: 'Nursing', summary: entry.instructions, priority: entry.priority,
+      requiresImplementation: true,
+      nursing: entry.intervalMinutes === null ? {} : { intervalMinutes: entry.intervalMinutes },
+    }
+    const [o] = await createOrders([draft], session.name, sign, session.jobTitle)
+    refresh()
+    if (!o) {
+      showToast('Nursing order NOT created', 'the server refused it or could not be reached — nothing was saved', 5000)
+      return false
+    }
+    showToast(sign ? 'Nursing order signed & active' : 'Nursing order saved as pending', o.summary)
+    return true
   }
 
   /* Lab orders complete when a RESULT is documented against them (the
@@ -298,6 +328,10 @@ export function OrdersMedication() {
                   onModify={setModifyId}
                   onDiscontinue={setDiscontinueId}
                   onImplement={handleImplement}
+                  onNursingDone={nursingDone.done}
+                  onNursingRetry={nursingDone.retry}
+                  nursingBusy={nursingDone.busy}
+                  nursingNotices={nursingDone.notices}
                 />
               </div>
               <div className="omcolR">
@@ -313,6 +347,9 @@ export function OrdersMedication() {
                 )}
                 {labCatalog && canPrescribe && (
                   <LabOrderCard catalog={labCatalog} onOrder={handleLabOrder} />
+                )}
+                {canPrescribe && (
+                  <NursingOrderCard canSign={canSign} onCreate={handleNursingOrder} />
                 )}
                 {imagingStudies === null && canPrescribe && (
                   <NotYetAvailable what="The imaging study list" />

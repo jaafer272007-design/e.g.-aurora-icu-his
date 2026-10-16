@@ -1,7 +1,8 @@
 import type {
-  AdministrationAction, MarRow, MedicationDetails, NewOrderDraft, Order,
+  AdministrationAction, MarRow, MedicationDetails, NewOrderDraft, NursingImplementRequest, NursingRound, Order,
 } from '../types'
-import { nowHm } from '../../time'
+import { datedEpoch, nowHm } from '../../time'
+import { nursingStampOf, parseNursingStamp } from '../../nursingRounds'
 import {
   currentRound, documentableAt, firstDoseEpoch, instanceIdentity, instanceStamp, isFact, isFirstDose, notYetDueMessage,
   parseFrequency, parseRoundIdentity, roundIdentity, therapyStartEpoch, timerInstant,
@@ -260,10 +261,48 @@ const ORDERS: Order[] = [
 
 export const allOrders = (): Order[] => ORDERS
 
+/* ---------------- NURSING ORDERS (mirrors server/Core/Orders/NursingRounds.cs) ----------------
+   A nursing order created with a schedule carries `nursing`: its interval
+   (absent = one-time) and completed rounds; the current round is derived
+   from those stored facts only — round 1 at the signing minute, then the
+   last completion time + the interval; the clock never creates a round.
+   Round due/completion times and identities use the NURSING stamp form
+   (UTC milliseconds — contract §9.1); its audit stamps are DATED minute
+   wire stamps; every other mock order keeps the display-convention stamps. */
+
+const minuteStamp = (ms: number) => instanceStamp(Math.floor(ms / 60_000) * 60_000)
+
+function deriveNursingRound(o: Order): NursingRound | undefined {
+  const n = o.nursing
+  if (!n || o.status !== 'active') return undefined
+  if (n.completions.length === 0) {
+    const signed = o.history.find(e => e.action === 'signed')?.time
+    const signedMs = signed ? datedEpoch(signed) : null
+    if (signedMs === null) return undefined
+    return { roundId: `${nursingStampOf(signedMs)}~r1`, number: 1, dueTime: nursingStampOf(signedMs) }
+  }
+  if (n.intervalMinutes === undefined) return undefined
+  const last = n.completions[n.completions.length - 1]
+  const doneMs = parseNursingStamp(last.completedTime)
+  if (doneMs === null) return undefined
+  const dueMs = doneMs + n.intervalMinutes * 60_000
+  return { roundId: `${nursingStampOf(dueMs)}~r${last.round + 1}`, number: last.round + 1, dueTime: nursingStampOf(dueMs) }
+}
+
+/** keep the stored-derived current round in step after every mutation */
+function refreshNursing(o: Order): Order {
+  if (o.nursing) {
+    const round = deriveNursingRound(o)
+    if (round) o.nursing.currentRound = round
+    else delete o.nursing.currentRound
+  }
+  return o
+}
+
 export function insertOrder(
   draft: NewOrderDraft, actor: string, sign: boolean, patientName: string, bedId: string, note?: string,
 ): Order {
-  const time = nowHm()
+  const time = draft.nursing ? minuteStamp(Date.now()) : nowHm()
   const order: Order = {
     orderId: nextOrderId(),
     patientId: draft.patientId,
@@ -278,11 +317,14 @@ export function insertOrder(
     orderedTime: time,
     requiresImplementation: draft.requiresImplementation,
     history: [{ time, actor, action: 'created', detail: note }],
+    ...(draft.nursing
+      ? { nursing: { ...(draft.nursing.intervalMinutes !== undefined ? { intervalMinutes: draft.nursing.intervalMinutes } : {}), completions: [] } }
+      : {}),
   }
   /* DERIVED SCHEDULE: signing stores no dose slots — the signed event is
      the therapy start the MAR derives expected instances from */
   if (sign) order.history.push({ time, actor, action: 'signed' })
-  ORDERS.push(order)
+  ORDERS.push(refreshNursing(order))
   return order
 }
 
@@ -290,8 +332,8 @@ export function applySign(orderId: string, actor: string): Order | null {
   const o = ORDERS.find(x => x.orderId === orderId && x.status === 'pending')
   if (!o) return null
   o.status = 'active'
-  o.history.push({ time: nowHm(), actor, action: 'signed' })
-  return o
+  o.history.push({ time: o.nursing ? minuteStamp(Date.now()) : nowHm(), actor, action: 'signed' })
+  return refreshNursing(o)
 }
 
 export function applyModify(
@@ -318,15 +360,70 @@ export function applyDiscontinue(orderId: string, reason: string, actor: string)
   /* remaining scheduled administrations are cancelled with the order */
   o.administrations = o.administrations?.filter(a => a.status !== 'scheduled')
   o.history.push({ time: nowHm(), actor, action: 'discontinued', detail: reason.trim() })
-  return o
+  return refreshNursing(o)
 }
 
+/** the legacy empty implement request (unchanged callers) — null when refused */
 export function applyImplementation(orderId: string, actor: string): Order | null {
-  const o = ORDERS.find(x => x.orderId === orderId && x.status === 'active' && x.requiresImplementation)
-  if (!o) return null
-  o.status = 'completed'
-  o.history.push({ time: nowHm(), actor, action: 'implemented' }, { time: nowHm(), actor, action: 'completed' })
-  return o
+  const r = applyNursingImplementation(orderId, actor)
+  return typeof r === 'string' ? null : r
+}
+
+/** POST /orders/{id}/implement, mirrored — the server's checks in the
+    server's order (contracts §3.4). A refusal returns its wording and
+    changes nothing; a recorded attempt is replayed before any state check. */
+export function applyNursingImplementation(
+  orderId: string, actor: string, request?: NursingImplementRequest, nowMs: number = Date.now(),
+): Order | string {
+  const o = ORDERS.find(x => x.orderId === orderId)
+  if (!o) return `order '${orderId}' was not found`
+  if (!o.requiresImplementation)
+    return o.medication
+      ? `order '${orderId}' is a medication order — doses are administered via the MAR, not implemented`
+      : `order '${orderId}' does not require implementation`
+  if (o.category === 'Lab' || o.category === 'Imaging')
+    return `order '${orderId}' is a ${o.category} order — it completes when its result is documented against it, never by a manual done`
+  const n = o.nursing
+  if (request) {
+    const prior = n?.completions.find(c => c.attemptId === request.attemptId)
+    if (prior) {
+      if (prior.roundId === request.roundId) return o
+      return `attempt '${request.attemptId}' already recorded a different completion (round ${prior.round}, ${prior.roundId}); a retry must resend the same round`
+    }
+    if (!n) return `order '${orderId}' is a one-time order without nursing rounds — implement it with an empty request`
+  } else if (n?.intervalMinutes !== undefined) {
+    return `order '${orderId}' repeats every ${n.intervalMinutes} minute${n.intervalMinutes === 1 ? '' : 's'} — completing a round requires roundId and attemptId (the order's current round)`
+  }
+  if (o.status !== 'active')
+    return o.status === 'pending'
+      ? `order '${orderId}' is pending — it must be signed before it can be implemented`
+      : `order '${orderId}' is ${o.status === 'completed' ? 'already completed' : o.status} — it is not awaiting implementation`
+  const current = n ? deriveNursingRound(o) : undefined
+  if (request) {
+    if (!current) return `order '${orderId}' has no current nursing round`
+    if (request.roundId !== current.roundId) {
+      const done = n!.completions.find(c => c.roundId === request.roundId)
+      return done
+        ? `round ${done.round} of order '${orderId}' was already completed by ${done.completedBy} at ${done.completedTime} — it is not awaiting completion`
+        : `round '${request.roundId}' is not the current round of order '${orderId}' — the current round is round ${current.number}, due ${current.dueTime}`
+    }
+    if (nowMs < (parseNursingStamp(current.dueTime) ?? Infinity))
+      return `round ${current.number} of order '${orderId}' is not due yet — it opens at ${current.dueTime}`
+  }
+  const time = n ? minuteStamp(nowMs) : nowHm()
+  if (n && current)
+    n.completions.push({
+      round: current.number, roundId: current.roundId, dueTime: current.dueTime,
+      completedTime: nursingStampOf(Math.ceil(nowMs)), completedBy: actor,
+      ...(request ? { attemptId: request.attemptId } : {}),
+    })
+  if (n?.intervalMinutes !== undefined) {
+    o.history.push({ time, actor, action: 'implemented', detail: `round ${current!.number}` })
+  } else {
+    o.status = 'completed'
+    o.history.push({ time, actor, action: 'implemented' }, { time, actor, action: 'completed' })
+  }
+  return refreshNursing(o)
 }
 
 /** Document a dose — APPENDS an administration FACT (nothing stored is

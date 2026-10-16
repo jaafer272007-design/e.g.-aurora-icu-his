@@ -222,9 +222,15 @@ static class OrdersApi
                     draft.Category!, summary ?? OrderLogic.MedSummary(medication!),
                     medication, draft.Priority!, req.Sign ? "active" : "pending",
                     actor, time, draft.RequiresImplementation, null, history, null,
-                    draft.TestId, draft.StudyId, region, draft.Contrast);
-                db.Orders.Add(OrderRow.FromDto(dto, OrderLogic.NextSeq()));
-                created.Add(dto);
+                    draft.TestId, draft.StudyId, region, draft.Contrast,
+                    /* NURSING ORDERS: the schedule starts with no completed
+                       round; a signed order's round 1 is open now */
+                    draft.Nursing is null ? null : new NursingOrderDto(draft.Nursing.IntervalMinutes, []));
+                var newRow = OrderRow.FromDto(dto, OrderLogic.NextSeq());
+                db.Orders.Add(newRow);
+                /* a nursing order answers with its DERIVED current round;
+                   every other order's response is unchanged */
+                created.Add(dto.Nursing is null ? dto : newRow.ToDto());
             }
             db.SaveChanges();
             return Results.Json(created, JsonOpts.Web);
@@ -384,13 +390,50 @@ static class OrdersApi
         /* POST /api/icu/orders/{orderId}/implement — nurse RBAC (orders.implement):
            one-shot completion of a non-med order from "Orders to Implement".
            Note a DOCTOR token is correctly rejected here — implementation is a
-           nursing permission in the locked RBAC model. */
-        app.MapPost("/api/icu/orders/{orderId}/implement", (string orderId, ClaimsPrincipal user, AuroraDb db) =>
+           nursing permission in the locked RBAC model.
+           NURSING ROUNDS (icu-update-nursing-patient-chart-contracts.md §3.4):
+           an optional body { roundId, attemptId } completes the order's
+           CURRENT ROUND (NursingRounds.cs). No body / an empty body / {} is
+           the existing request — accepted for one-time orders, legacy
+           behaviour byte-identical; a repeating order requires the round
+           contract. A resend of a recorded attempt is answered with the order
+           as it is, before any state check (safe retry). */
+        app.MapPost("/api/icu/orders/{orderId}/implement", async (string orderId, HttpContext ctx, ClaimsPrincipal user, AuroraDb db) =>
         {
             if (Rbac.Deny(user, "orders.implement") is IResult denied) return denied;
+            /* the body is read by hand so that the existing no-body request
+               (no Content-Type) keeps binding exactly as before. Its verdict
+               is reported AFTER the order lookup (contract Amendment 2): an
+               absent order is 404 whatever the body — the endpoint used to
+               ignore any body, and the deployed orders suite probes an absent
+               id with a generic {"reason":"x"} */
+            ImplementRequest? req = null;
+            string? bodyProblem = null;
+            using (var reader = new StreamReader(ctx.Request.Body))
+            {
+                var text = await reader.ReadToEndAsync();
+                if (text.Length > 4096) bodyProblem = "implementation request body is too large";
+                else if (!string.IsNullOrWhiteSpace(text))
+                {
+                    try { req = JsonSerializer.Deserialize<ImplementRequest>(text, JsonOpts.Web); }
+                    catch (JsonException) { bodyProblem = "implementation request must be empty or { roundId, attemptId }"; }
+                }
+            }
+            var roundId = req?.RoundId;
+            var attemptId = req?.AttemptId;
+            bodyProblem ??=
+                (roundId is null) != (attemptId is null)
+                    ? "roundId and attemptId go together — send both to complete a nursing round, or neither for a one-time order"
+                : attemptId is not null && !NursingRounds.IsValidAttemptId(attemptId)
+                    ? "attemptId must be 8–64 characters of A–Z, a–z, 0–9, '-' or '_'"
+                : roundId is not null && !NursingRounds.IsValidRoundId(roundId)
+                    ? "roundId must be the order's current round identity ('yyyy-MM-ddTHH:mm:ss.fffZ~r<n>')"
+                : null;
+
             using var tx = OrderLogic.LockOrder(db, orderId);   // the order write lock (atomic mutation)
             var row = db.Orders.FirstOrDefault(x => x.OrderId == orderId);
             if (row is null) return ApiError.NotFound();
+            if (bodyProblem is not null) return ApiError.BadRequest(bodyProblem);
             /* THE TWO HALVES of the old folded lookup, split deliberately:
                requiresImplementation is SHAPE — immutable; implementing
                this order can never succeed in any state → 400 (the same
@@ -409,17 +452,77 @@ static class OrdersApi
             if (row.Category is "Lab" or "Imaging")
                 return ApiError.BadRequest(
                     $"order '{orderId}' is a {row.Category} order — it completes when its result is documented against it, never by a manual done");
+            var nursing = NursingRounds.Read(row);
+            /* SAFE RETRY — judged FIRST inside the lock, before any state
+               check: an attempt this order already recorded (a retry after no
+               answer, or the original arriving after its retry) is answered
+               with the order as it is now — no second completion, no audit
+               entry — even after the order completed, was discontinued or its
+               encounter closed. The same attempt with a different round is
+               refused. */
+            if (attemptId is not null && nursing?.Completions.FirstOrDefault(c => c.AttemptId == attemptId) is { } prior)
+            {
+                if (prior.RoundId == roundId) return Results.Json(row.ToDto(), JsonOpts.Web);
+                return ApiError.StateConflict(
+                    $"attempt '{attemptId}' already recorded a different completion (round {prior.Round}, {prior.RoundId}); a retry must resend the same round");
+            }
+            /* the round contract is SHAPE: a legacy order has no rounds; a
+               repeating order cannot be completed without naming its round */
+            if (roundId is not null && nursing is null)
+                return ApiError.BadRequest(
+                    $"order '{orderId}' is a one-time order without nursing rounds — implement it with an empty request");
+            if (roundId is null && nursing?.IntervalMinutes is int every)
+                return ApiError.BadRequest(
+                    $"order '{orderId}' repeats every {every} minute{(every == 1 ? "" : "s")} — completing a round requires roundId and attemptId (the order's current round)");
             if (EncounterGuard.RequireOpen(db, row.EncounterId, "implementing an order") is IResult conflict) return conflict;
             if (row.Status != "active")
                 return ApiError.StateConflict(row.Status == "pending"
                     ? $"order '{orderId}' is pending — it must be signed before it can be implemented"
                     : $"order '{orderId}' is {(row.Status == "completed" ? "already completed" : row.Status)} — it is not awaiting implementation");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
-            var time = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
-            row.Status = "completed";
-            row.HistoryJson = OrderLogic.AppendHistory(
-                OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, "implemented", null)),
-                new(time, actor, "completed", null));
+            var nowUtc = DateTime.UtcNow;
+            var time = nowUtc.ToString("yyyy-MM-dd HH:mm");
+            var current = nursing is null ? null : NursingRounds.CurrentRound(row, nursing);
+            if (roundId is not null)
+            {
+                /* STALE / EARLY — 409 with nothing written: the round must be
+                   the order's current round, and due */
+                if (current is null)
+                    return ApiError.StateConflict($"order '{orderId}' has no current nursing round");
+                if (roundId != current.RoundId)
+                {
+                    if (nursing!.Completions.FirstOrDefault(c => c.RoundId == roundId) is { } done)
+                        return ApiError.StateConflict(
+                            $"round {done.Round} of order '{orderId}' was already completed by {done.CompletedBy} at {done.CompletedTime} — it is not awaiting completion");
+                    return ApiError.StateConflict(
+                        $"round '{roundId}' is not the current round of order '{orderId}' — the current round is round {current.Number}, due {current.DueTime}");
+                }
+                if (nowUtc < NursingRounds.ParseStamp(current.DueTime)!.Value)
+                    return ApiError.StateConflict(
+                        $"round {current.Number} of order '{orderId}' is not due yet — it opens at {current.DueTime}");
+            }
+            if (nursing is not null && current is not null)
+            {
+                /* the precise completion instant (nursing stamp form) — the
+                   next round is due at exactly this + the interval */
+                var completedAt = NursingRounds.StampOf(NursingRounds.CeilToMillisecond(nowUtc));
+                nursing.Completions.Add(new(current.Number, current.RoundId, current.DueTime, completedAt, actor, attemptId));
+                row.NursingJson = NursingRounds.Write(nursing);
+            }
+            if (nursing?.IntervalMinutes is not null)
+            {
+                /* a repeating order stays active — its next round is due at
+                   this completion time + the interval */
+                row.HistoryJson = OrderLogic.AppendHistory(row.HistoryJson,
+                    new(time, actor, "implemented", $"round {current!.Number}"));
+            }
+            else
+            {
+                row.Status = "completed";
+                row.HistoryJson = OrderLogic.AppendHistory(
+                    OrderLogic.AppendHistory(row.HistoryJson, new(time, actor, "implemented", null)),
+                    new(time, actor, "completed", null));
+            }
             db.SaveChanges();
             tx.Commit();
             return Results.Json(row.ToDto(), JsonOpts.Web);

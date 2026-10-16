@@ -114,8 +114,27 @@ static class ObservationsApi
                 if (problem is not null) return ApiError.BadRequest(problem);
                 normalized.Add((t, v!));
             }
+            /* ADMISSION BINDING (contracts §9.3): the I&O snapshots are
+               admission-scoped values, so a save must name the admission its
+               form showed; any caller MAY send it as a consistency check */
+            if (req.ExpectedEncounterId is null && normalized.Any(x => ObservationCatalog.IoSnapshotTypes.Contains(x.Type.TypeCode)))
+                return ApiError.BadRequest("expectedEncounterId is required when charting the I&O snapshots (io_current_intake_ml, io_current_output_ml) — the admission the values were entered for");
+            if (req.ExpectedEncounterId is not null && (string.IsNullOrWhiteSpace(req.ExpectedEncounterId) || req.ExpectedEncounterId.Length > 64))
+                return ApiError.BadRequest("expectedEncounterId must be a non-empty encounter id");
+            /* with the check, the read-compare-insert runs in ONE transaction
+               holding the expected encounter's row lock: a discharge updates
+               that row, so it waits for this write (or this write waits and
+               then sees the closed admission) — never a value charted into
+               an admission the form did not show. Without it, the write path
+               is exactly as before. */
+            using var tx = req.ExpectedEncounterId is null ? null : db.Database.BeginTransaction();
+            if (tx is not null && db.Database.IsNpgsql())
+                db.Database.ExecuteSql($"SELECT 1 FROM \"Encounters\" WHERE \"EncounterId\" = {req.ExpectedEncounterId} FOR UPDATE");
             if (EncounterGuard.RequireOpenForPatient(db, req.PatientId!, "charting an observation", out var enc) is IResult conflict)
                 return conflict;
+            if (req.ExpectedEncounterId is not null && enc!.EncounterId != req.ExpectedEncounterId)
+                return ApiError.StateConflict(
+                    $"the admission these values were entered for ({req.ExpectedEncounterId}) is not this patient's current admission ({enc.EncounterId}) — nothing was recorded; reload the patient and enter the values again");
             var actor = user.FindFirst("name")?.Value ?? "Unknown";
             var now = DateTime.UtcNow;
             var rows = normalized.Select(x => new ObservationRow
@@ -131,6 +150,7 @@ static class ObservationsApi
             }).ToList();
             db.Observations.AddRange(rows);
             db.SaveChanges();
+            tx?.Commit();
             return Results.Json(rows.Select(r => r.ToDto()), JsonOpts.Web);
         }).RequireAuthorization();
 

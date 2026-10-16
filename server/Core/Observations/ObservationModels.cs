@@ -216,8 +216,15 @@ record ObservationDto(
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
 record NewObservationEntryDto(string? TypeCode, JsonElement Value);
 
+/* expectedEncounterId (icu-update-nursing-patient-chart-contracts.md §9.3):
+   OPTIONAL consistency check — the admission the client's form was loaded
+   for. When present it must be the patient's current open encounter,
+   checked inside the write transaction (409, nothing written, on a
+   mismatch). REQUIRED for the I&O snapshot types, so a form loaded for one
+   admission can never chart into the next. Existing callers omit it and
+   are unchanged. */
 [System.Text.Json.Serialization.JsonUnmappedMemberHandling(System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)]
-record ChartObservationsRequest(string? PatientId, List<NewObservationEntryDto>? Entries);
+record ChartObservationsRequest(string? PatientId, List<NewObservationEntryDto>? Entries, string? ExpectedEncounterId = null);
 
 /* the §8 correction: tier-1 (own entry, 5-min window) sends only the
    corrected value — reason OPTIONAL (recorded when given); tier-2
