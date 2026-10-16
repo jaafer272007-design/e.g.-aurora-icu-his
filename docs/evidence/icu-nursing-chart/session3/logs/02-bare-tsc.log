@@ -1,0 +1,21 @@
+src/features/nurse-care/IoPanel.tsx(5,10): error TS2305: Module '"../../lib/api"' has no exported member 'IO_SNAPSHOT_MAX_ML'.
+src/features/nurse-care/IoPanel.tsx(5,30): error TS2305: Module '"../../lib/api"' has no exported member 'getIoSnapshots'.
+src/features/nurse-care/IoPanel.tsx(5,51): error TS2305: Module '"../../lib/api"' has no exported member 'IoRead'.
+src/features/nurse-care/IoPanel.tsx(5,64): error TS2305: Module '"../../lib/api"' has no exported member 'IoSnapshot'.
+src/features/nurse-care/IoPanel.tsx(5,81): error TS2305: Module '"../../lib/api"' has no exported member 'IoSnapshotDraft'.
+src/features/nurse-care/IoPanel.tsx(5,103): error TS2305: Module '"../../lib/api"' has no exported member 'IoView'.
+src/features/nurse-care/IoPanel.tsx(246,28): error TS7006: Parameter 's' implicitly has an 'any' type.
+src/features/nurse-care/IoPanel.tsx(248,48): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ readonly intake: "Intake"; readonly output: "Output"; }'.
+src/features/nurse-care/IoPanel.tsx(251,40): error TS7006: Parameter 'a' implicitly has an 'any' type.
+src/features/nurse-care/IoPanel.tsx(251,43): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/features/nurse-care/ioController.ts(1,10): error TS2305: Module '"../../lib/api"' has no exported member 'recordIoSnapshot'.
+src/features/nurse-care/ioController.ts(1,33): error TS2305: Module '"../../lib/api"' has no exported member 'IoSnapshotDraft'.
+src/features/nurse-care/ioController.ts(1,55): error TS2724: '"../../lib/api"' has no exported member named 'IoWriteResult'. Did you mean 'MarWriteResult'?
+src/features/nurse-care/nursingController.ts(1,34): error TS2305: Module '"../../lib/api"' has no exported member 'getPatientOrdersAuthoritative'.
+src/features/nurse-care/nursingController.ts(1,65): error TS2305: Module '"../../lib/api"' has no exported member 'implementNursingOrder'.
+src/features/nurse-care/nursingController.ts(1,93): error TS2305: Module '"../../lib/api"' has no exported member 'NursingWriteResult'.
+src/features/nurse-care/nursingController.ts(6,8): error TS2307: Cannot find module '../../lib/nursingRounds' or its corresponding type declarations.
+src/pages/NurseWorkspace/OrdersCard.tsx(10,8): error TS2307: Cannot find module '../../lib/nursingRounds' or its corresponding type declarations.
+src/pages/NurseWorkspace/OrdersCard.tsx(125,33): error TS2339: Property 'nursing' does not exist on type 'Order'.
+src/pages/NurseWorkspace/OrdersCard.tsx(137,22): error TS2339: Property 'nursing' does not exist on type 'Order'.
+src/pages/NurseWorkspace/OrdersCard.tsx(137,96): error TS2339: Property 'nursing' does not exist on type 'Order'.

@@ -1,0 +1,65 @@
+setup P-1022 at 2026-10-16 00:25 UTC; browser device zone UTC; scenarios: all
+
+[F] FIRST DOSE open on signing (round 1 and the once dose); subsequent and legacy rounds stay locked
+  PASS MAR rows: firstDose on FIRST and ONCE only (FIRST true, ONCE true, LOCK2 null, LEGACY null)
+  PASS FIRST round 1 (scheduled 04:00 hospital, 35 min away): Given/Held/Refused OPEN — "first dose — available now (scheduled 04:00)"
+  PASS ONCE dose (scheduled 04:00): open — "first dose — available now (scheduled 04:00)"
+  PASS LOCK2 round 2 (a subsequent round): locked — "🔒 Opens 03:55 (in 30 min) — one action per round"
+  PASS LEGACY round 1 = the slot after its legacy fact's (04:00), not a first dose: locked — "🔒 Opens 04:00 (in 35 min) — one action per round"
+  PASS scripted clicks on the locked rounds: no request, no dialog
+  PASS Given before its scheduled time -> one fact, round 1, carrying the request's attemptId (e08acd7af92825cb6bf073e1f424307e)
+  PASS round 2 = actual 03:25 + 1 h, LOCKED until then — "🔒 Opens 04:25 (in 1 h 00 min) — one action per round"
+  PASS ONCE: Held with its reason before its scheduled time -> one fact (double-click confirm: one request); nothing further expected
+
+[S1] DELAYED ORIGINAL COMMIT beyond 15 s (PRN): the page gets no answer; the original request reaches the server 21 s later
+  original request captured: {"action":"given","attemptId":"3c09c2ab264a1f2a78371b1e68cd54c0"}
+  PASS failure +16.0 s, the original still pending: the controls stay LOCKED — "⚠ Not confirmed — your given documentation (03:25) may already be saved; checking the record. Retry saving (sends the same documentation — it can never be recorded twice)"
+  PASS no "NOT recorded" verdict while the original may still commit (toasts: ["Save not confirmed"])
+  the page offers "Retry saving" -> the nurse retries saving
+  the original reached the server at failure +21.0 s -> HTTP 200
+  PASS one dose, 1 fact(s) on the record — exactly one
+  PASS audit: 1 administration entry — exactly one
+  PASS the retry re-sent the SAME attempt (3c09c2ab264a1f2a78371b1e68cd54c0), its minute pinned as the actual time: {"action":"given","administeredAt":"2026-10-16 00:25","attemptId":"3c09c2ab264a1f2a78371b1e68cd54c0"}
+  PASS the late original was answered with the existing record (200) and added nothing
+  PASS the page said "Saved — confirmed"
+  intentional later documentation (a new attempt)
+  PASS a later Given on the PRN order is recorded as a second fact with a new attempt id (e7b0974a39d6df5532f16267a6009ebc)
+
+[S1b] DELAYED ORIGINAL, no retry (continuous insulin): the late commit is confirmed from the record by itself
+  PASS failure +16.0 s: locked, unconfirmed — "⚠ Not confirmed — your given documentation (03:25) may already be saved; checking the record. Retry saving (sends the same documentation — it can never be recorded twice)"
+  PASS committed at +21 s (HTTP 200); the page confirmed it by itself at +25.1 s and reopened the on-demand row: "Insulin (Actrapid) · Synthetic Saferetry Browser002520: your given documentation (03:25) is on the record"
+  PASS exactly one fact, carrying the attempt id
+  PASS a later Given on the continuous order: a new attempt, a second fact
+
+[S2] OUT-OF-ORDER settlement reads (PRN): a read taken before the commit arrives after a newer read showed the fact
+  stale read #5 held at failure +15.1 s
+  the original commits (HTTP 200); a newer read is triggered (visibility change)
+  the stale read is released
+  reads: #1 passed (before arming); #2 passed (before arming); #3 passed (before arming); #4 passed (before arming); #5 HELD — the stale read, fetched before the commit; #6 passed — the newer read, after the commit
+  PASS no "not recorded" verdict from the stale read (verdicts shown: ["Saved — confirmed"])
+  PASS the newer read confirmed the save
+  PASS the display kept the recorded dose after the stale read (documented rows 1 -> 1)
+  PASS one dose, 1 fact(s) on the record — exactly one
+
+[S3] LOST ORIGINAL (PRN): it never reaches the server; the page keeps it unconfirmed across a reload; Retry saving records it once
+  PASS failure +16.0 s, nothing on the record: still unconfirmed, never declared not recorded — "⚠ Not confirmed — your given documentation (03:26) may already be saved; checking the record. Retry saving (sends the same documentation — it can never be recorded twice)"
+  PASS the wording is about saving the documentation, never about giving the dose again
+  PASS toast: "Save not confirmed — Syn Prnlost 002520 · Synthetic Saferetry Browser002520: the server did not answer — your given documentation is kept and may already be on …"
+  PASS kept in sessionStorage for this tab (aurora.marUnconfirmed:RN Maya Chen)
+  PASS rendered contrast ≥ 4.5:1 — dark: ⚠ Not confirme 9.84, Retry saving 6.61 · light: ⚠ Not confirme 6.09, Retry saving 7.58
+  PASS 390 px: nothing in the MAR group (lock line + Retry saving) overflows the 390 px viewport ([])
+  info: page scrollWidth 390 at 390 px — from outside the MAR: [""] (pre-existing, not this change)
+  PASS after a RELOAD: the attempt is still unconfirmed, the dose still locked — "⚠ Not confirmed — your given documentation (03:26) may already be saved; checkin…"
+  PASS a real double-click on Retry saving -> ONE request: the same attempt, its minute pinned ({"action":"given","administeredAt":"2026-10-16 00:26","attemptId":"eabd83200275fe344f06d93e6083cc73"})
+  PASS recorded once, given at the minute it was documented (2026-10-16 00:26), not when it was saved
+  PASS audit: one entry — "PRN dose given at 2026-10-16 00:26"
+  PASS confirmed: the PRN row is open again
+  PASS a later intentional Given: a new attempt, a second fact
+  PASS nothing left pending in sessionStorage
+
+[S4] DEVICE CLOCK 3 MIN AHEAD (PRN): the delayed original is still pending when Retry saving's pinned minute is refused
+  PASS Retry saving: the pinned minute (2026-10-16 00:29, 3 min ahead) was refused 400, then the ORIGINAL request was re-sent exactly: [{"action":"given","administeredAt":"2026-10-16 00:29","attemptId":"d8f3012f796cc31eab906c140ff07169"},{"action":"given","attemptId":"d8f3012f796cc31eab906c140ff07169"}]
+  PASS "Saved — confirmed", never "not saved" (toasts: ["Save not confirmed","Saved — confirmed"])
+  PASS the original arrived at +21 s (HTTP 200): 1 fact(s), 1 audit entry for one dose — exactly one
+
+RESULT 41 passed, 0 failed
