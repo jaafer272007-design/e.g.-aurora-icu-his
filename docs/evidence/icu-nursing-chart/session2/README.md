@@ -23,6 +23,9 @@ touched or contacted.
 | `3dc882a` | **The chart implementation** (source only). Every check below ran on this source. |
 | the commit adding this directory | Evidence only (`docs/evidence/icu-nursing-chart/session2/**`): tools, logs, screenshots, this README, and `pending-insertion.patch` |
 
+*[Superseded 2026-10-16: the insertion is now implemented as commit `5315769`. See "Final
+insertion" at the end of this file.]*
+
 **Pending, not made:** the final `PatientNurseCarePanel` insertion commit (§6). See
 "The care-panel insertion" below.
 
@@ -279,3 +282,85 @@ no `claude/icu-nursing-chart-nurse-workflows` branch.
   integrated backend is Session 1's combined check.
 - Final builds, combined acceptance, the care-panel insertion and the integrated nurse chart
   are pending integration (Session 1 / after Session 3's handoff).
+
+---
+
+## Final insertion: implemented (2026-10-16, supersedes "Pending" above)
+
+*Appended; the text above is the original handoff record. Where it says the insertion is
+pending or the nurse slot shows the read-only summary, this section wins.*
+
+**Commit `5315769`** ("chart: mount PatientNurseCarePanel in the nurse's medication + I&O
+slot") is the final Session 2 source commit. It sits on `8b4464e` and is followed by the
+evidence commit adding this section. It applies `pending-insertion.patch`, which is now
+historical, against Session 3's handed-off component:
+- **Session 3:** `claude/icu-nursing-chart-nurse-workflows` `681198a`, product source
+  `9e87e5b`.
+- **The real module:** the named export
+  `PatientNurseCarePanel({ patientId }: { patientId: string })` in
+  `src/features/nurse-care/PatientNurseCarePanel.tsx`. The import path and the prop match.
+- **The Nurse-profile chart** renders
+  `<PatientNurseCarePanel key={`care-${patientId}`} patientId={patientId} />` in the
+  `.nursecare` slot. It replaces the temporary read-only Active Medication Orders summary.
+  The one addition to the prepared patch is that per-patient `key`, which every other patient
+  card in the chart already has.
+- **The panel renders only when the chart detail matches the routed patient.** A save in
+  flight completes into the provider's controller, not into the remounted instance (contract
+  §4.3).
+- **No provider or controller is added.** The chart uses the single `NurseCareProvider` that
+  Session 3's `App.tsx` mounts around `<Routes>`. In the assembled tree the only
+  `<NurseCareProvider>` is in `App.tsx`.
+- **Every other profile is unchanged:** summary card, score cards and layout. The nurse's
+  score hiding is unchanged.
+
+**This branch does not compile alone.** The import resolves only when Session 3's branch is
+present, and Session 3's code also imports Session 1's `src/lib/nursingRounds.ts`. Per the
+instruction, no other session's source or contract stand-in was committed here.
+
+### Checks for the insertion (focused; the earlier suite was not repeated)
+
+Run on a **disposable assembled checkout**, a throwaway worktree that was never committed or
+pushed: `1a1acae` = `5315769` + merge of `claude/icu-nursing-chart-backend` `2fb4eb8` +
+merge of `claude/icu-nursing-chart-nurse-workflows` `681198a`. Both merges were clean, and no
+`src` file is changed by more than one session.
+
+| # | Command | Result | Log |
+|---|---|---|---|
+| 8 | `npx tsc -b --force` (assembled tree) | exit 0 | `logs/08-assembled-insertion-check.log` |
+| 8 | `node tools/panel-real-check.cjs http://localhost:5177` (assembled dev bundle, synthetic API) | **15 / 15** | same log |
+
+What the 15 checks cover:
+- **Nurse:** the real panel is mounted in the slot directly after the observations row, with
+  the routed patient (`data-patient`) and that patient's MAR group header. The summary card is
+  gone, score hiding is intact, and the other cards are present.
+- **Delayed switch:** A's reads are held for 2.5 s and the user switches to B after 0.4 s.
+  - In the switching render the panel is absent or already B.
+  - After A's late answers land, the panel is B's. It contains no A identity and no A I&O
+    values (1,234 / 4,321 mL), and shows B's own empty MAR and "Not recorded" I&O.
+  - Switching back follows to A.
+- **Other roles:** Consultant, Respiratory Therapist and Physiotherapist get no panel and no
+  slot. Their summary and score cards are as before.
+
+Screenshot: `screenshots/assembled-nurse-A-with-care-panel-1600.jpg`.
+
+`tools/synthetic-api.cjs` now honours `typeCode` on the observations read, as the real API
+does. Before that, the stand-in returned both I&O codes to each per-type read, so the panel's
+history listed every snapshot twice; that was a harness artifact, not product behaviour. The
+earlier checks #4/#5 do not send `typeCode` and are unaffected. The test-only stub check (#7)
+is superseded by #8.
+
+### Deferred to final integration (Session 1's combined real-backend run)
+
+- **The real backend.** In #8 the MAR rows came from the dev bundle's mock MAR store,
+  because `/api/icu/mar` is not served by the stand-in. I&O used the synthetic API. Not
+  exercised here:
+  - documenting Given / Held / Refused from the chart against the real server;
+  - persisted I&O saves and the admission-binding 409;
+  - controller locks surviving `/nurse` ↔ `/patients/:id` navigation during an unresolved
+    save.
+- **The production-mode bundle of the assembled tree**, the full `npm run build`, CI gates,
+  `dotnet` and PostgreSQL.
+- **Light/dark and narrow layouts with the real panel in the chart.** The panel's own
+  responsive and theme behaviour is Session 3's evidence. The chart slot is full width at
+  every breakpoint.
+

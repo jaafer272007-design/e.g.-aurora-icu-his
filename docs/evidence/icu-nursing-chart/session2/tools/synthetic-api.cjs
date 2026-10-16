@@ -190,7 +190,8 @@ async function install(context, ctl) {
       const o = observationsFor(pid)
       if (o === null) return json(500, { error: 'synthetic failure' }, 'observations')
       const enc = url.searchParams.get('encounterId')
-      return json(200, enc ? o.filter(x => x.encounterId === enc) : o, 'observations')
+      const type = url.searchParams.get('typeCode')   // the I&O panel reads one type per request
+      return json(200, o.filter(x => (!enc || x.encounterId === enc) && (!type || x.typeCode === type)), 'observations')
     }
     if (p === '/api/icu/adt/encounters' && req.method() === 'GET') return json(200, encountersFor(pid, url.searchParams.get('status')), 'encounters')
     let m = /^\/api\/icu\/adt\/patients\/([^/]+)$/.exec(p)
