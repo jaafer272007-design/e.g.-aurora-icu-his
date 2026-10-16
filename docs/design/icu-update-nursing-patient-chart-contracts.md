@@ -590,3 +590,29 @@ The stored shape for Orders to Implement (§3.6, key `aurora.nursingUnconfirmed:
   cleared and the view re-read. The old admission's values are never resent into the new one.
 - **Required check:** a form loaded for admission A, then discharge and readmission B before
   submission → the stale save is 409 and creates no observation in B (or in A).
+
+---
+
+## 10. Amendment 2 — 2026-10-16 (found by Session 1's local replay of the deployed orders suite)
+
+*Appended; §1–§9 above are unchanged text. Where this section conflicts with them, **this section
+wins**. No shared TypeScript signature, wire field or client behaviour changes; Sessions 2 and 3
+need no change. The approved plan is unchanged.*
+
+### 10.1 Implement answers an absent order 404 before any body problem (supersedes steps 1–2 of the check order in §3.4)
+
+The existing deployed orders suite (`.github/workflows/deployed-orders-e2e.yml`, FOUR-CODE step)
+probes `POST /api/icu/orders/ORD-0000/implement` with a generic body `{"reason":"x"}` and requires
+**404**: the endpoint before this change ignored any body. §3.4 put "body shape → 400" ahead of
+"order absent → 404", so that probe would be answered 400 — a regression for an existing caller.
+The check order becomes:
+
+1. RBAC `orders.implement` → 403 (unchanged).
+2. Order absent → **404, whatever the body** (malformed JSON, unknown fields, half a round
+   contract).
+3. Body shape → 400 (unknown fields, `roundId` / `attemptId` not together, malformed ids) · not
+   `requiresImplementation`, or Lab/Imaging → 400 (unchanged).
+4. Steps 3–7 of §3.4 follow unchanged (as amended by §9.1).
+
+Unknown fields on an existing order are still 400; "no body, an empty body, or `{}`" is still the
+empty request. Only the order in which the verdicts are reported changes.
