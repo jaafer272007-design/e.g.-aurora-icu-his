@@ -1,6 +1,16 @@
 # 02_PROJECT_STATUS — Aurora HIS: the changing record
 
-**Last updated: 2026-10-16 · current through THE ICU NURSING ORDERS + NURSE
+**Last updated: 2026-10-16 · current through THE TWO APPROVAL CORRECTIONS on
+draft PR #234 (Codex review of `72a7894`; same branch; source commits `8a0cadc`
+and `ff08a52`; pushed for review only — no merge, no installer, no hospital
+access or hospital deployment; the push republishes the STAGING frontend to
+GitHub Pages; local synthetic verification, not release acceptance): a refused
+MAR retry of an unresolved attempt no longer reopens the dose (it stays
+unconfirmed until the record settles it — two facts for one PRN dose were
+possible); the New Nursing Order draft and its submission belong to the patient
+they are shown for, and Orders & Medication shows and refreshes only the routed
+patient's identity and orders — the record below. Prior (2026-10-16, latest):
+THE ICU NURSING ORDERS + NURSE
 PATIENT CHART UPDATE, ASSEMBLED on draft PR #234 (Session 1's integration of the
 three sessions' branches on the same branch, from the reviewed head `2fc317c`;
 last code commit `4f1009d`; pushed for review only — no merge, no installer, no
@@ -123,12 +133,88 @@ appear once. The long-line duplicates that remain (15) are deliberate repeated
 boilerplate — one 3-line supersede note carried by five separate records — not a
 structural copy. No record's text was altered, reordered or removed.]*
 
+**2026-10-16 · THE TWO APPROVAL CORRECTIONS ON THE ICU UPDATE — MAR REFUSED
+RETRY + NEW NURSING ORDER DRAFT SCOPE (Session 1; Codex review of `72a7894`, last
+source `4f1009d`; same branch `claude/amazing-hopper-nwzw1x`, draft PR #234;
+branch push for review only — no merge, `main` unchanged, no installer or EXE, no
+hospital access, migration or hospital deployment; the push republishes the
+STAGING frontend to GitHub Pages via `deploy-pages.yml`, which is not hospital or
+deployed acceptance; synthetic data only).**
+Evidence: `docs/evidence/icu-nursing-chart/approval-fixes/README.md`; contract §12.
+
+1. **`8a0cadc` — MAR: a refused retry of an unconfirmed attempt no longer
+   settles it.** Inherited from the pre-extraction page and present at both
+   administration entry points: a PRN / on-demand Given with no answer, retried
+   with the same attempt id and refused with 403 (or by the client-side
+   permission check, or after the pinned-minute fallback), was marked settled;
+   the next empty server read reopened the controls; a new attempt could be
+   documented and the held original committed too — two facts for one dose.
+   Now a refused RETRY (any refusal; it can precede the server's order lock and
+   attempt lookup) leaves the attempt unconfirmed with its stored copy and only
+   the record settles it, as for the nursing rounds (Amendment 1 §9.2); the
+   sign-out path (`settleOrphan`) follows the same rule; the actual reason is
+   shown (a 401 keeps its existing toast; every refused retry leaves a "Retry
+   refused" notice, cleared on confirmation); first-send refusals, replay, the
+   pinned fallback, the rolling timer and the medication exceptions unchanged.
+2. **`ff08a52` — Orders & Medication: the New Nursing Order draft is scoped to
+   its patient.** A draft typed on patient A survived a patient-rail switch to B
+   with Pending / Sign & order enabled and would have been created for B; A's
+   header and orders stayed on screen until B's reads landed; an A read or an A
+   write's refresh could land on B. Now the editor is keyed by the displayed
+   patient and submits that patient's id; an in-flight A submission keeps A and
+   cannot clear B's draft or refresh B; identity, orders, not-found and weight
+   are held with the patient they were read for and shown only while it is
+   routed; order reads land only for the routed patient, in start order. No API,
+   RBAC or schedule rule changed.
+3. **Verification** (last source commit **`ff08a52`**; later commits are
+   docs/evidence only, product-source equality checked):
+   - builds + `ci.yml` gates once on a clean `ff08a52` worktree — all exit 0;
+     server source identical to `72a7894`;
+   - a focused probe of the REAL MAR controller over the shipped mock store
+     (controlled transport, not a server test): unchanged controller 36/70 —
+     the defect (403, client-side refusal, pinned-fallback refusal and
+     sign-out-in-flight each end with two facts or a deleted stored attempt;
+     the 401 control holds); corrected 70/70, probe unchanged;
+   - Session 3's controller harness 74/74; Session 3's MAR safe-retry browser
+     suite replayed once on the corrected staging bundle against real
+     ASP.NET + PostgreSQL, 41/41 (first dose, stale reads, the pinned fallback,
+     reload, intentional later PRN / continuous documentation);
+   - ONE disposable same-origin PRODUCTION pairing (synthetic accounts, shipped
+     role profiles, nothing granted): the pre-fix bundle first reproduced both
+     defects on the real server (18/34 — two MAR facts in the database; A's
+     draft live under B; A's late read and A's create answer replacing B's
+     list and clearing B's draft); after swapping in the corrected bundle and
+     restarting on the same database, 34/34: a real 403 refusal before the
+     order lock on the retry (the retry carried a disposable Receptionist's
+     token), real empty reads, the dose locked at the chart and the Nurse
+     Workspace, the held original delivered late, exactly ONE fact in
+     `Orders.AdministrationsJson` (the original attempt), unlocked only on
+     confirmation; a clean editor on every switch, held A reads and a held A
+     create answer leaving B's header, list and draft intact, exactly one
+     order created, for A.
+   - The 110-check combined integration suite was not rerun (its 401 retry
+     assertion still matches the unchanged 401 toast).
+4. **Still open:** the update-write / failed-health rollback release gate
+   (UNRESOLVED, migration-bearing); the pre-existing restricted-role chart
+   reads (Physiotherapist / Receptionist charts get 403 + the access overlay —
+   recorded separately in the assembly record below and contract §11.3, not
+   changed here); a consequence of fix 1 by design — an unresolved PRN attempt
+   whose retries are all refused stays locked for that nurse in that tab until
+   its fact appears (an absent fact is not proof).
+
 **2026-10-16 · THE ICU NURSING ORDERS + NURSE PATIENT CHART UPDATE — ASSEMBLED
 AND VERIFIED (Session 1 integration; same branch `claude/amazing-hopper-nwzw1x`,
 draft PR #234, from the reviewed head `2fc317c`; branch push for review only — no
 merge, `main` unchanged at `f0bf464`, no installer or EXE, no hospital access or
 migration, no deployment; synthetic data only; not release or hospital
 acceptance).**
+*[Correction, 2026-10-16 (approval round): "no deployment" above is unqualified
+and wrong as written. The push of `72a7894` ran `.github/workflows/deploy-pages.yml`,
+which builds the STAGING frontend (`VITE_APP_ENV=staging`) and published it to
+GitHub Pages (workflow run 38888888397, `actions/deploy-pages@v4`, success) — as
+every push of this open-PR branch does. That is a staging preview publication:
+nothing was deployed to a hospital, and it is not hospital or deployed
+acceptance.]*
 DESIGN FIRST: the owner's design is committed verbatim as
 `docs/design/icu-update-nursing-patient-chart.md`, with the frozen contracts in
 `docs/design/icu-update-nursing-patient-chart-contracts.md` (Amendments 1 and 2,

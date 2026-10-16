@@ -5,6 +5,16 @@ release approval, not hospital or deployed acceptance.** No change to `main` (`f
 no installer/EXE, no hospital access or migration, no deployment, no ongoing monitoring. ICU edition,
 AI disabled, English interface.
 
+*[Corrections, 2026-10-16 (approval round, Codex review of `72a7894`):*
+- *"no deployment" above is unqualified and wrong as written. Every push of this open-PR branch runs
+  `.github/workflows/deploy-pages.yml`, which publishes the STAGING frontend to GitHub Pages; the push
+  of `72a7894` did (run 38888888397, `actions/deploy-pages@v4`, success). That is a staging preview,
+  not a hospital deployment and not hospital or deployed acceptance.*
+- *Two blocking defects were found after this run and are fixed in `8a0cadc` (a refused MAR retry
+  reopened an unresolved dose) and `ff08a52` (the New Nursing Order draft crossed patients). Results
+  below describe source `4f1009d`. The fixes' own evidence is in `../approval-fixes/README.md`. This
+  suite's one MAR retry assertion (the 401 toast) still matches the corrected code.]*
+
 ## 1. What was assembled
 
 | Ref | Commit | Notes |

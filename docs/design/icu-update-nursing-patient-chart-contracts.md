@@ -661,3 +661,55 @@ medication threshold (DUE SOON, the 120-minute late-dose reason) are unchanged.
   `docs/evidence/icu-nursing-chart/integration/README.md` §5.
 - Session 2's request to prune `getPatientDetail`'s now-unused orders read is not taken here (it
   belongs with the fix above).
+
+## 12. Approval corrections — 2026-10-16 (Codex review of `72a7894`)
+
+Two blocking defects found in Codex's approval review, each fixed in its own source commit on the
+same branch. Evidence: `docs/evidence/icu-nursing-chart/approval-fixes/README.md`.
+
+### 12.1 A refused MAR retry never settles an unresolved attempt (`8a0cadc`; amends the MAR controller of §4, by the rule of §9.2)
+
+§4 extracted the MAR controller "without changing a rule", which carried over one rule from the
+earlier page: a refused retry of an unconfirmed attempt counted as definitive unless it was a 401.
+That covered a server 403, the client-side permission check (no status), and the refusal after the
+pinned-minute fallback re-sends the original body. Such a refusal can come before the server's order
+lock and attempt lookup, and an absent fact proves nothing, so a held original could still commit
+after the controls had reopened. That produced two facts for one PRN or on-demand dose. The MAR
+controller now follows the same rule as the nursing rounds (§9.2):
+
+- a **first send** that is refused is definitive: "Not recorded", released by the next server read;
+- a **refused retry** (any status, including a client-side refusal and the fallback's) leaves the
+  attempt **unconfirmed with its stored copy**. Only the record settles it: its own fact, or its
+  round or `once` dose documented by another fact;
+- an answer that arrives after sign-out or an account change follows the same rule (`settleOrphan`):
+  a refused retry never removes the signed-out nurse's stored attempt, and storage stays per nurse;
+- the reason shown is the actual one. A 401 keeps its existing "sign in again, then retry saving"
+  toast. Other refused retries show a "Retry refused" toast with the server's or the client check's
+  reason. Every refused retry leaves the row notice "Retry refused — <reason>. Your original
+  <action> documentation may already be on the record; checking.", cleared once the record confirms
+  the attempt. The controls stay locked, and no wording advises giving the dose again.
+
+Same-attempt replay, successful answers, the pinned-minute fallback, the rolling timer and the
+medication exceptions are unchanged.
+
+### 12.2 The New Nursing Order draft belongs to the patient it is shown for (`ff08a52`; amends the form of the owner's design §2)
+
+On `/orders/:patientId`, the nursing editor and its submission are scoped to the patient displayed:
+
+- the card is keyed by that patient, so a switch mounts a fresh one-time / Routine editor;
+- a submission carries the displayed patient's id, never the routed id at the time the click lands
+  or the answer returns;
+- an in-flight submission keeps its patient, refreshes only that patient (and only while it is
+  routed), and cannot clear or re-enable anything on another patient's page;
+- the page's roster identity, order list, not-found flag and weight are held with the patient they
+  were read for and shown only while that patient is routed, so a stale display never offers a
+  submit under another patient's route;
+- order-list reads land only for the routed patient, in the order they started.
+
+No API, permission or schedule rule changes.
+
+### 12.3 Recorded, not changed
+
+- The pre-existing restricted-role chart reads (§11.3) remain open, separately from these fixes.
+- The update-write / failed-health rollback release gate remains UNRESOLVED (migration-bearing:
+  `migrationWillRun` is true for this update).
